@@ -279,20 +279,20 @@ struct ContentView: View {
     private func refreshDisks() {
         isRefreshing = true
         
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-            DispatchQueue.global(qos: .userInitiated).async {
-                let fetchedDisks = self.diskService.fetchExternalDisks()
-                var processes: [String: [ProcessInfo]] = [:]
+        DispatchQueue.global(qos: .userInitiated).async {
+            let fetchedDisks = self.diskService.fetchExternalDisks()
+            
+            DispatchQueue.main.async {
+                self.disks = fetchedDisks
+                self.diskProcesses = [:]
+                self.isRefreshing = false
+            }
+            
+            for disk in fetchedDisks {
+                let processes = self.processService.findProcessesAccessingDisk(mountPath: disk.mountPath)
                 
-                for disk in fetchedDisks {
-                    let diskProcesses = self.processService.findProcessesAccessingDisk(mountPath: disk.mountPath)
-                    processes[disk.id] = diskProcesses
-                }
-                
-                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                    self.disks = fetchedDisks
-                    self.diskProcesses = processes
-                    self.isRefreshing = false
+                DispatchQueue.main.async {
+                    self.diskProcesses[disk.id] = processes
                 }
             }
         }
