@@ -1,0 +1,50 @@
+name: DiskEjector
+options:
+  bundleIdPrefix: com.disktools
+  deploymentTarget:
+    macOS: "14.0"
+  xcodeVersion: "15.0"
+  generateEmptyDirectories: true
+
+settings:
+  base:
+    SWIFT_VERSION: "5.9"
+    MACOSX_DEPLOYMENT_TARGET: "14.0"
+    CODE_SIGN_IDENTITY: "-"
+    CODE_SIGN_STYLE: Manual
+    PRODUCT_BUNDLE_IDENTIFIER: com.disktools.diskejector
+
+targets:
+  DiskEjector:
+    type: application
+    platform: macOS
+    sources:
+      - path: DiskEjector
+        excludes:
+          - "**/.DS_Store"
+    settings:
+      base:
+        PRODUCT_NAME: DiskEjector
+        INFOPLIST_FILE: DiskEjector/Info.plist
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        LD_RUNPATH_SEARCH_PATHS: "@executable_path/../Frameworks"
+        COMBINE_HIDPI_IMAGES: YES
+        ENABLE_HARDENED_RUNTIME: YES
+        SWIFT_OBJC_BRIDGING_HEADER: "DiskEjector/DiskEjector-Bridging-Header.h"
+        OTHER_LDFLAGS:
+          - "-framework"
+          - "DiskArbitration"
+    info:
+      path: DiskEjector/Info.plist
+      properties:
+        CFBundleName: DiskEjector
+        CFBundleDisplayName: DiskEjector
+        CFBundleIdentifier: com.disktools.diskejector
+        CFBundleVersion: "1"
+        CFBundleShortVersionString: "1.0.0"
+        CFBundlePackageType: APPL
+        CFBundleExecutable: DiskEjector
+        LSMinimumSystemVersion: "14.0"
+        LSUIElement: true
+        NSPrincipalClass: NSApplication
+        NSHighResolutionCapable: true
