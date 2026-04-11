@@ -134,12 +134,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
     
     @objc private func ejectDiskSwitch(_ sender: NSSwitch) {
-        if sender.state == .off {
-            let diskIndex = sender.tag
-            if diskIndex < currentDisks.count {
-                let disk = currentDisks[diskIndex]
-                ejectDiskWithDiskInfo(disk)
-            }
+        let diskIndex = sender.tag
+        if diskIndex < currentDisks.count {
+            let disk = currentDisks[diskIndex]
+            // 无论开关状态如何，都执行推出操作
+            ejectDiskWithDiskInfo(disk)
         }
     }
     
