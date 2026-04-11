@@ -38,7 +38,21 @@ class ProcessService {
         
         do {
             try task.run()
-            task.waitUntilExit()
+            
+            // 添加超时机制，最多等待 2 秒
+            let timeout = DispatchTime.now() + .seconds(2)
+            let semaphore = DispatchSemaphore(value: 0)
+            
+            DispatchQueue.global().async {
+                task.waitUntilExit()
+                semaphore.signal()
+            }
+            
+            if semaphore.wait(timeout: timeout) == .timedOut {
+                print("lsof command timed out")
+                task.terminate()
+                return []
+            }
             
             let data = pipe.fileHandleForReading.readDataToEndOfFile()
             let output = String(data: data, encoding: .utf8) ?? ""
@@ -86,7 +100,21 @@ class ProcessService {
         
         do {
             try task.run()
-            task.waitUntilExit()
+            
+            // 添加超时机制，最多等待 2 秒
+            let timeout = DispatchTime.now() + .seconds(2)
+            let semaphore = DispatchSemaphore(value: 0)
+            
+            DispatchQueue.global().async {
+                task.waitUntilExit()
+                semaphore.signal()
+            }
+            
+            if semaphore.wait(timeout: timeout) == .timedOut {
+                print("ps command timed out")
+                task.terminate()
+                return []
+            }
             
             let data = pipe.fileHandleForReading.readDataToEndOfFile()
             let output = String(data: data, encoding: .utf8) ?? ""

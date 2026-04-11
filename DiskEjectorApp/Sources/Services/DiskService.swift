@@ -98,12 +98,18 @@ class DiskService {
         task.standardOutput = pipe
         task.standardError = pipe
         
+        print("=== Running eject command ===")
+        print("Command: /usr/sbin/diskutil unmount force \(disk.mountPath)")
+        
         do {
             try task.run()
             task.waitUntilExit()
             
             let data = pipe.fileHandleForReading.readDataToEndOfFile()
             let output = String(data: data, encoding: .utf8) ?? ""
+            
+            print("Command exit status: \(task.terminationStatus)")
+            print("Command output: \(output)")
             
             if task.terminationStatus == 0 {
                 print("Disk ejected successfully: \(disk.volumeName)")
