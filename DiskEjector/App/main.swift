@@ -64,9 +64,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 // 创建自定义视图，增加高度和间距
                 let view = NSView(frame: NSRect(x: 0, y: 0, width: 320, height: 28))
                 
+                // 磁盘图标
+                let diskImage = NSImage(systemSymbolName: "externaldrive.fill", accessibilityDescription: "Disk")
+                let diskImageView = NSImageView(frame: NSRect(x: 15, y: 4, width: 20, height: 20))
+                diskImageView.image = diskImage
+                // 设置图标颜色为强调色
+                diskImageView.contentTintColor = NSColor.controlAccentColor
+                view.addSubview(diskImageView)
+                
                 // 磁盘名称标签
                 let nameLabel = NSTextField(labelWithString: disk.displayName)
-                nameLabel.frame = NSRect(x: 15, y: 6, width: 220, height: 16)
+                nameLabel.frame = NSRect(x: 45, y: 6, width: 190, height: 16)
                 nameLabel.font = NSFont.systemFont(ofSize: 13)
                 view.addSubview(nameLabel)
                 
@@ -77,6 +85,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 ejectSwitch.tag = currentDisks.firstIndex(of: disk) ?? 0
                 // 开关状态：开表示已挂载，关表示已推出
                 ejectSwitch.state = .on
+                // 启用开关
+                ejectSwitch.isEnabled = true
                 view.addSubview(ejectSwitch)
                 
                 menuItem.view = view
