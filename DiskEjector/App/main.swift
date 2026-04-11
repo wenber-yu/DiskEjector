@@ -59,14 +59,27 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             menu.addItem(noDiskItem)
         } else {
             for disk in currentDisks {
-                let diskItem = NSMenuItem(title: disk.displayName, action: nil, keyEquivalent: "")
-                diskItem.isEnabled = false
-                menu.addItem(diskItem)
+                let menuItem = NSMenuItem()
                 
-                let ejectItem = NSMenuItem(title: "  推出", action: #selector(ejectDisk(_:)), keyEquivalent: "")
-                ejectItem.target = self
-                ejectItem.representedObject = disk
-                menu.addItem(ejectItem)
+                // 创建自定义视图
+                let view = NSView(frame: NSRect(x: 0, y: 0, width: 300, height: 20))
+                
+                // 磁盘名称标签
+                let nameLabel = NSTextField(labelWithString: disk.displayName)
+                nameLabel.frame = NSRect(x: 10, y: 0, width: 200, height: 20)
+                nameLabel.font = NSFont.systemFont(ofSize: 13)
+                view.addSubview(nameLabel)
+                
+                // 推出按钮
+                let ejectButton = NSButton(title: "推出", target: self, action: #selector(ejectDiskButton(_:)))
+                ejectButton.frame = NSRect(x: 210, y: 2, width: 80, height: 16)
+                ejectButton.bezelStyle = .rounded
+                ejectButton.controlSize = .small
+                ejectButton.tag = currentDisks.firstIndex(of: disk) ?? 0
+                view.addSubview(ejectButton)
+                
+                menuItem.view = view
+                menu.addItem(menuItem)
             }
         }
         
@@ -98,23 +111,38 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     
     @objc private func ejectDisk(_ sender: NSMenuItem) {
         guard let disk = sender.representedObject as? DiskInfo else { return }
-        
-        let processes = processService.findProcessesAccessingDisk(mountPath: disk.mountPath)
-        
-        if !processes.isEmpty {
-            let alert = NSAlert()
-            alert.messageText = "磁盘正在被占用"
-            alert.informativeText = "以下进程正在访问磁盘 \"\(disk.displayName)\"：\n\n\(processes.map { "- \($0.name) (PID: \($0.pid))" }.joined(separator: "\n"))\n\n是否强制结束这些进程并推出磁盘？"
-            alert.alertStyle = .warning
-            alert.addButton(withTitle: "取消")
-            alert.addButton(withTitle: "强制结束并推出")
+        ejectDiskWithDiskInfo(disk)
+    }
+    
+    @objc private func ejectDiskButton(_ sender: NSButton) {
+        let diskIndex = sender.tag
+        if diskIndex < currentDisks.count {
+            let disk = currentDisks[diskIndex]
+            ejectDiskWithDiskInfo(disk)
+        }
+    }
+    
+    private func ejectDiskWithDiskInfo(_ disk: DiskInfo) {
+        DispatchQueue.global(qos: .userInitiated).async {
+            let processes = self.processService.findProcessesAccessingDisk(mountPath: disk.mountPath)
             
-            let response = alert.runModal()
-            if response == .alertSecondButtonReturn {
-                performEject(disk: disk, processes: processes)
+            DispatchQueue.main.async {
+                if !processes.isEmpty {
+                    let alert = NSAlert()
+                    alert.messageText = "磁盘正在被占用"
+                    alert.informativeText = "以下进程正在访问磁盘 \"\(disk.displayName)\"：\n\n\(processes.map { "- \($0.name) (PID: \($0.pid))" }.joined(separator: "\n"))\n\n是否强制结束这些进程并推出磁盘？"
+                    alert.alertStyle = .warning
+                    alert.addButton(withTitle: "取消")
+                    alert.addButton(withTitle: "强制结束并推出")
+                    
+                    let response = alert.runModal()
+                    if response == .alertSecondButtonReturn {
+                        self.performEject(disk: disk, processes: processes)
+                    }
+                } else {
+                    self.performEject(disk: disk, processes: [])
+                }
             }
-        } else {
-            performEject(disk: disk, processes: [])
         }
     }
     
