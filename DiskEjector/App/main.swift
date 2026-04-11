@@ -61,22 +61,23 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             for disk in currentDisks {
                 let menuItem = NSMenuItem()
                 
-                // 创建自定义视图
-                let view = NSView(frame: NSRect(x: 0, y: 0, width: 300, height: 20))
+                // 创建自定义视图，增加高度和间距
+                let view = NSView(frame: NSRect(x: 0, y: 0, width: 320, height: 28))
                 
                 // 磁盘名称标签
                 let nameLabel = NSTextField(labelWithString: disk.displayName)
-                nameLabel.frame = NSRect(x: 10, y: 0, width: 200, height: 20)
+                nameLabel.frame = NSRect(x: 15, y: 6, width: 220, height: 16)
                 nameLabel.font = NSFont.systemFont(ofSize: 13)
                 view.addSubview(nameLabel)
                 
-                // 推出按钮
-                let ejectButton = NSButton(title: "推出", target: self, action: #selector(ejectDiskButton(_:)))
-                ejectButton.frame = NSRect(x: 210, y: 2, width: 80, height: 16)
-                ejectButton.bezelStyle = .rounded
-                ejectButton.controlSize = .small
-                ejectButton.tag = currentDisks.firstIndex(of: disk) ?? 0
-                view.addSubview(ejectButton)
+                // 推出开关
+                let ejectSwitch = NSSwitch(frame: NSRect(x: 245, y: 6, width: 50, height: 18))
+                ejectSwitch.target = self
+                ejectSwitch.action = #selector(ejectDiskSwitch(_:))
+                ejectSwitch.tag = currentDisks.firstIndex(of: disk) ?? 0
+                // 开关状态：开表示已挂载，关表示已推出
+                ejectSwitch.state = .on
+                view.addSubview(ejectSwitch)
                 
                 menuItem.view = view
                 menu.addItem(menuItem)
@@ -119,6 +120,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         if diskIndex < currentDisks.count {
             let disk = currentDisks[diskIndex]
             ejectDiskWithDiskInfo(disk)
+        }
+    }
+    
+    @objc private func ejectDiskSwitch(_ sender: NSSwitch) {
+        if sender.state == .off {
+            let diskIndex = sender.tag
+            if diskIndex < currentDisks.count {
+                let disk = currentDisks[diskIndex]
+                ejectDiskWithDiskInfo(disk)
+            }
         }
     }
     
