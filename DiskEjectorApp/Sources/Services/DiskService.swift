@@ -1,7 +1,7 @@
 import Foundation
 import DiskArbitration
 
-class DiskService {
+class DiskService: @unchecked Sendable {
     static let shared = DiskService()
     
     private init() {}
@@ -71,20 +71,31 @@ class DiskService {
     }
     
     /// 安全推出磁盘：先终止占用进程，再执行 diskutil unmount force
-    func ejectDisk(_ disk: DiskInfo, killProcesses: [ProcessInfo], completion: @escaping (Result<Void, Error>) -> Void) {
-        // 移到后台线程执行耗时操作，避免阻塞主线程
-        DispatchQueue.global(qos: .userInitiated).async {
-            // Step 1: Terminate occupying processes
+    func ejectDisk(_ disk: DiskInfo, killProcesses: [ProcessInfo], completion: @escaping @Sendable (Result<Void, Error>) -> Void) {
+        Task.detached(priority: .userInitiated) { [weak self] in
+            guard let self = self else { return }
+
             for proc in killProcesses {
-                ProcessService.shared.killProcess(pid: Int(proc.pid))
+                await self.killProcessAsync(pid: Int(proc.pid))
             }
 
-            // Step 2: Execute eject command immediately without unnecessary delay
-            self.runEjectCommand(disk: disk) { result in
-                // 回到主线程执行 completion
-                DispatchQueue.main.async {
-                    completion(result)
-                }
+            let result = await self.runEjectCommandAsync(disk: disk)
+            await MainActor.run {
+                completion(result)
+            }
+        }
+    }
+
+    private func killProcessAsync(pid: Int) async {
+        await MainActor.run {
+            ProcessService.shared.killProcess(pid: pid)
+        }
+    }
+
+    private func runEjectCommandAsync(disk: DiskInfo) async -> Result<Void, Error> {
+        await withCheckedContinuation { continuation in
+            runEjectCommand(disk: disk) { result in
+                continuation.resume(returning: result)
             }
         }
     }

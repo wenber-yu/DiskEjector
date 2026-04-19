@@ -4,6 +4,7 @@ struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @AppStorage("visualStyle") private var visualStyle = "transparent"
     @AppStorage("accentColor") private var accentColor = "blue"
+    @AppStorage("showDockIcon") private var showDockIcon = false
     
     var body: some View {
         VStack(spacing: 0) {
@@ -47,6 +48,24 @@ struct SettingsView: View {
                                 icon: "paintpalette"
                             )
                         }
+                    }
+                    
+                    // Dock Icon
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Dock 图标")
+                            .font(.headline)
+                        
+                        HStack(spacing: 12) {
+                            Text("显示 Dock 图标")
+                                .font(.callout)
+                            Spacer()
+                            Toggle("", isOn: $showDockIcon)
+                                .labelsHidden()
+                        }
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 12)
+                        .background(Color.secondary.opacity(0.05))
+                        .cornerRadius(10)
                     }
                     
                     // Accent Color

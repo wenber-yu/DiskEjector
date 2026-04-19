@@ -1,5 +1,6 @@
 import Foundation
 
+@MainActor
 final class LogService {
     static let shared = LogService()
 

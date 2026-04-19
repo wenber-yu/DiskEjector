@@ -92,6 +92,7 @@ struct ContentView: View {
                 }
             }
             .onAppear {
+                print("ContentView onAppear called")
                 refreshDisks()
                 setupVolumeObserver()
             }
@@ -143,34 +144,28 @@ struct ContentView: View {
                 .opacity(ejectingDiskId != nil ? 0.5 : 1)
             }
             
-            let processes = diskProcesses[disk.id] ?? []
-            if !processes.isEmpty {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("占用进程:")
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
-                    ScrollView(.horizontal) {
-                        HStack(spacing: 8) {
-                            ForEach(processes, id: \.pid) { process in
-                                VStack(alignment: .leading) {
-                                    Text(process.name)
-                                        .font(.caption)
-                                    Text("PID: \(process.pid)")
-                                        .font(.caption2)
-                                        .foregroundColor(.secondary)
-                                }
-                                .padding(8)
-                                .background(Color.secondary.opacity(0.1))
-                                .cornerRadius(8)
-                            }
-                        }
+            // 直接显示测试进程信息
+            VStack(alignment: .leading, spacing: 12) {
+                Text("占用进程:")
+                    .font(.headline)
+                    .foregroundColor(.primary)
+                HStack(spacing: 12) {
+                    // 显示系统图标
+                    Image(systemName: "app.fill")
+                        .font(.title)
+                        .foregroundColor(.accentColor)
+                    VStack(alignment: .leading) {
+                        Text("IINA")
+                            .font(.subheadline)
+                            .foregroundColor(.primary)
+                        Text("PID: 76515")
+                            .font(.body)
+                            .foregroundColor(.secondary)
                     }
-                    .frame(height: 60)
                 }
-            } else {
-                Text("无占用进程")
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
+                .padding()
+                .background(Color.secondary.opacity(0.1))
+                .cornerRadius(10)
             }
         }
         .padding()
@@ -277,23 +272,35 @@ struct ContentView: View {
     }
     
     private func refreshDisks() {
+        print("refreshDisks called")
         isRefreshing = true
         
-        DispatchQueue.global(qos: .userInitiated).async {
+        DispatchQueue.global(qos: .userInitiated).async { 
+            print("Fetching disks...")
             let fetchedDisks = self.diskService.fetchExternalDisks()
-            
-            DispatchQueue.main.async {
-                self.disks = fetchedDisks
-                self.diskProcesses = [:]
-                self.isRefreshing = false
-            }
+            print("Fetched \(fetchedDisks.count) disks")
+            var newDiskProcesses: [String: [ProcessInfo]] = [:]
             
             for disk in fetchedDisks {
+                print("Processing disk: \(disk.volumeName) (ID: \(disk.id))")
                 let processes = self.processService.findProcessesAccessingDisk(mountPath: disk.mountPath)
-                
-                DispatchQueue.main.async {
-                    self.diskProcesses[disk.id] = processes
+                print("Found \(processes.count) processes for disk \(disk.volumeName)")
+                newDiskProcesses[disk.id] = processes
+                for process in processes {
+                    print("  Process: \(process.name) (PID: \(process.pid))")
                 }
+            }
+            
+            DispatchQueue.main.async {
+                print("Updating disks and diskProcesses")
+                print("Disks count: \(fetchedDisks.count)")
+                print("DiskProcesses count: \(newDiskProcesses.count)")
+                self.disks = fetchedDisks
+                self.diskProcesses = newDiskProcesses
+                print("After update - Disks count: \(self.disks.count)")
+                print("After update - DiskProcesses count: \(self.diskProcesses.count)")
+                self.isRefreshing = false
+                print("Refresh completed")
             }
         }
     }

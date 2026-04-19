@@ -2,6 +2,7 @@ import AppKit
 import SwiftUI
 
 @main
+@MainActor
 class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem!
     private var mainWindow: NSWindow!
@@ -10,6 +11,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     
     private var currentDisks: [DiskInfo] = []
     private var ejectButtons: [String: NSButton] = [:]
+    private var ejectingDiskId: String?
     private var accentColor: String {
         return UserDefaults.standard.string(forKey: "accentColor") ?? "blue"
     }
@@ -25,6 +27,22 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         default: return .systemBlue
         }
     }
+    
+    // 更新 Dock 图标可见性
+    private func updateDockIconVisibility() {
+        let showDockIcon = UserDefaults.standard.bool(forKey: "showDockIcon")
+        NSApp.setActivationPolicy(showDockIcon ? .regular : .accessory)
+        print("Dock icon visibility updated: \(showDockIcon)")
+    }
+    
+    // 监听 UserDefaults 变化
+    override func observeValue(forKeyPath keyPath: String?, of object: Any?, change: [NSKeyValueChangeKey : Any]?, context: UnsafeMutableRawPointer?) {
+        if keyPath == "showDockIcon" {
+            updateDockIconVisibility()
+        } else if keyPath == "accentColor" {
+            refreshDiskList()
+        }
+    }
 
     static func main() {
         print("Starting DiskEjector")
@@ -36,47 +54,52 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         print("DiskEjector launched")
-        
-        // 1. 确保应用显示在 Dock 栏
-        NSApp.setActivationPolicy(.regular)
-        
-        // 2. 创建状态栏项 - 使用可变长度
+
+        if let appIcon = NSImage(systemSymbolName: "externaldrive.fill", accessibilityDescription: "DiskEjector") {
+            NSApp.applicationIconImage = appIcon
+            print("Application icon set successfully")
+        }
+
+        updateDockIconVisibility()
+
+        UserDefaults.standard.addObserver(self, forKeyPath: "showDockIcon", options: .new, context: nil)
+
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         guard let button = statusItem.button else {
             print("Failed to get status item button")
             return
         }
-        
+
         print("Got status item button")
-        
-        // 3. 设置按钮属性 - 使用图标
+
         let ejectImage = NSImage(systemSymbolName: "eject.fill", accessibilityDescription: "Eject")
         button.image = ejectImage
         button.toolTip = "DiskEjector"
-        
+
         print("Button image set: \(button.image != nil)")
-        
-        // 4. 初始刷新磁盘列表
+
         refreshDiskList()
-        
+
         print("Menu bar setup complete")
-        
-        // 5. 延迟创建主窗口
+
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
             self.setupMainWindow()
             print("Main window setup complete")
         }
-        
-        // 6. 监听磁盘插入和弹出事件
+
         setupDiskMonitoring()
+
+        setupAccentColorMonitoring()
     }
-    
+
+    private func setupAccentColorMonitoring() {
+        UserDefaults.standard.addObserver(self, forKeyPath: "accentColor", options: [.new], context: nil)
+    }
+
     private func setupDiskMonitoring() {
-        // 使用 NSWorkspace 监听磁盘挂载和卸载事件
         let workspace = NSWorkspace.shared
         
-        // 监听磁盘挂载事件
-        NotificationCenter.default.addObserver(forName: NSWorkspace.didMountNotification, object: workspace, queue: nil) { [weak self] notification in
+        NotificationCenter.default.addObserver(forName: NSWorkspace.didMountNotification, object: workspace, queue: .main) { [weak self] notification in
             print("=== Disk mounted notification received ===")
             if let volumeURL = notification.userInfo?["NSWorkspaceVolumeURLKey"] as? URL {
                 print("Mounted volume URL: \(volumeURL)")
@@ -85,8 +108,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             self?.refreshDiskList()
         }
         
-        // 监听磁盘卸载事件
-        NotificationCenter.default.addObserver(forName: NSWorkspace.didUnmountNotification, object: workspace, queue: nil) { [weak self] notification in
+        NotificationCenter.default.addObserver(forName: NSWorkspace.didUnmountNotification, object: workspace, queue: .main) { [weak self] notification in
             print("=== Disk unmounted notification received ===")
             if let volumeURL = notification.userInfo?["NSWorkspaceVolumeURLKey"] as? URL {
                 print("Unmounted volume URL: \(volumeURL)")
@@ -105,38 +127,18 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         for (index, disk) in currentDisks.enumerated() {
             print("Disk \(index): \(disk.displayName), mountPath: \(disk.mountPath)")
         }
-        // 清除按钮字典，因为菜单项会被重新创建
         ejectButtons.removeAll()
-        updateMenu()
-        
-        // 手动刷新菜单栏
-        statusItem.menu?.update()
-        
-        // 强制更新状态栏按钮，确保菜单栏能够立即反映新的磁盘列表
-        statusItem.button?.needsDisplay = true
-        
-        // 强制重新设置菜单，确保菜单栏能够立即更新
-        if let menu = statusItem.menu {
-            statusItem.menu = nil
-            statusItem.menu = menu
-        }
-        
-        // 强制刷新状态栏项
-        statusItem.button?.display()
+        rebuildMenu()
     }
     
-    private func updateMenu() {
-        print("=== updateMenu called ===")
+    private func rebuildMenu() {
         let menu = NSMenu()
         menu.delegate = self
         
-        // 添加顶部空白
         let spaceItem = NSMenuItem()
         spaceItem.view = NSView(frame: NSRect(x: 0, y: 0, width: 400, height: 10))
         menu.addItem(spaceItem)
-        print("Added space item")
         
-        // 添加硬盘列表标题
         let titleItem = NSMenuItem()
         let titleView = NSView(frame: NSRect(x: 0, y: 0, width: 400, height: 20))
         let titleLabel = NSTextField(frame: NSRect(x: 12, y: 0, width: 380, height: 20))
@@ -149,37 +151,28 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         titleView.addSubview(titleLabel)
         titleItem.view = titleView
         menu.addItem(titleItem)
-        print("Added title item")
         
         menu.addItem(.separator())
-        print("Added separator")
         
-        // 添加磁盘列表
         if currentDisks.isEmpty {
             let noDiskItem = NSMenuItem(title: "没有可推出的磁盘", action: nil, keyEquivalent: "")
             noDiskItem.isEnabled = false
             menu.addItem(noDiskItem)
-            print("Added no disk item")
         } else {
             for (index, disk) in currentDisks.enumerated() {
-                // 创建一个自定义视图，高度增加以显示更多信息
                 let customView = NSView(frame: NSRect(x: 0, y: 0, width: 400, height: 48))
                 customView.wantsLayer = true
                 
-                // 添加磁盘图标
                 if let diskImage = NSImage(systemSymbolName: "externaldrive.fill", accessibilityDescription: "Disk") {
                     let diskImageView = NSImageView(frame: NSRect(x: 12, y: 16, width: 16, height: 16))
                     diskImageView.image = diskImage
                     diskImageView.contentTintColor = accentColorValue
                     customView.addSubview(diskImageView)
-                    print("Added disk image for \(disk.displayName)")
                 }
                 
-                // 添加磁盘信息容器
                 let infoContainer = NSView(frame: NSRect(x: 36, y: 8, width: 280, height: 32))
                 customView.addSubview(infoContainer)
                 
-                // 添加磁盘名称
                 let nameLabel = NSTextField(frame: NSRect(x: 0, y: 12, width: 280, height: 16))
                 nameLabel.stringValue = disk.displayName
                 nameLabel.font = NSFont.systemFont(ofSize: 14, weight: .medium)
@@ -188,9 +181,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 nameLabel.isEditable = false
                 nameLabel.isSelectable = false
                 infoContainer.addSubview(nameLabel)
-                print("Added name label for \(disk.displayName)")
                 
-                // 添加磁盘存储使用情况
                 let usageLabel = NSTextField(frame: NSRect(x: 0, y: 0, width: 280, height: 12))
                 let usedBytes = disk.totalBytes - disk.freeBytes
                 let usagePercentage = Double(usedBytes) / Double(disk.totalBytes) * 100
@@ -202,63 +193,58 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 usageLabel.isEditable = false
                 usageLabel.isSelectable = false
                 infoContainer.addSubview(usageLabel)
-                print("Added usage label for \(disk.displayName)")
                 
-                // 添加推出按钮
                 let ejectButton = NSButton(frame: NSRect(x: 330, y: 12, width: 60, height: 24))
-                ejectButton.title = "推出"
                 ejectButton.target = self
                 ejectButton.action = #selector(ejectDiskButton(_:))
                 ejectButton.tag = index
                 ejectButton.bezelStyle = .rounded
                 ejectButton.contentTintColor = accentColorValue
-                ejectButton.isEnabled = true
                 ejectButton.setButtonType(.momentaryPushIn)
-                print("Created eject button for disk \(disk.displayName), tag: \(index), frame: \(ejectButton.frame)")
-                print("Button target: \(String(describing: ejectButton.target))")
-                print("Button action: \(String(describing: ejectButton.action))")
-                customView.addSubview(ejectButton)
                 
-                // 将按钮添加到字典中，以便后续操作
+                if ejectingDiskId == disk.id {
+                    ejectButton.title = ""
+                    ejectButton.isEnabled = false
+                    
+                    let progressIndicator = NSProgressIndicator(frame: NSRect(x: 20, y: 4, width: 16, height: 16))
+                    progressIndicator.style = .spinning
+                    progressIndicator.controlSize = .small
+                    progressIndicator.startAnimation(nil)
+                    progressIndicator.isHidden = false
+                    ejectButton.addSubview(progressIndicator)
+                } else {
+                    ejectButton.title = "推出"
+                    ejectButton.isEnabled = true
+                }
+                
+                customView.addSubview(ejectButton)
                 ejectButtons[disk.id] = ejectButton
                 
-                // 创建菜单项并设置视图
                 let menuItem = NSMenuItem()
                 menuItem.view = customView
                 menu.addItem(menuItem)
-                print("Added menu item for \(disk.displayName)")
             }
         }
         
         menu.addItem(.separator())
-        print("Added separator")
         
-        // 打开主窗口
         let openWindowItem = NSMenuItem(title: "打开主窗口", action: #selector(showMainWindow), keyEquivalent: "")
         openWindowItem.target = self
         menu.addItem(openWindowItem)
-        print("Added open window item")
         
-        // 刷新
         let refreshItem = NSMenuItem(title: "刷新", action: #selector(refreshMenu), keyEquivalent: "")
         refreshItem.target = self
         menu.addItem(refreshItem)
-        print("Added refresh item")
         
         menu.addItem(.separator())
-        print("Added separator")
         
-        // 退出
         let quitItem = NSMenuItem(title: "退出", action: #selector(quitApplication), keyEquivalent: "")
         quitItem.target = self
         menu.addItem(quitItem)
-        print("Added quit item")
         
         statusItem.menu = menu
-        print("Menu set to status item")
+        print("Menu rebuilt and assigned to status item")
     }
-    
-
     
     private func formatBytes(_ bytes: Int64) -> String {
         let units = ["B", "KB", "MB", "GB", "TB"]
@@ -327,11 +313,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             print("Ejecting disk: \(disk.displayName)")
             print("Disk mount path: \(disk.mountPath)")
             
-            // 禁用推出按钮，避免用户多次点击
-            if let button = ejectButtons[disk.id] {
-                button.isEnabled = false
-                button.title = "推出中..."
-            }
+            // 设置正在推出的磁盘ID，用于显示加载动效
+            ejectingDiskId = disk.id
+            // 刷新菜单栏以显示加载状态
+            refreshDiskList()
             
             ejectDiskWithDiskInfo(disk)
         } else {
@@ -389,39 +374,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // 强制关闭菜单栏，确保在所有情况下都能关闭
         NSApp.abortModal()
         
-        DispatchQueue.global(qos: .userInitiated).async {
-            print("Finding processes for disk: \(disk.displayName)")
-            let processes = self.processService.findProcessesAccessingDisk(mountPath: disk.mountPath)
-            print("Found \(processes.count) processes")
-            
-            DispatchQueue.main.async {
-                if !processes.isEmpty {
-                    print("Disk is being used by processes, showing alert")
-                    let alert = NSAlert()
-                    alert.messageText = "磁盘正在被占用"
-                    alert.informativeText = "以下进程正在访问磁盘 \"\(disk.displayName)\":\n\n\(processes.map { "- \($0.name) (PID: \($0.pid))" }.joined(separator: "\n"))\n\n是否强制结束这些进程并推出磁盘？"
-                    alert.alertStyle = .warning
-                    alert.addButton(withTitle: "取消")
-                    alert.addButton(withTitle: "强制结束并推出")
-                    
-                    let response = alert.runModal()
-                    if response == .alertSecondButtonReturn {
-                        print("User chose to force eject")
-                        self.performEject(disk: disk, processes: processes)
-                    } else {
-                        print("User cancelled eject")
-                        // 重新启用推出按钮
-                        if let button = self.ejectButtons[disk.id] {
-                            button.isEnabled = true
-                            button.title = "推出"
-                        }
-                    }
-                } else {
-                    print("No processes found, ejecting directly")
-                    self.performEject(disk: disk, processes: [])
-                }
-            }
-        }
+        // 直接执行推出操作，不显示额外的确认对话框
+        // 这样可以减少用户等待时间，与主窗口的行为保持一致
+        performEject(disk: disk, processes: [])
     }
     
     private func performEject(disk: DiskInfo, processes: [ProcessInfo]) {
@@ -430,6 +385,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         print("Processes to kill: \(processes.count)")
         diskService.ejectDisk(disk, killProcesses: processes) { result in
             DispatchQueue.main.async {
+                // 清除正在推出的磁盘ID
+                self.ejectingDiskId = nil
+                
                 switch result {
                 case .success:
                     print("Disk \(disk.displayName) ejected successfully")
@@ -451,11 +409,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                     alert.alertStyle = .critical
                     alert.addButton(withTitle: "确定")
                     alert.runModal()
-                    // 重新启用推出按钮
-                    if let button = self.ejectButtons[disk.id] {
-                        button.isEnabled = true
-                        button.title = "推出"
-                    }
+                    // 刷新磁盘列表以恢复按钮状态
+                    self.refreshDiskList()
                 }
             }
         }
