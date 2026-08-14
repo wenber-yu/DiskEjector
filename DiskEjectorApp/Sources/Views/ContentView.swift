@@ -52,7 +52,7 @@ struct ContentView: View {
                             .animation(.easeInOut(duration: 0.3), value: isRefreshing)
                     } else {
                         Button(action: manuallyRefreshDisks) {
-                            Label("刷新", systemImage: "arrow.clockwise")
+                            Label(L10n.tr(.refresh), systemImage: "arrow.clockwise")
                         }
                         .buttonStyle(.bordered)
                         .animation(.easeInOut(duration: 0.3), value: isRefreshing)
@@ -62,7 +62,7 @@ struct ContentView: View {
                 // 设置按钮
                 ToolbarItem(placement: .primaryAction) {
                     Button(action: { showSettings = true }) {
-                        Label("设置", systemImage: "gearshape")
+                        Label(L10n.tr(.settings), systemImage: "gearshape")
                     }
                     .buttonStyle(.bordered)
                 }
@@ -82,8 +82,8 @@ struct ContentView: View {
             .alert(isPresented: $showConfirmDialog) {
                 createAlert()
             }
-            .alert("推出失败", isPresented: $showErrorAlert) {
-                Button("确定", role: .cancel) {}
+            .alert(L10n.tr(.ejectFailedTitle), isPresented: $showErrorAlert) {
+                Button(L10n.tr(.ok), role: .cancel) {}
             } message: {
                 Text(errorMessage)
             }
@@ -103,7 +103,7 @@ struct ContentView: View {
             VStack(alignment: .leading, spacing: 3) {
                 Text(disk.volumeName)
                     .font(AppFont.rowTitle)
-                Text("可用空间: \(formatBytes(disk.freeBytes)) / \(formatBytes(disk.totalBytes))")
+                Text(String(format: L10n.tr(.freeSpaceFormat), formatBytes(disk.freeBytes), formatBytes(disk.totalBytes)))
                     .font(AppFont.label)
                     .foregroundColor(.secondary)
             }
@@ -127,28 +127,31 @@ struct ContentView: View {
     
     private func createAlert() -> Alert {
         if !processesToKill.isEmpty {
+            let processList = processesToKill
+                .map { String(format: L10n.tr(.processItemFormat), $0.name, $0.pid) }
+                .joined(separator: "\n")
             return Alert(
-                title: Text("确认推出磁盘"),
-                message: Text("以下程序正在访问此磁盘，关闭它们可能导致数据丢失（未保存的工作将被丢弃）：\n\n" + processesToKill.map { "• \($0.name) (PID: \($0.pid))" }.joined(separator: "\n")),
-                primaryButton: .destructive(Text("确认终止并推出")) {
+                title: Text(L10n.tr(.confirmEjectTitle)),
+                message: Text(String(format: L10n.tr(.occupiedProcessesMessage), processList)),
+                primaryButton: .destructive(Text(L10n.tr(.confirmTerminateAndEject))) {
                     if let disk = diskToEject {
                         eject(disk: disk, processes: processesToKill)
                     }
                 },
-                secondaryButton: .cancel(Text("取消")) {
+                secondaryButton: .cancel(Text(L10n.tr(.cancel))) {
                     ejectingDiskId = nil
                 }
             )
         } else {
             return Alert(
-                title: Text("确认推出磁盘"),
-                message: Text("确定要推出此磁盘吗？"),
-                primaryButton: .destructive(Text("确认")) {
+                title: Text(L10n.tr(.confirmEjectTitle)),
+                message: Text(L10n.tr(.confirmEjectMessage)),
+                primaryButton: .destructive(Text(L10n.tr(.confirm))) {
                     if let disk = diskToEject {
                         eject(disk: disk, processes: processesToKill)
                     }
                 },
-                secondaryButton: .cancel(Text("取消")) {
+                secondaryButton: .cancel(Text(L10n.tr(.cancel))) {
                     ejectingDiskId = nil
                 }
             )
@@ -182,10 +185,10 @@ struct ContentView: View {
             Image(systemName: "externaldrive")
                 .font(AppFont.emptyGlyph)
                 .foregroundColor(.secondary)
-            Text("没有可移动磁盘")
+            Text(L10n.tr(.noRemovableDisks))
                 .font(AppFont.cardTitle)
                 .foregroundColor(.secondary)
-            Text("请插入移动硬盘或U盘")
+            Text(L10n.tr(.insertDiskHint))
                 .font(AppFont.label)
                 .foregroundColor(.secondary)
         }

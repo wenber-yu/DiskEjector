@@ -32,7 +32,7 @@ struct DiskInfo: Identifiable, Hashable {
     }
 
     var capacityLabel: String {
-        "\(totalFormatted) / 已用: \(usedFormatted) / 剩余: \(freeFormatted)"
+        String(format: L10n.tr(.capacityFormat), totalFormatted, usedFormatted, freeFormatted)
     }
 
     func hash(into hasher: inout Hasher) {

@@ -8,41 +8,46 @@ struct SettingsView: View {
     @AppStorage("accentColor") private var accentColor = "blue"
     @AppStorage("showDockIcon") private var showDockIcon = false
 
+    /// 从 Info.plist 读取版本号（打包时注入），缺失时回退 "1.0.0"。
+    private var appVersion: String {
+        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.0"
+    }
+
     var body: some View {
         NavigationStack {
             Form {
                 // MARK: 视觉效果
                 Section {
-                    Picker("视觉效果", selection: $visualStyle) {
-                        Text("透明模式（Liquid Glass 毛玻璃）").tag("transparent")
-                        Text("色调模式（系统背景色）").tag("tinted")
+                    Picker(L10n.tr(.visualEffects), selection: $visualStyle) {
+                        Text(L10n.tr(.transparentMode)).tag("transparent")
+                        Text(L10n.tr(.tintedMode)).tag("tinted")
                     }
                     .pickerStyle(.menu)
-                    Text("透明模式使用 macOS Liquid Glass 毛玻璃效果（需 macOS 13+）")
+                    Text(L10n.tr(.transparentModeFootnote))
                         .font(AppFont.minor)
                         .foregroundStyle(.secondary)
                 }
 
                 // MARK: 强调色
-                Section("强调色") {
-                    Picker("强调色", selection: $accentColor) {
-                        Text("蓝色").tag("blue")
-                        Text("绿色").tag("green")
-                        Text("红色").tag("red")
-                        Text("紫色").tag("purple")
-                        Text("橙色").tag("orange")
-                        Text("黄色").tag("yellow")
+                Section(L10n.tr(.accentColor)) {
+                    Picker(L10n.tr(.accentColor), selection: $accentColor) {
+                        Text(L10n.tr(.colorBlue)).tag("blue")
+                        Text(L10n.tr(.colorGreen)).tag("green")
+                        Text(L10n.tr(.colorRed)).tag("red")
+                        Text(L10n.tr(.colorPurple)).tag("purple")
+                        Text(L10n.tr(.colorOrange)).tag("orange")
+                        Text(L10n.tr(.colorYellow)).tag("yellow")
                     }
                     .pickerStyle(.menu)
                 }
 
                 // MARK: Dock 图标
                 Section {
-                    Toggle("显示 Dock 图标", isOn: $showDockIcon)
+                    Toggle(L10n.tr(.showDockIcon), isOn: $showDockIcon)
                 }
 
                 // MARK: 关于
-                Section("关于") {
+                Section(L10n.tr(.aboutSection)) {
                     HStack(spacing: 12) {
                         Image(systemName: "externaldrive.fill")
                             .font(.title2)
@@ -50,7 +55,7 @@ struct SettingsView: View {
                         VStack(alignment: .leading, spacing: 2) {
                             Text("DiskEjector")
                                 .font(AppFont.labelBold)
-                            Text("版本 1.0.0")
+                            Text(String(format: L10n.tr(.versionFormat), appVersion))
                                 .font(AppFont.minor)
                                 .foregroundColor(.secondary)
                         }
@@ -59,10 +64,10 @@ struct SettingsView: View {
             }
             .formStyle(.grouped)
             .font(AppFont.control)
-            .navigationTitle("设置")
+            .navigationTitle(L10n.tr(.settings))
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("完成") { dismiss() }
+                    Button(L10n.tr(.done)) { dismiss() }
                         .keyboardShortcut(.defaultAction)
                 }
             }

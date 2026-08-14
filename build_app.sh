@@ -58,6 +58,12 @@ cat > "$APP_BUNDLE/Contents/Info.plist" <<PLIST
 	<string>$APP_NAME</string>
 	<key>CFBundleDisplayName</key>
 	<string>$APP_NAME</string>
+	<key>CFBundleLocalizations</key>
+	<array>
+		<string>en</string>
+		<string>zh-Hans</string>
+		<string>zh-Hant</string>
+	</array>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>

@@ -41,6 +41,6 @@ final class EjectFlowController: @unchecked Sendable {
 
     /// 推出失败的统一提示文案（两处 UI 复用，避免文案分叉）。
     func failureMessage(disk: DiskInfo, error: Error) -> String {
-        "无法推出磁盘 \"\(disk.displayName)\": \(error.localizedDescription)"
+        String(format: L10n.tr(.ejectFailedMessage), disk.displayName, error.localizedDescription)
     }
 }

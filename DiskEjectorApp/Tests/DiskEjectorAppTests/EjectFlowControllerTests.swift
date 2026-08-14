@@ -67,7 +67,9 @@ struct EjectFlowControllerTests {
 
         let message = controller.failureMessage(disk: disk, error: error)
 
-        #expect(message == "无法推出磁盘 \"测试盘\": Resource busy")
+        // 用 zh-Hans 显式构造期望值，保证任何系统语言下断言稳定
+        let expected = String(format: L10n.tr(.ejectFailedMessage, locale: Locale(identifier: "zh-Hans")), "测试盘", "Resource busy")
+        #expect(message == expected)
     }
 
     @Test func failureMessage在卷名为空时回退到bsdName() {
@@ -78,7 +80,8 @@ struct EjectFlowControllerTests {
         )
         let error = NSError(domain: "DiskService", code: 1, userInfo: [NSLocalizedDescriptionKey: "err"])
 
-        #expect(controller.failureMessage(disk: disk, error: error) == "无法推出磁盘 \"TEST\": err")
+        let expected = String(format: L10n.tr(.ejectFailedMessage, locale: Locale(identifier: "zh-Hans")), "TEST", "err")
+        #expect(controller.failureMessage(disk: disk, error: error) == expected)
     }
 
     // MARK: checkOccupiedProcesses

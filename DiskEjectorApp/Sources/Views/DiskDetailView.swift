@@ -13,9 +13,9 @@ struct DiskDetailView: View {
             }
             
             VStack(alignment: .leading, spacing: 8) {
-                Text("总容量: \(disk.totalFormatted)")
-                Text("可用空间: \(disk.freeFormatted)")
-                Text("挂载路径: \(disk.mountPath)")
+                Text(String(format: L10n.tr(.totalCapacityFormat), disk.totalFormatted))
+                Text(String(format: L10n.tr(.availableSpaceFormat), disk.freeFormatted))
+                Text(String(format: L10n.tr(.mountPathFormat), disk.mountPath))
             }
             
             Spacer()
@@ -23,7 +23,7 @@ struct DiskDetailView: View {
             Button(action: {
                 // 推出磁盘
             }) {
-                Text("推出")
+                Text(L10n.tr(.eject))
                     .font(.headline)
                     .foregroundColor(.white)
                     .frame(maxWidth: .infinity)

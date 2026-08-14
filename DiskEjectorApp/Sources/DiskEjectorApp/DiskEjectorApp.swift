@@ -147,7 +147,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let titleItem = NSMenuItem()
         let titleView = NSView(frame: NSRect(x: 0, y: 0, width: 400, height: 20))
         let titleLabel = NSTextField(frame: NSRect(x: 12, y: 0, width: 380, height: 20))
-        titleLabel.stringValue = "硬盘列表"
+        titleLabel.stringValue = L10n.tr(.diskListTitle)
         titleLabel.font = NSFont.systemFont(ofSize: 14, weight: .medium)
         titleLabel.isBezeled = false
         titleLabel.drawsBackground = false
@@ -160,7 +160,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(.separator())
         
         if currentDisks.isEmpty {
-            let noDiskItem = NSMenuItem(title: "没有可推出的磁盘", action: nil, keyEquivalent: "")
+            let noDiskItem = NSMenuItem(title: L10n.tr(.noEjectableDisks), action: nil, keyEquivalent: "")
             noDiskItem.isEnabled = false
             menu.addItem(noDiskItem)
         } else {
@@ -190,7 +190,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 let usageLabel = NSTextField(frame: NSRect(x: 0, y: 0, width: 280, height: 12))
                 let usedBytes = disk.totalBytes - disk.freeBytes
                 let usagePercentage = Double(usedBytes) / Double(disk.totalBytes) * 100
-                usageLabel.stringValue = String(format: "%.1f%% 已使用 (%@ / %@)", usagePercentage, formatBytes(usedBytes), formatBytes(disk.totalBytes))
+                usageLabel.stringValue = String(format: L10n.tr(.usageFormat), usagePercentage, formatBytes(usedBytes), formatBytes(disk.totalBytes))
                 usageLabel.font = NSFont.systemFont(ofSize: 11)
                 usageLabel.textColor = NSColor.secondaryLabelColor
                 usageLabel.isBezeled = false
@@ -218,7 +218,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                     progressIndicator.isHidden = false
                     ejectButton.addSubview(progressIndicator)
                 } else {
-                    ejectButton.title = "推出"
+                    ejectButton.title = L10n.tr(.eject)
                     ejectButton.isEnabled = true
                 }
                 
@@ -233,17 +233,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         
         menu.addItem(.separator())
         
-        let openWindowItem = NSMenuItem(title: "打开主窗口", action: #selector(showMainWindow), keyEquivalent: "")
+        let openWindowItem = NSMenuItem(title: L10n.tr(.openMainWindow), action: #selector(showMainWindow), keyEquivalent: "")
         openWindowItem.target = self
         menu.addItem(openWindowItem)
         
-        let refreshItem = NSMenuItem(title: "刷新", action: #selector(refreshMenu), keyEquivalent: "")
+        let refreshItem = NSMenuItem(title: L10n.tr(.refresh), action: #selector(refreshMenu), keyEquivalent: "")
         refreshItem.target = self
         menu.addItem(refreshItem)
         
         menu.addItem(.separator())
         
-        let quitItem = NSMenuItem(title: "退出", action: #selector(quitApplication), keyEquivalent: "")
+        let quitItem = NSMenuItem(title: L10n.tr(.quit), action: #selector(quitApplication), keyEquivalent: "")
         quitItem.target = self
         menu.addItem(quitItem)
         
@@ -397,22 +397,18 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // 激活应用，确保弹窗显示在最前（菜单栏 app 可能是 .accessory 模式，不激活可能不置前）
         NSApp.activate(ignoringOtherApps: true)
         
-        let processList = processes.map { "• \($0.name) (PID: \($0.pid))" }.joined(separator: "\n")
+        let processList = processes
+            .map { String(format: L10n.tr(.processItemFormat), $0.name, $0.pid) }
+            .joined(separator: "\n")
         
         let alert = NSAlert()
-        alert.messageText = "磁盘正被程序占用"
-        alert.informativeText = """
-        以下程序正在访问磁盘 "\(disk.displayName)"：
-        
-        \(processList)
-        
-        直接推出可能导致数据丢失（这些程序中未保存的工作将被丢弃）。是否终止这些程序并推出磁盘？
-        """
+        alert.messageText = L10n.tr(.diskInUseTitle)
+        alert.informativeText = String(format: L10n.tr(.diskInUseMessage), disk.displayName, processList)
         alert.alertStyle = .warning
         // 第一个按钮为默认按钮（回车触发），将「取消」设为默认更安全
-        alert.addButton(withTitle: "取消")
+        alert.addButton(withTitle: L10n.tr(.cancel))
         // 危险操作按钮：红色 + 无回车快捷键，必须主动点按才会触发
-        let ejectButton = alert.addButton(withTitle: "终止程序并推出")
+        let ejectButton = alert.addButton(withTitle: L10n.tr(.terminateAndEject))
         ejectButton.hasDestructiveAction = true
         ejectButton.keyEquivalent = ""
         
@@ -448,10 +444,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                     print("Failed to eject disk: \(error.localizedDescription)")
                     // 显示失败提示
                     let alert = NSAlert()
-                    alert.messageText = "推出失败"
+                    alert.messageText = L10n.tr(.ejectFailedTitle)
                     alert.informativeText = EjectFlowController.shared.failureMessage(disk: disk, error: error)
                     alert.alertStyle = .critical
-                    alert.addButton(withTitle: "确定")
+                    alert.addButton(withTitle: L10n.tr(.ok))
                     alert.runModal()
                     // 刷新磁盘列表以恢复按钮状态
                     self.refreshDiskList()
