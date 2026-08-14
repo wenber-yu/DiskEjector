@@ -165,8 +165,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             menu.addItem(noDiskItem)
         } else {
             for (index, disk) in currentDisks.enumerated() {
-                let customView = NSView(frame: NSRect(x: 0, y: 0, width: 400, height: 48))
-                customView.wantsLayer = true
+                let customView = MenuHoverView(frame: NSRect(x: 0, y: 0, width: 400, height: 48))
                 
                 if let diskImage = NSImage(systemSymbolName: "externaldrive.fill", accessibilityDescription: "Disk") {
                     let diskImageView = NSImageView(frame: NSRect(x: 12, y: 16, width: 16, height: 16))
@@ -199,7 +198,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 usageLabel.isSelectable = false
                 infoContainer.addSubview(usageLabel)
                 
-                let ejectButton = NSButton(frame: NSRect(x: 330, y: 12, width: 60, height: 24))
+                let ejectButton = MenuHoverButton(frame: NSRect(x: 330, y: 12, width: 60, height: 24))
                 ejectButton.target = self
                 ejectButton.action = #selector(ejectDiskButton(_:))
                 ejectButton.tag = index

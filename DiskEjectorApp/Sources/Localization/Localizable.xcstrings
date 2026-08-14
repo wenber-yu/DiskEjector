@@ -183,6 +183,13 @@
         "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "以下程式正在存取此磁碟，關閉它們可能導致資料遺失（未儲存的工作將被丟棄）：\n\n%@\n" } }
       }
     },
+    "occupiedProcessesTitle" : {
+      "localizations" : {
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "占用程序:" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Occupied by:" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "佔用程式:" } }
+      }
+    },
     "ok" : {
       "localizations" : {
         "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "确定" } },

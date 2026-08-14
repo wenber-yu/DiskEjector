@@ -10,11 +10,13 @@ struct ContentView: View {
     @State private var errorMessage = ""
     @State private var diskToEject: DiskInfo? = nil
     @State private var processesToKill: [ProcessInfo] = []
+    @State private var diskProcesses: [String: [ProcessInfo]] = [:]
     @AppStorage("visualStyle") private var visualStyle = "transparent"
     @AppStorage("accentColor") private var accentColor = "blue"
     @State private var volumeSource: DispatchSourceFileSystemObject?
     
     private let diskService = DiskService.shared
+    private let processService = ProcessService.shared
 
     var body: some View {
         NavigationStack {
@@ -96,32 +98,63 @@ struct ContentView: View {
     }
     
     private func diskRowView(_ disk: DiskInfo) -> some View {
-        HStack(spacing: 12) {
-            Image(systemName: "externaldrive.fill")
-                .font(AppFont.rowGlyph)
-                .foregroundColor(accentColorValue)
-            VStack(alignment: .leading, spacing: 3) {
-                Text(disk.volumeName)
-                    .font(AppFont.rowTitle)
-                Text(String(format: L10n.tr(.freeSpaceFormat), formatBytes(disk.freeBytes), formatBytes(disk.totalBytes)))
-                    .font(AppFont.label)
-                    .foregroundColor(.secondary)
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 12) {
+                Image(systemName: "externaldrive.fill")
+                    .font(AppFont.rowGlyph)
+                    .foregroundColor(accentColorValue)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(disk.volumeName)
+                        .font(AppFont.rowTitle)
+                    Text(String(format: L10n.tr(.freeSpaceFormat), formatBytes(disk.freeBytes), formatBytes(disk.totalBytes)))
+                        .font(AppFont.label)
+                        .foregroundColor(.secondary)
+                }
+                Spacer()
+                Button(action: { handleEject(disk) }) {
+                    if ejectingDiskId == disk.id {
+                        ProgressView()
+                            .controlSize(.small)
+                    } else {
+                        Image(systemName: "eject.fill")
+                            .foregroundColor(.red)
+                            .font(AppFont.rowGlyph)
+                    }
+                }
+                .buttonStyle(.borderless)
+                .disabled(ejectingDiskId != nil)
+                .opacity(ejectingDiskId != nil ? 0.5 : 1)
             }
-            Spacer()
-            Button(action: { handleEject(disk) }) {
-                if ejectingDiskId == disk.id {
-                    ProgressView()
-                        .controlSize(.small)
-                } else {
-                    Image(systemName: "eject.fill")
-                        .foregroundColor(.red)
-                        .font(AppFont.rowGlyph)
+            
+            // 占用程序标签区：非空才显示，列出正在访问该磁盘的进程
+            let processes = diskProcesses[disk.id] ?? []
+            if !processes.isEmpty {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(L10n.tr(.occupiedProcessesTitle))
+                        .font(AppFont.minor)
+                        .foregroundColor(.secondary)
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 8) {
+                            ForEach(processes, id: \.pid) { process in
+                                VStack(alignment: .leading, spacing: 1) {
+                                    Text(process.name)
+                                        .font(AppFont.minor)
+                                    Text("PID: \(process.pid)")
+                                        .font(AppFont.minor)
+                                        .foregroundColor(.secondary)
+                                }
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 6)
+                                .background(Color.primary.opacity(0.06))
+                                .cornerRadius(8)
+                            }
+                        }
+                    }
+                    .frame(height: 50)
                 }
             }
-            .buttonStyle(.borderless)
-            .disabled(ejectingDiskId != nil)
-            .opacity(ejectingDiskId != nil ? 0.5 : 1)
         }
+        .padding(12)
         .cardStyle()
     }
     
@@ -194,6 +227,7 @@ struct ContentView: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 60)
+        .padding(12)
         .cardStyle()
     }
     
@@ -240,10 +274,17 @@ struct ContentView: View {
             let fetchedDisks = self.diskService.fetchExternalDisks()
             print("Fetched \(fetchedDisks.count) disks")
             
+            // 在后台线程查询每个磁盘的占用进程（lsof 有 2s 超时，不能卡主线程）
+            var processesMap: [String: [ProcessInfo]] = [:]
+            for disk in fetchedDisks {
+                processesMap[disk.id] = self.processService.findProcessesAccessingDisk(mountPath: disk.mountPath)
+            }
+            
             DispatchQueue.main.async {
                 print("Updating disks")
                 print("Disks count: \(fetchedDisks.count)")
                 self.disks = fetchedDisks
+                self.diskProcesses = processesMap
                 self.isRefreshing = false
                 print("Refresh completed")
             }
