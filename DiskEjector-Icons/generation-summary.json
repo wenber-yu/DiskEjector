@@ -1,0 +1,56 @@
+{
+  "skill": {
+    "name": "solo-graphic-generation",
+    "version": "2026.08.06.21.24.57"
+  },
+  "size": {
+    "requestedSizeVerbatim": "1024×1024",
+    "actualToolImageSize": "1920x1920",
+    "finalDeliveredSize": "1024×1024",
+    "userConfirmedDownsample": true,
+    "sizeSubstitutionReason": "Backend requires minimum 3,686,400 pixels; 1024×1024 was rejected. User agreed to generate at 1920×1920 then downsample to 1024×1024 via sips."
+  },
+  "assetCount": 5,
+  "assets": [
+    {
+      "filename": "disk-ejector-minimal-blue.png",
+      "title": "极简蓝色硬盘",
+      "intendedSize": "1024×1024",
+      "generationStatus": "success",
+      "sourceSize": "1920×1920",
+      "canvasNodeId": "image-001"
+    },
+    {
+      "filename": "disk-ejector-safe-green.png",
+      "title": "安全绿色盾牌",
+      "intendedSize": "1024×1024",
+      "generationStatus": "success",
+      "sourceSize": "1920×1920",
+      "canvasNodeId": "image-002"
+    },
+    {
+      "filename": "disk-ejector-dynamic-orange.png",
+      "title": "动感橙色弹出",
+      "intendedSize": "1024×1024",
+      "generationStatus": "success",
+      "sourceSize": "1920×1920",
+      "canvasNodeId": "image-003"
+    },
+    {
+      "filename": "disk-ejector-liquid-glass-purple.png",
+      "title": "紫色液态玻璃",
+      "intendedSize": "1024×1024",
+      "generationStatus": "success",
+      "sourceSize": "1920×1920",
+      "canvasNodeId": "image-004"
+    },
+    {
+      "filename": "disk-ejector-process-radar.png",
+      "title": "进程雷达扫描",
+      "intendedSize": "1024×1024",
+      "generationStatus": "success",
+      "sourceSize": "1920×1920",
+      "canvasNodeId": "image-005"
+    }
+  ]
+}

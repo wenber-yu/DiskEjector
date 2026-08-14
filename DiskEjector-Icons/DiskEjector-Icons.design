@@ -1,0 +1,153 @@
+{
+  "data": [
+    {
+      "id": "image-001",
+      "title": "极简蓝色硬盘",
+      "type": "image",
+      "version": 1,
+      "createdAt": 1786721939000,
+      "canvasData": {
+        "x": 0,
+        "y": 0,
+        "naturalSize": {
+          "width": 1024,
+          "height": 1024
+        }
+      },
+      "devMetadata": {
+        "imageSrc": "assets/disk-ejector-minimal-blue.png"
+      }
+    },
+    {
+      "id": "image-002",
+      "title": "安全绿色盾牌",
+      "type": "image",
+      "version": 1,
+      "createdAt": 1786721939000,
+      "canvasData": {
+        "x": 480,
+        "y": 0,
+        "naturalSize": {
+          "width": 1024,
+          "height": 1024
+        }
+      },
+      "devMetadata": {
+        "imageSrc": "assets/disk-ejector-safe-green.png"
+      }
+    },
+    {
+      "id": "image-003",
+      "title": "动感橙色弹出",
+      "type": "image",
+      "version": 1,
+      "createdAt": 1786721939000,
+      "canvasData": {
+        "x": 960,
+        "y": 0,
+        "naturalSize": {
+          "width": 1024,
+          "height": 1024
+        }
+      },
+      "devMetadata": {
+        "imageSrc": "assets/disk-ejector-dynamic-orange.png"
+      }
+    },
+    {
+      "id": "image-004",
+      "title": "紫色液态玻璃",
+      "type": "image",
+      "version": 1,
+      "createdAt": 1786721939000,
+      "canvasData": {
+        "x": 1440,
+        "y": 0,
+        "naturalSize": {
+          "width": 1024,
+          "height": 1024
+        }
+      },
+      "devMetadata": {
+        "imageSrc": "assets/disk-ejector-liquid-glass-purple.png"
+      }
+    },
+    {
+      "id": "image-005",
+      "title": "进程雷达扫描",
+      "type": "image",
+      "version": 1,
+      "createdAt": 1786721939000,
+      "canvasData": {
+        "x": 1920,
+        "y": 0,
+        "naturalSize": {
+          "width": 1024,
+          "height": 1024
+        }
+      },
+      "devMetadata": {
+        "imageSrc": "assets/disk-ejector-process-radar.png"
+      }
+    },
+    {
+      "id": "image-006",
+      "title": "动感橙色弹出（透明背景）",
+      "type": "image",
+      "version": 1,
+      "createdAt": 1786721939000,
+      "canvasData": {
+        "x": 2400,
+        "y": 0,
+        "naturalSize": {
+          "width": 1024,
+          "height": 1024
+        }
+      },
+      "devMetadata": {
+        "imageSrc": "assets/disk-ejector-dynamic-orange-transparent.png"
+      }
+    },
+    {
+      "id": "image-007",
+      "title": "动感橙色弹出（抠出图标）",
+      "type": "image",
+      "version": 1,
+      "createdAt": 1786721939000,
+      "canvasData": {
+        "x": 2880,
+        "y": 0,
+        "naturalSize": {
+          "width": 1024,
+          "height": 1024
+        }
+      },
+      "devMetadata": {
+        "imageSrc": "assets/disk-ejector-dynamic-orange-cropped.png"
+      }
+    },
+    {
+      "id": "image-008",
+      "title": "动感橙色弹出（圆角抠出）",
+      "type": "image",
+      "version": 1,
+      "createdAt": 1786721939000,
+      "canvasData": {
+        "x": 3360,
+        "y": 0,
+        "naturalSize": {
+          "width": 1024,
+          "height": 1024
+        }
+      },
+      "devMetadata": {
+        "imageSrc": "assets/disk-ejector-dynamic-orange-rounded.png"
+      }
+    }
+  ],
+  "config": {
+    "autoLayout": true,
+    "deviceType": "freeSize",
+    "projectName": "DiskEjector 应用图标"
+  }
+}
