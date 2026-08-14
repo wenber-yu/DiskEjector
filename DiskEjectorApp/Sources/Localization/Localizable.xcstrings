@@ -162,6 +162,34 @@
         "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "請插入外接硬碟或隨身碟" } }
       }
     },
+    "launchAtLogin" : {
+      "localizations" : {
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "开机启动" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Launch at Login" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "開機啟動" } }
+      }
+    },
+    "launchAtLoginErrorMessage" : {
+      "localizations" : {
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "请将 DiskEjector 移到「应用程序」文件夹后重试。" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Move DiskEjector to the Applications folder and try again." } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "請將 DiskEjector 移到「應用程式」檔案夾後重試。" } }
+      }
+    },
+    "launchAtLoginErrorTitle" : {
+      "localizations" : {
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "无法设置开机启动" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Unable to Set Launch at Login" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "無法設定開機啟動" } }
+      }
+    },
+    "launchAtLoginFootnote" : {
+      "localizations" : {
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "登录 macOS 后自动在菜单栏启动 DiskEjector" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Starts DiskEjector in the menu bar after you log in to macOS" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "登入 macOS 後自動在選單列啟動 DiskEjector" } }
+      }
+    },
     "noEjectableDisks" : {
       "localizations" : {
         "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "没有可推出的磁盘" } },

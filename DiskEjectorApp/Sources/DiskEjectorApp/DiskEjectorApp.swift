@@ -63,6 +63,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         updateDockIconVisibility()
 
+        // 同步开机自启动登录项状态（偏好开启但系统未注册则补注册，反之注销）
+        LaunchAtLoginManager.syncAtLaunch()
+
         UserDefaults.standard.addObserver(self, forKeyPath: "showDockIcon", options: .new, context: nil)
 
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)

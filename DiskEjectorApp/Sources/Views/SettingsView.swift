@@ -7,6 +7,8 @@ struct SettingsView: View {
     @AppStorage("visualStyle") private var visualStyle = "transparent"
     @AppStorage("accentColor") private var accentColor = "blue"
     @AppStorage("showDockIcon") private var showDockIcon = false
+    @State private var launchAtLogin = LaunchAtLoginManager.isEnabled
+    @State private var showLaunchAtLoginError = false
 
     /// 从 Info.plist 读取版本号（打包时注入），缺失时回退 "1.0.0"。
     private var appVersion: String {
@@ -46,6 +48,24 @@ struct SettingsView: View {
                     Toggle(L10n.tr(.showDockIcon), isOn: $showDockIcon)
                 }
 
+                // MARK: 开机启动
+                Section {
+                    Toggle(L10n.tr(.launchAtLogin), isOn: Binding(
+                        get: { launchAtLogin },
+                        set: { newValue in
+                            do {
+                                try LaunchAtLoginManager.setEnabled(newValue)
+                                launchAtLogin = newValue
+                            } catch {
+                                showLaunchAtLoginError = true
+                            }
+                        }
+                    ))
+                    Text(L10n.tr(.launchAtLoginFootnote))
+                        .font(AppFont.minor)
+                        .foregroundStyle(.secondary)
+                }
+
                 // MARK: 关于
                 Section(L10n.tr(.aboutSection)) {
                     HStack(spacing: 12) {
@@ -73,5 +93,10 @@ struct SettingsView: View {
             }
         }
         .frame(minWidth: 440, minHeight: 460)
+        .alert(L10n.tr(.launchAtLoginErrorTitle), isPresented: $showLaunchAtLoginError) {
+            Button(L10n.tr(.ok), role: .cancel) {}
+        } message: {
+            Text(L10n.tr(.launchAtLoginErrorMessage))
+        }
     }
 }
