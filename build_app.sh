@@ -75,23 +75,13 @@ echo "▶ [3/4] 生成应用图标 ..."
 if [ -f "$ICON_SOURCE" ]; then
     ICONSET_DIR="$(mktemp -d)/AppIcon.iconset"
     mkdir -p "$ICONSET_DIR"
-    for spec in \
-        "16:icon_16x16" \
-        "32:icon_16x16@2x" \
-        "32:icon_32x32" \
-        "64:icon_32x32@2x" \
-        "128:icon_128x128" \
-        "256:icon_128x128@2x" \
-        "256:icon_256x256" \
-        "512:icon_256x256@2x" \
-        "512:icon_512x512" \
-        "1024:icon_512x512@2x"; do
-        size="${spec%%:*}"
-        name="${spec##*:}"
-        sips -z "$size" "$size" "$ICON_SOURCE" --out "$ICONSET_DIR/$name.png" >/dev/null
-    done
-    iconutil -c icns "$ICONSET_DIR" -o "$APP_BUNDLE/Contents/Resources/AppIcon.icns"
-    echo "   ✓ AppIcon.icns 已生成（如需高清图标，替换 Resources/AppIcon.png 为 1024x1024）"
+    # 用 ImageIO 工具生成（sips 无法处理 palette PNG 等格式）
+    if swift "$SCRIPT_DIR/tools/icon_tool.swift" "$ICON_SOURCE" "$ICONSET_DIR" >/dev/null 2>&1; then
+        iconutil -c icns "$ICONSET_DIR" -o "$APP_BUNDLE/Contents/Resources/AppIcon.icns"
+        echo "   ✓ AppIcon.icns 已生成（如需高清图标，替换 Resources/AppIcon.png 为 1024x1024 的 PNG）"
+    else
+        echo "   ⚠ 图标处理失败（源图格式不受支持？），已跳过图标"
+    fi
 else
     echo "   ⚠ 未找到 $ICON_SOURCE，跳过图标"
 fi
