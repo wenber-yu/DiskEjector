@@ -377,9 +377,55 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // 强制关闭菜单栏，确保在所有情况下都能关闭
         NSApp.abortModal()
         
-        // 直接执行推出操作，不显示额外的确认对话框
-        // 这样可以减少用户等待时间，与主窗口的行为保持一致
-        performEject(disk: disk, processes: [])
+        // 在后台检查是否有进程占用该磁盘（lsof/ps 最多耗时 2 秒，不能阻塞主线程）
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self = self else { return }
+            let processes = self.processService.findProcessesAccessingDisk(mountPath: disk.mountPath)
+            DispatchQueue.main.async {
+                if processes.isEmpty {
+                    // 无进程占用，直接推出
+                    self.performEject(disk: disk, processes: [])
+                } else {
+                    // 有进程占用，先弹确认框，列出占用程序并提示数据丢失风险
+                    self.confirmEjectWithOccupiedProcesses(disk: disk, processes: processes)
+                }
+            }
+        }
+    }
+    
+    /// 磁盘被进程占用时弹出确认框：列出占用程序，警告数据丢失风险，由用户决定是否终止进程并推出
+    private func confirmEjectWithOccupiedProcesses(disk: DiskInfo, processes: [ProcessInfo]) {
+        // 激活应用，确保弹窗显示在最前（菜单栏 app 可能是 .accessory 模式，不激活可能不置前）
+        NSApp.activate(ignoringOtherApps: true)
+        
+        let processList = processes.map { "• \($0.name) (PID: \($0.pid))" }.joined(separator: "\n")
+        
+        let alert = NSAlert()
+        alert.messageText = "磁盘正被程序占用"
+        alert.informativeText = """
+        以下程序正在访问磁盘 "\(disk.displayName)"：
+        
+        \(processList)
+        
+        直接推出可能导致数据丢失（这些程序中未保存的工作将被丢弃）。是否终止这些程序并推出磁盘？
+        """
+        alert.alertStyle = .warning
+        // 第一个按钮为默认按钮（回车触发），将「取消」设为默认更安全
+        alert.addButton(withTitle: "取消")
+        // 危险操作按钮：红色 + 无回车快捷键，必须主动点按才会触发
+        let ejectButton = alert.addButton(withTitle: "终止程序并推出")
+        ejectButton.hasDestructiveAction = true
+        ejectButton.keyEquivalent = ""
+        
+        let response = alert.runModal()
+        if response == .alertSecondButtonReturn {
+            // 用户确认终止进程并推出
+            performEject(disk: disk, processes: processes)
+        } else {
+            // 用户取消，恢复菜单按钮状态
+            ejectingDiskId = nil
+            refreshDiskList()
+        }
     }
     
     private func performEject(disk: DiskInfo, processes: [ProcessInfo]) {
