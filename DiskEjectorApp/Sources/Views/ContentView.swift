@@ -20,77 +20,54 @@ struct ContentView: View {
         NavigationStack {
             ZStack {
                 if visualStyle == "transparent" {
-                    // 透明模式：使用系统控制中心样式的材质
-                    Color.clear
-                        .background(.ultraThinMaterial)
-                        .edgesIgnoringSafeArea(.all)
+                    // 透明模式：系统液态玻璃背景（对齐 ProxyGenerator）
+                    VisualEffectBackground()
+                        .ignoresSafeArea()
                 } else {
                     // 色调模式：使用带透明度的系统背景色
                     backgroundColor
+                        .ignoresSafeArea()
                 }
-                VStack(spacing: 0) {
-                    if disks.isEmpty {
-                        emptyStateView
-                    } else {
-                        List {
+                ScrollView {
+                    LazyVStack(spacing: 12) {
+                        if disks.isEmpty {
+                            emptyStateView
+                        } else {
                             ForEach(disks, id: \.id) { disk in
                                 diskRowView(disk)
-                                    .listRowSeparator(.hidden)
-                                    .listRowInsets(EdgeInsets())
                             }
                         }
-                        .listStyle(.plain)
-                        .scrollContentBackground(.hidden) // 隐藏 List 的滚动内容背景
-                        .padding()
-                        .background(Color.clear)
                     }
+                    .padding(16)
                 }
-                .background(Color.clear)
+                .scrollContentBackground(.hidden)
             }
             .frame(minWidth: 400, minHeight: 300)
             .toolbar {
                 // 刷新按钮
                 ToolbarItem(placement: .primaryAction) {
-                    Button(action: manuallyRefreshDisks) {
-                        if isRefreshing {
-                            HStack {
-                                ProgressView()
-                                    .controlSize(.small)
-                                    .foregroundColor(accentColorValue)
-                                Text("刷新中...")
-                                    .font(.caption)
-                                    .padding(.leading, 4)
-                                    .foregroundColor(accentColorValue)
-                            }
-                        } else {
-                            HStack {
-                                Image(systemName: "arrow.clockwise")
-                                    .foregroundColor(accentColorValue)
-                                Text("刷新")
-                                    .font(.caption)
-                                    .padding(.leading, 4)
-                                    .foregroundColor(accentColorValue)
-                            }
+                    if isRefreshing {
+                        ProgressView()
+                            .controlSize(.small)
+                            .animation(.easeInOut(duration: 0.3), value: isRefreshing)
+                    } else {
+                        Button(action: manuallyRefreshDisks) {
+                            Label("刷新", systemImage: "arrow.clockwise")
                         }
+                        .buttonStyle(.bordered)
+                        .animation(.easeInOut(duration: 0.3), value: isRefreshing)
                     }
-                    .disabled(isRefreshing)
-                    .animation(.easeInOut(duration: 0.3), value: isRefreshing)
                 }
                 
                 // 设置按钮
                 ToolbarItem(placement: .primaryAction) {
                     Button(action: { showSettings = true }) {
-                        HStack {
-                            Image(systemName: "gear")
-                                .foregroundColor(accentColorValue)
-                            Text("设置")
-                                .font(.caption)
-                                .padding(.leading, 4)
-                                .foregroundColor(accentColorValue)
-                        }
+                        Label("设置", systemImage: "gearshape")
                     }
+                    .buttonStyle(.bordered)
                 }
             }
+            .font(AppFont.control)
             .onAppear {
                 print("ContentView onAppear called")
                 refreshDisks()
@@ -111,38 +88,41 @@ struct ContentView: View {
                 Text(errorMessage)
             }
         }
+        .background(WindowAccessor { window in
+            window.titlebarAppearsTransparent = true
+            window.styleMask.insert(.fullSizeContentView)
+            window.isMovableByWindowBackground = true
+        })
     }
     
     private func diskRowView(_ disk: DiskInfo) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Image(systemName: "externaldrive.fill")
-                    .font(.title)
-                    .foregroundColor(accentColorValue)
-                VStack(alignment: .leading) {
-                    Text(disk.volumeName)
-                        .font(.headline)
-                    Text("可用空间: \(formatBytes(disk.freeBytes)) / \(formatBytes(disk.totalBytes))")
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
-                }
-                Spacer()
-                Button(action: { handleEject(disk) }) {
-                    if ejectingDiskId == disk.id {
-                        ProgressView()
-                            .controlSize(.small)
-                    } else {
-                        Image(systemName: "eject.fill")
-                            .foregroundColor(.red)
-                    }
-                }
-                .disabled(ejectingDiskId != nil)
-                .opacity(ejectingDiskId != nil ? 0.5 : 1)
+        HStack(spacing: 12) {
+            Image(systemName: "externaldrive.fill")
+                .font(AppFont.rowGlyph)
+                .foregroundColor(accentColorValue)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(disk.volumeName)
+                    .font(AppFont.rowTitle)
+                Text("可用空间: \(formatBytes(disk.freeBytes)) / \(formatBytes(disk.totalBytes))")
+                    .font(AppFont.label)
+                    .foregroundColor(.secondary)
             }
+            Spacer()
+            Button(action: { handleEject(disk) }) {
+                if ejectingDiskId == disk.id {
+                    ProgressView()
+                        .controlSize(.small)
+                } else {
+                    Image(systemName: "eject.fill")
+                        .foregroundColor(.red)
+                        .font(AppFont.rowGlyph)
+                }
+            }
+            .buttonStyle(.borderless)
+            .disabled(ejectingDiskId != nil)
+            .opacity(ejectingDiskId != nil ? 0.5 : 1)
         }
-        .padding()
-        .background(RoundedRectangle(cornerRadius: 10).fill(visualStyle == "transparent" ? Color(NSColor.windowBackgroundColor).opacity(0.7) : backgroundColor))
-        .padding(.vertical, 4)
+        .cardStyle()
     }
     
     private func createAlert() -> Alert {
@@ -198,19 +178,20 @@ struct ContentView: View {
     }
     
     private var emptyStateView: some View {
-        VStack(spacing: 20) {
+        VStack(spacing: 16) {
             Image(systemName: "externaldrive")
-                .font(.system(size: 60))
+                .font(AppFont.emptyGlyph)
                 .foregroundColor(.secondary)
             Text("没有可移动磁盘")
-                .font(.headline)
+                .font(AppFont.cardTitle)
                 .foregroundColor(.secondary)
             Text("请插入移动硬盘或U盘")
-                .font(.subheadline)
+                .font(AppFont.label)
                 .foregroundColor(.secondary)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(backgroundColor)
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 60)
+        .cardStyle()
     }
     
 
@@ -322,20 +303,5 @@ struct ContentView: View {
         }
         
         return String(format: "%.1f %@", size, units[unitIndex])
-    }
-}
-
-// 用于实现毛玻璃效果的视图
-struct VisualEffectView: NSViewRepresentable {
-    func makeNSView(context: Context) -> NSVisualEffectView {
-        let view = NSVisualEffectView()
-        view.material = .windowBackground // 使用系统控制中心样式的材质
-        view.blendingMode = .behindWindow // 使用 behindWindow 模式以获得更好的通透感
-        view.state = .active
-        return view
-    }
-    
-    func updateNSView(_ nsView: NSVisualEffectView, context: Context) {
-        // 不需要更新
     }
 }

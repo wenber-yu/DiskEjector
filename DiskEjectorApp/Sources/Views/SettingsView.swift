@@ -1,180 +1,72 @@
 import SwiftUI
 
+/// 设置面板（对齐 ProxyGenerator 项目的 UI 风格）：
+/// NavigationStack + Form + grouped，设置项即时生效（@AppStorage 直接绑定）。
 struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @AppStorage("visualStyle") private var visualStyle = "transparent"
     @AppStorage("accentColor") private var accentColor = "blue"
     @AppStorage("showDockIcon") private var showDockIcon = false
-    
+
     var body: some View {
-        VStack(spacing: 0) {
-            // Title bar
-            HStack {
-                Image(systemName: "gear")
-                    .foregroundColor(.accentColor)
-                Text("设置")
-                    .font(.headline)
-                Spacer()
-                Button {
-                    dismiss()
-                } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .foregroundColor(.secondary)
+        NavigationStack {
+            Form {
+                // MARK: 视觉效果
+                Section {
+                    Picker("视觉效果", selection: $visualStyle) {
+                        Text("透明模式（Liquid Glass 毛玻璃）").tag("transparent")
+                        Text("色调模式（系统背景色）").tag("tinted")
+                    }
+                    .pickerStyle(.menu)
+                    Text("透明模式使用 macOS Liquid Glass 毛玻璃效果（需 macOS 13+）")
+                        .font(AppFont.minor)
+                        .foregroundStyle(.secondary)
                 }
-                .buttonStyle(.plain)
+
+                // MARK: 强调色
+                Section("强调色") {
+                    Picker("强调色", selection: $accentColor) {
+                        Text("蓝色").tag("blue")
+                        Text("绿色").tag("green")
+                        Text("红色").tag("red")
+                        Text("紫色").tag("purple")
+                        Text("橙色").tag("orange")
+                        Text("黄色").tag("yellow")
+                    }
+                    .pickerStyle(.menu)
+                }
+
+                // MARK: Dock 图标
+                Section {
+                    Toggle("显示 Dock 图标", isOn: $showDockIcon)
+                }
+
+                // MARK: 关于
+                Section("关于") {
+                    HStack(spacing: 12) {
+                        Image(systemName: "externaldrive.fill")
+                            .font(.title2)
+                            .foregroundColor(.accentColor)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("DiskEjector")
+                                .font(AppFont.labelBold)
+                            Text("版本 1.0.0")
+                                .font(AppFont.minor)
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                }
             }
-            .padding()
-            
-            Divider()
-            
-            ScrollView {
-                VStack(alignment: .leading, spacing: 24) {
-                    // Visual Style
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text("视觉效果")
-                            .font(.headline)
-                        
-                        VStack(spacing: 8) {
-                            styleOption(
-                                title: "透明模式",
-                                subtitle: "macOS Liquid Glass 毛玻璃效果（需 macOS 13+）",
-                                value: "transparent",
-                                icon: "rectangle.on.rectangle"
-                            )
-                            styleOption(
-                                title: "色调模式",
-                                subtitle: "系统背景色，兼容深色/浅色模式",
-                                value: "tinted",
-                                icon: "paintpalette"
-                            )
-                        }
-                    }
-                    
-                    // Dock Icon
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text("Dock 图标")
-                            .font(.headline)
-                        
-                        HStack(spacing: 12) {
-                            Text("显示 Dock 图标")
-                                .font(.callout)
-                            Spacer()
-                            Toggle("", isOn: $showDockIcon)
-                                .labelsHidden()
-                        }
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 12)
-                        .background(Color.secondary.opacity(0.05))
-                        .cornerRadius(10)
-                    }
-                    
-                    // Accent Color
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text("强调色")
-                            .font(.headline)
-                        
-                        HStack(spacing: 12) {
-                            colorOption(value: "blue", color: .blue, name: "蓝色")
-                            colorOption(value: "green", color: .green, name: "绿色")
-                            colorOption(value: "red", color: .red, name: "红色")
-                            colorOption(value: "purple", color: .purple, name: "紫色")
-                            colorOption(value: "orange", color: .orange, name: "橙色")
-                            colorOption(value: "yellow", color: .yellow, name: "黄色")
-                        }
-                        .padding(.horizontal, 4)
-                    }
-                    
-                    Divider()
-                    
-                    // About
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("关于")
-                            .font(.headline)
-                        
-                        HStack {
-                            Image(systemName: "externaldrive.fill")
-                                .font(.title2)
-                                .foregroundColor(.accentColor)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("DiskEjector")
-                                    .font(.callout.bold())
-                                Text("版本 1.0.0")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                            }
-                        }
-                    }
+            .formStyle(.grouped)
+            .font(AppFont.control)
+            .navigationTitle("设置")
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("完成") { dismiss() }
+                        .keyboardShortcut(.defaultAction)
                 }
-                .padding()
             }
         }
-        .frame(width: 400, height: 380)
-    }
-    
-    @ViewBuilder
-    private func styleOption(title: String, subtitle: String, value: String, icon: String) -> some View {
-        Button {
-            visualStyle = value
-        } label: {
-            HStack(spacing: 12) {
-                Image(systemName: icon)
-                    .font(.title3)
-                    .foregroundColor(.accentColor)
-                    .frame(width: 24)
-                
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(title)
-                        .font(.callout)
-                        .foregroundColor(.primary)
-                    Text(subtitle)
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
-                
-                Spacer()
-                
-                if visualStyle == value {
-                    Image(systemName: "checkmark.circle.fill")
-                        .foregroundColor(.accentColor)
-                } else {
-                    Image(systemName: "circle")
-                        .foregroundColor(.secondary)
-                }
-            }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 12)
-            .background(
-                visualStyle == value
-                    ? Color.accentColor.opacity(0.08)
-                    : Color.secondary.opacity(0.05)
-            )
-            .cornerRadius(10)
-        }
-        .buttonStyle(.plain)
-    }
-    
-    @ViewBuilder
-    private func colorOption(value: String, color: Color, name: String) -> some View {
-        Button {
-            accentColor = value
-        } label: {
-            VStack(spacing: 4) {
-                Circle()
-                    .fill(color)
-                    .frame(width: 32, height: 32)
-                    .overlay {
-                        if accentColor == value {
-                            Circle()
-                                .stroke(Color.accentColor, lineWidth: 2)
-                                .frame(width: 40, height: 40)
-                        }
-                    }
-                Text(name)
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-            }
-            .padding(8)
-        }
-        .buttonStyle(.plain)
+        .frame(minWidth: 440, minHeight: 460)
     }
 }
