@@ -1,7 +1,6 @@
 import Foundation
 
-@MainActor
-class ProcessService {
+class ProcessService: @unchecked Sendable {
     static let shared = ProcessService()
     
     private init() {}

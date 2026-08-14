@@ -35,12 +35,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         print("Dock icon visibility updated: \(showDockIcon)")
     }
     
-    // 监听 UserDefaults 变化
+    // 监听 UserDefaults 变化（KVO 回调在主线程触发）
     override func observeValue(forKeyPath keyPath: String?, of object: Any?, change: [NSKeyValueChangeKey : Any]?, context: UnsafeMutableRawPointer?) {
-        if keyPath == "showDockIcon" {
-            updateDockIconVisibility()
-        } else if keyPath == "accentColor" {
-            refreshDiskList()
+        MainActor.assumeIsolated {
+            if keyPath == "showDockIcon" {
+                updateDockIconVisibility()
+            } else if keyPath == "accentColor" {
+                refreshDiskList()
+            }
         }
     }
 
@@ -105,7 +107,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 print("Mounted volume URL: \(volumeURL)")
             }
             print("Refreshing disk list...")
-            self?.refreshDiskList()
+            MainActor.assumeIsolated {
+                self?.refreshDiskList()
+            }
         }
         
         NotificationCenter.default.addObserver(forName: NSWorkspace.didUnmountNotification, object: workspace, queue: .main) { [weak self] notification in
@@ -114,7 +118,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 print("Unmounted volume URL: \(volumeURL)")
             }
             print("Refreshing disk list...")
-            self?.refreshDiskList()
+            MainActor.assumeIsolated {
+                self?.refreshDiskList()
+            }
         }
         
         print("Disk monitoring setup complete")
@@ -329,15 +335,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         print("Sender type: \(type(of: sender))")
         
         var diskIndex: Int = -1
-        var state: NSControl.StateValue = .off
         
         if let button = sender as? NSButton {
             diskIndex = button.tag
-            state = button.state
             print("Sender is NSButton, tag: \(diskIndex)")
         } else if let `switch` = sender as? NSSwitch {
             diskIndex = `switch`.tag
-            state = `switch`.state
             print("Sender is NSSwitch, tag: \(diskIndex)")
         } else {
             print("Unknown sender type")

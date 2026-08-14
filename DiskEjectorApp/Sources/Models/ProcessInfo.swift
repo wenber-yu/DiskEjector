@@ -1,5 +1,6 @@
 import Foundation
 import AppKit
+import UniformTypeIdentifiers
 
 struct ProcessInfo: Identifiable, Hashable {
     let id = UUID()
@@ -34,7 +35,7 @@ struct ProcessInfo: Identifiable, Hashable {
             }
         }
 
-        let icon = workspace.icon(forFileType: "app")
+        let icon = workspace.icon(for: .application)
         print("Got generic app icon")
         return icon
     }

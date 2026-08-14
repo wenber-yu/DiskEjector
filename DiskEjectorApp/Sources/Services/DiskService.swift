@@ -1,5 +1,4 @@
 import Foundation
-import DiskArbitration
 
 class DiskService: @unchecked Sendable {
     static let shared = DiskService()
@@ -9,7 +8,6 @@ class DiskService: @unchecked Sendable {
     func fetchExternalDisks() -> [DiskInfo] {
         var disks: [DiskInfo] = []
         
-        let session = DASessionCreate(kCFAllocatorDefault)
         let mountedVolumes = FileManager.default.mountedVolumeURLs(includingResourceValuesForKeys: nil, options: .skipHiddenVolumes) ?? []
         
         print("Found \(mountedVolumes.count) mounted volumes")
