@@ -3,7 +3,8 @@ import Foundation
 class DiskService: @unchecked Sendable {
     static let shared = DiskService()
     
-    private init() {}
+    /// 为测试注入 mock 子类而开放；生产环境一律使用 `shared`。
+    init() {}
     
     func fetchExternalDisks() -> [DiskInfo] {
         var disks: [DiskInfo] = []

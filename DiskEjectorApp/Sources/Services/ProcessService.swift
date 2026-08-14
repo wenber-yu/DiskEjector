@@ -3,7 +3,8 @@ import Foundation
 class ProcessService: @unchecked Sendable {
     static let shared = ProcessService()
     
-    private init() {}
+    /// 为测试注入 mock 子类而开放；生产环境一律使用 `shared`。
+    init() {}
     
     func findProcessesAccessingDisk(mountPath: String) -> [ProcessInfo] {
         print("Finding processes for mount path: \(mountPath)")

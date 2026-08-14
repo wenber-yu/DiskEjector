@@ -13,10 +13,14 @@ import Foundation
 final class EjectFlowController: @unchecked Sendable {
     static let shared = EjectFlowController()
 
-    private let diskService = DiskService.shared
-    private let processService = ProcessService.shared
+    private let diskService: DiskService
+    private let processService: ProcessService
 
-    private init() {}
+    /// 可注入初始化（生产一律用 `shared`；测试传入 mock 子类）。
+    init(diskService: DiskService = .shared, processService: ProcessService = .shared) {
+        self.diskService = diskService
+        self.processService = processService
+    }
 
     /// 实时检查磁盘占用进程（lsof/ps 最多约 2 秒，后台执行，不阻塞主线程）。
     /// completion 保证在主线程回调。
