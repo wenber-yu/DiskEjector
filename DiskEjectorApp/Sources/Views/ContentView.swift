@@ -2,11 +2,12 @@ import SwiftUI
 
 struct ContentView: View {
     @State private var disks: [DiskInfo] = []
-    @State private var diskProcesses: [String: [ProcessInfo]] = [:]
     @State private var isRefreshing = false
     @State private var ejectingDiskId: String? = nil
     @State private var showSettings = false
     @State private var showConfirmDialog = false
+    @State private var showErrorAlert = false
+    @State private var errorMessage = ""
     @State private var diskToEject: DiskInfo? = nil
     @State private var processesToKill: [ProcessInfo] = []
     @AppStorage("visualStyle") private var visualStyle = "transparent"
@@ -14,7 +15,6 @@ struct ContentView: View {
     @State private var volumeSource: DispatchSourceFileSystemObject?
     
     private let diskService = DiskService.shared
-    private let processService = ProcessService.shared
 
     var body: some View {
         NavigationStack {
@@ -105,6 +105,11 @@ struct ContentView: View {
             .alert(isPresented: $showConfirmDialog) {
                 createAlert()
             }
+            .alert("推出失败", isPresented: $showErrorAlert) {
+                Button("确定", role: .cancel) {}
+            } message: {
+                Text(errorMessage)
+            }
         }
     }
     
@@ -122,16 +127,7 @@ struct ContentView: View {
                         .foregroundColor(.secondary)
                 }
                 Spacer()
-                Button(action: { 
-                    let processes = diskProcesses[disk.id] ?? []
-                    if processes.isEmpty {
-                        // 没有进程占用，直接推出
-                        ejectDiskWithProcesses(disk, processes: [])
-                    } else {
-                        // 有进程占用，显示确认对话框
-                        showConfirmDialogForDisk(disk)
-                    }
-                }) {
+                Button(action: { handleEject(disk) }) {
                     if ejectingDiskId == disk.id {
                         ProgressView()
                             .controlSize(.small)
@@ -142,30 +138,6 @@ struct ContentView: View {
                 }
                 .disabled(ejectingDiskId != nil)
                 .opacity(ejectingDiskId != nil ? 0.5 : 1)
-            }
-            
-            // 直接显示测试进程信息
-            VStack(alignment: .leading, spacing: 12) {
-                Text("占用进程:")
-                    .font(.headline)
-                    .foregroundColor(.primary)
-                HStack(spacing: 12) {
-                    // 显示系统图标
-                    Image(systemName: "app.fill")
-                        .font(.title)
-                        .foregroundColor(.accentColor)
-                    VStack(alignment: .leading) {
-                        Text("IINA")
-                            .font(.subheadline)
-                            .foregroundColor(.primary)
-                        Text("PID: 76515")
-                            .font(.body)
-                            .foregroundColor(.secondary)
-                    }
-                }
-                .padding()
-                .background(Color.secondary.opacity(0.1))
-                .cornerRadius(10)
             }
         }
         .padding()
@@ -178,23 +150,27 @@ struct ContentView: View {
             return Alert(
                 title: Text("确认推出磁盘"),
                 message: Text("以下程序正在访问此磁盘，关闭它们可能导致数据丢失（未保存的工作将被丢弃）：\n\n" + processesToKill.map { "• \($0.name) (PID: \($0.pid))" }.joined(separator: "\n")),
-                primaryButton: .destructive(Text("确认终止并推出")) { 
+                primaryButton: .destructive(Text("确认终止并推出")) {
                     if let disk = diskToEject {
-                        ejectDiskWithProcesses(disk, processes: processesToKill)
+                        eject(disk: disk, processes: processesToKill)
                     }
                 },
-                secondaryButton: .cancel(Text("取消"))
+                secondaryButton: .cancel(Text("取消")) {
+                    ejectingDiskId = nil
+                }
             )
         } else {
             return Alert(
                 title: Text("确认推出磁盘"),
                 message: Text("确定要推出此磁盘吗？"),
-                primaryButton: .destructive(Text("确认")) { 
+                primaryButton: .destructive(Text("确认")) {
                     if let disk = diskToEject {
-                        ejectDiskWithProcesses(disk, processes: processesToKill)
+                        eject(disk: disk, processes: processesToKill)
                     }
                 },
-                secondaryButton: .cancel(Text("取消"))
+                secondaryButton: .cancel(Text("取消")) {
+                    ejectingDiskId = nil
+                }
             )
         }
     }
@@ -279,26 +255,11 @@ struct ContentView: View {
             print("Fetching disks...")
             let fetchedDisks = self.diskService.fetchExternalDisks()
             print("Fetched \(fetchedDisks.count) disks")
-            var newDiskProcesses: [String: [ProcessInfo]] = [:]
-            
-            for disk in fetchedDisks {
-                print("Processing disk: \(disk.volumeName) (ID: \(disk.id))")
-                let processes = self.processService.findProcessesAccessingDisk(mountPath: disk.mountPath)
-                print("Found \(processes.count) processes for disk \(disk.volumeName)")
-                newDiskProcesses[disk.id] = processes
-                for process in processes {
-                    print("  Process: \(process.name) (PID: \(process.pid))")
-                }
-            }
             
             DispatchQueue.main.async {
-                print("Updating disks and diskProcesses")
+                print("Updating disks")
                 print("Disks count: \(fetchedDisks.count)")
-                print("DiskProcesses count: \(newDiskProcesses.count)")
                 self.disks = fetchedDisks
-                self.diskProcesses = newDiskProcesses
-                print("After update - Disks count: \(self.disks.count)")
-                print("After update - DiskProcesses count: \(self.diskProcesses.count)")
                 self.isRefreshing = false
                 print("Refresh completed")
             }
@@ -309,26 +270,42 @@ struct ContentView: View {
         refreshDisks()
     }
     
-    private func showConfirmDialogForDisk(_ disk: DiskInfo) {
-        diskToEject = disk
-        processesToKill = diskProcesses[disk.id] ?? []
-        showConfirmDialog = true
-    }
-    
-    private func ejectDiskWithProcesses(_ disk: DiskInfo, processes: [ProcessInfo]) {
+    /// 推出入口：实时检查占用进程（不依赖列表刷新时的缓存，避免时序隐患），
+    /// 无占用直接推出，有占用弹确认框。与菜单栏共用 EjectFlowController。
+    private func handleEject(_ disk: DiskInfo) {
         ejectingDiskId = disk.id
         
-        diskService.ejectDisk(disk, killProcesses: processes) { result in
-            DispatchQueue.main.async {
+        EjectFlowController.shared.checkOccupiedProcesses(mountPath: disk.mountPath) { processes in
+            // completion 保证在主线程回调，安全切回主 actor
+            MainActor.assumeIsolated {
+                if processes.isEmpty {
+                    // 没有进程占用，直接推出
+                    self.eject(disk: disk, processes: [])
+                } else {
+                    // 有进程占用，显示确认对话框
+                    self.diskToEject = disk
+                    self.processesToKill = processes
+                    self.showConfirmDialog = true
+                }
+            }
+        }
+    }
+    
+    /// 统一执行推出（经由 EjectFlowController）：成功仅刷新列表，失败弹出错误提示。
+    private func eject(disk: DiskInfo, processes: [ProcessInfo]) {
+        EjectFlowController.shared.eject(disk: disk, processes: processes) { result in
+            // completion 保证在主线程回调，安全切回主 actor
+            MainActor.assumeIsolated {
                 self.ejectingDiskId = nil
                 
                 switch result {
                 case .success:
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                        self.refreshDisks()
-                    }
+                    self.refreshDisks()
                 case .failure(let error):
                     print("Failed to eject disk: \(error.localizedDescription)")
+                    self.errorMessage = EjectFlowController.shared.failureMessage(disk: disk, error: error)
+                    self.showErrorAlert = true
+                    self.refreshDisks()
                 }
             }
         }

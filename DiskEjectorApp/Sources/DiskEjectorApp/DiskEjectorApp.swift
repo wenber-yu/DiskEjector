@@ -7,7 +7,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem!
     private var mainWindow: NSWindow!
     private let diskService = DiskService.shared
-    private let processService = ProcessService.shared
     
     private var currentDisks: [DiskInfo] = []
     private var ejectButtons: [String: NSButton] = [:]
@@ -377,11 +376,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // 强制关闭菜单栏，确保在所有情况下都能关闭
         NSApp.abortModal()
         
-        // 在后台检查是否有进程占用该磁盘（lsof/ps 最多耗时 2 秒，不能阻塞主线程）
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+        // 统一推出流程（与主窗口共用 EjectFlowController）：实时检查占用进程
+        EjectFlowController.shared.checkOccupiedProcesses(mountPath: disk.mountPath) { [weak self] processes in
             guard let self = self else { return }
-            let processes = self.processService.findProcessesAccessingDisk(mountPath: disk.mountPath)
-            DispatchQueue.main.async {
+            // completion 保证在主线程回调，安全切回主 actor
+            MainActor.assumeIsolated {
                 if processes.isEmpty {
                     // 无进程占用，直接推出
                     self.performEject(disk: disk, processes: [])
@@ -428,33 +427,29 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
     
+    /// 统一执行推出（经由 EjectFlowController）：成功仅刷新列表，失败弹出错误提示。
+    /// 与主窗口行为一致，不再单独弹"推出成功"。
     private func performEject(disk: DiskInfo, processes: [ProcessInfo]) {
         print("=== performEject called ===")
         print("Disk: \(disk.displayName)")
         print("Processes to kill: \(processes.count)")
-        diskService.ejectDisk(disk, killProcesses: processes) { result in
-            DispatchQueue.main.async {
+        EjectFlowController.shared.eject(disk: disk, processes: processes) { result in
+            // completion 保证在主线程回调，安全切回主 actor
+            MainActor.assumeIsolated {
                 // 清除正在推出的磁盘ID
                 self.ejectingDiskId = nil
                 
                 switch result {
                 case .success:
                     print("Disk \(disk.displayName) ejected successfully")
-                    // 显示成功提示
-                    let alert = NSAlert()
-                    alert.messageText = "推出成功"
-                    alert.informativeText = "磁盘 \"\(disk.displayName)\" 已成功推出"
-                    alert.alertStyle = .informational
-                    alert.addButton(withTitle: "确定")
-                    alert.runModal()
-                    // 立即刷新磁盘列表，而不是延迟
+                    // 成功不弹窗打扰，直接刷新列表
                     self.refreshDiskList()
                 case .failure(let error):
                     print("Failed to eject disk: \(error.localizedDescription)")
                     // 显示失败提示
                     let alert = NSAlert()
                     alert.messageText = "推出失败"
-                    alert.informativeText = "无法推出磁盘 \"\(disk.displayName)\": \(error.localizedDescription)"
+                    alert.informativeText = EjectFlowController.shared.failureMessage(disk: disk, error: error)
                     alert.alertStyle = .critical
                     alert.addButton(withTitle: "确定")
                     alert.runModal()
