@@ -6,8 +6,9 @@
 #   VERSION=2.1.0 ./build_app.sh        # 指定版本
 #   OUTPUT_DIR=/tmp ./build_app.sh      # 指定输出目录（默认 dist/）
 # 产物：dist/DiskEjector.app（可拖入 /Applications 或双击运行）
-# 图标：默认取 Resources/AppIcon.png 生成 icns；
-#       如需高清图标，把 1024x1024 的 PNG 替换到该路径即可。
+# 图标：复制预先生成的 DiskEjectorApp/Resources/AppIcon.icns（打包时不生成图标）；
+#       图标由独立脚本生成：把源图放进 assets/icons/ 后运行
+#         sh scripts/build_icon.sh
 # =============================================================
 set -euo pipefail
 
@@ -20,7 +21,7 @@ VERSION="${VERSION:-1.0.0}"
 BUILD_NUMBER="${BUILD_NUMBER:-1}"
 OUTPUT_DIR="${OUTPUT_DIR:-$SCRIPT_DIR/dist}"
 APP_BUNDLE="$OUTPUT_DIR/$APP_NAME.app"
-ICON_SOURCE="$PACKAGE_DIR/Resources/AppIcon.png"
+ICON_SOURCE="$PACKAGE_DIR/Resources/AppIcon.icns"
 
 if [ ! -f "$PACKAGE_DIR/Package.swift" ]; then
     echo "错误：找不到 $PACKAGE_DIR/Package.swift" >&2
@@ -71,19 +72,13 @@ cat > "$APP_BUNDLE/Contents/Info.plist" <<PLIST
 </plist>
 PLIST
 
-echo "▶ [3/4] 生成应用图标 ..."
+echo "▶ [3/4] 复制应用图标 ..."
 if [ -f "$ICON_SOURCE" ]; then
-    ICONSET_DIR="$(mktemp -d)/AppIcon.iconset"
-    mkdir -p "$ICONSET_DIR"
-    # 用 ImageIO 工具生成（sips 无法处理 palette PNG 等格式）
-    if swift "$SCRIPT_DIR/tools/icon_tool.swift" "$ICON_SOURCE" "$ICONSET_DIR" >/dev/null 2>&1; then
-        iconutil -c icns "$ICONSET_DIR" -o "$APP_BUNDLE/Contents/Resources/AppIcon.icns"
-        echo "   ✓ AppIcon.icns 已生成（如需高清图标，替换 Resources/AppIcon.png 为 1024x1024 的 PNG）"
-    else
-        echo "   ⚠ 图标处理失败（源图格式不受支持？），已跳过图标"
-    fi
+    cp "$ICON_SOURCE" "$APP_BUNDLE/Contents/Resources/"
+    echo "   ✓ AppIcon.icns（来自 ${ICON_SOURCE}）"
 else
-    echo "   ⚠ 未找到 $ICON_SOURCE，跳过图标"
+    echo "   ⚠ 未找到 ${ICON_SOURCE}，将使用系统默认图标"
+    echo "     生成图标：把源图放进 assets/icons/ 后运行 sh scripts/build_icon.sh"
 fi
 
 echo "▶ [4/4] 签名（ad-hoc） ..."
