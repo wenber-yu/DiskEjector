@@ -28,13 +28,13 @@ enum DistributionChannel: String, Sendable, CustomStringConvertible {
 /// 也在沙盒下无法完成替换自身的操作。因此 MAS 版本只做「打开 App Store 页面」，
 /// 把更新交给系统。
 ///
-    /// ## 为什么不引入 Sparkle 依赖
-    ///
-    /// 当前主分发渠道是**官网直发（Developer ID）**，引入 Sparkle 会带来：一个额外的 SPM 依赖、
-    /// EdDSA 密钥管理、appcast 托管、以及每次发布多一道签名流程。在确认需要自更新之前，
-    /// 直发版本先降级为「打开下载页」——零依赖、零签名负担，用户同样能拿到新版本。
-    /// 若后续要接 Sparkle，只需替换 ``openUpdateSource()`` 的直接分发分支，
-    /// UI 与渠道判定无需改动。
+/// ## 为什么不引入 Sparkle 依赖
+///
+/// 当前主分发渠道是**官网直发（Developer ID）**，引入 Sparkle 会带来：一个额外的 SPM 依赖、
+/// EdDSA 密钥管理、appcast 托管、以及每次发布多一道签名流程。在确认需要自更新之前，
+/// 直发版本先降级为「打开下载页」——零依赖、零签名负担，用户同样能拿到新版本。
+/// 若后续要接 Sparkle，只需替换 ``openUpdateSource()`` 的直接分发分支，
+/// UI 与渠道判定无需改动。
 enum UpdateService {
 
     private static let logger = Logger(subsystem: "com.diskejector.app", category: "Update")

@@ -138,7 +138,10 @@ struct MenuPopoverView: View {
 
     private func refreshOccupancy() async {
         let disks = store.disks
-        guard !disks.isEmpty else { occupancy = [:]; return }
+        guard !disks.isEmpty else {
+            occupancy = [:]
+            return
+        }
         var results: [String: OccupancyResult] = [:]
         await withTaskGroup(of: (String, OccupancyResult).self) { group in
             for d in disks {
@@ -187,11 +190,13 @@ struct MenuDiskRow: View {
                 IconBadge(systemName: "externaldrive.fill", style: .menuRow, accent: accent)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(disk.displayName)
-                        .font(.system(
-                            size: expandProcessTags
-                                ? DesignTokens.FontSize.diskCardName - 2
-                                : DesignTokens.FontSize.menuDiskName,
-                            weight: .medium))
+                        .font(
+                            .system(
+                                size: expandProcessTags
+                                    ? DesignTokens.FontSize.diskCardName - 2
+                                    : DesignTokens.FontSize.menuDiskName,
+                                weight: .medium)
+                        )
                         .foregroundStyle(DesignTokens.Palette.foreground)
                         .lineLimit(1)
                         .truncationMode(.middle)
@@ -259,7 +264,8 @@ struct MenuDiskRow: View {
 
     /// 副标题：容量 + 占用状态（设计稿"1 TB · 已用 300 GB / 剩余 700 GB"）。
     private var metaText: String {
-        let cap = "\(ByteFormat.string(disk.totalBytes)) · \(L10n.tr(.usedSpace)) \(ByteFormat.string(disk.usedBytes)) / \(L10n.tr(.freeSpace)) \(ByteFormat.string(disk.freeBytes))"
+        let cap =
+            "\(ByteFormat.string(disk.totalBytes)) · \(L10n.tr(.usedSpace)) \(ByteFormat.string(disk.usedBytes)) / \(L10n.tr(.freeSpace)) \(ByteFormat.string(disk.freeBytes))"
         switch occupancy {
         case .occupied(let ps):
             return cap + " · " + String(format: L10n.tr(.menuOccupiedFormat), ps.count)

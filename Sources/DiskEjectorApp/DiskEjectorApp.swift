@@ -140,32 +140,33 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // 导致 `button.convert(_, to:).convertToScreen()` 拿到完全错误的屏幕坐标 →
         // popover 飞到屏幕外、用户看不见。
         // 销毁并重建 NSStatusItem，强制系统重新放置状态栏按钮。
-        if !statusItemButtonOnScreen() {
-            NSStatusBar.system.removeStatusItem(statusItem!)
-            statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-            statusItem?.button?.image = NSImage(systemSymbolName: "eject.fill", accessibilityDescription: "Eject")
-            statusItem?.button?.toolTip = "DiskEjector"
-            statusItem?.button?.target = self
-            statusItem?.button?.action = #selector(handleStatusItemClick(_:))
-        }
+        rebuildStatusItemIfOffscreen()
 
         // 监听屏幕配置变化：插入/拔除外接屏时主动重置状态栏位置。
         NotificationCenter.default.addObserver(
             forName: NSApplication.didChangeScreenParametersNotification,
             object: nil, queue: .main
         ) { [weak self] _ in
-            guard let self else { return }
-            if !self.statusItemButtonOnScreen() {
-                if let oldItem = self.statusItem {
-                    NSStatusBar.system.removeStatusItem(oldItem)
-                }
-                self.statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-                self.statusItem?.button?.image = NSImage(systemSymbolName: "eject.fill", accessibilityDescription: "Eject")
-                self.statusItem?.button?.toolTip = "DiskEjector"
-                self.statusItem?.button?.target = self
-                self.statusItem?.button?.action = #selector(self.handleStatusItemClick(_:))
+            // `queue: .main` 已保证回调在主线程执行，用 assumeIsolated 把这一事实告知编译器，
+            // 否则 Swift 6 严格并发会拒绝在 `@Sendable` 闭包里触碰 @MainActor 隔离的状态。
+            MainActor.assumeIsolated {
+                self?.rebuildStatusItemIfOffscreen()
             }
         }
+    }
+
+    /// 状态栏按钮若已不在任何屏幕内，销毁并重建 NSStatusItem。
+    ///
+    /// 外接屏拔除后 NSStatusBarWindow 会残留断屏前的 frame（见 `setupStatusItem` 注释），
+    /// 重建可强制系统重新放置按钮，让后续所有基于屏幕坐标的计算重新可信。
+    private func rebuildStatusItemIfOffscreen() {
+        guard !statusItemButtonOnScreen(), let staleItem = statusItem else { return }
+        NSStatusBar.system.removeStatusItem(staleItem)
+        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        statusItem?.button?.image = NSImage(systemSymbolName: "eject.fill", accessibilityDescription: "Eject")
+        statusItem?.button?.toolTip = "DiskEjector"
+        statusItem?.button?.target = self
+        statusItem?.button?.action = #selector(handleStatusItemClick(_:))
     }
 
     /// 检查当前状态栏按钮所在窗口 frame 是否与 NSScreen.screens 中任一屏相交。
@@ -249,11 +250,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // 但 macOS 26 + SwiftUI 组合下偶有不触发（尤其合成事件或某些外部窗口）。
         // 这里手动检查：若 popover 显示且当前鼠标位置不在 popover 窗口内，则主动关闭。
         if popoverEventMonitor == nil {
-            popoverEventMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
+            popoverEventMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) {
+                [weak self] _ in
                 guard let self, let popover = self.statusPopover, popover.isShown else { return }
                 let clickLocation = NSEvent.mouseLocation
                 if let popoverWindow = popover.contentViewController?.view.window,
-                   !popoverWindow.frame.contains(clickLocation) {
+                    !popoverWindow.frame.contains(clickLocation)
+                {
                     popover.performClose(nil)
                 }
             }

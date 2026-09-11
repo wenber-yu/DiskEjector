@@ -99,7 +99,8 @@ struct IntegrationEjectTests {
         try task.run()
         task.waitUntilExit()
         if task.terminationStatus != 0 {
-            throw NSError(domain: "shell", code: Int(task.terminationStatus),
+            throw NSError(
+                domain: "shell", code: Int(task.terminationStatus),
                 userInfo: [NSLocalizedDescriptionKey: command])
         }
     }

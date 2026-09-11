@@ -69,8 +69,10 @@ struct ContentView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .ignoresSafeArea()
         }
-        .frame(width: DesignTokens.Size.mainWindow.width,
-               height: DesignTokens.Size.mainWindow.height)
+        .frame(
+            width: DesignTokens.Size.mainWindow.width,
+            height: DesignTokens.Size.mainWindow.height
+        )
         .background(
             WindowAccessor { window in
                 // 透明标题栏 + 让 SwiftUI 内容延伸到标题栏下方
@@ -78,10 +80,12 @@ struct ContentView: View {
                 window.styleMask.insert(.fullSizeContentView)
                 window.isMovableByWindowBackground = true
                 window.defaultButtonCell = nil
-                window.minSize = NSSize(width: DesignTokens.Size.mainWindow.width,
-                                        height: DesignTokens.Size.mainWindow.height)
-                window.maxSize = NSSize(width: DesignTokens.Size.mainWindow.width,
-                                        height: DesignTokens.Size.mainWindow.height)
+                window.minSize = NSSize(
+                    width: DesignTokens.Size.mainWindow.width,
+                    height: DesignTokens.Size.mainWindow.height)
+                window.maxSize = NSSize(
+                    width: DesignTokens.Size.mainWindow.width,
+                    height: DesignTokens.Size.mainWindow.height)
                 // **毛玻璃关键**：清掉 NSWindow 自带的 windowBackgroundColor 半透明白底，
                 // 否则 NSVisualEffectView(.underWindowBackground, .behindWindow) 会被它盖住，
                 // 桌面无法透到 SwiftUI 里的毛玻璃上面，整张主窗口看起来只是一片浅色色块。
@@ -95,7 +99,8 @@ struct ContentView: View {
                 // SwiftUI 主窗口首屏显示时，焦点环默认套在第一个 Button 上（这里是 RefreshButton），
                 // 看着像"按钮被高亮选中"。用 `initialFirstResponder = nil` 让首焦点为空。
                 window.initialFirstResponder = nil
-            })
+            }
+        )
         .task {
             // 启动后立即同步探测一次 FDA 授权状态——`.task` 会在视图首次出现前异步执行，
             // 但本探测调用本身是同步的（探针只读 TCC 受保护目录的元数据，毫秒级返回），

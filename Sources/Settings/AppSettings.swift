@@ -67,8 +67,8 @@ enum AccentColor: String, CaseIterable, Sendable {
 }
 
 /// 16 进制 → Color / NSColor 工具（用于把设计稿统一规范的色值直接接入）。
-private extension Color {
-    init?(hex: String) {
+extension Color {
+    fileprivate init?(hex: String) {
         var s = hex.trimmingCharacters(in: .whitespacesAndNewlines)
         if s.hasPrefix("#") { s.removeFirst() }
         guard s.count == 6, let v = UInt32(s, radix: 16) else { return nil }
@@ -79,8 +79,8 @@ private extension Color {
     }
 }
 
-private extension NSColor {
-    convenience init?(hex: String) {
+extension NSColor {
+    fileprivate convenience init?(hex: String) {
         var s = hex.trimmingCharacters(in: .whitespacesAndNewlines)
         if s.hasPrefix("#") { s.removeFirst() }
         guard s.count == 6, let v = UInt32(s, radix: 16) else { return nil }
@@ -142,8 +142,9 @@ enum AppSettings {
     /// 该 URL scheme 是 macOS 跳转到指定隐私子面板的官方方式；
     /// 直发版需要用户在此处为 DiskEjector 开启开关，lsof 才能列出其他进程。
     nonisolated static func openFullDiskAccessSettings() {
-        guard let url = URL(
-            string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles")
+        guard
+            let url = URL(
+                string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles")
         else { return }
         NSWorkspace.shared.open(url)
     }

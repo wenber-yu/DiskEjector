@@ -70,8 +70,10 @@ struct SettingsView: View {
                 .padding(.bottom, 16)
             }
         }
-        .frame(width: DesignTokens.Size.settingsPanel.width,
-               height: DesignTokens.Size.settingsPanel.height)
+        .frame(
+            width: DesignTokens.Size.settingsPanel.width,
+            height: DesignTokens.Size.settingsPanel.height
+        )
         .background(DesignTokens.Palette.popoverBackground(for: colorScheme))
         // 整体毛玻璃：仅 macOS 15+ 接近设计稿的 Liquid Glass，14 自动用 .regularMaterial 兜底
         .background(.ultraThinMaterial)
@@ -176,8 +178,10 @@ struct SettingsView: View {
                 .font(.system(size: DesignTokens.FontSize.settingsTitle, weight: .medium))
                 .foregroundStyle(DesignTokens.Palette.foreground)
             LazyVGrid(
-                columns: [GridItem(.flexible()), GridItem(.flexible()),
-                          GridItem(.flexible()), GridItem(.flexible())],
+                columns: [
+                    GridItem(.flexible()), GridItem(.flexible()),
+                    GridItem(.flexible()), GridItem(.flexible()),
+                ],
                 spacing: 8
             ) {
                 ForEach(AccentColor.allCases, id: \.self) { color in

@@ -161,4 +161,3 @@ final class EjectFlowController {
         failure.reasonText(diskName: disk.displayName)
     }
 }
-
