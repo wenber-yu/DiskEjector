@@ -25,8 +25,11 @@
 # 签名身份（SIGN_IDENTITY，可选）
 #   mas    → "Apple Distribution: <Team Name> (<Team ID>)"
 #   direct → "Developer ID Application: <Team Name> (<Team ID>)"
-#   未设置时自动探测钥匙串：发现 Developer ID 证书则自动采用，否则回退 ad-hoc（"-"）
-#   ——ad-hoc 仅供本机验证，无法公证、无法分发。
+#   未设置时自动探测钥匙串，三档优先级依次回退：
+#     1) Developer ID Application   —— 可公证、可正式分发
+#     2) 任意其他稳定代码签名身份（如本机自签）—— 能保住 TCC 授权，但**无法公证/上架 MAS**
+#     3) ad-hoc（"-"）              —— 仅供本机验证；且 TCC 授权每次重建都会失效
+#   构建结束的摘要会明确标注当前用的是哪一档，不要把自签误认成 Developer ID。
 #
 # 正式分发（direct 渠道）还需公证，否则 Gatekeeper 拦截：
 #   xcrun notarytool submit dist/DiskEjector.app --keychain-profile "<profile>" --wait
@@ -83,6 +86,24 @@ fi
 #   显式设置 SIGN_IDENTITY 时直接使用；未设置则自动探测钥匙串里的
 #   「Developer ID Application」证书——有了就自动采用（便于日后直接 NOTARIZE=1），
 #   没有就回退 ad-hoc（"-"，仅供本机验证，无法公证/分发）。
+#
+# 无论身份来自哪里，都用 IDENTITY_KIND 记下它的**类型**，供后续文案与 NOTARIZE 前置检查使用。
+# 为什么必须区分：自签身份（如 "DiskEjector Dev Signing"）同样能签出有效签名、保住 TCC 授权，
+# 但它**无法公证、无法上架 MAS**。若一律显示成「Developer ID 证书」，使用者会误判自己
+# 已经具备分发条件——这正是本项目曾出现的文案缺陷。
+#   developer-id —— Apple 签发的 Developer ID Application：可公证、可正式分发
+#   self-signed  —— 本机自签：开发期用来稳住 TCC 授权
+#   adhoc        —— 无任何身份，仅供本机验证
+#   explicit     —— 用户显式指定且类型未知
+IDENTITY_KIND="explicit"
+if [ -n "${SIGN_IDENTITY:-}" ]; then
+    case "$SIGN_IDENTITY" in
+        "-") IDENTITY_KIND="adhoc" ;;
+        *"Developer ID"*) IDENTITY_KIND="developer-id" ;;
+        *) IDENTITY_KIND="explicit" ;;
+    esac
+fi
+
 if [ -z "${SIGN_IDENTITY:-}" ]; then
     # 优先级 1：Developer ID Application（可公证、可正式分发）
     # **bash 管道坑**：`|` 的优先级高于 `||`。
@@ -95,7 +116,7 @@ if [ -z "${SIGN_IDENTITY:-}" ]; then
         | sed -E 's/.*\) "([^"]+)".*/\1/' || true)"
     if [ -n "$AUTO_ID" ]; then
         SIGN_IDENTITY="$AUTO_ID"
-        USING_AUTO_IDENTITY=1
+        IDENTITY_KIND="developer-id"
         echo "   自动选用 Developer ID 证书: $SIGN_IDENTITY"
     else
         # 优先级 2：钥匙串里**任意**其他有效代码签名身份（例如本机自签的
@@ -117,10 +138,12 @@ if [ -z "${SIGN_IDENTITY:-}" ]; then
             | sed -E 's/.*"([^"]+)".*/\1/' || true)"
         if [ -n "$AUTO_ID" ]; then
             SIGN_IDENTITY="$AUTO_ID"
-            USING_AUTO_IDENTITY=1
-            echo "   自动选用稳定代码签名身份: $SIGN_IDENTITY"
+            IDENTITY_KIND="self-signed"
+            echo "   自动选用稳定代码签名身份（自签）: $SIGN_IDENTITY"
+            echo "         ⓘ 自签可保住 TCC 授权，但无法公证 / 无法上架 MAS"
         else
             SIGN_IDENTITY="-"
+            IDENTITY_KIND="adhoc"
             echo "   警告：未找到任何代码签名身份，回退 ad-hoc"
             echo "         ad-hoc 下 TCC 授权每次重建都会失效（FDA 横幅反复出现）"
         fi
@@ -222,13 +245,22 @@ fi
 # --options runtime 启用 Hardened Runtime；--deep 覆盖嵌套内容。
 if codesign --force --deep --sign "$SIGN_IDENTITY" \
         --entitlements "$ENTITLEMENTS" --options runtime "$APP_BUNDLE" >/dev/null 2>&1; then
-    if [ "$SIGN_IDENTITY" = "-" ]; then
-        echo "   ✓ ad-hoc 签名完成（未检测到 Developer ID 证书，仅供本机验证，无法公证/分发）"
-    elif [ -n "${USING_AUTO_IDENTITY:-}" ]; then
-        echo "   ✓ 自动选用 Developer ID 证书签名完成: $SIGN_IDENTITY"
-    else
-        echo "   ✓ 使用指定签名身份签名完成: $SIGN_IDENTITY"
-    fi
+    case "$IDENTITY_KIND" in
+        adhoc)
+            echo "   ✓ ad-hoc 签名完成（未检测到任何代码签名身份，仅供本机验证，无法公证/分发）"
+            ;;
+        developer-id)
+            echo "   ✓ Developer ID 签名完成: $SIGN_IDENTITY"
+            echo "     ⓘ 可公证、可正式分发"
+            ;;
+        self-signed)
+            echo "   ✓ 自签身份签名完成: $SIGN_IDENTITY"
+            echo "     ⓘ 自签能保住 TCC 授权，但无法公证、无法上架 MAS"
+            ;;
+        *)
+            echo "   ✓ 使用指定签名身份签名完成: $SIGN_IDENTITY"
+            ;;
+    esac
 else
     echo "   ❌ 签名失败" >&2
     exit 1
@@ -260,8 +292,9 @@ fi
 if [ "${NOTARIZE:-0}" = "1" ]; then
     if [ "$BUILD_CHANNEL" = "mas" ]; then
         echo "   ℹ️ MAS 渠道由 App Store 审核，无需公证，跳过 NOTARIZE"
-    elif [ "$SIGN_IDENTITY" = "-" ]; then
-        echo "   ❌ 公证需要 Developer ID Application 签名，请先设置 SIGN_IDENTITY" >&2
+    elif [ "$IDENTITY_KIND" != "developer-id" ]; then
+        echo "   ❌ 公证需要 Developer ID Application 签名，当前身份「${SIGN_IDENTITY}」不被 notarytool 接受" >&2
+        echo "      自签 / ad-hoc 签名均无法公证；请安装 Developer ID Application 证书后重试。" >&2
         exit 1
     else
         echo "▶ [5/5] 公证 + 打包 dmg ..."
@@ -298,13 +331,25 @@ echo " ✅ 应用已生成：$APP_BUNDLE"
 echo "--------------------------------------------------"
 if [ "$BUILD_CHANNEL" = "direct" ]; then
     echo " 渠道：官网直发（不开沙盒，可列出占用进程）"
-    if [ "$SIGN_IDENTITY" = "-" ]; then
-        echo " 签名：ad-hoc（无 Developer ID 证书，仅供本机验证，无法公证/分发）"
-    else
-        echo " 签名：Developer ID（${SIGN_IDENTITY}）"
-    fi
+    case "$IDENTITY_KIND" in
+        adhoc)
+            echo " 签名：ad-hoc（无代码签名身份，仅供本机验证，无法公证/分发）"
+            ;;
+        developer-id)
+            echo " 签名：Developer ID（${SIGN_IDENTITY}）—— 可公证、可正式分发"
+            ;;
+        self-signed)
+            echo " 签名：自签（${SIGN_IDENTITY}）—— 保 TCC 授权稳定"
+            echo "        ⓘ 自签无法公证 / 无法上架 MAS；拿到 Developer ID 证书后本脚本会自动改用它"
+            ;;
+        *)
+            echo " 签名：指定身份（${SIGN_IDENTITY}）"
+            ;;
+    esac
     echo " 注意：用户需在「系统设置 › 隐私与安全性 › 完全磁盘访问」授权后检测才生效"
-    echo " 正式分发：NOTARIZE=1 ./build_app.sh 自动公证并生成 DiskEjector.dmg"
+    if [ "$IDENTITY_KIND" = "developer-id" ]; then
+        echo " 正式分发：NOTARIZE=1 ./build_app.sh 自动公证并生成 DiskEjector.dmg"
+    fi
 else
     echo " 渠道：Mac App Store（强制沙盒，占用检测降级为「无法检测」）"
 fi
