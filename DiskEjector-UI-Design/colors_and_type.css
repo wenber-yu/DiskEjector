@@ -1,0 +1,58 @@
+:root {
+  --disk-background: #ffffff;
+  --disk-foreground: #0f172a;
+  --disk-card: rgba(255, 255, 255, 0.72);
+  --disk-card-foreground: #0f172a;
+  --disk-popover: rgba(255, 255, 255, 0.86);
+  --disk-popover-foreground: #0f172a;
+  --disk-primary: #0a84ff;
+  --disk-primary-foreground: #ffffff;
+  --disk-muted: rgba(120, 129, 144, 0.14);
+  --disk-muted-foreground: #6b7280;
+  --disk-border: rgba(0, 0, 0, 0.08);
+  --disk-input: rgba(0, 0, 0, 0.06);
+  --disk-ring: #0a84ff;
+  --disk-radius-sm: 6px;
+  --disk-radius-md: 10px;
+  --disk-radius-lg: 16px;
+  --disk-success: #34c759;
+  --disk-warning: #ff9f0a;
+  --disk-error: #ff453a;
+  --disk-info: #0a84ff;
+  --disk-font-sans: Inter, "PingFang SC", "Noto Sans SC", "Hiragino Sans GB", system-ui, -apple-system, sans-serif;
+  --disk-font-mono: "SF Mono", SFMono-Regular, ui-monospace, Menlo, Monaco, Consolas, monospace;
+}
+
+.dark {
+  --disk-background: #0b0b0f;
+  --disk-foreground: #f8fafc;
+  --disk-card: rgba(28, 28, 36, 0.72);
+  --disk-card-foreground: #f8fafc;
+  --disk-popover: rgba(28, 28, 36, 0.86);
+  --disk-popover-foreground: #f8fafc;
+  --disk-primary: #409cff;
+  --disk-primary-foreground: #ffffff;
+  --disk-muted: rgba(255, 255, 255, 0.10);
+  --disk-muted-foreground: #9ca3af;
+  --disk-border: rgba(255, 255, 255, 0.10);
+  --disk-input: rgba(255, 255, 255, 0.08);
+  --disk-ring: #409cff;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not(.light) {
+    --disk-background: #0b0b0f;
+    --disk-foreground: #f8fafc;
+    --disk-card: rgba(28, 28, 36, 0.72);
+    --disk-card-foreground: #f8fafc;
+    --disk-popover: rgba(28, 28, 36, 0.86);
+    --disk-popover-foreground: #f8fafc;
+    --disk-primary: #409cff;
+    --disk-primary-foreground: #ffffff;
+    --disk-muted: rgba(255, 255, 255, 0.10);
+    --disk-muted-foreground: #9ca3af;
+    --disk-border: rgba(255, 255, 255, 0.10);
+    --disk-input: rgba(255, 255, 255, 0.08);
+    --disk-ring: #409cff;
+  }
+}

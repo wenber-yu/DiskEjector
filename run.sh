@@ -8,7 +8,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PACKAGE_DIR="$SCRIPT_DIR/DiskEjectorApp"
+# 仓库根 == SPM 包根
+PACKAGE_DIR="$SCRIPT_DIR"
 
 if [ ! -f "$PACKAGE_DIR/Package.swift" ]; then
     echo "错误：找不到 $PACKAGE_DIR/Package.swift" >&2

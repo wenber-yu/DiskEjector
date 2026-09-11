@@ -6,8 +6,8 @@
 # 打包脚本 build_app.sh 只负责复制使用，绝不在打包时生成图标。
 #
 # 目录约定：
-#   assets/icons/                          <- 图标源图专用目录（你自己放图片）
-#   DiskEjectorApp/Resources/AppIcon.icns <- 生成的图标资产（构建时直接复制）
+#   assets/icons/             <- 图标源图专用目录（你自己放图片）
+#   Resources/AppIcon.icns    <- 生成的图标资产（构建时直接复制）
 #
 # 用法:
 #   ① 方式 A（推荐，不用手动改名）：把一张图片复制进 assets/icons/，直接运行：
@@ -26,7 +26,7 @@ PROJECT_DIR="$(dirname "$SCRIPT_DIR")"   # 本脚本位于 scripts/，项目根�
 
 ICONS_DIR="$PROJECT_DIR/assets/icons"
 CANONICAL="$ICONS_DIR/app_icon_source.png"   # 规范源图（脚本自动维护，无需手动改名）
-OUT_ICNS="$PROJECT_DIR/DiskEjectorApp/Resources/AppIcon.icns"
+OUT_ICNS="$PROJECT_DIR/Resources/AppIcon.icns"
 
 # ---------- 确定源图 ----------
 if [ "$#" -ge 1 ]; then

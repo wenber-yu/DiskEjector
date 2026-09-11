@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FDA 授权引导</title>
+    <style id="theme-vars">
+:root {
+  --disk-background: #ffffff;
+  --disk-foreground: #0f172a;
+  --disk-card: rgba(255, 255, 255, 0.72);
+  --disk-card-foreground: #0f172a;
+  --disk-popover: rgba(255, 255, 255, 0.86);
+  --disk-popover-foreground: #0f172a;
+  --disk-primary: #0a84ff;
+  --disk-primary-foreground: #ffffff;
+  --disk-muted: rgba(120, 129, 144, 0.14);
+  --disk-muted-foreground: #6b7280;
+  --disk-border: rgba(0, 0, 0, 0.08);
+  --disk-input: rgba(0, 0, 0, 0.06);
+  --disk-ring: #0a84ff;
+  --disk-radius-sm: 6px;
+  --disk-radius-md: 10px;
+  --disk-radius-lg: 16px;
+  --disk-success: #34c759;
+  --disk-warning: #ff9f0a;
+  --disk-error: #ff453a;
+  --disk-info: #0a84ff;
+  --disk-font-sans: Inter, "PingFang SC", "Noto Sans SC", "Hiragino Sans GB", system-ui, -apple-system, sans-serif;
+  --disk-font-mono: "SF Mono", SFMono-Regular, ui-monospace, Menlo, Monaco, Consolas, monospace;
+}
+
+.dark {
+  --disk-background: #0b0b0f;
+  --disk-foreground: #f8fafc;
+  --disk-card: rgba(28, 28, 36, 0.72);
+  --disk-card-foreground: #f8fafc;
+  --disk-popover: rgba(28, 28, 36, 0.86);
+  --disk-popover-foreground: #f8fafc;
+  --disk-primary: #409cff;
+  --disk-primary-foreground: #ffffff;
+  --disk-muted: rgba(255, 255, 255, 0.10);
+  --disk-muted-foreground: #9ca3af;
+  --disk-border: rgba(255, 255, 255, 0.10);
+  --disk-input: rgba(255, 255, 255, 0.08);
+  --disk-ring: #409cff;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not(.light) {
+    --disk-background: #0b0b0f;
+    --disk-foreground: #f8fafc;
+    --disk-card: rgba(28, 28, 36, 0.72);
+    --disk-card-foreground: #f8fafc;
+    --disk-popover: rgba(28, 28, 36, 0.86);
+    --disk-popover-foreground: #f8fafc;
+    --disk-primary: #409cff;
+    --disk-primary-foreground: #ffffff;
+    --disk-muted: rgba(255, 255, 255, 0.10);
+    --disk-muted-foreground: #9ca3af;
+    --disk-border: rgba(255, 255, 255, 0.10);
+    --disk-input: rgba(255, 255, 255, 0.08);
+    --disk-ring: #409cff;
+  }
+}
+
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4.3.1/dist/index.global.js"></script>
+    <script src="https://unpkg.com/lucide@1.8.0/dist/umd/lucide.min.js"></script>
+    <style type="text/tailwindcss">
+  @theme inline {
+    --color-background: var(--disk-background);
+    --color-foreground: var(--disk-foreground);
+    --color-card: var(--disk-card);
+    --color-card-foreground: var(--disk-card-foreground);
+    --color-popover: var(--disk-popover);
+    --color-popover-foreground: var(--disk-popover-foreground);
+    --color-primary: var(--disk-primary);
+    --color-primary-foreground: var(--disk-primary-foreground);
+    --color-muted: var(--disk-muted);
+    --color-muted-foreground: var(--disk-muted-foreground);
+    --color-border: var(--disk-border);
+    --color-input: var(--disk-input);
+    --color-ring: var(--disk-ring);
+    --radius-sm: var(--disk-radius-sm);
+    --radius-md: var(--disk-radius-md);
+    --radius-lg: var(--disk-radius-lg);
+  }
+  @layer base {
+    body { background: var(--disk-background); color: var(--disk-foreground); }
+    td, th { @apply break-words; word-break: break-all; word-break: auto-phrase; }
+    th { @apply whitespace-nowrap; }
+  }
+    </style>
+    <style id="semantic-token-fallback">
+      .bg-background { background-color: var(--disk-background); }
+      .text-background { color: var(--disk-background); }
+      .border-background { border-color: var(--disk-background); }
+      .ring-background { --tw-ring-color: var(--disk-background); }
+      .bg-foreground { background-color: var(--disk-foreground); }
+      .text-foreground { color: var(--disk-foreground); }
+      .border-foreground { border-color: var(--disk-foreground); }
+      .ring-foreground { --tw-ring-color: var(--disk-foreground); }
+      .bg-card { background-color: var(--disk-card); }
+      .text-card { color: var(--disk-card); }
+      .border-card { border-color: var(--disk-card); }
+      .ring-card { --tw-ring-color: var(--disk-card); }
+      .bg-card-foreground { background-color: var(--disk-card-foreground); }
+      .text-card-foreground { color: var(--disk-card-foreground); }
+      .border-card-foreground { border-color: var(--disk-card-foreground); }
+      .ring-card-foreground { --tw-ring-color: var(--disk-card-foreground); }
+      .bg-popover { background-color: var(--disk-popover); }
+      .text-popover { color: var(--disk-popover); }
+      .border-popover { border-color: var(--disk-popover); }
+      .ring-popover { --tw-ring-color: var(--disk-popover); }
+      .bg-popover-foreground { background-color: var(--disk-popover-foreground); }
+      .text-popover-foreground { color: var(--disk-popover-foreground); }
+      .border-popover-foreground { border-color: var(--disk-popover-foreground); }
+      .ring-popover-foreground { --tw-ring-color: var(--disk-popover-foreground); }
+      .bg-primary { background-color: var(--disk-primary); }
+      .text-primary { color: var(--disk-primary); }
+      .border-primary { border-color: var(--disk-primary); }
+      .ring-primary { --tw-ring-color: var(--disk-primary); }
+      .bg-primary-foreground { background-color: var(--disk-primary-foreground); }
+      .text-primary-foreground { color: var(--disk-primary-foreground); }
+      .border-primary-foreground { border-color: var(--disk-primary-foreground); }
+      .ring-primary-foreground { --tw-ring-color: var(--disk-primary-foreground); }
+      .bg-muted { background-color: var(--disk-muted); }
+      .text-muted { color: var(--disk-muted); }
+      .border-muted { border-color: var(--disk-muted); }
+      .ring-muted { --tw-ring-color: var(--disk-muted); }
+      .bg-muted-foreground { background-color: var(--disk-muted-foreground); }
+      .text-muted-foreground { color: var(--disk-muted-foreground); }
+      .border-muted-foreground { border-color: var(--disk-muted-foreground); }
+      .ring-muted-foreground { --tw-ring-color: var(--disk-muted-foreground); }
+      .bg-border { background-color: var(--disk-border); }
+      .text-border { color: var(--disk-border); }
+      .border-border { border-color: var(--disk-border); }
+      .ring-border { --tw-ring-color: var(--disk-border); }
+      .bg-input { background-color: var(--disk-input); }
+      .text-input { color: var(--disk-input); }
+      .border-input { border-color: var(--disk-input); }
+      .ring-input { --tw-ring-color: var(--disk-input); }
+      .bg-ring { background-color: var(--disk-ring); }
+      .text-ring { color: var(--disk-ring); }
+      .border-ring { border-color: var(--disk-ring); }
+      .ring-ring { --tw-ring-color: var(--disk-ring); }
+    </style>
+    <style>
+      .no-scrollbar::-webkit-scrollbar { display: none; }
+      .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+      [data-icon] {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        -webkit-mask-size: contain;
+        mask-size: contain;
+        -webkit-mask-repeat: no-repeat;
+        mask-repeat: no-repeat;
+        -webkit-mask-position: center;
+        mask-position: center;
+        background-color: currentColor;
+      }
+    </style>
+</head>
+<body class="min-h-screen font-sans antialiased">
+    <main class="relative flex min-h-screen w-full items-center justify-center bg-black/40 p-6 backdrop-blur-sm">
+        <section class="w-full max-w-[380px] rounded-[var(--disk-radius-lg)] bg-popover p-6 shadow-[0_20px_60px_-15px_rgba(0,0,0,0.35)] border border-border text-center">
+            <div class="mb-4 flex justify-center">
+                <i data-lucide="lock" class="h-8 w-8 text-primary"></i>
+            </div>
+            <h1 class="mb-2 text-base font-semibold text-foreground">需要完全磁盘访问权限</h1>
+            <p class="mb-6 text-[13px] leading-relaxed text-muted-foreground">
+                为检测占用磁盘的外部进程，DiskEjector 需要「完全磁盘访问」权限。授权后应用即可列出正在读写磁盘的应用程序，帮助您安全推出。
+            </p>
+            <div class="flex justify-end gap-3">
+                <button type="button" data-dom-id="not-now" class="inline-flex h-9 items-center justify-center rounded-[var(--disk-radius-md)] border border-border bg-background px-4 text-sm font-medium text-foreground hover:bg-muted transition-colors">
+                    稍后
+                </button>
+                <button type="button" data-dom-id="open-fda-settings" class="inline-flex h-9 items-center justify-center rounded-[var(--disk-radius-md)] bg-primary px-4 text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition-colors">
+                    打开系统设置
+                </button>
+            </div>
+        </section>
+    </main>
+    <script>lucide.createIcons();</script>
+</body>
+</html>

@@ -1,7 +1,25 @@
 #!/usr/bin/env swift
 // =============================================================
-// icon_tool.swift — 图标生成工具（单一可信源）
-// 用法: swift icon_tool.swift <source_image> <iconset_dir>
+// icon_tool.swift — 图标生成工具（增强实现，当前未被脚本调用）
+//
+// 与 scripts/build_icon.sh 的关系：
+//   build_icon.sh 是**当前生效**的图标生成入口（sips 缩放 + iconutil 合成），
+//   由打包流程与开发者手动调用。
+//   本文件是**能力更强的替代实现**，目前由 build_icon.sh 独立实现同类功能，
+//   二者功能重叠但**尚未接线**——保留它是为了覆盖 sips 的能力缺口：
+//
+//   | 能力             | build_icon.sh (sips) | 本工具 (ImageIO) |
+//   |------------------|----------------------|------------------|
+//   | 常规 PNG/JPEG    | ✓                    | ✓                |
+//   | palette PNG      | ✗ 读不了             | ✓                |
+//   | 损坏/异常 PNG    | ✗ 直接失败           | ✓ 降级占位图     |
+//   | 失败时保底       | ✗ 中断打包           | ✓ 生成占位图标   |
+//
+//   若日后遇到 sips 解不出的源图，可把 build_icon.sh 的缩放步骤替换为：
+//     swift tools/icon_tool.swift <source_image> <iconset_dir>
+//   再接 `iconutil -c icns` 合成即可，无需改动其它环节。
+//
+// 用法: swift tools/icon_tool.swift <source_image> <iconset_dir>
 // 功能: 用 ImageIO 解码源图（png/jpeg/webp/tiff…，含 sips 读不了的
 //       palette/损坏 PNG），重绘并输出 macOS iconset 全部 10 尺寸 PNG。
 //       源图解码失败时自动生成 macOS 风格占位图标（圆角色块+"DE"），

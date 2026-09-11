@@ -1,0 +1,59 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+# 同一分支上的多次推送只保留最新一次运行，避免排队浪费 CI 时长。
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # 仓库根 == SPM 包根（Package.swift 位于仓库根目录）
+  PACKAGE_PATH: .
+
+jobs:
+  quality:
+    name: 构建 · 格式 · 测试
+    runs-on: macos-15
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 显示工具链版本
+        run: |
+          swift --version
+          xcrun swift-format --version
+
+      # 警告视为错误：项目基线是「零警告构建」，这条门槛防止警告重新累积。
+      - name: 构建（警告视为错误）
+        run: swift build --package-path "$PACKAGE_PATH" -Xswiftc -warnings-as-errors
+
+      # --strict 是必须的：swift-format lint 默认即使发现问题也返回 0，
+      # 不加它会让这一步形同虚设（格式违规永远拦不住）。
+      # 显式传 --configuration 是因为 CI 在仓库根目录执行，不会自动发现子目录里的配置。
+      - name: 格式检查
+        run: |
+          xcrun swift-format lint --strict \
+            --configuration "$PACKAGE_PATH/.swift-format" \
+            --recursive "$PACKAGE_PATH/Sources" "$PACKAGE_PATH/Tests"
+
+      - name: 测试与覆盖率门槛
+        run: ./scripts/coverage.sh 40
+
+      # 打包验证：确认 .app 能构建出来且签名步骤不报错。
+      # 提前发现 Info.plist / 资源拷贝 / codesign 环节的问题，
+      # 而不是等到准备上架时才发现打不出包。
+      - name: 打包验证
+        run: ./build_app.sh
+
+      - name: 校验产物
+        run: |
+          APP="dist/DiskEjector.app"
+          test -d "$APP" || { echo "::error::未生成 $APP"; exit 1; }
+          echo "产物结构:"
+          find "$APP" -maxdepth 3 -name "*.plist" -o -maxdepth 3 -name "DiskEjectorApp" | head

@@ -27,9 +27,9 @@
 |---|--------|------|
 | F1 | 外置磁盘检测与列表 | 自动扫描并展示所有已挂载的外置/移动硬盘（非系统盘） |
 | F2 | 磁盘基本信息 | 每个磁盘旁显示：`名称` + 总容量 / 已用 / 剩余 |
-| F3 | 占用进程展示 | 列出当前正在读写该磁盘的所有进程（进程名 + PID） |
-| F4 | 一键安全推出 | 用户确认后，自动终止占用进程 → 卸载磁盘 |
-| F5 | 确认对话框 | 点击推出前，弹窗列出将被终止的进程名称，用户点确认后才执行 |
+| F3 | 占用进程展示 | 列出当前正在读写该磁盘的所有进程（进程名 + PID）。**主分发渠道为官网直发（Developer ID，不开沙盒），lsof 可真实列出；若走 Mac App Store 沙盒则降级为「当前环境无法检测」** |
+| F4 | 一键安全推出 | 调用系统推出接口；磁盘被占用时返回「正被使用」并拒绝强卸（原「自动终止进程」方案已从 MAS 版本移除，见 §4.2） |
+| F5 | 确认对话框 | 点击推出前，弹窗列出将被终止的进程名称，用户点确认后才执行。**沙盒下无进程信息，已改为推出前确认** |
 | F6 | 卸载失败告警 | 卸载失败时弹出系统告警（NSAlert），并记录错误日志 |
 | F7 | 错误日志记录 | 将卸载失败信息写入本地日志文件（含时间戳、磁盘名、错误原因） |
 
@@ -103,66 +103,181 @@
 | 层 | 技术选型 |
 |----|----------|
 | UI | SwiftUI（支持 macOS 14+） |
-| 磁盘操作 | DiskArbitration.framework |
-| 进程查询 | libproc（`proc_listpids`、`proc_pidpath`）+ `lsof` |
-| 日志 | os.log + 本地文件（FileHandle） |
-| 打包 | XcodeGen + .app bundle |
+| 磁盘枚举/属性 | DiskArbitration.framework（`DADiskCopyDescription`） |
+| 推出执行 | `NSWorkspace.unmountAndEjectDevice(at:)` |
+| 进程查询 | 直发（非沙盒）构建：`lsof`；**App Store（沙盒）构建：不可用，降级** |
+| 日志 | `os.Logger` + 本地文件（FileHandle，带大小轮转） |
+| 打包 | SwiftPM + `build_app.sh` 生成 .app bundle（支持 `BUILD_CHANNEL=mas|direct`） |
 
 ### 4.2 关键实现路径
 
-1. **磁盘枚举**：`DADiskCopyDescription` 遍历外置卷，过滤系统盘（`/System/Volumes/Data` 以外）
-2. **占用进程检测**：对每个磁盘挂载点执行 `lsof +D <mountpoint>` 或 libproc 遍历
-3. **安全推出**：先 SIGTERM 终止占用进程 → 等待 500ms → `DADiskUnmount`
-4. **失败重试机制**：首次卸载失败后等待 2s 重试一次，第二次失败再触发告警并写入日志
+1. **磁盘枚举**：`DADiskCreateFromVolumePath` → `DADiskCopyDescription`，外置判据为
+   `DADeviceInternal == false`。
+   - **为什么不用 `DAMediaRemovable` / `NSURLVolumeIsEjectableKey`**：实测 USB 外置硬盘
+     （SanDisk Extreme，Protocol=USB / Location=External）这两个键均为 `false`——介质被标记为
+     Fixed。按它们过滤会把真实外置盘漏掉。
+   - **无物理设备属性的虚拟卷**（磁盘映像等）仅在系统明确标记 `DAMediaEjectable == true` 时列入，
+     避免把 Xcode 模拟器映像、系统 cryptex 映像交给用户推出。
+   - 网络卷（`DADeviceProtocol` 为 SMB/AFP/NFS 等）排除。
+2. **占用进程检测（核心价值，依赖分发渠道）**：列出「是谁占用磁盘」是本应用的核心价值。
+   但 App Sandbox 会封死进程枚举（实测矩阵见下），因此**主分发渠道改为官网直发
+   （Developer ID，不开沙盒）**——`lsof` 在直发构建下可用，能真实列出占用进程名。
+   Mac App Store 版本因强制沙盒只能降级为「无法检测」，故 MAS 仅作为可选精简渠道。
+
+   | 能力 | 非沙盒（直发） | MAS 沙盒 |
+   |------|--------|----------|
+   | `lsof` | 正常（列出进程名） | **输出 0 行** |
+   | `proc_listallpids` | 正常 | **返回 0** |
+   | `kill()` 其他进程 | 正常 | **EPERM** |
+
+   直发版未授予「完全磁盘访问」时，`lsof` 同样拿不到其他进程，此时检测返回
+   `.needsFullDiskAccess` 并提示用户去系统设置授权——授权后恢复列出（`.occupied`）。
+   直发构建保留 `lsof -Fpcn0` 解析实现；`build_app.sh` 用 `BUILD_CHANNEL=direct` 切换，
+   对应 `DiskEjector.direct.entitlements`（无 sandbox）。
+3. **安全推出**：`NSWorkspace.unmountAndEjectDevice(at:)`（实测沙盒内可用）。
+   **不再使用 `diskutil unmount force`**——force 会绕过「有进程占用就失败」这层系统保护，
+   在磁盘正被写入时强行卸载，存在数据损坏风险。
+4. **失败处理**：首次失败即按错误类型给出针对性文案并写入日志；不做静默重试，
+   因为 busy 类错误重试无意义，需用户先关闭占用程序。
 
 ### 4.3 目录结构
 
+**仓库根目录即 SPM 包根**（`Package.swift` 在仓库根，与 FCPX2AAF / ProxyGenerator 布局一致）。
+
 ```
 DiskEjector/
-├── project.yml                  # XcodeGen 配置
-├── DiskEjector/
-│   ├── App/
-│   │   ├── main.swift           # 入口（不用 @main，手动 NSApplication）
-│   │   ├── DiskEjectorApp.swift # SwiftUI App 根
-│   │   └── AppDelegate.swift    # 菜单栏 + Services 注册
+├── Package.swift                    # SPM 清单（可执行 target DiskEjectorApp + 测试 target）
+├── .swift-format                    # swift-format 配置（4 空格缩进 / 120 行宽）
+├── build_app.sh                     # 一键打包 .app（渠道 / 签名 / 公证）
+├── run.sh                           # 源码目录直接编译运行
+├── SPEC.md                          # 本文件
+├── .github/workflows/ci.yml         # CI：零警告构建 + 格式检查 + 覆盖率门槛 + 打包验证
+├── Sources/
+│   ├── DiskEjectorApp/
+│   │   └── DiskEjectorApp.swift     # 应用入口 + AppDelegate（status item、popover 定位）
 │   ├── Models/
-│   │   ├── DiskInfo.swift       # 磁盘数据模型
-│   │   └── ProcessInfo.swift    # 进程数据模型
+│   │   ├── DiskInfo.swift           # 磁盘数据模型 + 外置判定（DiskClassifier）
+│   │   ├── OccupyingProcess.swift   # 进程数据模型（原名 ProcessInfo，避免与 Foundation 同名）
+│   │   └── ByteFormat.swift         # 容量格式化（单一事实来源，与 Finder 一致）
 │   ├── Services/
-│   │   ├── DiskService.swift    # 磁盘枚举 & 卸载逻辑
-│   │   ├── ProcessService.swift # 占用进程检测
-│   │   └── LogService.swift      # 错误日志写入
+│   │   ├── DiskService.swift        # 磁盘枚举（DiskArbitration）
+│   │   ├── DiskListStore.swift      # 磁盘列表单一数据源
+│   │   ├── EjectService.swift       # 推出执行 + 错误分类
+│   │   ├── EjectFlowController.swift# 菜单栏/主窗口共用推出流程（EjectOutcome）
+│   │   ├── EjectUI.swift            # 共享推出弹窗（占用提示 + 破坏性按钮）
+│   │   ├── OccupancyDetector.swift  # 占用检测（lsof 解析 / 沙盒降级 / FDA 探针）
+│   │   ├── LaunchAtLoginManager.swift # 开机启动（SMAppService）
+│   │   ├── UpdateService.swift      # 版本更新检查
+│   │   └── LogService.swift         # 错误日志写入（带轮转）
+│   ├── Settings/
+│   │   └── AppSettings.swift        # 偏好键与颜色映射（单一事实来源）
 │   ├── Views/
-│   │   ├── ContentView.swift    # 主窗口内容
-│   │   ├── DiskRowView.swift    # 磁盘列表行
-│   │   ├── DiskDetailView.swift # 磁盘详情（容量条 + 进程列表）
-│   │   ├── ConfirmDialogView.swift # 确认弹窗
-│   │   └── SettingsView.swift   # 设置页（透明/色调切换）
-│   └── Resources/
-│       └── Assets.xcassets/
-└── SPEC.md
+│   │   ├── ContentView.swift        # 主窗口内容
+│   │   ├── MenuPopoverView.swift    # 菜单栏弹出面板
+│   │   ├── SettingsView.swift       # 设置面板
+│   │   ├── DesignTokens.swift       # 设计令牌（尺寸 / 配色 / 间距）
+│   │   ├── DesignSystemComponents.swift # 复用组件（ProcessTag / TextButton / FdaBanner）
+│   │   ├── GlassViews.swift         # 材质与玻璃效果视图
+│   │   └── AppFont.swift            # 字体定义
+│   └── Localization/
+│       └── Localizable.xcstrings    # 本地化字符串（简中 / 繁中 / 英）
+├── Tests/
+│   └── DiskEjectorAppTests/         # 单元测试 + 集成测试（真机挂 dmg 验证推出）
+├── Plugins/
+│   └── LocalizationGenerator/       # 构建插件：由 .xcstrings 生成 L10n.Key 枚举
+├── Resources/
+│   ├── AppIcon.icns                 # 应用图标资产（由 scripts/build_icon.sh 生成）
+│   ├── AppIcon.png
+│   ├── DiskEjector.direct.entitlements # 直发版（无沙盒，可列出占用进程）
+│   └── DiskEjector.entitlements     # MAS 版（强制 App Sandbox）
+├── assets/icons/                    # 图标源图专用目录（放图后跑 scripts/build_icon.sh）
+├── scripts/
+│   ├── build_icon.sh                # 源图 → AppIcon.icns（sips + iconutil）
+│   └── coverage.sh                  # 覆盖率门槛（只统计 Models / Services / Settings）
+├── tools/
+│   ├── gen_l10n_tool/               # 独立 SPM 包：本地化代码生成器（被 Plugins 调用）
+│   └── icon_tool.swift              # 增强版图标生成器（ImageIO，当前未被脚本调用）
+├── DiskEjector-Icons/               # 图标设计候选素材（8 款 + .design）
+└── DiskEjector-UI-Design/           # UI 设计稿（HTML 页面 + 设计令牌 CSS）
 ```
+
+> 设计资源（`DiskEjector-Icons/`、`DiskEjector-UI-Design/`）与 `assets/` 置于根级，
+> 与 ProxyGenerator 中 `proxy-generator-icons/` 的摆放惯例保持一致。
 
 ---
 
 ## 5. 验收标准（MVP 完成点）
 
-- [ ] 能正确识别并列出所有已挂载外置磁盘
-- [ ] 磁盘容量信息（总量/已用/剩余）显示正确
-- [ ] 能准确列出占用指定磁盘的进程
-- [ ] 点击"推出"弹出确认对话框，列出将被终止的进程
-- [ ] 确认后进程被终止，磁盘成功卸载
-- [ ] 卸载失败时触发系统告警并写入日志文件
-- [ ] 菜单栏模式正常运行
-- [ ] 主窗口模式正常运行
-- [ ] 透明 / 色调两种视觉模式可切换
-- [ ] XcodeGen 生成的 `.xcodeproj` 能成功 build 并运行
+- [x] 能正确识别并列出所有已挂载外置磁盘（沙盒下已实测：wenbo-data + 测试映像正确识别，系统映像已过滤）
+- [x] 磁盘容量信息（总量/已用/剩余）显示正确
+- [x] 占用进程：**直发版本可列出进程名**（核心价值）；MAS 沙盒版本显示「当前环境无法检测」
+- [ ] 点击"推出"弹出确认对话框
+- [x] 磁盘被占用时拒绝强卸，返回「正被使用」提示（沙盒下已实测 fBsyErr）
+- [x] 磁盘空闲时成功推出（沙盒下已实测成功）
+- [x] 卸载失败时触发系统告警并写入日志文件
+- [x] 菜单栏模式正常运行
+- [x] 主窗口模式正常运行
+- [x] 透明 / 色调两种视觉模式可切换
+- [x] 单元测试覆盖：30 tests passed，构建零警告
 
 ---
 
-## 6. 后续扩展（本次 MVP 不做）
+## 6. 非功能需求
+
+### 6.1 无障碍
+
+菜单栏的磁盘行是自定义 `NSView`（`NSMenuItem.view`）。**设置自定义 view 后系统不再提供
+默认的可访问性支持**——整行对 VoiceOver 是「什么都不是」，行内按钮也不可达。因此必须显式配置：
+
+| 元素 | 处理 |
+|------|------|
+| 状态栏按钮 | `setAccessibilityLabel("DiskEjector")` + role `.button` |
+| 菜单磁盘行 | role `.group`，标签含「磁盘名 + 已用百分比 + 已用/总容量」 |
+| 推出按钮 | 标签形如「推出 wenbo-data」——多个按钮都叫「推出」时无法区分 |
+| 装饰图标 | `accessibilityHidden(true)` / `setAccessibilityElement(false)` |
+| SwiftUI 磁盘行 | 仅合并「名称 + 空间」两部分；**不能** `combine` 整张卡片，那会把推出按钮吞进同一元素，导致能读不能点 |
+
+### 6.2 开机自启
+
+使用 `SMAppService.mainApp`（macOS 13+），这是**唯一**符合 MAS 要求的登录项方案。
+不使用 `LSSharedFileList`（已废弃、审核会拒）、不自写 LaunchAgents plist（沙盒无权限、
+且属「自行维持驻留」）。
+
+`SMAppServiceStatus` 的 `.requiresApproval` 必须显式处理：注册已提交但需用户到
+「系统设置 → 通用 → 登录项」手动开启。若只按 Bool 建模，UI 会显示「已开启」但实际不启动。
+该状态下反复 `register()` 不会推进，只提示用户并提供 `SMAppService.openSystemSettingsLoginItems()`。
+
+### 6.3 自动更新
+
+按分发渠道区分（渠道通过 App Store 收据 `Contents/_MASReceipt/receipt` 判定；无收据即直发/开发版）：
+
+| 渠道 | 更新方式 |
+|------|----------|
+| Mac App Store | 由 App Store 负责。**不使用 Sparkle**——自下载可执行代码违反审核指南 2.4.5，沙盒下也无法替换自身 |
+| Developer ID 直发（主渠道） | 当前降级为「打开下载页」（`downloadPageURL` 填 Releases 页即可）；接 Sparkle 时只需替换 `UpdateService.openUpdateSource()` 的直接分发分支 |
+
+来源常量（`appStoreID` / `downloadPageURL`）为占位 `nil`，未配置时 UI 隐藏按钮，
+避免给出点了没反应的死入口。
+
+### 6.4 工程化
+
+| 项 | 内容 |
+|----|------|
+| CI | `.github/workflows/ci.yml`：构建（`-warnings-as-errors`）→ 格式检查 → 测试 + 覆盖率门槛 → 打包验证 |
+| 格式 | `swift-format`，配置 `./.swift-format`（4 空格缩进 / 120 行宽） |
+| 覆盖率 | `scripts/coverage.sh`，**仅统计核心逻辑**（Models/Services/Settings），门槛 40% |
+| 版本号 | `build_app.sh` 从 git 自动派生：VERSION ← 最近 tag，BUILD_NUMBER ← 提交数；可用环境变量覆盖 |
+
+两条容易踩空的细节：
+- `swift-format lint` **默认即使发现问题也返回 0**，必须加 `--strict` 才能在 CI 中拦截。
+- 覆盖率**不把 Views/ 与 App 入口计入分母**：SwiftUI 视图无法在单测中真实驱动，
+  计入会让数字被 UI 代码体量主导，对改进不敏感。
+
+---
+
+## 7. 后续扩展（尚未实现）
 
 - Finder 扩展右键菜单
-- LaunchAgent 开机自启
 - 磁盘健康状态（SMART）监控
-- 多语言国际化
+- 直发渠道接入 Sparkle 自动更新
+- 主窗口 UI 的自动化测试（当前 UI 层无测试覆盖）

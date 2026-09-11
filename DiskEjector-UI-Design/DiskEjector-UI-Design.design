@@ -1,0 +1,243 @@
+{
+  "data": [
+    {
+      "id": "page-menu-bar-popup",
+      "title": "菜单栏弹出面板",
+      "type": "page",
+      "version": 1,
+      "createdAt": 1788948720459,
+      "canvasData": {
+        "x": 0,
+        "y": 0,
+        "group": 0,
+        "layoutSnapshot": {
+          "version": 1,
+          "contentHeight": 900,
+          "viewportWidth": 1440,
+          "sourceHash": "fnv1a-51c1e971",
+          "measuredAt": 1788949839735
+        }
+      },
+      "devMetadata": {
+        "htmlSrc": "pages/menu-bar-popup.html",
+        "interactions": [
+          {
+            "domId": "open-main-window",
+            "targetPageId": "page-main-window-list",
+            "transitionLabel": "打开主窗口"
+          },
+          {
+            "domId": "open-settings",
+            "targetPageId": "page-settings-panel",
+            "transitionLabel": "打开设置",
+            "hideEdge": true
+          },
+          {
+            "domId": "eject-disk-samsung",
+            "targetPageId": "page-confirm-dialog",
+            "transitionLabel": "推出 Samsung T7"
+          },
+          {
+            "domId": "eject-disk-wd",
+            "targetPageId": "page-confirm-dialog",
+            "transitionLabel": "推出 WD Blue"
+          }
+        ]
+      }
+    },
+    {
+      "id": "page-main-window-list",
+      "title": "主窗口 - 磁盘列表",
+      "type": "page",
+      "version": 1,
+      "createdAt": 1788948720459,
+      "canvasData": {
+        "x": 480,
+        "y": 0,
+        "group": 0,
+        "layoutSnapshot": {
+          "version": 1,
+          "contentHeight": 900,
+          "viewportWidth": 1440,
+          "sourceHash": "fnv1a-7e043e3e",
+          "measuredAt": 1788949839735
+        }
+      },
+      "devMetadata": {
+        "htmlSrc": "pages/main-window-list.html",
+        "interactions": [
+          {
+            "domId": "open-settings",
+            "targetPageId": "page-settings-panel",
+            "transitionLabel": "打开设置",
+            "hideEdge": true
+          },
+          {
+            "domId": "refresh-disks",
+            "targetPageId": "page-main-window-list",
+            "transitionLabel": "刷新列表",
+            "hideEdge": true
+          },
+          {
+            "domId": "eject-disk-samsung",
+            "targetPageId": "page-confirm-dialog",
+            "transitionLabel": "推出 Samsung T7"
+          },
+          {
+            "domId": "eject-disk-wd",
+            "targetPageId": "page-confirm-dialog",
+            "transitionLabel": "推出 WD Blue"
+          }
+        ]
+      }
+    },
+    {
+      "id": "page-main-window-empty",
+      "title": "主窗口 - 空状态",
+      "type": "page",
+      "version": 1,
+      "createdAt": 1788948720459,
+      "canvasData": {
+        "x": 0,
+        "y": 746,
+        "group": 0,
+        "layoutSnapshot": {
+          "version": 1,
+          "contentHeight": 900,
+          "viewportWidth": 1440,
+          "sourceHash": "fnv1a-3b5ee2a1",
+          "measuredAt": 1788949839735
+        }
+      },
+      "devMetadata": {
+        "htmlSrc": "pages/main-window-empty.html",
+        "interactions": [
+          {
+            "domId": "open-settings",
+            "targetPageId": "page-settings-panel",
+            "transitionLabel": "打开设置",
+            "hideEdge": true
+          },
+          {
+            "domId": "refresh-disks",
+            "targetPageId": "page-main-window-empty",
+            "transitionLabel": "刷新列表",
+            "hideEdge": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "page-settings-panel",
+      "title": "设置面板",
+      "type": "page",
+      "version": 1,
+      "createdAt": 1788948720459,
+      "canvasData": {
+        "x": 0,
+        "y": 373,
+        "group": 0,
+        "layoutSnapshot": {
+          "version": 1,
+          "contentHeight": 900,
+          "viewportWidth": 1440,
+          "sourceHash": "fnv1a-9318d7e9",
+          "measuredAt": 1788949839735
+        }
+      },
+      "devMetadata": {
+        "htmlSrc": "pages/settings-panel.html",
+        "interactions": [
+          {
+            "domId": "close-settings",
+            "targetPageId": "page-main-window-list",
+            "transitionLabel": "关闭设置",
+            "hideEdge": true
+          },
+          {
+            "domId": "open-fda-settings",
+            "targetPageId": "page-fda-onboarding",
+            "transitionLabel": "打开 FDA 授权引导"
+          }
+        ]
+      }
+    },
+    {
+      "id": "page-confirm-dialog",
+      "title": "推出确认对话框",
+      "type": "page",
+      "version": 1,
+      "createdAt": 1788948720459,
+      "canvasData": {
+        "x": 480,
+        "y": 373,
+        "group": 0,
+        "layoutSnapshot": {
+          "version": 1,
+          "contentHeight": 900,
+          "viewportWidth": 1440,
+          "sourceHash": "fnv1a-99c38162",
+          "measuredAt": 1788949839735
+        }
+      },
+      "devMetadata": {
+        "htmlSrc": "pages/confirm-dialog.html",
+        "interactions": [
+          {
+            "domId": "cancel-eject",
+            "targetPageId": "page-main-window-list",
+            "transitionLabel": "取消推出",
+            "hideEdge": true
+          },
+          {
+            "domId": "confirm-eject",
+            "targetPageId": "page-main-window-list",
+            "transitionLabel": "确认推出"
+          }
+        ]
+      }
+    },
+    {
+      "id": "page-fda-onboarding",
+      "title": "FDA 授权引导",
+      "type": "page",
+      "version": 1,
+      "createdAt": 1788948720459,
+      "canvasData": {
+        "x": 480,
+        "y": 746,
+        "group": 0,
+        "layoutSnapshot": {
+          "version": 1,
+          "contentHeight": 900,
+          "viewportWidth": 1440,
+          "sourceHash": "fnv1a-63ba27a7",
+          "measuredAt": 1788949839735
+        }
+      },
+      "devMetadata": {
+        "htmlSrc": "pages/fda-onboarding.html",
+        "interactions": [
+          {
+            "domId": "not-now",
+            "targetPageId": "page-settings-panel",
+            "transitionLabel": "稍后处理",
+            "hideEdge": true
+          },
+          {
+            "domId": "open-fda-settings",
+            "targetPageId": "page-settings-panel",
+            "transitionLabel": "返回设置",
+            "hideEdge": true
+          }
+        ]
+      }
+    }
+  ],
+  "config": {
+    "autoLayout": false,
+    "deviceType": "desktop",
+    "projectName": "DiskEjector UI 设计",
+    "visualEditorEnabled": false
+  }
+}
