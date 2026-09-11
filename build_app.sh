@@ -8,6 +8,8 @@
 #   VERSION=2.1.0 ./build_app.sh                # 显式指定版本
 #   BUILD_NUMBER=42 ./build_app.sh              # 显式指定构建号
 #   OUTPUT_DIR=/tmp ./build_app.sh              # 指定输出目录（默认 dist/）
+#   STRICT_CI=1 ./build_app.sh                  # 打包前先过 CI 的两道严格门槛
+#                                               #   （-warnings-as-errors + swift-format --strict）
 # 产物：dist/DiskEjector.app（可拖入 /Applications 或双击运行）
 # 图标：复制预先生成的 Resources/AppIcon.icns（打包时不生成图标）；
 #       图标由独立脚本生成：把源图放进 assets/icons/ 后运行
@@ -128,6 +130,20 @@ fi
 if [ ! -f "$PACKAGE_DIR/Package.swift" ]; then
     echo "错误：找不到 $PACKAGE_DIR/Package.swift" >&2
     exit 1
+fi
+
+# ---------------------------------------------------------------
+# STRICT_CI=1：打包前先过 CI 的两道严格门槛
+#
+# **为什么默认关闭**：这两道门槛比打包本身严格得多，日常迭代反复跑会拖慢节奏；
+# 但它们恰恰是 CI 会拦下来的东西，而本脚本的 release 构建**不带**这些 flag，
+# 所以「打包成功」不能推出「CI 会绿」。发布 / 提交 PR 前应显式开启：
+#     STRICT_CI=1 ./build_app.sh
+# 门槛实现见 scripts/preflight.sh（本地与 CI 共用同一文件，避免逻辑分叉）。
+# ---------------------------------------------------------------
+if [ "${STRICT_CI:-0}" = "1" ]; then
+    echo "▶ [0/4] 严格门槛预检（STRICT_CI=1）..."
+    "$SCRIPT_DIR/scripts/preflight.sh"
 fi
 
 # 注意：此处**不使用 shell 内建 `cd`** 切换目录。部分执行环境（带 brokered 沙盒的 shell）

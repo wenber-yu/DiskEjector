@@ -148,8 +148,8 @@
 DiskEjector/
 ├── Package.swift                    # SPM 清单（可执行 target DiskEjectorApp + 测试 target）
 ├── .swift-format                    # swift-format 配置（4 空格缩进 / 120 行宽）
-├── build_app.sh                     # 一键打包 .app（渠道 / 签名 / 公证）
-├── run.sh                           # 源码目录直接编译运行
+├── build_app.sh                     # 一键打包 .app（渠道/签名/公证；STRICT_CI=1 先过 CI 门槛）
+├── run.sh                           # 源码目录直接编译运行；`run.sh check` 只跑 CI 门槛
 ├── SPEC.md                          # 本文件
 ├── .github/workflows/ci.yml         # CI：零警告构建 + 格式检查 + 覆盖率门槛 + 打包验证
 ├── Sources/
@@ -193,7 +193,8 @@ DiskEjector/
 ├── assets/icons/                    # 图标源图专用目录（放图后跑 scripts/build_icon.sh）
 ├── scripts/
 │   ├── build_icon.sh                # 源图 → AppIcon.icns（sips + iconutil）
-│   └── coverage.sh                  # 覆盖率门槛（只统计 Models / Services / Settings）
+│   ├── coverage.sh                  # 覆盖率门槛（只统计 Models / Services / Settings）
+│   └── preflight.sh                 # CI 严格门槛预检（本地与 CI 共用的唯一实现）
 ├── tools/
 │   ├── gen_l10n_tool/               # 独立 SPM 包：本地化代码生成器（被 Plugins 调用）
 │   └── icon_tool.swift              # 增强版图标生成器（ImageIO，当前未被脚本调用）
@@ -263,13 +264,18 @@ DiskEjector/
 
 | 项 | 内容 |
 |----|------|
-| CI | `.github/workflows/ci.yml`：构建（`-warnings-as-errors`）→ 格式检查 → 测试 + 覆盖率门槛 → 打包验证 |
+| CI | `.github/workflows/ci.yml`：代码门槛（`scripts/preflight.sh --with-tests`）→ 打包验证 → 产物校验 |
+| 本地门槛 | `./run.sh check [--with-tests]`，或直接 `./scripts/preflight.sh`；**与 CI 调用同一文件**，判据不会分叉 |
+| 发布前 | `STRICT_CI=1 ./build_app.sh` —— 打包前先过零警告构建 + 格式门槛 |
 | 格式 | `swift-format`，配置 `./.swift-format`（4 空格缩进 / 120 行宽） |
 | 覆盖率 | `scripts/coverage.sh`，**仅统计核心逻辑**（Models/Services/Settings），门槛 40% |
 | 版本号 | `build_app.sh` 从 git 自动派生：VERSION ← 最近 tag，BUILD_NUMBER ← 提交数；可用环境变量覆盖 |
 
-两条容易踩空的细节：
+三条容易踩空的细节：
 - `swift-format lint` **默认即使发现问题也返回 0**，必须加 `--strict` 才能在 CI 中拦截。
+- **`build_app.sh` 的 release 构建不带 `-warnings-as-errors`**，所以「打包成功」推不出「CI 会绿」。
+  2026-09 就因此让 13 条 Swift 6 并发隔离错误在本地一路绿灯的情况下潜伏三天。改完 `Sources/`
+  先跑 `./run.sh check`；提交/发布前用 `STRICT_CI=1 ./build_app.sh`。
 - 覆盖率**不把 Views/ 与 App 入口计入分母**：SwiftUI 视图无法在单测中真实驱动，
   计入会让数字被 UI 代码体量主导，对改进不敏感。
 
