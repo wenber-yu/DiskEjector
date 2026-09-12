@@ -30,7 +30,21 @@ PACKAGE_DIR="$REPO_ROOT"
 cd "$PACKAGE_DIR"
 
 echo "▶ 运行测试（启用覆盖率采集）..."
-swift test --enable-code-coverage 2>&1 | tail -3
+# 测试输出先落日志、按结果决定回显多少：
+# 原先写成 `swift test ... | tail -3`，成功时省事，但**失败时只剩最后 3 行**，
+# CI 上看到的就只有 `56 tests in 9 suites failed with 4 issues` 这一句，
+# 4 个失败的具体断言全被吞掉，排查只能靠猜（本项目 2026-09-12 实际踩过）。
+# 顺带也绕开了 `cmd | tail` 让 `$?` 变成 tail 状态的老坑——这里靠 pipefail 兜底，
+# 但用日志文件表达意图更明确。
+TEST_LOG="$(mktemp -t diskejector-tests)"
+trap 'rm -f "$TEST_LOG"' EXIT
+
+if ! swift test --enable-code-coverage > "$TEST_LOG" 2>&1; then
+    echo "   ✗ 测试未通过，完整输出如下："
+    sed 's/^/     /' "$TEST_LOG"
+    exit 1
+fi
+sed 's/^/     /' "$TEST_LOG" | tail -3
 
 # 不同 Swift 版本的构建产物路径不同（.build/debug 或 .build/<triple>/debug），
 # 因此用 find 定位而不是硬编码。
