@@ -47,10 +47,16 @@ private func makeDisk(name: String = "测试盘") -> DiskInfo {
     )
 }
 
-private let zhHans = Locale(identifier: "zh-Hans")
-
 // MARK: - 测试
 
+/// 文案断言**一律不显式指定 locale**，而是用与产品代码完全相同的解析方式
+/// （`L10n.tr(key)`，默认走 `Locale.current`）。
+///
+/// 为什么必须这样：CI 的 workflow 设了 `LC_ALL=en_US.UTF-8`，会让 `Locale.current`
+/// 解析成 `en`；中文机器上则是 `zh-Hans`。若测试里写死 `locale: zhHans`，
+/// 就变成「换台机器必红」的环境依赖——2026-09-12 CI 首次运行即因此红了 4 条。
+/// 这些断言要钉的是「用了哪个 key、占位符填了什么」，而不是「文案恰好等于某个中文字符串」；
+/// 后者既脆弱（文案随时会改），又把测试和运行环境绑死。
 @MainActor
 struct EjectFlowControllerTests {
 
@@ -166,7 +172,7 @@ struct EjectFlowControllerTests {
         let processes = [OccupyingProcess(pid: 42, name: "IINA", path: "")]
         let message = controller.busyMessage(disk: disk, occupying: processes)
         // 引导句是设计稿"推出确认对话框"的固定文案（不带磁盘名——磁盘名已放在弹窗标题里）。
-        let expected = L10n.tr(.ejectBusyMessageFormat, locale: zhHans)
+        let expected = L10n.tr(.ejectBusyMessageFormat)
         #expect(message == expected)
         #expect(!message.contains("PID"), "弹窗正文不应再拼 PID（进程列表改由 accessoryView 渲染图标+名称）")
     }
@@ -175,7 +181,7 @@ struct EjectFlowControllerTests {
         let controller = EjectFlowController()
         let disk = makeDisk()
         let message = controller.busyMessage(disk: disk, occupying: [])
-        let expected = String(format: L10n.tr(.ejectBusyNoProcessInfo, locale: zhHans), "测试盘")
+        let expected = String(format: L10n.tr(.ejectBusyNoProcessInfo), "测试盘")
         #expect(message == expected)
     }
 
@@ -190,7 +196,7 @@ struct EjectFlowControllerTests {
         )
 
         let message = controller.failureMessage(disk: disk, failure: .inUse)
-        let expected = String(format: L10n.tr(.ejectFailedInUseReason, locale: zhHans), "disk4s2")
+        let expected = String(format: L10n.tr(.ejectFailedInUseReason), "disk4s2")
         #expect(message == expected)
     }
 
@@ -202,7 +208,7 @@ struct EjectFlowControllerTests {
         let gone = controller.failureMessage(disk: disk, failure: .notFound)
 
         #expect(busy != gone, "不同失败原因必须给出不同引导，不能都显示同一句")
-        #expect(busy == String(format: L10n.tr(.ejectFailedInUseReason, locale: zhHans), "测试盘"))
+        #expect(busy == String(format: L10n.tr(.ejectFailedInUseReason), "测试盘"))
     }
 
     // MARK: EjectUI.processListView
