@@ -11,6 +11,12 @@
 # 单元测试中真实驱动（需要宿主 App、runloop、窗口服务器），把它们计入分母会得到
 # 一个被 UI 代码体量主导、对改进不敏感的数字。门槛的意义是防止核心逻辑的测试
 # 被悄悄删掉，而不是追求一个漂亮的百分比。
+#
+# 排除范围是 **`Sources/DiskEjectorApp/` 整个目录**，而不是逐个文件列：
+# 该目录是 AppKit 应用装配层（AppDelegate + MainMenu）。原先只排除了
+# `DiskEjectorApp.swift` 一个文件，导致 2026-09-12 新增 `MainMenu.swift` 后
+# 147 行无人测试的菜单构造代码混进分母，覆盖率从 62.5% 稀释到 56.7% ——
+# 一个纯粹的记账噪音，掩盖了真实的核心逻辑覆盖率。按目录排除对后续新增文件免疫。
 
 set -euo pipefail
 
@@ -40,7 +46,7 @@ echo
 echo "▶ 核心逻辑覆盖率（排除 Views/ 与 App 入口）..."
 REPORT="$(xcrun llvm-cov report "$BINARY" \
     -instr-profile "$PROFDATA" \
-    -ignore-filename-regex='\.build|/Tests/|Views/|Sources/DiskEjectorApp/DiskEjectorApp\.swift')"
+    -ignore-filename-regex='\.build|/Tests/|Views/|Sources/DiskEjectorApp/')"
 
 echo "$REPORT"
 

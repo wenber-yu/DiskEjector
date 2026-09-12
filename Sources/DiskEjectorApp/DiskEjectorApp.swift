@@ -77,6 +77,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: - 启动
 
+    /// 主菜单必须在 App 变成 active 之前装好：自建 `NSApplication` 没有 nib 主菜单，
+    /// 而 ⌘W / ⌘H / ⌘Q 这些快捷键全靠主菜单里的 `keyEquivalent` 表分发（详见 `MainMenu`）。
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        MainMenu.install()
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         if let appIcon = NSImage(systemSymbolName: "externaldrive.fill", accessibilityDescription: "DiskEjector") {
             NSApp.applicationIconImage = appIcon
@@ -108,7 +114,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         alert.addButton(withTitle: L10n.tr(.openSystemSettings))
         alert.addButton(withTitle: L10n.tr(.notNow))
 
-        NSApp.activate(ignoringOtherApps: true)
+        activateApp()
         if alert.runModal() == .alertFirstButtonReturn {
             AppSettings.openFullDiskAccessSettings()
         }
@@ -296,15 +302,75 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    /// 依据「显示 Dock 图标」偏好切换激活策略，并在切换后把界面重新拉回前台。
+    ///
+    /// **关于「开关打开再关闭 → 主窗口界面闪退」的实测结论（2026-09-12，不要凭猜测改写）**：
+    /// 用户报告切到菜单栏模式后主窗口界面消失。为此做了多轮真机对照实验（带设置 sheet、
+    /// 切换前强制前台、CGWindowList 判在屏、A/B 两组各一），**均未能复现窗口消失**：
+    /// - `setActivationPolicy(.accessory)` 前后 `NSWindow.isVisible` 恒为 true，窗口始终在
+    ///   CGWindowList 的层 0 列表中，`NSApp.isActive` 也维持 true；负向对照（跳过下面这段收尾）
+    ///   结果完全相同 —— 说明「策略切换把 App 踢到后台 / 把窗口挤走」在本系统上**不成立**。
+    /// - 也没有任何 DiskEjector 的崩溃报告，进程始终存活。
+    ///
+    /// 保留这段收尾的理由是**它修复的是一个真实存在、且后果不可逆的状态**：
+    /// 菜单栏模式下 App 既无 Dock 图标、也不在 ⌘Tab 列表里，一旦窗口因为任何原因
+    /// （切策略、⌘M 最小化、被其它全屏 App 遮盖）离开视野，用户就**没有任何入口把它找回来**——
+    /// 这正是「界面闪退」这一体验的不可恢复之处。切换后统一重新激活并前置窗口，让这种状态无法停留。
     private func updateDockIconVisibility() {
         let showDockIcon = UserDefaults.standard.bool(forKey: AppSettings.Key.showDockIcon)
-        NSApp.setActivationPolicy(showDockIcon ? .regular : .accessory)
+        let target: NSApplication.ActivationPolicy = showDockIcon ? .regular : .accessory
+        guard NSApp.activationPolicy() != target else { return }
+        NSApp.setActivationPolicy(target)
+        restoreVisibleWindows()
+    }
+
+    /// 把仍然打开的窗口重新置于前台，避免激活策略切换把界面「丢」到别的应用后面。
+    private func restoreVisibleWindows() {
+        // `canBecomeMain` 过滤掉 NSPopover 面板、状态栏窗口等附属窗口，只处理真正的应用窗口。
+        let visible = NSApp.windows.filter { $0.isVisible && $0.canBecomeMain }
+        guard !visible.isEmpty else { return }
+        activateApp()
+        for window in visible {
+            window.orderFrontRegardless()
+        }
+        visible.first?.makeKey()
+    }
+
+    /// 激活本应用。
+    ///
+    /// macOS 14 起 `NSApplication.activate(ignoringOtherApps:)` 的参数已被标记为不再生效，
+    /// 仅靠它无法保证抢到前台；`NSRunningApplication.activate(options:)` 才是当前有效的路径。
+    /// 两条都调：前者兼容旧系统，后者覆盖 macOS 14+。
+    private func activateApp() {
+        NSApp.activate(ignoringOtherApps: true)
+        NSRunningApplication(processIdentifier: ProcessInfo.processInfo.processIdentifier)?
+            .activate(options: [.activateAllWindows])
     }
 
     private func applyAccentToStatusItem() {
         guard let button = statusItem?.button else { return }
         let accent = AppSettings.accentColor.appKitColor
         button.contentTintColor = accent
+    }
+
+    // MARK: - 菜单动作
+
+    /// ⌘H / 应用菜单里的「隐藏 DiskEjector」。
+    ///
+    /// 标准语义是 `NSApp.hide(_:)`，但 macOS 规定**代理类（accessory）App 无法被隐藏**：
+    /// 真机实测菜单栏模式下调用后 `NSApp.isHidden` 仍为 false —— ⌘H 等于一个死键。
+    /// 因此按当前激活策略分流：
+    /// - 常规模式（有 Dock 图标）→ 走系统 `hide:`，行为与所有 macOS App 一致；
+    /// - 菜单栏模式 → 退化为「把窗口收起来」。窗口可用菜单栏图标 →「打开主窗口」找回，
+    ///   让 ⌘H 在两种模式下都有确切、可预期的行为，而不是按下去没反应。
+    @objc func hideApp(_ sender: Any?) {
+        if NSApp.activationPolicy() == .accessory {
+            for window in NSApp.windows where window.isVisible && window.canBecomeMain {
+                window.orderOut(sender)
+            }
+        } else {
+            NSApp.hide(sender)
+        }
     }
 
     // MARK: - 推出
@@ -345,13 +411,22 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         mainWindow = win
     }
 
+    /// 显示主窗口。菜单栏弹窗的「打开主窗口」、菜单里的「显示主窗口」（⌘1）与
+    /// Dock 图标点击（reopen）都走这里。
+    ///
+    /// 必须处理**最小化态**：菜单栏模式下 App 没有 Dock 图标，⌘M 把窗口缩进 Dock 后
+    /// 用户**没有任何办法点回来**（Dock 上根本没有这个 App），是一个真正的死路。
+    /// 这里先 `deminiaturize` 再前置，保证这条恢复路径对「关掉」和「缩掉」两种状态都有效。
     @objc func showMainWindow() {
         if mainWindow == nil {
             setupMainWindow()
         }
+        if mainWindow.isMiniaturized {
+            mainWindow.deminiaturize(nil)
+        }
         mainWindow.makeKeyAndOrderFront(nil)
         mainWindow.orderFrontRegardless()
-        NSApp.activate(ignoringOtherApps: true)
+        activateApp()
     }
 
     // MARK: - 设置窗口
@@ -378,7 +453,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         guard let window = settingsWindow else { return }
         window.makeKeyAndOrderFront(nil)
         window.orderFrontRegardless()
-        NSApp.activate(ignoringOtherApps: true)
+        activateApp()
     }
 
     // MARK: - 关闭/退出

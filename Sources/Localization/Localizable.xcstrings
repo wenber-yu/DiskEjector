@@ -651,6 +651,132 @@
         "en" : { "stringUnit" : { "state" : "translated", "value" : "Developer ID direct distribution: Visit the Releases page to download the latest version." } },
         "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "Developer ID 直發版：前往 Releases 頁面下載最新版本。" } }
       }
+    },
+    "menuFile" : {
+      "localizations" : {
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "文件" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "File" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "檔案" } }
+      }
+    },
+    "menuEdit" : {
+      "localizations" : {
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "编辑" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Edit" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "編輯" } }
+      }
+    },
+    "menuWindow" : {
+      "localizations" : {
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "窗口" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Window" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "視窗" } }
+      }
+    },
+    "menuAboutApp" : {
+      "localizations" : {
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "关于 DiskEjector" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "About DiskEjector" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "關於 DiskEjector" } }
+      }
+    },
+    "menuHideApp" : {
+      "localizations" : {
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "隐藏 DiskEjector" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Hide DiskEjector" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "隱藏 DiskEjector" } }
+      }
+    },
+    "menuHideOthers" : {
+      "localizations" : {
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "隐藏其他" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Hide Others" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "隱藏其他" } }
+      }
+    },
+    "menuShowAll" : {
+      "localizations" : {
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "全部显示" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Show All" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "顯示全部" } }
+      }
+    },
+    "menuQuitApp" : {
+      "localizations" : {
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "退出 DiskEjector" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Quit DiskEjector" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "結束 DiskEjector" } }
+      }
+    },
+    "menuCloseWindow" : {
+      "localizations" : {
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "关闭窗口" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Close Window" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "關閉視窗" } }
+      }
+    },
+    "menuUndo" : {
+      "localizations" : {
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "撤销" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Undo" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "還原" } }
+      }
+    },
+    "menuRedo" : {
+      "localizations" : {
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "重做" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Redo" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "重做" } }
+      }
+    },
+    "menuCut" : {
+      "localizations" : {
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "剪切" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Cut" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "剪下" } }
+      }
+    },
+    "menuCopy" : {
+      "localizations" : {
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "拷贝" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Copy" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "拷貝" } }
+      }
+    },
+    "menuPaste" : {
+      "localizations" : {
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "粘贴" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Paste" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "貼上" } }
+      }
+    },
+    "menuSelectAll" : {
+      "localizations" : {
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "全选" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Select All" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "全選" } }
+      }
+    },
+    "menuMinimize" : {
+      "localizations" : {
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "最小化" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Minimize" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "縮到最小" } }
+      }
+    },
+    "menuZoom" : {
+      "localizations" : {
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "缩放" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Zoom" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "縮放" } }
+      }
+    },
+    "menuBringAllToFront" : {
+      "localizations" : {
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "前置全部窗口" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Bring All to Front" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "將所有視窗移至最前" } }
+      }
     }
   },
   "version" : "1.0"
