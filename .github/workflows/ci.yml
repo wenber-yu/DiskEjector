@@ -18,7 +18,13 @@ env:
 jobs:
   quality:
     name: 构建 · 格式 · 测试
-    runs-on: macos-15
+    # runner 的 Xcode 选型必须与 Package.swift 的 tools version 对齐：
+    # macos-15 镜像只提供 Xcode 16 系（Swift 6.1），而本包声明的是 6.3，
+    # 会在预检门槛 1 直接报「package is using Swift tools version 6.3
+    # but the installed version is 6.1」。macOS 26 镜像对应 Xcode 26（Swift 6.3.x）。
+    # 注意 runner-images 的策略是「每个 macOS 版本只支持一个 Xcode 主版本」，
+    # 所以升 tools version 时必须同步升 runner，否则 CI 必然红。
+    runs-on: macos-26
 
     steps:
       - name: 检出代码
@@ -26,6 +32,13 @@ jobs:
 
       - name: 显示工具链版本
         run: |
+          # 同一镜像内会并存该主版本的多个 Xcode（26.0 / 26.1 / ...），默认未必指向最新，
+          # 显式选最新那个，避免因默认版本偏低而误报 tools version 不满足。
+          LATEST="$(ls -d /Applications/Xcode*.app 2>/dev/null | sort -V | tail -1)"
+          if [ -n "$LATEST" ]; then
+            sudo xcode-select -s "$LATEST"
+            echo "已选用 Xcode：$LATEST"
+          fi
           swift --version
           xcrun swift-format --version
 
