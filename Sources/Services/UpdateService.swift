@@ -54,9 +54,11 @@ enum UpdateService {
     /// 直发版本的下载 / Releases 页（GitHub Releases 或自有下载页）。
     ///
     /// 注意：本文件**没有集成 Sparkle**，此常量也与 Sparkle 无关——它只是直发版
-    /// 「打开下载页」按钮的目标地址。未配置时按钮隐藏。
-    /// 上线时填入你的 Releases 页地址即可（例如 https://github.com/<you>/DiskEjector/releases）。
-    private static let downloadPageURL: URL? = nil
+    /// 「打开下载页」按钮的目标地址。为 `nil` 时按钮隐藏。
+    ///
+    /// 指向 `/releases` **列表页**而不用 `/releases/latest`：后者只认最新的正式版，
+    /// 当前发布还是 pre-release，`latest` 会落到 404。等首个正式版发布后再考虑切换。
+    private static let downloadPageURL: URL? = URL(string: "https://github.com/wenber-yu/DiskEjector/releases")
 
     // MARK: - 渠道判定
 
