@@ -5,12 +5,15 @@
 #   ./build_app.sh                              # 版本与构建号从 git 自动派生（默认 direct 直发渠道）
 #   BUILD_CHANNEL=direct ./build_app.sh         # 官网直发版（Developer ID，不开沙盒，可列出占用进程）
 #   NOTARIZE=1 ./build_app.sh                   # 构建后自动公证 + 打包 DiskEjector.dmg（需 Developer ID 签名）
+#   PACKAGE=1 ./build_app.sh                    # 不公证，直接出分发产物：DiskEjector.dmg + DiskEjector.zip
+#                                               #   （本机无 Developer ID 证书时用它出 GitHub Release 资产）
 #   VERSION=2.1.0 ./build_app.sh                # 显式指定版本
 #   BUILD_NUMBER=42 ./build_app.sh              # 显式指定构建号
 #   OUTPUT_DIR=/tmp ./build_app.sh              # 指定输出目录（默认 dist/）
 #   STRICT_CI=1 ./build_app.sh                  # 打包前先过 CI 的两道严格门槛
 #                                               #   （-warnings-as-errors + swift-format --strict）
 # 产物：dist/DiskEjector.app（可拖入 /Applications 或双击运行）
+#       dist/DiskEjector.dmg + dist/DiskEjector.zip（仅 PACKAGE=1 / NOTARIZE=1 时生成）
 # 图标：复制预先生成的 Resources/AppIcon.icns（打包时不生成图标）；
 #       图标由独立脚本生成：把源图放进 assets/icons/ 后运行
 #         sh scripts/build_icon.sh
@@ -31,11 +34,11 @@
 #     3) ad-hoc（"-"）              —— 仅供本机验证；且 TCC 授权每次重建都会失效
 #   构建结束的摘要会明确标注当前用的是哪一档，不要把自签误认成 Developer ID。
 #
-# 正式分发（direct 渠道）还需公证，否则 Gatekeeper 拦截：
-#   xcrun notarytool submit dist/DiskEjector.app --keychain-profile "<profile>" --wait
-#   xcrun stapler staple dist/DiskEjector.app
-# 之后打包 dmg：
-#   hdiutil create -fs HFS+ -srcfolder dist -volname DiskEjector DiskEjector.dmg
+# 正式分发（direct 渠道）还需公证，否则 Gatekeeper 拦截 —— 交给 NOTARIZE=1 一把梭：
+#   NOTARIZE=1 NOTARY_KEYCHAIN_PROFILE="<profile>" ./build_app.sh
+# 开发期没有 Developer ID 证书、公证走不通时，用 PACKAGE=1 出未公证的 dmg / zip：
+#   PACKAGE=1 ./build_app.sh
+# dmg 内为 DiskEjector.app + 指向 /Applications 的替身，用户挂载后拖入即可。
 # =============================================================
 set -euo pipefail
 
@@ -279,6 +282,46 @@ else
 fi
 
 # ---------------------------------------------------------------
+# 分发产物打包（dmg / zip）
+#
+# 与公证**解耦**：NOTARIZE=1 时在公证流程中间调用（app 公证完 → 打 dmg → dmg 公证），
+# PACKAGE=1 时独立调用。之所以要解耦，是因为公证强制要求 Developer ID 证书，
+# 而开发期本机只有自签身份——旧写法把 dmg 生成焊在公证分支里，
+# 导致「没有 Developer ID 就永远拿不到 dmg」，连出个内测包都做不到。
+#
+# 为什么 zip 不用 `zip` 命令：`zip` 会解引用符号链接、丢掉扩展属性，
+# 框架里 Versions/Current 这类软链会被拍平成实体目录，解压后 app 直接损坏。
+# `ditto -c -k --keepParent` 是 macOS 官方推荐的 bundle 归档方式，权限 / 扩展属性 / 软链都能保住。
+#
+# 为什么 dmg 里要放 Applications 替身：这是 dmg 相对 zip 的主要优势——
+# 挂载后能把 app 直接拖进 /Applications，不必让用户自己找路径。
+# ---------------------------------------------------------------
+create_dmg() {
+    local dmg_path="$OUTPUT_DIR/$APP_NAME.dmg"
+    local staging
+    staging="$(mktemp -d)"
+    # staging 建在 /var/folders 下，是脚本自建目录，失败路径也要清掉，
+    # 否则每次打包都在临时目录里留一份 app 副本。
+    # 双引号在此处是**故意**的：需要立即展开 $staging，而不是延迟到 trap 触发时
+    # （那时函数已返回，local 变量出作用域，trap 里取到的会是空值）。
+    trap "rm -rf '$staging'" EXIT
+    ditto "$APP_BUNDLE" "$staging/$APP_NAME.app"
+    ln -s /Applications "$staging/Applications"
+    rm -f "$dmg_path"
+    hdiutil create -fs HFS+ -format UDZO -volname "$APP_NAME" -srcfolder "$staging" "$dmg_path" >/dev/null
+    rm -rf "$staging"
+    trap - EXIT
+    echo "   ✓ 已生成 dmg：$dmg_path"
+}
+
+create_zip() {
+    local zip_path="$OUTPUT_DIR/$APP_NAME.zip"
+    rm -f "$zip_path"
+    ditto -c -k --keepParent "$APP_BUNDLE" "$zip_path"
+    echo "   ✓ 已生成 zip：$zip_path"
+}
+
+# ---------------------------------------------------------------
 # 公证 + 打包（NOTARIZE=1 时启用，仅 direct 渠道需要）
 #
 # 公证是直发版绕开 Gatekeeper 拦截的强制步骤；MAS 走 App Store 审核，无需此步。
@@ -315,14 +358,21 @@ if [ "${NOTARIZE:-0}" = "1" ]; then
         xcrun stapler staple "$APP_BUNDLE"
         echo "   ✓ .app 已公证并钉入票根"
 
-        DMG_PATH="$OUTPUT_DIR/DiskEjector.dmg"
         echo "   • 打包 dmg ..."
-        hdiutil create -fs HFS+ -volname DiskEjector -srcfolder "$APP_BUNDLE" "$DMG_PATH"
+        create_dmg
+        DMG_PATH="$OUTPUT_DIR/$APP_NAME.dmg"
         echo "   • 提交 dmg 公证 ..."
         xcrun notarytool submit "$DMG_PATH" --wait "${NOTARY_ARGS[@]}" || { echo "   ❌ dmg 公证失败"; exit 1; }
         xcrun stapler staple "$DMG_PATH"
-        echo "   ✓ dmg 已公证并钉入票根：$DMG_PATH"
+        echo "   ✓ dmg 已公证并钉入票根"
+        create_zip
     fi
+elif [ "${PACKAGE:-0}" = "1" ]; then
+    # 本机无 Developer ID 证书时出 Release 资产：跳过公证，但产物结构与公证版保持一致。
+    echo "▶ [5/5] 打包分发产物（dmg + zip，未经公证）..."
+    echo "   ⓘ 未公证：用户首次打开会被 Gatekeeper 拦截，需右键「打开」放行"
+    create_dmg
+    create_zip
 fi
 
 echo ""
@@ -348,7 +398,9 @@ if [ "$BUILD_CHANNEL" = "direct" ]; then
     esac
     echo " 注意：用户需在「系统设置 › 隐私与安全性 › 完全磁盘访问」授权后检测才生效"
     if [ "$IDENTITY_KIND" = "developer-id" ]; then
-        echo " 正式分发：NOTARIZE=1 ./build_app.sh 自动公证并生成 DiskEjector.dmg"
+        echo " 正式分发：NOTARIZE=1 ./build_app.sh 自动公证并生成 dmg / zip"
+    else
+        echo " 分发产物：PACKAGE=1 ./build_app.sh 生成未公证的 dmg / zip（供 GitHub Release 使用）"
     fi
 else
     echo " 渠道：Mac App Store（强制沙盒，占用检测降级为「无法检测」）"
