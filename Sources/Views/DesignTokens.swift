@@ -83,8 +83,13 @@ enum DesignTokens {
         static let diskIconContainer: CGFloat = 40
         /// 菜单栏磁盘图标容器（32 × 32）。
         static let menuIconContainer: CGFloat = 32
-        /// 进程 tag 内图标（3.5 / 14pt）。
-        static let processTagIcon: CGFloat = 14
+        /// 进程 tag 内图标（22 × 22，与磁盘卡片头部图标同视觉重量）。
+        static let processTagIcon: CGFloat = 22
+        /// 进程 tag 内高（32 = 图标 22 + 上下各 5 留白）。
+        ///
+        /// **必须**由容器固定内高来保证内容垂直居中，而不是靠 `padding(.top/.bottom)` 凑——
+        /// 见 ``ProcessTag`` 里对「padding 不对称导致内容下压」的说明。
+        static let processTagHeight: CGFloat = 32
         /// 主按钮高度。
         static let primaryButtonHeight: CGFloat = 32
         /// 标题栏小图标按钮（圆形，8×8px = 32×32，但这里是 8×8 像素的 28×28）。

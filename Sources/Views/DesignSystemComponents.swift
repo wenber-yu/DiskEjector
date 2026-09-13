@@ -227,8 +227,8 @@ struct TextButton: View {
 struct ProcessTag: View {
     let process: OccupyingProcess
 
-    /// 图标尺寸：与 diskCard icon 视觉对齐。
-    private let iconSize: CGFloat = 22
+    /// 图标尺寸：与 diskCard icon 视觉对齐（取值来自令牌，避免两处各写一个数）。
+    private let iconSize = DesignTokens.Size.processTagIcon
 
     var body: some View {
         // **参数顺序**：SwiftUI 要求 `alignment` 必须写在 `spacing` 之前，
@@ -246,11 +246,14 @@ struct ProcessTag: View {
                 .frame(height: iconSize, alignment: .center)
         }
         .padding(.horizontal, 8)
-        // 进程标签在磁盘卡片内视觉上略偏上，避免贴底边框线。
-        // 原 .padding(.vertical, 5) 上下对称，底部留白不够显得"下沉"；
-        // 调整为 top 8 / bottom 3，让 pill 视觉上更靠上、更透气。
-        .padding(.top, 8)
-        .padding(.bottom, 3)
+        // **内容在背景色块内垂直居中**：内高固定为 ``DesignTokens/Size/processTagHeight``，
+        // 居中由 `.frame(height:)` 的结构保证，不再依赖上下 padding 凑数值。
+        //
+        // 旧实现是 `.padding(.top, 8) / .padding(.bottom, 3)`（注释称「让标签视觉上更靠上」），
+        // 但**内部 padding 不对称只会让内容在色块里下压，并不会把色块本身在卡片里上移**——
+        // 实测：色块高 33pt，内容中心比色块中心低 2.5pt（上留白 9.5pt / 下留白 4pt），
+        // 视觉上就是「图标和名字没居中、贴在色块底部」。
+        .frame(height: DesignTokens.Size.processTagHeight)
         // **无 maxWidth**：pill 宽度严格按图标 + 文本 + 内边距 自适应，
         // 不会有"右侧大片空白"。若整体超卡片宽，truncationMode(.tail) 自动加 "…"。
         // **无边框 overlay**：去掉 1px border 让 pill 与磁盘卡片视觉分离更柔和。
