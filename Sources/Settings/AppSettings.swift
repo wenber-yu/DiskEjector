@@ -11,6 +11,17 @@ enum VisualStyle: String, CaseIterable, Sendable {
     case tinted
 
     static let `default`: VisualStyle = .transparent
+
+    /// 设置面板下拉里的显示名（本地化）。
+    ///
+    /// 与 ``AccentColor/displayName`` 同源：显示名只在这里定义一次，
+    /// 视图侧不许再各写一份 `switch` —— 否则新增风格时必然出现「枚举加了、下拉里没有」。
+    var displayName: String {
+        switch self {
+        case .transparent: return L10n.tr(.transparentMode)
+        case .tinted: return L10n.tr(.tintedMode)
+        }
+    }
 }
 
 /// 强调色（设置项单一事实来源）。

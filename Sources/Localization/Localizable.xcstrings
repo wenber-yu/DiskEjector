@@ -246,13 +246,6 @@
         "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "關閉並退出" } }
       }
     },
-    "cancel" : {
-      "localizations" : {
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "取消" } },
-        "en" : { "stringUnit" : { "state" : "translated", "value" : "Cancel" } },
-        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "取消" } }
-      }
-    },
     "ejectFailedTitle" : {
       "localizations" : {
         "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "推出失败" } },
@@ -442,13 +435,6 @@
         "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "確定" } }
       }
     },
-    "openMainWindow" : {
-      "localizations" : {
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "打开主窗口" } },
-        "en" : { "stringUnit" : { "state" : "translated", "value" : "Open Main Window" } },
-        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "開啟主視窗" } }
-      }
-    },
     "processItemFormat" : {
       "localizations" : {
         "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "• %@ (PID: %d)" } },
@@ -617,13 +603,6 @@
         "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "退出中" } }
       }
     },
-    "menuExternalDisks" : {
-      "localizations" : {
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "外置磁盘" } },
-        "en" : { "stringUnit" : { "state" : "translated", "value" : "External Disks" } },
-        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "外接磁碟" } }
-      }
-    },
     "openSettings" : {
       "localizations" : {
         "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "设置" } },
@@ -664,13 +643,6 @@
         "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "关" } },
         "en" : { "stringUnit" : { "state" : "translated", "value" : "Off" } },
         "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "關" } }
-      }
-    },
-    "updateDownloadPageHint" : {
-      "localizations" : {
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "Developer ID 直发版：前往 Releases 页面下载最新版本。" } },
-        "en" : { "stringUnit" : { "state" : "translated", "value" : "Developer ID direct distribution: Visit the Releases page to download the latest version." } },
-        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "Developer ID 直發版：前往 Releases 頁面下載最新版本。" } }
       }
     },
     "menuFile" : {

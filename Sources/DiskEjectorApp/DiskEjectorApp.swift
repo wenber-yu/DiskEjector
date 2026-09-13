@@ -449,7 +449,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 defer: false
             )
             win.title = L10n.tr(.settings)
-            win.contentView = NSHostingView(rootView: SettingsView())
+            // 独立窗口没有 SwiftUI 的 presentation 上下文，`@Environment(\.dismiss)`
+            // 在这里是空操作 —— 必须由宿主把「完成」接到关窗上，否则按钮点了没反应。
+            win.contentView = NSHostingView(
+                rootView: SettingsView(onDone: { [weak win] in win?.close() }))
             win.center()
             win.isReleasedWhenClosed = false
             settingsWindow = win

@@ -45,8 +45,6 @@ enum DesignTokens {
         static let titleBar: CGFloat = 15
         /// 磁盘卡片的磁盘名 — 设计稿 16px / 600。
         static let diskCardName: CGFloat = 16
-        /// 状态区小节标题（如 "可安全推出"）— 设计稿 12px / 500。
-        static let sectionCaption: CGFloat = 12
         /// 容量标签（"剩余 700 GB / 共 1 TB"）— 设计稿 13px。
         static let capacity: CGFloat = 13
         /// 进程 tag 内文字 — 设计稿 12px。
@@ -69,7 +67,13 @@ enum DesignTokens {
         /// 主窗口尺寸（设计稿硬性规格）。
         static let mainWindow = CGSize(width: 800, height: 520)
         /// 设置面板尺寸。
-        static let settingsPanel = CGSize(width: 440, height: 520)
+        ///
+        /// **高度是量出来的，不是拍脑袋定的**：六段内容的自然高度随文案变化，
+        /// 历史值 520pt 装不下（实测内容 602pt），于是面板底部的「关于 / 更新」被
+        /// 折叠线挡在滚动区外 —— 用户看到的就是「设置界面排版不好看」。
+        /// 602 = 头部 56 + 内容 536 + 底部留白 10，中英文版面实测一致（见 `SettingsLayoutTests`）。
+        /// 改任何一段文案/内边距后，测试会要求同步更新这个值。
+        static let settingsPanel = CGSize(width: 440, height: 602)
         /// 菜单栏弹出面板宽度。
         static let menuPopoverWidth: CGFloat = 360
         /// 推出确认对话框最大宽度。

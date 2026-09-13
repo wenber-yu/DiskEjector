@@ -4,7 +4,8 @@ import SwiftUI
 /// 状态栏菜单的 SwiftUI 视图（与设计稿"菜单栏弹出面板"对齐）。
 ///
 /// **规格**：360px 宽，毛玻璃 blur 20 + saturate 180（用 .ultraThinMaterial 近似）；
-/// 标题"外置磁盘"；磁盘行（32×32 图标容器 + 名称 + meta + 推出按钮）；
+/// 头部是**应用自身名称**（不再另有"外置磁盘"分组标题——它与应用名重复，纯占一行高度）；
+/// 磁盘行（32×32 图标容器 + 名称 + meta + 推出按钮）；
 /// 分隔线 + 动作区（打开主窗口 / 刷新 / 设置 / 退出）。
 struct MenuPopoverView: View {
 
@@ -25,7 +26,6 @@ struct MenuPopoverView: View {
     var body: some View {
         VStack(spacing: 0) {
             header
-            sectionCaption
             if store.disks.isEmpty {
                 emptyState
             } else {
@@ -44,7 +44,10 @@ struct MenuPopoverView: View {
     // MARK: - 头部
     //
     // 面板顶部显示**应用自身**的名称（配状态栏同款 eject 图标、accent 着色），
-    // 让用户在打开面板时知道这是哪个 App；「外置磁盘」下沉为列表的分组标题。
+    // 让用户在打开面板时知道这是哪个 App。
+    //
+    // 这里曾经还有一行"外置磁盘"分组标题，已删除：面板里此时只有外置磁盘一种内容，
+    // 既没有其它分组可对比、也不提供额外信息，只是把首行磁盘推低了约 20pt。
 
     private var header: some View {
         HStack(spacing: 8) {
@@ -59,21 +62,10 @@ struct MenuPopoverView: View {
         }
         .padding(.horizontal, 12)
         .padding(.top, 12)
-        .padding(.bottom, 6)
+        // 头部与首行磁盘之间的间距（原由"外置磁盘"标题各自承担一部分，现合并到这一处）。
+        .padding(.bottom, 10)
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(.isHeader)
-    }
-
-    /// 分组标题（"外置磁盘"），只给列表区做语义分组，不再兼任应用名。
-    private var sectionCaption: some View {
-        HStack {
-            Text(L10n.tr(.menuExternalDisks))
-                .font(.system(size: DesignTokens.FontSize.sectionCaption, weight: .medium))
-                .foregroundStyle(DesignTokens.Palette.mutedForeground)
-            Spacer(minLength: 0)
-        }
-        .padding(.horizontal, 14)
-        .padding(.bottom, 6)
     }
 
     // MARK: - 空状态
