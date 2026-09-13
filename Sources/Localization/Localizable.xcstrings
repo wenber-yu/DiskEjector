@@ -15,6 +15,13 @@
         "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "強調色" } }
       }
     },
+    "appName" : {
+      "localizations" : {
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "磁盘推出助手" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "DiskEjector" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "磁碟推出助手" } }
+      }
+    },
     "cancel" : {
       "localizations" : {
         "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "取消" } },
@@ -213,9 +220,9 @@
     },
     "ejectBusyNoProcessInfo" : {
       "localizations" : {
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "磁盘「%@」正被占用，但当前无法列出具体程序。请确认已在「系统设置 › 隐私与安全性 › 完全磁盘访问」中允许 DiskEjector 后重试。" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "磁盘「%@」正被占用，但当前无法列出具体程序。请确认已在「系统设置 › 隐私与安全性 › 完全磁盘访问」中允许磁盘推出助手后重试。" } },
         "en" : { "stringUnit" : { "state" : "translated", "value" : "The disk \"%@\" is in use, but the specific apps cannot be listed. Make sure DiskEjector is granted Full Disk Access in System Settings › Privacy & Security, then try again." } },
-        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "磁碟「%@」正被佔用，但目前無法列出具體程式。請確認已在「系統設定 › 隱私與安全性 › 完全磁碟存取」中允許 DiskEjector 後再試。" } }
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "磁碟「%@」正被佔用，但目前無法列出具體程式。請確認已在「系統設定 › 隱私與安全性 › 完全磁碟存取」中允許磁碟推出助手後再試。" } }
       }
     },
     "ejectBusyWarning" : {
@@ -269,9 +276,9 @@
     },
     "launchAtLoginErrorMessage" : {
       "localizations" : {
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "请将 DiskEjector 移到「应用程序」文件夹后重试。" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "请将磁盘推出助手移到「应用程序」文件夹后重试。" } },
         "en" : { "stringUnit" : { "state" : "translated", "value" : "Move DiskEjector to the Applications folder and try again." } },
-        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "請將 DiskEjector 移到「應用程式」檔案夾後重試。" } }
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "請將磁碟推出助手移到「應用程式」檔案夾後重試。" } }
       }
     },
     "launchAtLoginNeedsApprovalTitle" : {
@@ -283,16 +290,16 @@
     },
     "launchAtLoginNeedsApprovalMessage" : {
       "localizations" : {
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "macOS 要求手动允许登录项。请前往「系统设置 → 通用 → 登录项」，开启 DiskEjector 的开关。" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "macOS 要求手动允许登录项。请前往「系统设置 → 通用 → 登录项」，开启磁盘推出助手的开关。" } },
         "en" : { "stringUnit" : { "state" : "translated", "value" : "macOS requires manual approval for login items. Go to System Settings \u2192 General \u2192 Login Items and enable DiskEjector." } },
-        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "macOS 要求手動允許登入項目。請前往「系統設定 \u2192 一般 \u2192 登入項目」，開啟 DiskEjector 的開關。" } }
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "macOS 要求手動允許登入項目。請前往「系統設定 \u2192 一般 \u2192 登入項目」，開啟磁碟推出助手的開關。" } }
       }
     },
     "launchAtLoginUnavailableMessage" : {
       "localizations" : {
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "当前无法设置登录项。请将 DiskEjector 移到「应用程序」文件夹后重试。" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "当前无法设置登录项。请将磁盘推出助手移到「应用程序」文件夹后重试。" } },
         "en" : { "stringUnit" : { "state" : "translated", "value" : "Login items are unavailable. Move DiskEjector to the Applications folder and try again." } },
-        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "目前無法設定登入項目。請將 DiskEjector 移到「應用程式」檔案夾後再試一次。" } }
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "目前無法設定登入項目。請將磁碟推出助手移到「應用程式」檔案夾後再試一次。" } }
       }
     },
     "openSystemSettings" : {
@@ -311,9 +318,9 @@
     },
     "launchAtLoginFootnote" : {
       "localizations" : {
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "登录 macOS 后自动在菜单栏启动 DiskEjector" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "登录 macOS 后自动在菜单栏启动磁盘推出助手" } },
         "en" : { "stringUnit" : { "state" : "translated", "value" : "Starts DiskEjector in the menu bar after you log in to macOS" } },
-        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "登入 macOS 後自動在選單列啟動 DiskEjector" } }
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "登入 macOS 後自動在選單列啟動磁碟推出助手" } }
       }
     },
     "noEjectableDisks" : {
@@ -339,16 +346,16 @@
     },
     "occupancyNeedsFullDiskAccessHint" : {
       "localizations" : {
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "未能检测到占用程序。若确有程序正在使用此磁盘，请在「系统设置 › 隐私与安全性 › 完全磁盘访问」中允许 DiskEjector。" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "未能检测到占用程序。若确有程序正在使用此磁盘，请在「系统设置 › 隐私与安全性 › 完全磁盘访问」中允许磁盘推出助手。" } },
         "en" : { "stringUnit" : { "state" : "translated", "value" : "Could not detect which apps are using this disk. If an app is using it, grant DiskEjector Full Disk Access in System Settings › Privacy & Security." } },
-        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "未能偵測佔用程式。若確有程式正在使用此磁碟，請在「系統設定 › 隱私與安全性 › 完全磁碟存取」中允許 DiskEjector。" } }
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "未能偵測佔用程式。若確有程式正在使用此磁碟，請在「系統設定 › 隱私與安全性 › 完全磁碟存取」中允許磁碟推出助手。" } }
       }
     },
     "fdaGuidanceBanner" : {
       "localizations" : {
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "未授予「完全磁盘访问」，无法显示占用进程。请前往系统设置 › 隐私与安全性 › 完全磁盘访问 中允许 DiskEjector。" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "未授予「完全磁盘访问」，无法显示占用进程。请前往系统设置 › 隐私与安全性 › 完全磁盘访问 中允许磁盘推出助手。" } },
         "en" : { "stringUnit" : { "state" : "translated", "value" : "Full Disk Access is not granted, so occupying processes can't be shown. Allow DiskEjector in System Settings › Privacy & Security › Full Disk Access." } },
-        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "尚未授予「完全磁碟存取」，無法顯示佔用程式。請前往系統設定 › 隱私與安全性 › 完全磁碟存取 中允許 DiskEjector。" } }
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "尚未授予「完全磁碟存取」，無法顯示佔用程式。請前往系統設定 › 隱私與安全性 › 完全磁碟存取 中允許磁碟推出助手。" } }
       }
     },
     "fdaGuidanceBannerLead" : {
@@ -360,9 +367,9 @@
     },
     "fdaGuidanceBannerTail" : {
       "localizations" : {
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "请前往系统设置 › 隐私与安全性 › 完全磁盘访问 中允许 DiskEjector。" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "请前往系统设置 › 隐私与安全性 › 完全磁盘访问 中允许磁盘推出助手。" } },
         "en" : { "stringUnit" : { "state" : "translated", "value" : "Allow DiskEjector in System Settings › Privacy & Security › Full Disk Access." } },
-        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "請前往系統設定 › 隱私與安全性 › 完全磁碟存取 中允許 DiskEjector。" } }
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "請前往系統設定 › 隱私與安全性 › 完全磁碟存取 中允許磁碟推出助手。" } }
       }
     },
     "fdaOnboardingTitle" : {
@@ -374,16 +381,16 @@
     },
     "fdaOnboardingBody" : {
       "localizations" : {
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "为检测占用磁盘的外部进程，DiskEjector 需要「完全磁盘访问」权限。授权后应用即可列出正在读写磁盘的应用程序，帮助您安全推出。" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "为检测占用磁盘的外部进程，磁盘推出助手需要「完全磁盘访问」权限。授权后应用即可列出正在读写磁盘的应用程序，帮助您安全推出。" } },
         "en" : { "stringUnit" : { "state" : "translated", "value" : "To detect other processes using this disk, DiskEjector needs Full Disk Access. Once granted, the app can list which apps are reading or writing to the disk and help you eject safely." } },
-        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "為偵測佔用磁碟的外部程式，DiskEjector 需要「完全磁碟存取」權限。授權後應用即可列出正在讀寫磁碟的應用程式，協助您安全退出。" } }
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "為偵測佔用磁碟的外部程式，磁碟推出助手需要「完全磁碟存取」權限。授權後應用即可列出正在讀寫磁碟的應用程式，協助您安全退出。" } }
       }
     },
     "fdaRepromptBody" : {
       "localizations" : {
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "我们刚刚无法检测到占用此磁盘的程序。这正是因为尚未授予「完全磁盘访问」权限——DiskEjector 需要它才能读取其他进程。\\n\\n请：\\n1. 点击下方「打开系统设置」\\n2. 在「隐私与安全性 › 完全磁盘访问」中找到 DiskEjector 并打开开关\\n3. 重启 DiskEjector（或重新插入磁盘）" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "我们刚刚无法检测到占用此磁盘的程序。这正是因为尚未授予「完全磁盘访问」权限——磁盘推出助手需要它才能读取其他进程。\\n\\n请：\\n1. 点击下方「打开系统设置」\\n2. 在「隐私与安全性 › 完全磁盘访问」中找到磁盘推出助手并打开开关\\n3. 重启磁盘推出助手（或重新插入磁盘）" } },
         "en" : { "stringUnit" : { "state" : "translated", "value" : "We just couldn't detect which app is using this disk. That's because Full Disk Access hasn't been granted yet — DiskEjector needs it to read other processes.\\n\\nPlease:\\n1. Click Open System Settings below\\n2. In Privacy & Security › Full Disk Access, find DiskEjector and turn it on\\n3. Restart DiskEjector (or re-plug the disk)" } },
-        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "我們剛剛無法偵測到佔用此磁碟的程式。這正是因為尚未授予「完全磁碟存取」權限——DiskEjector 需要它才能讀取其他程序。\\n\\n請：\\n1. 點擊下方「打開系統設定」\\n2. 在「隱私與安全性 › 完全磁碟存取」中找到 DiskEjector 並開啟開關\\n3. 重新啟動 DiskEjector（或重新插入磁碟）" } }
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "我們剛剛無法偵測到佔用此磁碟的程式。這正是因為尚未授予「完全磁碟存取」權限——磁碟推出助手需要它才能讀取其他程序。\\n\\n請：\\n1. 點擊下方「打開系統設定」\\n2. 在「隱私與安全性 › 完全磁碟存取」中找到磁碟推出助手並開啟開關\\n3. 重新啟動磁碟推出助手（或重新插入磁碟）" } }
       }
     },
     "notNow" : {
@@ -675,16 +682,16 @@
     },
     "menuAboutApp" : {
       "localizations" : {
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "关于 DiskEjector" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "关于磁盘推出助手" } },
         "en" : { "stringUnit" : { "state" : "translated", "value" : "About DiskEjector" } },
-        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "關於 DiskEjector" } }
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "關於磁碟推出助手" } }
       }
     },
     "menuHideApp" : {
       "localizations" : {
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "隐藏 DiskEjector" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "隐藏磁盘推出助手" } },
         "en" : { "stringUnit" : { "state" : "translated", "value" : "Hide DiskEjector" } },
-        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "隱藏 DiskEjector" } }
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "隱藏磁碟推出助手" } }
       }
     },
     "menuHideOthers" : {
@@ -703,9 +710,9 @@
     },
     "menuQuitApp" : {
       "localizations" : {
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "退出 DiskEjector" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "退出磁盘推出助手" } },
         "en" : { "stringUnit" : { "state" : "translated", "value" : "Quit DiskEjector" } },
-        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "結束 DiskEjector" } }
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "結束磁碟推出助手" } }
       }
     },
     "menuCloseWindow" : {

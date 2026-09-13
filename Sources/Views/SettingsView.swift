@@ -271,7 +271,7 @@ struct SettingsView: View {
         VStack(spacing: 0) {
             VStack(spacing: 12) {
                 IconBadge(systemName: "externaldrive.fill", style: .settingsAbout, accent: accentColor)
-                Text("DiskEjector")
+                Text(L10n.tr(.appName))
                     .font(.system(size: 16, weight: .semibold))
                     .foregroundStyle(DesignTokens.Palette.foreground)
                 Text(String(format: L10n.tr(.versionFormat), appVersion))

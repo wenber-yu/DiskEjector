@@ -84,7 +84,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        if let appIcon = NSImage(systemSymbolName: "externaldrive.fill", accessibilityDescription: "DiskEjector") {
+        if let appIcon = NSImage(systemSymbolName: "externaldrive.fill", accessibilityDescription: L10n.tr(.appName)) {
             NSApp.applicationIconImage = appIcon
         }
 
@@ -128,8 +128,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         guard let button = statusItem.button else { return }
 
         button.image = NSImage(systemSymbolName: "eject.fill", accessibilityDescription: "Eject")
-        button.toolTip = "DiskEjector"
-        button.setAccessibilityLabel("DiskEjector")
+        button.toolTip = L10n.tr(.appName)
+        button.setAccessibilityLabel(L10n.tr(.appName))
         button.setAccessibilityRole(.button)
         button.setAccessibilityHelp(L10n.tr(.openMainWindow))
         button.target = self
@@ -170,7 +170,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         NSStatusBar.system.removeStatusItem(staleItem)
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         statusItem?.button?.image = NSImage(systemSymbolName: "eject.fill", accessibilityDescription: "Eject")
-        statusItem?.button?.toolTip = "DiskEjector"
+        statusItem?.button?.toolTip = L10n.tr(.appName)
         statusItem?.button?.target = self
         statusItem?.button?.action = #selector(handleStatusItemClick(_:))
     }
@@ -400,7 +400,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             backing: .buffered,
             defer: false
         )
-        win.title = "DiskEjector"
+        win.title = L10n.tr(.appName)
+        // 标题栏不绘制标题文字：红绿灯右侧只留空白，应用身份由状态栏图标与窗口内容表达。
+        // `titleVisibility = .hidden` 只影响绘制，`title` 字符串仍保留——窗口菜单（Window）、
+        // Mission Control、辅助功能读取到的仍是正确的应用名。
+        win.titleVisibility = .hidden
         win.contentView = NSHostingView(rootView: ContentView())
         win.center()
         win.minSize = NSSize(

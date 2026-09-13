@@ -47,6 +47,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PACKAGE_DIR="$SCRIPT_DIR"
 
 APP_NAME="DiskEjector"
+# 面向用户的中文显示名：Finder / Dock / 菜单栏 App 菜单 / 关于面板 / 系统设置里
+# 「完全磁盘访问」授权列表展示的都是它。与 APP_NAME 分开的原因——APP_NAME 同时是
+# .app 目录名、产物文件名（脚本路径、下载链接、CI 都依赖它），改中文会连带破坏这些。
+APP_DISPLAY_NAME="磁盘推出助手"
 EXECUTABLE="DiskEjectorApp"                 # SPM 可执行 target 名
 # ---------------------------------------------------------------
 # 版本号自动派生
@@ -201,9 +205,9 @@ cat > "$APP_BUNDLE/Contents/Info.plist" <<PLIST
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>$APP_NAME</string>
+	<string>$APP_DISPLAY_NAME</string>
 	<key>CFBundleDisplayName</key>
-	<string>$APP_NAME</string>
+	<string>$APP_DISPLAY_NAME</string>
 	<key>CFBundleLocalizations</key>
 	<array>
 		<string>en</string>
