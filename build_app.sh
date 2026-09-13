@@ -51,6 +51,7 @@ APP_NAME="DiskEjector"
 # 「完全磁盘访问」授权列表展示的都是它。与 APP_NAME 分开的原因——APP_NAME 同时是
 # .app 目录名、产物文件名（脚本路径、下载链接、CI 都依赖它），改中文会连带破坏这些。
 APP_DISPLAY_NAME="磁盘推出助手"
+APP_DISPLAY_NAME_HANT="磁碟推出助手"
 EXECUTABLE="DiskEjectorApp"                 # SPM 可执行 target 名
 # ---------------------------------------------------------------
 # 版本号自动派生
@@ -242,6 +243,24 @@ else
     echo "   ⚠ 未找到 ${ICON_SOURCE}，将使用系统默认图标"
     echo "     生成图标：把源图放进 assets/icons/ 后运行 sh scripts/build_icon.sh"
 fi
+
+echo "▶ [3.5/4] 写入本地化应用名（Finder / 系统设置列表取本地化值）..."
+# macOS 对 .app 的**显示名**优先取本地化的 `InfoPlist.strings`：只把 CFBundleDisplayName 写进
+# Info.plist，Finder 与「系统设置 › 完全磁盘访问」列表里看到的仍可能是文件名 DiskEjector。
+# 这里按语言各写一份覆盖值 —— 中文环境显示中文名，英文环境保留 DiskEjector。
+# .app 目录名与产物名仍是 $APP_NAME（下载链接与脚本路径依赖它，不能改中文）。
+write_infoplist_strings() {
+    local lproj="$1" name="$2"
+    local dir="$APP_BUNDLE/Contents/Resources/${lproj}.lproj"
+    mkdir -p "$dir"
+    printf '"CFBundleDisplayName" = "%s";\n"CFBundleName" = "%s";\n' "$name" "$name" \
+        >"$dir/InfoPlist.strings"
+    plutil -convert binary1 "$dir/InfoPlist.strings" >/dev/null 2>&1 || true
+    echo "   ✓ ${lproj}: ${name}"
+}
+write_infoplist_strings "zh-Hans" "$APP_DISPLAY_NAME"
+write_infoplist_strings "zh-Hant" "$APP_DISPLAY_NAME_HANT"
+write_infoplist_strings "en" "$APP_NAME"
 
 echo "▶ [4/4] 签名（Hardened Runtime，渠道=${BUILD_CHANNEL}）..."
 if [ ! -f "$ENTITLEMENTS" ]; then
