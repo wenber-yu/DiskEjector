@@ -217,7 +217,7 @@ cat > "$APP_BUNDLE/Contents/Info.plist" <<PLIST
     <key>ITSAppUsesNonExemptEncryption</key>
     <false/>
     <key>NSHumanReadableCopyright</key>
-    <string>Copyright © 2026 Wenbo. All rights reserved.</string>
+    <string>Copyright © 2026 wenber-yu. Licensed under MIT.</string>
     <key>CFBundleShortVersionString</key>
     <string>$VERSION</string>
 	<key>CFBundleVersion</key>
