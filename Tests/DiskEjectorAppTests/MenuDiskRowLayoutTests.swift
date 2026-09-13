@@ -32,8 +32,8 @@ struct MenuDiskRowLayoutTests {
     )
 
     private let sampleProcesses = [
-        OccupyingProcess(pid: 5340, name: "IINA", path: "/Volumes/My Passport/clip.mp4"),
-        OccupyingProcess(pid: 39298, name: "tail", path: "/Volumes/My Passport/clip.mp4"),
+        OccupyingProcess(pid: 5340, processName: "IINA", path: "/Volumes/My Passport/clip.mp4"),
+        OccupyingProcess(pid: 39298, processName: "tail", path: "/Volumes/My Passport/clip.mp4"),
     ]
 
     /// 菜单栏模式（默认参数）的磁盘行。
@@ -87,6 +87,24 @@ struct MenuDiskRowLayoutTests {
             text?.contains(L10n.tr(.processNameListSeparator)) == true,
             "多个进程之间要用本地化分隔符（中文「、」/ 英文「, 」）"
         )
+    }
+
+    /// **回归**：占用行必须显示**应用名**，而不是进程可执行名。
+    ///
+    /// 用户报的原话是「占用程序的应用叫 Bunny，现在显示的是 IMVIDEO」。
+    /// 这条把该现象钉在文案层：两者不一致时，只能出现应用名。
+    /// （变异：把 `map(\.displayName)` 改回 `map(\.processName)`，本断言立刻变红。）
+    @Test func 占用行显示应用名而不是进程可执行名() {
+        let processes = [
+            OccupyingProcess(
+                pid: 75019, processName: "IMVIDEO", displayName: "Bunny",
+                appBundlePath: "/Applications/IMVIDEO.app", path: "/Volumes/wenbo-data/clip.mp4")
+        ]
+        let text = MenuDiskRowText.occupancy(.occupied(processes))
+        #expect(text?.contains("Bunny") == true, "实际：\(text ?? "nil")")
+        #expect(
+            text?.contains("IMVIDEO") != true,
+            "占用行出现了进程可执行名，用户认不出这是哪个应用；实际：\(text ?? "nil")")
     }
 
     @Test func 总容量以括号附在名称右侧() {

@@ -1,0 +1,322 @@
+import AppKit
+import Darwin
+import Foundation
+import Testing
+
+@testable import DiskEjectorApp
+
+/// 「进程 → 应用身份」解析的测试（``ProcessAppResolver``）。
+///
+/// **为什么需要**：这里修的是一个真机 bug —— 磁盘被 `Bunny` 占用，界面却显示 `IMVIDEO`
+/// 且没有图标。根因是「拿进程可执行名当应用名」，而二者经常不同：
+/// `/Applications/IMVIDEO.app` 的 `CFBundleName` 与可执行文件都叫 `IMVIDEO`，
+/// 但它的本地化显示名（`zh-Hans.lproj/InfoPlist.strings`）是 `Bunny`。
+///
+/// 断言分三层，各自钉死一环：
+/// ① 可执行路径 → **最外层** `.app`（helper 的嵌套 `.app` 必须回到主应用）；
+/// ② bundle → 显示名（**必须走本地化字典**，走 `infoDictionary` 会退回读到原始名）；
+/// ③ 解析不出来时回落进程名 —— 任何情况下都不允许出现空名字。
+///
+/// 第 ④ 组是**端到端**的：真的造一个「显示名 ≠ 可执行名」的 `.app` 并启动它，
+/// 再解析那个真实 PID。这样这条 bug 的判据不依赖机器上装了什么应用、也不依赖系统语言。
+@MainActor
+struct ProcessAppResolverTests {
+
+    // MARK: - 夹具
+
+    /// 一个只用于测试的 `.app`：**显示名与可执行名故意不同**（复刻 `Bunny` / `IMVIDEO`）。
+    private struct Fixture {
+        /// 本地化显示名（`InfoPlist.strings`），即「用户看到的那个名字」。
+        static let localizedDisplayName = "Localized Bunny"
+        /// 可执行文件名（`lsof` 的 `c` 字段会给这个），即「旧实现错误显示的那个名字」。
+        static let executableFileName = "IMVIDEO-LIKE-EXEC"
+
+        let root: URL
+        let bundlePath: String
+        let executablePath: String
+
+        init() throws {
+            let fm = FileManager.default
+            root = fm.temporaryDirectory
+                .appendingPathComponent("resolver-fixture-\(UUID().uuidString)", isDirectory: true)
+            let bundle = root.appendingPathComponent("Bunny Fixture.app", isDirectory: true)
+            let macos = bundle.appendingPathComponent("Contents/MacOS", isDirectory: true)
+            try fm.createDirectory(at: macos, withIntermediateDirectories: true)
+
+            let info = """
+                <?xml version="1.0" encoding="UTF-8"?>
+                <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" \
+                "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+                <plist version="1.0"><dict>
+                <key>CFBundleName</key><string>RAW-NAME-NOT-WANTED</string>
+                <key>CFBundleExecutable</key><string>\(Self.executableFileName)</string>
+                <key>CFBundlePackageType</key><string>APPL</string>
+                <key>CFBundleIdentifier</key><string>com.example.resolverfixture</string>
+                </dict></plist>
+                """
+            try info.write(
+                to: bundle.appendingPathComponent("Contents/Info.plist"),
+                atomically: true, encoding: .utf8)
+
+            // 两种语言都写成同一个值：这样无论测试机的首选语言是哪个，结果都确定，
+            // 而「值来自 InfoPlist.strings 而不是 Info.plist」仍然可被断言。
+            for language in ["zh-Hans", "en"] {
+                let lproj = bundle.appendingPathComponent(
+                    "Contents/Resources/\(language).lproj", isDirectory: true)
+                try fm.createDirectory(at: lproj, withIntermediateDirectories: true)
+                try "\"CFBundleName\" = \"\(Self.localizedDisplayName)\";\n"
+                    .write(
+                        to: lproj.appendingPathComponent("InfoPlist.strings"),
+                        atomically: true, encoding: .utf8)
+            }
+
+            bundlePath = bundle.path
+            executablePath = macos.appendingPathComponent(Self.executableFileName).path
+            // 用系统的 /bin/sleep 当可执行体：我们只关心「这个 PID 会被解析成什么身份」，
+            // 不关心它具体在干什么。
+            try fm.copyItem(atPath: "/bin/sleep", toPath: executablePath)
+            try fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: executablePath)
+        }
+
+        /// 启动夹具进程（跑 30s，测试结束前会被 terminate）。
+        func launch() throws -> Process {
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: executablePath)
+            process.arguments = ["30"]
+            try process.run()
+            return process
+        }
+
+        func cleanUp() {
+            try? FileManager.default.removeItem(at: root)
+        }
+    }
+
+    // MARK: - ① 可执行路径 → 最外层 .app
+
+    @Test func 从可执行路径取出所属应用bundle() {
+        #expect(
+            ProcessAppResolver.owningAppBundlePath(
+                executablePath: "/Applications/IMVIDEO.app/Contents/MacOS/IMVIDEO")
+                == "/Applications/IMVIDEO.app"
+        )
+    }
+
+    /// helper 自己在 `.app` 里还套了一个 `.app`：必须回到**最外层**——
+    /// 用户认知里的应用是 `Google Chrome`，不是 `Google Chrome Helper (Renderer)`。
+    @Test func 嵌套helper回到最外层应用() throws {
+        let helper =
+            "/Applications/Google Chrome.app/Contents/Frameworks/Google Chrome Framework.framework"
+            + "/Versions/Current/Helpers/Google Chrome Helper (Renderer).app/Contents/MacOS/Google Chrome Helper"
+        let found = try #require(ProcessAppResolver.owningAppBundlePath(executablePath: helper))
+        #expect(found == "/Applications/Google Chrome.app", "实际取到：\(found)")
+        #expect(!found.contains("Helper"), "取到了嵌套 helper.app，而不是用户认知里的主应用")
+    }
+
+    /// 非 app 内进程（CLI）不该被硬塞一个应用名。
+    @Test func 非应用内进程没有bundle() {
+        for path in ["/usr/bin/tail", "/opt/homebrew/bin/ffmpeg", "/bin/sleep"] {
+            #expect(
+                ProcessAppResolver.owningAppBundlePath(executablePath: path) == nil,
+                "\(path) 不在任何 .app 内，不应解析出 bundle"
+            )
+        }
+    }
+
+    /// 相对路径 / 空路径不应崩，也不该拼出一个假的绝对路径。
+    @Test func 非绝对路径不解析出bundle() {
+        #expect(ProcessAppResolver.owningAppBundlePath(executablePath: "") == nil)
+        #expect(ProcessAppResolver.owningAppBundlePath(executablePath: "tail") == nil)
+        // 目录名里带 `.app` 但不是后缀（`notes.app.txt`）不算 bundle。
+        #expect(ProcessAppResolver.owningAppBundlePath(executablePath: "/Users/me/notes.app.txt/x") == nil)
+    }
+
+    // MARK: - ② 显示名规整与优先级
+
+    /// `FileManager.displayName` 会带上 `.app`（实测 `/Applications/IMVIDEO.app` → `"Bunny.app"`），
+    /// 直接展示就变成 `Bunny.app`。
+    @Test func 显示名规整剥掉app后缀与空白() {
+        #expect(ProcessAppResolver.normalizedDisplayName("Bunny.app") == "Bunny")
+        #expect(ProcessAppResolver.normalizedDisplayName("  Bunny  ") == "Bunny")
+        #expect(ProcessAppResolver.normalizedDisplayName("Bunny") == "Bunny")
+    }
+
+    @Test func 候选名按优先级跳过空值() {
+        #expect(ProcessAppResolver.firstDisplayName(among: [nil, "", "   ", "Bunny"]) == "Bunny")
+        #expect(ProcessAppResolver.firstDisplayName(among: ["Bunny", "IMVIDEO"]) == "Bunny")
+        #expect(ProcessAppResolver.firstDisplayName(among: [nil, ""]) == nil)
+        #expect(ProcessAppResolver.firstDisplayName(among: []) == nil)
+    }
+
+    /// **这条是本 bug 的核心判据**：bundle 里的显示名必须优先于
+    /// `Info.plist` 的原始名、可执行名、目录名。
+    ///
+    /// 变异测试（改 `localizedInfoDictionary` → `infoDictionary`）会让本断言变红：
+    /// 那时拿到的是 `RAW-NAME-NOT-WANTED`。
+    @Test func 显示名取本地化值而不是原始名() throws {
+        let fixture = try Fixture()
+        defer { fixture.cleanUp() }
+
+        let name = try #require(ProcessAppResolver.appDisplayName(bundlePath: fixture.bundlePath))
+        #expect(name == Fixture.localizedDisplayName, "实际取到：\(name)")
+        #expect(name != Fixture.executableFileName, "拿到了可执行名——正是旧实现显示 IMVIDEO 的原因")
+        #expect(name != "RAW-NAME-NOT-WANTED", "拿到了 Info.plist 原始名，说明没走本地化字典")
+        #expect(!name.hasSuffix(".app"), "显示名不该带 .app 后缀")
+    }
+
+    // MARK: - ③ 解析不出来时回落进程名
+
+    @Test func 未解析时回落为进程名() {
+        let process = OccupyingProcess(pid: 4242, processName: "tail", path: "/Volumes/Demo/x.mp4")
+        #expect(process.displayName == "tail")
+        #expect(process.appBundlePath == nil)
+        #expect(process.executablePath == nil)
+    }
+
+    @Test func 显示名可以显式给出而不改进程名() {
+        let process = OccupyingProcess(
+            pid: 75019, processName: "IMVIDEO", displayName: "Bunny",
+            appBundlePath: "/Applications/IMVIDEO.app", path: "/Volumes/wenbo-data/x.mp4")
+        #expect(process.displayName == "Bunny")
+        #expect(process.processName == "IMVIDEO", "进程名要保留，用于「为什么两个名字不同」的说明")
+        #expect(process.id == 75019)
+    }
+
+    /// 拿**真实 PID** 解析：任何一支都不允许产出空名字。
+    @Test func 真实进程解析出的名字必不为空() {
+        let pid = Int32(ProcessInfo.processInfo.processIdentifier)
+        let resolved = ProcessAppResolver.enrich(
+            OccupyingProcess(pid: pid, processName: "test-runner", path: ""))
+        #expect(!resolved.displayName.isEmpty)
+        #expect(resolved.executablePath != nil, "自己进程的 proc_pidpath 必须取得到")
+        if let bundle = resolved.appBundlePath {
+            #expect(bundle.hasSuffix(".app"))
+        }
+    }
+
+    /// **不在任何 `.app` 内**的 CLI 进程：名字必须回落为进程名。
+    ///
+    /// 这条专门盯住 `enrich` 末尾那条回落分支。它必须真的用一个 `appBundlePath == nil`
+    /// 的进程来测——多数进程都躲在某个 `.app` 里，而 `appDisplayName` 的最后一个候选
+    /// （`FileManager.displayName` = 目录名）**总会返回非空**，于是选错样本时
+    /// 「名字不为空」会被自动满足，回落分支等于没测。
+    /// （变异：把 `?? process.processName` 改成 `?? ""`，本断言立刻变红。）
+    @Test func 非应用内进程回落为进程名() throws {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/sleep")
+        process.arguments = ["30"]
+        try process.run()
+        defer { process.terminate() }
+        var waited = 0
+        while waited < 2000, ProcessAppResolver.executablePath(forPid: process.processIdentifier) == nil {
+            usleep(50_000)
+            waited += 50
+        }
+
+        let resolved = ProcessAppResolver.enrich(
+            OccupyingProcess(pid: process.processIdentifier, processName: "sleep", path: ""))
+        #expect(
+            resolved.appBundlePath == nil,
+            "/bin/sleep 不在任何 .app 内，不应解析出 bundle；实际：\(resolved.appBundlePath ?? "nil")")
+        #expect(resolved.displayName == "sleep", "应回落为进程名，实际：\(resolved.displayName)")
+        #expect(resolved.executablePath == "/bin/sleep")
+    }
+
+    /// 真实运行中的 GUI 应用：显示名必须等于该应用自己的 `localizedName`。
+    ///
+    /// 用 `localizedName` 做期望值而不是写死字符串——系统语言换成英文/繁体时断言依然成立。
+    /// Finder 一直在跑；万一没有 GUI 会话（无头 CI）就跳过，不制造假红。
+    @Test func 运行中应用的显示名等于其localizedName() throws {
+        guard
+            let finder = NSWorkspace.shared.runningApplications.first(where: {
+                $0.bundleIdentifier == "com.apple.finder"
+            }),
+            let finderBundlePath = finder.bundleURL?.path,
+            let finderName = finder.localizedName
+        else {
+            return
+        }
+        let resolved = ProcessAppResolver.enrich(
+            OccupyingProcess(pid: finder.processIdentifier, processName: "Finder", path: ""))
+        #expect(
+            resolved.displayName == finderName,
+            "显示名应取运行中应用的 localizedName（\(finderName)），实际 \(resolved.displayName)")
+        #expect(resolved.appBundlePath == finderBundlePath)
+    }
+
+    // MARK: - ④ 端到端：真的有一个「显示名 ≠ 可执行名」的进程在跑
+
+    /// 复刻用户报的现象：进程可执行名是 `IMVIDEO-LIKE-EXEC`，而它所属应用叫 `Localized Bunny`。
+    /// 解析结果必须是 **应用名**，并且带上可定位图标的 bundle 路径。
+    @Test func 端到端把可执行名解析成应用名() throws {
+        let fixture = try Fixture()
+        defer { fixture.cleanUp() }
+        let process = try fixture.launch()
+        defer { process.terminate() }
+        // 等进程真正起来，避免 proc_pidpath 拿到尚未就绪的 PID。
+        var waited = 0
+        while waited < 2000, ProcessAppResolver.executablePath(forPid: process.processIdentifier) == nil {
+            usleep(50_000)
+            waited += 50
+        }
+
+        let resolved = ProcessAppResolver.enrich(
+            OccupyingProcess(
+                pid: process.processIdentifier,
+                processName: Fixture.executableFileName,
+                path: "/Volumes/Demo/clip.mp4"))
+
+        let bundle = try #require(resolved.appBundlePath, "必须解析出所属 app bundle，否则图标没来源")
+        #expect(bundle.hasSuffix("/Bunny Fixture.app"), "实际：\(bundle)")
+        #expect(
+            resolved.executablePath?.hasSuffix("/\(Fixture.executableFileName)") == true,
+            "实际：\(resolved.executablePath ?? "nil")")
+        #expect(
+            resolved.displayName == Fixture.localizedDisplayName,
+            "界面应显示应用名 \(Fixture.localizedDisplayName)，实际 \(resolved.displayName)")
+        #expect(resolved.displayName != resolved.processName)
+    }
+
+    /// 批量解析与单个解析必须一致（``OccupancyDetector`` 走的是批量那条）。
+    @Test func 批量解析与单个解析结果一致() throws {
+        let fixture = try Fixture()
+        defer { fixture.cleanUp() }
+        let process = try fixture.launch()
+        defer { process.terminate() }
+        let one = OccupyingProcess(
+            pid: process.processIdentifier, processName: Fixture.executableFileName, path: "")
+
+        let singly = ProcessAppResolver.enrich(one)
+        let batch = ProcessAppResolver.enrich([one])
+        #expect(batch == [singly])
+    }
+
+    // MARK: - 图标
+
+    /// 解析不出任何路径时返回 `nil`，让视图回落到 SF Symbol（而不是塞一张白纸通用图标）。
+    @Test func 无路径时图标为nil() {
+        let process = OccupyingProcess(pid: 0, processName: "ghost", path: "")
+        #expect(ProcessAppResolver.icon(for: process) == nil)
+    }
+
+    /// 有应用 bundle 时取到**真图标**：与「通用应用图标」不是同一张。
+    @Test func 应用bundle取到真图标() throws {
+        let fixture = try Fixture()
+        defer { fixture.cleanUp() }
+        let process = OccupyingProcess(
+            pid: 1, processName: Fixture.executableFileName, appBundlePath: fixture.bundlePath, path: "")
+        let icon = try #require(ProcessAppResolver.icon(for: process))
+        let generic = NSWorkspace.shared.icon(for: .application)
+        #expect(icon.tiffRepresentation != generic.tiffRepresentation)
+    }
+
+    // MARK: - 文案格式
+
+    /// `String(format:)` 的占位符数量必须与传参一致，否则会渲染出乱码或崩在格式化上。
+    @Test func 进程名提示格式串含两个占位符() {
+        let format = L10n.tr(.processExecutableNameFormat)
+        #expect(
+            format.components(separatedBy: "%@").count - 1 == 2,
+            "格式串应有 2 个 %@，实际：\(format)")
+    }
+}

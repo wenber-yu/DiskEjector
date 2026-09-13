@@ -23,7 +23,7 @@ struct ProcessTagLayoutTests {
         // 否则 SwiftUI 内部拿 `NSApp` 会崩在隐式解包上。
         _ = NSApplication.shared
         let tag = ProcessTag(
-            process: OccupyingProcess(pid: 4242, name: name, path: "/Volumes/Demo/clip.mp4"))
+            process: OccupyingProcess(pid: 4242, processName: name, path: "/Volumes/Demo/clip.mp4"))
         let hosting = NSHostingController(rootView: tag)
         hosting.view.layoutSubtreeIfNeeded()
         return hosting.view.fittingSize
@@ -49,5 +49,34 @@ struct ProcessTagLayoutTests {
         let size = renderedSize(name: "DemoApp")
         let minimum = 16 + DesignTokens.Size.processTagIcon + 6
         #expect(size.width > minimum, "标签渲染宽度 \(size.width)pt 未超过仅有图标时的最小宽度 \(minimum)pt")
+    }
+
+    /// 造一个 `displayName` / `processName` 各异的标签并返回渲染宽度。
+    private func renderedWidth(displayName: String, processName: String) -> CGFloat {
+        _ = NSApplication.shared
+        let tag = ProcessTag(
+            process: OccupyingProcess(
+                pid: 4242, processName: processName, displayName: displayName,
+                path: "/Volumes/Demo/clip.mp4"))
+        let hosting = NSHostingController(rootView: tag)
+        hosting.view.layoutSubtreeIfNeeded()
+        return hosting.view.fittingSize.width
+    }
+
+    /// **回归**：标签里渲染的是**应用名**（``OccupyingProcess/displayName``），不是进程可执行名。
+    ///
+    /// 用户报的现象是「应用叫 Bunny，界面显示 IMVIDEO」。这里用**渲染宽度**做判据：
+    /// 把长字符串放到 `processName`、短字符串放到 `displayName`，再交换一次比宽度——
+    /// 宽度跟着 `displayName` 走就证明渲染的确实是它。
+    /// （变异：把 `Text(process.displayName)` 改回 `Text(process.processName)`，大小关系反转。）
+    @Test func 渲染的是应用名而不是进程可执行名() {
+        let longName = "IMVIDEO-NOT-SHOWN-NAME"
+        let shortName = "Bunny"
+        let shortAsDisplayName = renderedWidth(displayName: shortName, processName: longName)
+        let longAsDisplayName = renderedWidth(displayName: longName, processName: shortName)
+        #expect(
+            shortAsDisplayName < longAsDisplayName,
+            "标签宽度没跟着 displayName 走（短名 \(shortAsDisplayName)pt / 长名 \(longAsDisplayName)pt）——很可能渲染的是 processName"
+        )
     }
 }

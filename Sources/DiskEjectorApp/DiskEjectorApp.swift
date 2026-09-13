@@ -60,7 +60,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 let desc: String
                 switch result {
                 case .occupied(let ps):
-                    desc = "占用 → " + ps.map { "\($0.name)(PID \($0.pid))" }.joined(separator: ", ")
+                    // 两个名字都打出来：`displayName` 是用户在 Dock 里看到的应用名，
+                    // `processName` 是 lsof 给的可执行名（如 `Bunny` / `IMVIDEO`）。
+                    // 诊断时两者不一致恰恰是排查「显示的应用不对」的关键线索。
+                    desc =
+                        "占用 → "
+                        + ps.map { "\($0.displayName)[\($0.processName)](PID \($0.pid))" }
+                        .joined(separator: ", ")
                 case .needsFullDiskAccess:
                     desc = "未检测到（可能未授予完全磁盘访问，见设置引导）"
                 case .unknown:

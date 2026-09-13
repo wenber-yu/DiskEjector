@@ -123,7 +123,12 @@ class OccupancyDetector: @unchecked Sendable {
         let processes = Self.parseLsof(output)
         if !processes.isEmpty {
             // 能列出进程即证明已授权，直接返回占用列表（核心价值）。
-            return .occupied(processes)
+            //
+            // 这里必须补一步「应用身份解析」：lsof 的 `c` 字段只是可执行名（`IMVIDEO`），
+            // 用户在 Dock 里看到的是应用显示名（`Bunny`）。解析放在检测阶段（每轮一次）
+            // 而不是视图渲染阶段，既避免每帧重复解析，也让下游（含纯函数文案层）拿到的
+            // 就是可直接展示的完整模型。详见 ``ProcessAppResolver``。
+            return .occupied(await ProcessAppResolver.enrich(processes))
         }
         // lsof 空行：已授权 → 确实无占用（可安全推出）；未授权 → 提示授权。
         return authorized ? .none : .needsFullDiskAccess
@@ -134,6 +139,12 @@ class OccupancyDetector: @unchecked Sendable {
     ///  diagnostics 是退出即止的开发者工具，不需要并发；同步执行可彻底避开
     /// 「主线程 `group.wait()` 阻塞」与「`static main()` 返回后进程不等异步 Task」两类生命周期陷阱，
     /// 比用 `Task { await ... }` + `RunLoop` 更可预测。
+    ///
+    /// **标 `@MainActor` 的原因**：尾部要做应用身份解析（``ProcessAppResolver/enrich(_:)``），
+    /// 那条链路走 `NSWorkspace` / `NSRunningApplication`，只能在主 actor 上跑。用类型标注而不是
+    /// `MainActor.assumeIsolated`，是为了让编译器替我们保证这个前提（唯一调用方 `runDiagnostics()`
+    /// 本来就在主 actor 上），而不是在运行时赌它。
+    @MainActor
     func detectSync(mountPath: String) -> OccupancyResult {
         if Self.isSandboxed {
             return .unknown
@@ -144,7 +155,7 @@ class OccupancyDetector: @unchecked Sendable {
         }
         let processes = Self.parseLsof(output)
         if !processes.isEmpty {
-            return .occupied(processes)
+            return .occupied(ProcessAppResolver.enrich(processes))
         }
         return authorized ? .none : .needsFullDiskAccess
     }
@@ -230,7 +241,9 @@ class OccupancyDetector: @unchecked Sendable {
     /// 表现为「占用检测时灵时不灵」，且只在特定应用占用时才复现，极难定位。
     /// `-F` 格式以 `p`/`c`/`n` 前缀标识字段，不存在歧义。
     ///
-    /// 字段含义：`p` = PID，`c` = 命令名，`n` = 文件路径。
+    /// 字段含义：`p` = PID，`c` = 命令名（**可执行名，不等于用户看到的应用名**，
+    /// 例：`IMVIDEO` 这个进程对应的应用显示名是 `Bunny`，见 ``OccupyingProcess``），
+    /// `n` = 文件路径。
     ///
     /// **输出结构是「每个字段后跟一个 NUL」，不是「每条记录后跟一个 NUL」**——
     /// 这点必须实测确认，凭直觉按记录切分会得到一串孤立字段，解析结果恒为空。
@@ -254,8 +267,10 @@ class OccupancyDetector: @unchecked Sendable {
             }
             guard let pid, let command, !command.isEmpty else { return }
             // 保留首个路径即可：UI 只需要一个代表路径，重复展示同一进程没有意义。
+            // 这里只填 lsof 给得出的字段；`displayName` / 图标所需的路径由
+            // ``ProcessAppResolver`` 在解析阶段补齐（本函数保持纯字符串处理、可单测）。
             if byPid[pid] == nil {
-                byPid[pid] = OccupyingProcess(pid: pid, name: command, path: path ?? "")
+                byPid[pid] = OccupyingProcess(pid: pid, processName: command, path: path ?? "")
             }
         }
 

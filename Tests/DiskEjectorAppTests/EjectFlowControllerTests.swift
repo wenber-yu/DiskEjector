@@ -64,7 +64,7 @@ struct EjectFlowControllerTests {
 
     @Test func checkOccupancy透传检测结果与挂载路径() async {
         let mock = MockOccupancyDetector()
-        let expected = [OccupyingProcess(pid: 42, name: "IINA", path: "/Applications/IINA.app")]
+        let expected = [OccupyingProcess(pid: 42, processName: "IINA", path: "/Applications/IINA.app")]
         mock.result = .occupied(expected)
         let controller = EjectFlowController(occupancyDetector: mock)
 
@@ -113,7 +113,7 @@ struct EjectFlowControllerTests {
         let mockEject = MockEjectService()
         mockEject.ejectResult = .failure(.inUse)
         let mockDetect = MockOccupancyDetector()
-        let expected = [OccupyingProcess(pid: 42, name: "IINA", path: "/x.mp4")]
+        let expected = [OccupyingProcess(pid: 42, processName: "IINA", path: "/x.mp4")]
         mockDetect.result = .occupied(expected)
         let controller = EjectFlowController(ejectService: mockEject, occupancyDetector: mockDetect)
 
@@ -154,7 +154,7 @@ struct EjectFlowControllerTests {
         mockDetect.result = .none  // 复检认为已无占用
         let controller = EjectFlowController(ejectService: mockEject, occupancyDetector: mockDetect)
 
-        let processes = [OccupyingProcess(pid: 9_999_999, name: "Ghost", path: "")]
+        let processes = [OccupyingProcess(pid: 9_999_999, processName: "Ghost", path: "")]
         let result = await controller.terminateAndEject(disk: disk, processes: processes)
 
         guard case .ejected = result else {
@@ -169,7 +169,7 @@ struct EjectFlowControllerTests {
     @Test func busyMessage带进程时返回引导句不含进程列表() {
         let controller = EjectFlowController()
         let disk = makeDisk()
-        let processes = [OccupyingProcess(pid: 42, name: "IINA", path: "")]
+        let processes = [OccupyingProcess(pid: 42, processName: "IINA", path: "")]
         let message = controller.busyMessage(disk: disk, occupying: processes)
         // 引导句是设计稿"推出确认对话框"的固定文案（不带磁盘名——磁盘名已放在弹窗标题里）。
         let expected = L10n.tr(.ejectBusyMessageFormat)
@@ -218,7 +218,7 @@ struct EjectFlowControllerTests {
     /// 之前回归过一次：用户截图显示图标在弹窗右下角按钮上方，就是这个原因。
     @MainActor
     @Test func processListView容器有足够宽度避免被alert挤压() {
-        let view = EjectUI.processListView([OccupyingProcess(pid: 42, name: "IINA", path: "")])
+        let view = EjectUI.processListView([OccupyingProcess(pid: 42, processName: "IINA", path: "")])
         #expect(view.frame.width >= 200, "accessoryView 容器必须有明确宽度，NSAlert 才能正确摆放")
     }
 }

@@ -194,13 +194,16 @@ enum MenuDiskRowText {
             + "\(L10n.tr(.freeSpace)) \(disk.freeFormatted)"
     }
 
-    /// ③ 占用进程行，如「占用程序: IINA、tail」。列表分隔符随语言（中文「、」/ 英文「, 」）。
+    /// ③ 占用进程行，如「占用程序: Bunny、tail」。列表分隔符随语言（中文「、」/ 英文「, 」）。
+    ///
+    /// 用的是 ``OccupyingProcess/displayName``（**应用显示名**，如 `Bunny`）而不是
+    /// ``OccupyingProcess/processName``（可执行名，如 `IMVIDEO`）——后者是用户认不出的内部名字。
     ///
     /// **没有可列出的进程时返回 `nil`**，调用方据此**整行不渲染**，行高自适应。
     /// 注意 `.needsFullDiskAccess` / `.unknown` 也返回 `nil`——它们是「不知道」而不是
     /// 「没有占用」，若渲染成「无进程占用」会让用户误以为可以安全推出。
     static func occupancy(_ result: OccupancyResult) -> String? {
-        let names = result.processes.map(\.name)
+        let names = result.processes.map(\.displayName)
         guard !names.isEmpty else { return nil }
         let joined = names.joined(separator: L10n.tr(.processNameListSeparator))
         return "\(L10n.tr(.occupiedProcessesTitle)) \(joined)"

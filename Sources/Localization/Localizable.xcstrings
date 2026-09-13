@@ -435,6 +435,13 @@
         "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "確定" } }
       }
     },
+    "processExecutableNameFormat" : {
+      "localizations" : {
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "%@（进程名 %@）" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "%@ (process name: %@)" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "%@（程式名稱 %@）" } }
+      }
+    },
     "processItemFormat" : {
       "localizations" : {
         "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "• %@ (PID: %d)" } },

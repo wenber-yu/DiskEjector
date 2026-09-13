@@ -6,6 +6,10 @@ import Testing
 ///
 /// 这些夹具取自本机**真实**执行 `lsof -Fpcn0 /Volumes/wenbo-data` 的原始字节，
 /// 不是凭格式文档臆造——解析契约一旦与实际情况有偏差，测试必须能发现。
+///
+/// 断言的是 ``OccupyingProcess/processName``（`lsof` 的 `c` 字段，可执行名）。
+/// 这个阶段还没有「应用身份」可言：把 `IMVIDEO` 还原成应用名 `Bunny` 是
+/// ``ProcessAppResolver`` 的职责，它的测试在 `ProcessAppResolverTests`。
 @Suite("lsof 输出解析")
 struct LsofParsingTests {
 
@@ -17,7 +21,7 @@ struct LsofParsingTests {
 
         #expect(result.count == 1)
         #expect(result.first?.pid == 17917)
-        #expect(result.first?.name == "IINA")
+        #expect(result.first?.processName == "IINA")
         #expect(result.first?.path == "/Volumes/wenbo-data/X/03.mp4")
     }
 
@@ -30,7 +34,7 @@ struct LsofParsingTests {
 
         #expect(result.count == 1)
         #expect(result.first?.pid == 421)
-        #expect(result.first?.name == "Google Chrome")
+        #expect(result.first?.processName == "Google Chrome")
     }
 
     /// 同一进程通过多个 fd 访问同一卷：输出里会有多组字段，应按 PID 去重。
@@ -57,7 +61,7 @@ struct LsofParsingTests {
         let result = OccupancyDetector.parseLsof(output)
 
         #expect(result.map(\.pid) == [100, 300])
-        #expect(result.map(\.name) == ["AAA", "BBB"])
+        #expect(result.map(\.processName) == ["AAA", "BBB"])
     }
 
     /// **回归**：多进程同时占用时不得塌缩成一条、也不得张冠李戴。
@@ -73,9 +77,9 @@ struct LsofParsingTests {
 
         #expect(result.count == 2)
         #expect(result.map(\.pid) == [5340, 39298])
-        #expect(result.map(\.name) == ["IINA", "tail"])
-        #expect(result.first { $0.pid == 5340 }?.name == "IINA")
-        #expect(result.first { $0.pid == 39298 }?.name == "tail")
+        #expect(result.map(\.processName) == ["IINA", "tail"])
+        #expect(result.first { $0.pid == 5340 }?.processName == "IINA")
+        #expect(result.first { $0.pid == 39298 }?.processName == "tail")
     }
 
     /// PID 非法时该条记录应被丢弃，而不是崩溃或产生脏数据。
@@ -84,7 +88,7 @@ struct LsofParsingTests {
         let result = OccupancyDetector.parseLsof(output)
 
         #expect(result.count == 1)
-        #expect(result.first?.name == "Good")
+        #expect(result.first?.processName == "Good")
     }
 
     /// 空输出（无占用）应得到空数组。

@@ -70,6 +70,9 @@ enum EjectUI {
 
     /// 构建占用进程列表视图：每行一个「应用图标 + 名称」，末尾紧跟「关闭会丢失数据」警示。
     ///
+    /// 名称与图标都取**解析后的应用身份**（``OccupyingProcess/displayName`` +
+    /// ``ProcessAppResolver``），而不是 lsof 给的进程可执行名。
+    ///
     /// **必须用有明确 frame 宽度的 NSView 容器包住 stack**：NSStackView 没有
     /// `intrinsicContentSize`，如果直接作为 accessoryView 传给 NSAlert，alert 拿不到尺寸
     /// 就会把它压成最小区域、漂到按钮右上角（图 + 文被排成单行贴按钮）。用一个宽度 280
@@ -104,7 +107,10 @@ enum EjectUI {
             row.alignment = .centerY
 
             let iconView = NSImageView()
-            iconView.image = process.appIcon() ?? NSWorkspace.shared.icon(for: .application)
+            // 图标从解析出的 app bundle 路径取；取不到才回落到通用应用图标。
+            // 注意不能拿进程名去猜——`IMVIDEO` 猜不到 `Bunny`（见 ``ProcessAppResolver``）。
+            iconView.image =
+                ProcessAppResolver.icon(for: process) ?? NSWorkspace.shared.icon(for: .application)
             iconView.imageScaling = .scaleProportionallyUpOrDown
             iconView.translatesAutoresizingMaskIntoConstraints = false
             NSLayoutConstraint.activate([
@@ -112,7 +118,8 @@ enum EjectUI {
                 iconView.heightAnchor.constraint(equalToConstant: 18),
             ])
 
-            let nameLabel = NSTextField(labelWithString: process.name)
+            // 展示应用显示名（`Bunny`），不是进程可执行名（`IMVIDEO`）。
+            let nameLabel = NSTextField(labelWithString: process.displayName)
             nameLabel.font = .systemFont(ofSize: 13)
             nameLabel.lineBreakMode = .byTruncatingTail
 

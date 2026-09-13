@@ -223,6 +223,10 @@ struct TextButton: View {
 // 宽度按内容自适应（不设 maxWidth）：让 pill 紧贴内容、左右不留大片空白，
 // 多个 pill 在磁盘行下方排成一行，视觉上更轻盈。
 // 名称过长时单行截断（`.truncationMode(.tail)`），靠 `.help()` 暴露完整名给用户。
+//
+// **「应用名」与「图标」都来自 ``OccupyingProcess/displayName`` 与 ``ProcessAppResolver``**：
+// 不再直接用进程可执行名（会把 `Bunny` 显示成 `IMVIDEO`），也不再按名字模糊匹配图标
+// （匹配不上就只剩通用图标）。图标取不到时才回落到 SF Symbol。
 
 struct ProcessTag: View {
     let process: OccupyingProcess
@@ -237,7 +241,7 @@ struct ProcessTag: View {
             iconView
                 // 显式固定图标容器为 iconSize，避免 NSImage 自带透明边距影响视觉中心。
                 .frame(width: iconSize, height: iconSize)
-            Text(process.name)
+            Text(process.displayName)
                 .font(.system(size: DesignTokens.FontSize.processTag, weight: .regular))
                 .foregroundStyle(DesignTokens.Palette.foreground)
                 .lineLimit(1)
@@ -261,14 +265,25 @@ struct ProcessTag: View {
             RoundedRectangle(cornerRadius: DesignTokens.Radius.md, style: .continuous)
                 .fill(DesignTokens.Palette.mutedBackground)
         )
-        .help(process.name)
+        .help(tooltip)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(process.name)
+        .accessibilityLabel(process.displayName)
+    }
+
+    /// 悬停提示：显示名与进程名一致时就是显示名；不一致时补上进程名。
+    ///
+    /// 这一行的价值是**让用户能自己验证**——磁盘明明是被 `Bunny` 占用的，为什么在系统的进程
+    /// 列表里找不到 `Bunny`？因为它的可执行文件叫 `IMVIDEO`。两个名字都给出来，
+    /// 用户既能确认「就是它」，也不会再被两个名字搞混。
+    private var tooltip: String {
+        guard process.displayName != process.processName else { return process.displayName }
+        return String(
+            format: L10n.tr(.processExecutableNameFormat), process.displayName, process.processName)
     }
 
     @ViewBuilder
     private var iconView: some View {
-        if let icon = process.appIcon() {
+        if let icon = ProcessAppResolver.icon(for: process) {
             Image(nsImage: icon)
                 .resizable()
                 .frame(width: iconSize, height: iconSize)
