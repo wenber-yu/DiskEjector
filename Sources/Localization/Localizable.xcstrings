@@ -36,6 +36,13 @@
         "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "%@ / 已用: %@ / 剩餘: %@" } }
       }
     },
+    "capacityInParenthesesFormat" : {
+      "localizations" : {
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "（%@）" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "(%@)" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "（%@）" } }
+      }
+    },
     "colorBlue" : {
       "localizations" : {
         "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "蓝色" } },
@@ -447,6 +454,13 @@
         "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "• %@ (PID: %d)" } },
         "en" : { "stringUnit" : { "state" : "translated", "value" : "• %@ (PID: %d)" } },
         "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "• %@ (PID: %d)" } }
+      }
+    },
+    "processNameListSeparator" : {
+      "localizations" : {
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "、" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : ", " } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "、" } }
       }
     },
     "quit" : {
