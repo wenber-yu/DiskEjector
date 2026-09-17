@@ -24,8 +24,14 @@ import SwiftUI
 ///    完整取证（逐文件 diff + 触发链）见 `DESIGN-SPEC.md` §8.28.6。
 ///
 /// 所以：**任何渲染 `ContentView` 的测试都必须经过本文件的工厂，不要写 `ContentView()`。**
-/// 例外只有 ``SnapshotRenderTests`` —— 它出的就是「本机真实磁盘」的走查图，是刻意要真实数据，
-/// 且只在 `DE_SNAPSHOTS=1` 下运行，不参与日常测试与覆盖率。
+///
+/// ## 出图侧也从这里走（2026-09-17 补）
+///
+/// ``SnapshotRenderTests`` 里仍有**一版**刻意渲染本机真实磁盘（`ContentView(skipsInitialRefresh: true)`），
+/// 那是**有意**的：它记录「这台机器上长什么样」。但「多盘并列 / 忙态 / 紧凑行」那几版
+/// **结构上照不出来**，已改为走本文件的 ``mainWindow(disks:occupancy:)``。
+/// 所以「例外只有出图」这句话已经过期 —— **出图侧同样有替身版**，
+/// 新增出图请优先走替身（与机器无关，任何机器上出的图都一样）。
 @MainActor
 enum ViewFixtures {
 
@@ -72,6 +78,52 @@ enum ViewFixtures {
         let s = stores(disks: disks)
         return ContentView(
             skipsInitialRefresh: skipsInitialRefresh,
+            store: s.disk,
+            occupancyStore: s.occupancy
+        )
+    }
+
+    /// 造一对**配对**的替身 store，且**占用结论逐块给定**。
+    ///
+    /// 与上面那个同名工厂的区别只有一处：`detect` 不再是生产链路，而是一张
+    /// **`DiskInfo/id` → 结论**的查表。要渲染「多盘并列 / 忙态」就必须有这个口子 ——
+    /// 默认那条 `detect` 走到 `EjectFlowController.checkOccupancy`，会真的跑 `lsof`，
+    /// 结论还随测试机上开着什么程序变。
+    ///
+    /// 表里没有的盘回 `.none`（「已确认没有占用」），**不是 `.unknown`** ——
+    /// 这里要的是**确定**的渲染输入；`result(for:)` 的 `.unknown` 兜底是给「还没测出来」用的，
+    /// 两者语义不同，别混。
+    static func stores(
+        disks: [DiskInfo],
+        occupancy: [String: OccupancyResult]
+    ) -> (disk: DiskListStore, occupancy: OccupancyStore) {
+        let store = DiskListStore(monitoring: false)
+        store.replaceDisksForTesting(disks)
+        let occupancyStore = OccupancyStore(
+            diskStore: store,
+            detect: { path in occupancy[path] ?? OccupancyResult.none },
+            autoStart: false)
+        return (store, occupancyStore)
+    }
+
+    /// 造一个**占用结论逐块给定**的主窗口内容。
+    ///
+    /// - Parameters:
+    ///   - disks: 要渲染的磁盘列表。
+    ///   - occupancy: `DiskInfo/mountPath` → 结论。`detect` 收到的是挂载路径。
+    ///
+    /// **为什么是 `async`**：``OccupancyStore/refresh(disks:)`` 是异步的，
+    /// 而 `cacheDisplay` 是**同步**截的 —— 不在建视图之前把它 `await` 完，
+    /// 截到的就是「列表已经排好、结论还是空字典」的那一帧（每块盘都画成 `.unknown`）。
+    /// 这与 `skipsInitialRefresh` 要解决的是同一类问题：**别让截图落在中途状态上**。
+    static func mainWindow(
+        disks: [DiskInfo],
+        occupancy: [String: OccupancyResult]
+    ) async -> ContentView {
+        let s = stores(disks: disks, occupancy: occupancy)
+        await s.occupancy.refresh(disks: disks)
+        return ContentView(
+            skipsInitialRefresh: true,
             store: s.disk,
             occupancyStore: s.occupancy
         )

@@ -124,6 +124,12 @@ struct ContentView: View {
     /// ⚠️ 也**不要**在出图侧补 `await OccupancyStore.shared.refresh(disks:)` —— 那会真的跑
     /// `lsof`，实测把出图从十几秒拖到 6 分钟以上。
     ///
+    /// **2026-09-17 补**：上面说的是「渲染本机真实磁盘」那一版出图。出图侧现在还有
+    /// **注入夹具**的几版（多盘并列 / 忙态 / 紧凑行）—— 那几版走
+    /// ``ViewFixtures/mainWindow(disks:occupancy:)``，两个 store 都是替身。
+    /// 它们的 `occupancy` 必须**在截图之前 `await` 完**：`cacheDisplay` 是同步截的，
+    /// 没 await 完就会截到「列表已排好、结论还是空字典」那一帧（每块盘都画成 `.unknown`）。
+    ///
     /// ## 它是什么
     ///
     /// 与 ``DiskListStore`` 的 `monitoring:`、``OccupancyStore`` 的 `autoStart:` 同一种

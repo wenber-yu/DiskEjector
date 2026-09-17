@@ -23,11 +23,15 @@ import Testing
 ///
 /// **覆盖面与已知缺口**：
 /// - ✅ 磁盘行三种判定 × 明暗、紧凑行、设置面板、FDA 两种横幅、空状态、占用/失败弹窗
-/// - ✅ 主窗口与菜单栏面板：渲染**真实** `DiskListStore` 的内容（本机 1 块外接盘，
-///   首帧占用态为 `.unknown`，正好对应设计稿的未授权变体）
-/// - ⚠️ **未覆盖**：多盘并列 / 忙态的主窗口与面板 —— `DiskListStore.disks` 是
-///   `private(set)` 且 `init` 私有，视图也直读 `.shared`，没有注入口。
-///   要覆盖这些状态得给 `DiskListStore` / `ContentView` 加依赖注入，属独立改动。
+/// - ✅ 主窗口：**本机真实磁盘**一版（本机 1 块外接盘，首帧占用态为 `.unknown`，
+///   正好对应设计稿的未授权变体）＋ **注入的多盘并列 / 忙态 / 紧凑行**三版
+/// - ✅ 菜单栏面板：注入设计稿那两块盘（Samsung T7 忙 / WD Blue 安全）
+///
+/// ⚠️ **2026-09-17 补**：本文件此前在文件头写着「未覆盖：多盘并列 / 忙态的主窗口与面板 ——
+/// 没有注入口，属独立改动」。注入口在 §8.29 / §8.30 补齐后，**这条缺口一直没回来关**，
+/// 于是走查图长期只有「本机恰好插着的那一块盘」。
+/// 现在多盘那几版走 ``ViewFixtures/mainWindow(disks:occupancy:)``。
+/// **机器无关的断言**在 `MainWindowDiskListTests`（出图不进 CI，光有图没有牙）。
 @MainActor
 struct SnapshotRenderTests {
 
@@ -77,6 +81,25 @@ struct SnapshotRenderTests {
             deviceModel: "WD Blue SN570"
         ),
     ]
+
+    /// 造一块夹具盘。紧凑行那一组要在 ``designDisks`` 之外再补两块。
+    ///
+    /// 拆成局部常量是**必需**的，不是风格偏好：把整个 `DiskInfo(...)` 字面量塞进数组里，
+    /// 类型检查器会超时（实测 `unable to type-check this expression in reasonable time`）。
+    private func fixtureDisk(name: String, bsd: String, total: Int64, used: Int64) -> DiskInfo {
+        let path = "/Volumes/\(name)"
+        return DiskInfo(
+            id: path,
+            bsdName: bsd,
+            volumeName: name,
+            mountPath: path,
+            totalBytes: total,
+            usedBytes: used,
+            freeBytes: total - used,
+            deviceProtocol: "USB",
+            deviceModel: "SanDisk Extreme 55AE"
+        )
+    }
 
     // MARK: - 位图写出
 
@@ -230,6 +253,56 @@ struct SnapshotRenderTests {
         try dump(
             ContentView(skipsInitialRefresh: true), width: DesignTokens.Size.mainWindow.width,
             height: DesignTokens.Size.mainWindow.height, name: "main-window-dark", dark: true)
+
+        // ---- 主窗口：多盘并列 + 忙态（**注入夹具**，与机器无关）----
+        //
+        // 上面两版画的是**本机真实磁盘**（本机 1 块），所以「多盘并列」与「忙态」
+        // 在这两版里**结构上照不出来** —— 这正是本文件此前记的缺口。
+        //
+        // 这两组用 ``ViewFixtures/mainWindow(disks:occupancy:)``：
+        // - `main-window-multi`：设计稿 `01-main-window.html` 的两块样本盘
+        //   （Samsung T7 忙 / WD Blue 安全），与面板那一段**同源**；
+        // - `main-window-compact`：≥ 4 块 → 紧凑行（设计稿 §3.3），
+        //   一忙一安全交替，一次看清紧凑行的两种配色。
+        //
+        // ⚠️ **不能只靠出图**：本文件只在 `DE_SNAPSHOTS=1` 下跑，不进 CI。
+        // 机器无关的断言在 `MainWindowDiskListTests`（数琥珀条）。
+        let multiOccupancy: [String: OccupancyResult] = [
+            "/Volumes/Samsung T7": .occupied([
+                OccupyingProcess(pid: 501, processName: "Finder", path: "/Volumes/Samsung T7/a.mov"),
+                OccupyingProcess(pid: 502, processName: "图像捕捉", path: "/Volumes/Samsung T7/b.heic"),
+            ]),
+            "/Volumes/WD Blue": OccupancyResult.none,
+        ]
+        let multiWindow = await ViewFixtures.mainWindow(
+            disks: designDisks, occupancy: multiOccupancy)
+        try dump(
+            multiWindow, width: DesignTokens.Size.mainWindow.width,
+            height: DesignTokens.Size.mainWindow.height, name: "main-window-multi-light")
+        try dump(
+            multiWindow, width: DesignTokens.Size.mainWindow.width,
+            height: DesignTokens.Size.mainWindow.height, name: "main-window-multi-dark", dark: true)
+
+        let compactDisks = [
+            fixtureDisk(name: "Samsung T7", bsd: "disk5s2", total: 1_000_000_000_000, used: 300_000_000_000),
+            fixtureDisk(name: "WD Blue", bsd: "disk6s2", total: 500_000_000_000, used: 120_000_000_000),
+            fixtureDisk(name: "影音盘", bsd: "disk7s2", total: 2_000_000_000_000, used: 1_700_000_000_000),
+            fixtureDisk(name: "备份盘", bsd: "disk8s2", total: 4_000_000_000_000, used: 2_600_000_000_000),
+        ]
+        var compactOccupancy: [String: OccupancyResult] = [:]
+        for (i, d) in compactDisks.enumerated() {
+            let pid = Int32(900 + i)
+            let probe = d.mountPath + "/a.mov"
+            compactOccupancy[d.mountPath] =
+                i.isMultiple(of: 2)
+                ? .occupied([OccupyingProcess(pid: pid, processName: "Finder", path: probe)])
+                : OccupancyResult.none
+        }
+        let compactWindow = await ViewFixtures.mainWindow(
+            disks: compactDisks, occupancy: compactOccupancy)
+        try dump(
+            compactWindow, width: DesignTokens.Size.mainWindow.width,
+            height: DesignTokens.Size.mainWindow.height, name: "main-window-compact-light")
 
         // ---- 菜单栏面板（设计稿 02-menu-bar.html）----
         //
