@@ -157,7 +157,7 @@ struct MainMenuTests {
 
         #expect(
             L10n.tr(panelQuit.titleKey) == quitItem.title,
-            "面板的退出项写着「\(L10n.tr(panelQuit.titleKey))」，主菜单的 ⌘Q 写着「\(quitItem.title ?? "")」—— 同一个动作，两种名字"
+            "面板的退出项写着「\(L10n.tr(panelQuit.titleKey))」，主菜单的 ⌘Q 写着「\(quitItem.title)」—— 同一个动作，两种名字"
         )
     }
 

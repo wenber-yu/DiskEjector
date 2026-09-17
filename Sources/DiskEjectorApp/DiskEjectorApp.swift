@@ -8,6 +8,18 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem!
     private var statusPopover: NSPopover!
     private var mainWindow: NSWindow!
+
+    /// 建 `mainWindow` 时用的磁盘列表来源 —— **供自检核对「窗口渲染的确实是这份数据」**。
+    ///
+    /// **为什么必须记在这里**：``checkEmptyStateInsteadOfSkeleton`` 的前置条件是
+    /// 「这份 store 里没有磁盘就往下查，有就跳过」。如果那个 store 是由调用方传进来的，
+    /// 就可能出现「拿空 store 通过前置检查、却在看一份有盘窗口」——
+    /// 断言会**因为别的原因变绿**（磁盘行墨迹也是数千量级，像素判据分不出来）。
+    /// 2026-09-17 实测踩到：`--preview-main-window-empty-keys` 报「空状态核对通过」，
+    /// 而抓下来的窗口图里画着 `wenbo-data 4 TB`（详见 SPEC §8.29）。
+    ///
+    /// `nil` 表示窗口是用生产路径建的（等价于 ``DiskListStore/shared``）。
+    private var mainWindowStore: DiskListStore?
     private var settingsWindow: NSWindow?
     /// 「完全磁盘访问」引导面板（设计稿 `04-onboarding.html`）。
     ///
@@ -95,8 +107,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // 离屏**结构上测不到**（离屏没有窗口就没有安全区）。实测踩过：
         // 玻璃从 `ZStack` 挪到 `.background(...)` 时丢了 `.ignoresSafeArea()`，
         // 真机上标题栏整条露出桌面，而离屏快照仍是满窗玻璃、全绿。
+        let autoMainWindowEmptyKeys = CommandLine.arguments.contains("--preview-main-window-empty-keys")
         let autoMainWindowKeys = CommandLine.arguments.contains("--preview-main-window-keys")
-        if autoMainWindowKeys || CommandLine.arguments.contains("--preview-main-window") {
+        // **空状态版优先**：两个都传时只跑空状态版 —— 否则会连做两遍断言并各调一次 `exit`。
+        //
+        // 这一版存在的理由：主窗口「列表为空 → 画空状态（而不是首屏骨架层）」那条分支
+        // 此前**只能靠本机恰好没插盘才走得到**，守着它的断言大部分时间在跳过。
+        // 现在注入一个空列表，任何硬件状态下都跑得了。见 ``runMainWindowPreview``。
+        if autoMainWindowEmptyKeys || CommandLine.arguments.contains("--preview-main-window-empty") {
+            delegate.runMainWindowPreview(autoKeys: autoMainWindowEmptyKeys, emptyDisks: true)
+        } else if autoMainWindowKeys || CommandLine.arguments.contains("--preview-main-window") {
             delegate.runMainWindowPreview(autoKeys: autoMainWindowKeys)
         }
 
@@ -840,15 +860,81 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     ///
     /// **只读**：不动任何磁盘、不写偏好。
     ///
-    /// 跑法：
+    /// 跑法（`emptyDisks` 版见下）：
     /// - 人工核对：`DiskEjectorApp --preview-main-window`（窗口留在屏幕上，核对完 ⌘Q）
     /// - 自动验证：`DiskEjectorApp --preview-main-window-keys`（跑完即退出，退出码 0 = 全通过）
+    /// - **空状态**（注入空磁盘列表，任何硬件状态下都能跑）：
+    ///   `--preview-main-window-empty` / `--preview-main-window-empty-keys`
+    ///
+    /// `emptyDisks: true` 时窗口里渲染的是**空状态**，而 ``checkEmptyStateInsteadOfSkeleton``
+    /// 此时不再跳过 —— 它原先只在「本机恰好没插盘」时才执行（见那个函数的说明）。
     @MainActor
-    private func runMainWindowPreview(autoKeys: Bool) {
+    private func runMainWindowPreview(autoKeys: Bool, emptyDisks: Bool = false) {
+        // **空状态自检必须注入一个「列表恒为空」的 store。**
+        //
+        // 为什么：``checkEmptyStateInsteadOfSkeleton`` 的判据只在「列表区画的是空状态」时成立，
+        // 而列表来源此前是硬编码的 ``DiskListStore/shared`` —— 于是那条断言
+        // **只在开发者本机恰好没插盘时才真的跑**，其余时候它都在打印「跳过」。
+        // 一个大部分时间不执行的守卫等于没有守卫：它会给人一种「有覆盖」的错觉。
+        //
+        // `monitoring: false` 的理由：不挂系统挂载监听。预览进程里插入/拔出磁盘
+        // 不该改变断言的前提（那是**硬件**在决定测试跑不跑，正是要消灭的东西）。
+        // 同时 `skipsInitialRefresh: true` 挡住 `.task` 里的自动枚举 ——
+        // 否则列表会被真实硬件重新填满，断言又会静默退化成「跳过」。
+        #if DEBUG
+            let injected: DiskListStore? = emptyDisks ? DiskListStore(monitoring: false) : nil
+        #else
+            // 注入点依赖 `#if DEBUG` 的 ``DiskListStore/init(monitoring:)``，发布构建拿不到。
+            // **明确报错退出，不要静默退化成「正常预览」** —— 那会让调用方以为空状态查过了。
+            if emptyDisks {
+                print("❌ --preview-main-window-empty-* 只在 DEBUG 构建可用（需要注入 store）")
+                exit(2)
+            }
+            let injected: DiskListStore? = nil
+        #endif
+
         Task {
             var mismatches: [String] = []
 
+            // **先让位**：`applicationDidFinishLaunching` 里的 `setupMainWindow()` 会**先**建一次窗口 ——
+            // 它在本 `Task` 之前执行（`Task` 是在 `app.run()` 之后才被调度的）。
+            // 那次建出来的窗口用的是**生产 store**，而 `setupMainWindow` 有 `guard mainWindow == nil`，
+            // 于是注入会被**静默吃掉**：窗口照旧画磁盘行，守卫却拿着空 store 通过了前置检查。
+            // 2026-09-17 实测踩到 —— 抓到一张画着「wenbo-data 4 TB」的「空状态核对通过」。
+            if injected != nil, let stale = mainWindow {
+                stale.close()
+                mainWindow = nil
+            }
+            setupMainWindow(store: injected, skipsInitialRefresh: emptyDisks)
+
+            // **让空状态自检也不依赖系统外观。**
+            //
+            // 「深色像素」判据只在浅色底上成立 —— 深色底本身就是深色像素，整屏都会被算成墨迹。
+            // 旧写法在深色模式下**跳过**，也就是「开着深色模式的机器上，这条断言永远不跑」。
+            // 与「本机没插盘」是**同一个病根**：让环境决定守卫跑不跑。
+            //
+            // 与其跳过，不如把窗口切成浅色 —— 判据要什么底，就给它什么底。
+            // **在窗口上屏之前设**，这样第一帧就是浅色，不需要「等重绘」（那又是一次时序赌博）。
+            // 只在自动（门槛）模式做：人工核对模式保留用户自己的外观，看着更真实。
+            if emptyDisks, autoKeys {
+                mainWindow.appearance = NSAppearance(named: .aqua)
+            }
+
             showMainWindow()
+
+            // **自证：注入真的生效了。**
+            // 这一条防的是「守卫因为别的原因通过」—— 光看像素数分不出窗口里画的是
+            // 空状态还是磁盘行（两者墨迹都是数千量级），必须核对**数据来源的身份**。
+            if let injected, mainWindowStore !== injected {
+                let actual =
+                    mainWindowStore.map { "有 \($0.disks.count) 块盘的注入 store" }
+                    ?? "生产 store（DiskListStore.shared）"
+                mismatches.append(
+                    "注入的磁盘列表没有生效：主窗口读的是\(actual)，不是刚注入的那个空列表。"
+                        + "空状态自检会因此变成**假绿**（它量到的是磁盘行的墨迹）或**静默跳过**。"
+                        + "多半是 `applicationDidFinishLaunching` 抢在前面把窗口建好了 —— "
+                        + "见 ``runMainWindowPreview`` 里「先让位」那一段。")
+            }
             NSApp.activate(ignoringOtherApps: true)
             await waitUntilAppIsActive()
             // ⚠️ **「应用活跃」不等于「主窗口是 key」**：交通灯的红色只在 **key 窗口**上画，
@@ -859,6 +945,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             // 要等 AppKit 那一层真的建出来才找得到）。
             try? await Task.sleep(nanoseconds: 600_000_000)
 
+            // store 不在这里传：被调方直接读 ``mainWindowStore``（**建窗时记下的那一份**）。
+            // 由调用方传的话，两边一旦不一致，守卫就会拿一份 store 做前置检查、
+            // 却在看另一份数据渲染出来的窗口 —— 那正是 2026-09-17 那次假绿的形态。
             dumpMainWindowState(label: "A · 主窗口", mismatches: &mismatches)
 
             guard autoKeys else {
@@ -867,13 +956,18 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 print("    ① 标题栏（红绿灯那一条）是否与下方内容共用同一张玻璃 ——")
                 print("       若标题栏露出桌面/其它窗口，说明玻璃没有铺满整窗；")
                 print("    ② 标题「外置磁盘」的视觉中线，是否与左边三个红绿灯的圆心在同一水平线上。")
+                if emptyDisks {
+                    print("    ③ 【空状态模式】列表区画的必须是「空状态」（图标 + 标题 + 说明 + 按钮），")
+                    print("       不能是首屏骨架层的浅灰圆角块 —— 见 SPEC §8.25。")
+                }
                 print("  核对完 ⌘Q 退出。")
                 return
             }
 
             print("预览结束（未对任何真实磁盘执行操作）")
             if mismatches.isEmpty {
-                print("✅ 主窗口真机自检通过：窗口 800×520、玻璃覆盖整窗（含标题栏）、标题与交通灯同一基线")
+                let scope = emptyDisks ? "空状态（注入空磁盘列表）" : "真实磁盘列表"
+                print("✅ 主窗口真机自检通过：窗口 800×520、玻璃覆盖整窗（含标题栏）、标题与交通灯同一基线、\(scope)")
                 exit(0)
             }
             for line in mismatches { print("❌ \(line)") }
@@ -1091,20 +1185,36 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     /// 骨架层只有 `Palette.subtle` 的浅灰圆角块，**几乎没有深色墨迹** ——
     /// 两者量级差得远，不需要精细阈值。
     ///
-    /// **本机插着盘时跳过**：那时列表区画的是磁盘行（也有大量深色文字），
-    /// 判据不成立。跳过而不是硬跑 —— 假红比不测更糟。
+    /// **列表非空时跳过**：那时列表区画的是磁盘行（也有大量深色文字），判据不成立。
+    /// 跳过而不是硬跑 —— 假红比不测更糟。
+    ///
+    /// ⚠️ **`diskStore` 必须是窗口里那个视图真正在读的 store**，不能写 `DiskListStore.shared`：
+    /// 空状态自检（`--preview-main-window-empty-keys`）注入的是一个**独立实例**，
+    /// 拿 `.shared` 去数「有几块盘」会读到真实硬件，然后心安理得地跳过 —— 断言静默失效。
+    ///
+    /// **这个「跳过」曾经是常态**（2026-09-17 查明）：列表来源硬编码 `.shared`，
+    /// 而开发者本机长期插着盘 —— 于是这条断言只在少数时候执行。
+    /// 注入点就位后，它在**任何硬件状态下**都能跑。
     private func checkEmptyStateInsteadOfSkeleton(
-        window: NSWindow, label: String, mismatches: inout [String]
+        window: NSWindow, diskStore: DiskListStore, label: String, mismatches: inout [String]
     ) {
-        let diskCount = DiskListStore.shared.disks.count
+        let diskCount = diskStore.disks.count
         guard diskCount == 0 else {
-            print("    空状态核对：跳过（本机有 \(diskCount) 块外置磁盘，列表区画的是磁盘行）")
+            print("    空状态核对：跳过（本次渲染用的列表有 \(diskCount) 块磁盘，列表区画的是磁盘行）")
             return
         }
         // ⚠️ **判据只在浅色外观下成立**：深色底本身就是「深色像素」，
         // 整屏都会被算成墨迹，这条断言会假绿。深色模式跳过，不硬跑。
+        // ⚠️ **深色外观下必须跳过，不能硬跑**：深色底本身就是「深色像素」，
+        // `listInk` 会无条件远超阈值 —— 那不是通过，是**假绿**。
+        //
+        // ⚠️ 而这条跳过在 `--preview-main-window-empty-keys` 下**不应该发生**：
+        // 那个模式会把窗口切成浅色（见 ``runMainWindowPreview``），判据要什么底就给什么底。
+        // 留着它是防御 —— 万一外观强制没生效，宁可跳过也不要假绿。
         guard window.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .aqua else {
-            print("    空状态核对：跳过（当前是深色外观，「深色像素」判据不成立）")
+            print(
+                "    空状态核对：跳过（当前是深色外观，「深色像素」判据不成立 —— "
+                    + "深色底上这条断言会无条件假绿）")
             return
         }
         let windowID = CGWindowID(window.windowNumber)
@@ -1148,17 +1258,18 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         let listInk = darkCount(fromTop: band, to: window.frame.height)
         // **阈值是变异验证定出来的，不是拍的**：
-        // 实测空状态 **11175**、把 bug 造回去（强制显示骨架）后 **394** —— 差 28 倍。
+        // 实测空状态 **11175 ~ 11210**（强制浅色 / 原生浅色各量一次）、
+        // 把 bug 造回去（强制显示骨架）后 **394** —— 差 28 倍。
         // 取 2000：离两边都有 5 倍余量，既不因抗锯齿抖动误报，也不漏掉骨架。
         // ⚠️ 第一版阈值写的 200，变异后 394 **照样绿** —— 断言看着在守，其实守不住。
         // **动这个数之前先重跑一次变异验证。**
         let emptyStateInkFloor = 2000
         print(
             "    空状态核对：标题栏墨迹=\(titleInk) 列表区墨迹=\(listInk)"
-                + "（空状态实测 ≈11175，骨架层 ≈394，阈值 \(emptyStateInkFloor)）")
+                + "（空状态实测 11175~11210，骨架层 ≈394，阈值 \(emptyStateInkFloor)）")
         if listInk < emptyStateInkFloor {
             mismatches.append(
-                "\(label) 没有外置磁盘，列表区却只数到 \(listInk) 个深色像素 —— "
+                "\(label) 这次渲染用的列表里没有磁盘，列表区却只数到 \(listInk) 个深色像素 —— "
                     + "画的多半是**首屏骨架层**（浅灰圆角块，没有文字），而不是空状态。"
                     + "空状态有图标 + 标题 + 说明 + 按钮，墨迹应是数千量级。"
                     + "判据见 ContentView.showsSkeleton —— 骨架只能由「首屏加载结束」关闭，"
@@ -1250,7 +1361,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // 5 · 没有外置磁盘时必须显示**空状态**，不能卡在首屏骨架层。
         //
         // 离屏出图测不到这条（`cacheDisplay` 不跑 `.task`），只能真机量。
-        checkEmptyStateInsteadOfSkeleton(window: window, label: "A", mismatches: &mismatches)
+        // store 取 ``mainWindowStore``（建窗时记下的那一份），不是调用方传的 —— 见那里的说明。
+        checkEmptyStateInsteadOfSkeleton(
+            window: window, diskStore: mainWindowStore ?? .shared, label: "A", mismatches: &mismatches)
     }
 
     // MARK: - 设置窗口真机自检
@@ -1801,20 +1914,34 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: - 主窗口
 
-    /// **幂等**：`main()` 里的 `--preview-main-window` 会在 `applicationDidFinishLaunching`
-    /// 之前先建一次窗口（预览要立刻把它上屏），随后正常的启动流程又会调一次。
+    /// **幂等**：`--preview-main-window` 与 `applicationDidFinishLaunching` 各会调一次
+    /// （预览那次在 `Task` 里，**实际执行在后者之后** —— 见 ``runMainWindowPreview`` 里
+    /// 「先让位」那一段，那里记了一次由此产生的假绿）。
     /// 没有这道 guard 就会**建出两个窗口**，而且第二次把 `mainWindow` 覆盖掉 ——
     /// 第一个从此没人引用、关不掉也释放不了。
-    private func setupMainWindow() {
+    ///
+    /// ⚠️ **它一旦返回，`mainWindowStore` 就与 `mainWindow` 绑定** —— 后续自检都读它。
+    private func setupMainWindow(store: DiskListStore? = nil, skipsInitialRefresh: Bool = false) {
         guard mainWindow == nil else { return }
-        mainWindow = Self.makeMainWindow()
+        mainWindowStore = store
+        mainWindow = Self.makeMainWindow(store: store, skipsInitialRefresh: skipsInitialRefresh)
     }
 
     /// 建主窗口。**真机与单测走同一条装配路径**（`MainWindowTests` 直接调它）。
     ///
     /// 与 ``makeOnboardingPanel(root:)`` 同一个理由：下面这几行配置**每一条去掉都会静默劣化**，
     /// 而任何一条都不会让别的断言变红 —— 光读代码看不出它们是不是冗余。
-    static func makeMainWindow() -> NSWindow {
+    ///
+    /// - Parameters:
+    ///   - store: 内容视图读的磁盘列表来源；`nil` = ``DiskListStore/shared``（生产路径）。
+    ///     注入一个空列表实例就得到**空状态**窗口，见 ``runMainWindowPreview(autoKeys:emptyDisks:)``。
+    ///     与 ``MenuPopoverView`` 的 `store:` 是同一个约定（那边早就可注入）。
+    ///   - skipsInitialRefresh: 见 ``ContentView/init(skipsInitialRefresh:store:)``。
+    ///     ⚠️ **注入 `store` 时必须同时传 `true`** —— 否则内容视图的 `.task` 会去枚举本机磁盘，
+    ///     把注入的列表覆盖掉，空状态自检当场失效（而且失效得很安静）。
+    static func makeMainWindow(
+        store: DiskListStore? = nil, skipsInitialRefresh: Bool = false
+    ) -> NSWindow {
         let win = KeySilentWindow(
             contentRect: NSRect(
                 x: 0, y: 0,
@@ -1862,7 +1989,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // **这件事离屏出图结构上测不到**：离屏没有窗口就没有安全区，窗口也不会被回推撑高
         // （实测离屏窗口恒为 520）。守卫在 `MainWindowTests` 与真机自检
         // `--preview-main-window-keys`（量真实窗口尺寸）。
-        let hosting = NSHostingView(rootView: ContentView())
+        let hosting = NSHostingView(
+            rootView: ContentView(skipsInitialRefresh: skipsInitialRefresh, store: store))
         if #available(macOS 13.3, *) { hosting.safeAreaRegions = [] }
         win.contentView = hosting
 

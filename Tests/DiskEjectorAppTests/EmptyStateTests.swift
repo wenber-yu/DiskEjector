@@ -1,9 +1,10 @@
+import AppKit
 import SwiftUI
 import Testing
 
 @testable import DiskEjectorApp
 
-/// 「列表为空时画骨架还是空状态」的判定契约。
+/// 「列表为空时画骨架还是空状态」的判定契约 —— **两层守卫，缺一不可**。
 ///
 /// **为什么单独一个文件**：这里修的是一个**确定性 bug**（2026-09-17 用户报
 /// 「电脑上没插移动硬盘，打开主窗口一直显示首次加载的骨架层」）。旧写法把骨架的
@@ -15,15 +16,21 @@ import Testing
 /// 「加载完了但确实没有外置磁盘」与「还没加载完」是两种状态，
 /// 但它们在 `disks` 上的表现**都是空数组** —— 只看空数组分不开，必须看加载是否结束。
 ///
-/// ## 为什么只有纯函数测试，没有离屏渲染测试
+/// ## 两层守卫的分工（2026-09-17 补齐第二层）
 ///
-/// **离屏渲染结构上测不到这个 bug**：`cacheDisplay` 不跑 SwiftUI 的 `.task`
-/// （没有事件循环），两个状态位都停在初始值 `false`，算出来永远是「不显示骨架」——
-/// 无论实现是对是错，渲染结果都一样。这与交通灯「离屏没有窗口」是同一类问题。
-/// 渲染层的守卫在真机自检
-/// （`AppDelegate.checkEmptyStateInsteadOfSkeleton`，跑 `--preview-main-window-keys`）。
+/// | 层 | 守什么 | 怎么跑 |
+/// |---|---|---|
+/// | ① 纯函数真值表（本文件上半） | `showsSkeleton` 的**判定逻辑** | `swift test`，任何机器 |
+/// | ② 离屏渲染（本文件下半） | 那个判定**真的接到了渲染分支上** | `swift test`，任何机器 |
+/// | ③ 真机 `--preview-main-window-empty-keys` | 窗口上屏后的实际像素 | 真机门槛 |
+///
+/// ② 之所以可能，是因为 ``ContentView`` 的磁盘来源**可以注入**了（见其 `init`）——
+/// 在那之前，「列表为空」这条分支只能靠「本机恰好没插盘」才走得到，
+/// ② 写不出来，③ 也大部分时间在打印「跳过」。**一个大部分时间不执行的守卫等于没有守卫。**
 @MainActor
 struct EmptyStateTests {
+
+    // MARK: - ① 判定逻辑（纯函数真值表）
 
     /// 闸门还没到、加载也没结束 —— 磁盘枚举通常 < 50ms，这时不该闪骨架。
     @Test func 闸门未到时不显示骨架() {
@@ -62,5 +69,94 @@ struct EmptyStateTests {
         #expect(
             !ContentView.showsSkeleton(gatePassed: false, hasFinishedInitialLoad: true),
             "加载已结束，闸门放不放行都不该显示骨架")
+    }
+
+    // MARK: - ② 离屏渲染：判定有没有真的接到分支上
+
+    /// 数 `rect`（pt，原点**左上**）内的深色像素（任一通道 < 0.75）。
+    ///
+    /// ⚠️ **底必须是白的**。`background: .clear` 时透明像素的 `colorAt` 返回全 0
+    /// （r=g=b=0），「深色」判据会把**整块**算成墨迹 —— 实测整条带 166400 全中。
+    /// `.clear` 是给 ``OffscreenRender/brightPixels`` 那种「量亮像素」的判据用的，不是给这里。
+    private func darkInk(_ view: some View, size: CGSize, in rect: CGRect) -> Int {
+        guard let rep = OffscreenRender.bitmap(view, size: size) else { return -1 }
+        let scale: CGFloat = 2
+        let x0 = max(0, Int(rect.minX * scale))
+        let x1 = min(rep.pixelsWide, Int(rect.maxX * scale))
+        let y0 = max(0, Int(rect.minY * scale))
+        let y1 = min(rep.pixelsHigh, Int(rect.maxY * scale))
+        guard x0 < x1, y0 < y1 else { return -1 }
+        var n = 0
+        for x in x0..<x1 {
+            for y in y0..<y1 {
+                guard let c = rep.colorAt(x: x, y: y) else { continue }
+                if c.redComponent < 0.75 || c.greenComponent < 0.75 || c.blueComponent < 0.75 {
+                    n += 1
+                }
+            }
+        }
+        return n
+    }
+
+    /// **离屏守卫**：列表为空时，列表区画的必须是空状态 —— 不是骨架层，也不是空白。
+    ///
+    /// ## 为什么这条能取代「等本机没插盘」那种跑法
+    ///
+    /// 判据只看「列表区有多少深色像素」，而列表区画什么**只由注入的 store 决定** ——
+    /// 与真实硬件无关。于是它每轮 CI 都跑，而不是等某台机器恰好没插盘。
+    ///
+    /// ## 阈值是量出来的，不是拍的（2026-09-17，800×520、2x、**白底**）
+    ///
+    /// | 渲染内容 | 标题带 | 列表带 |
+    /// |---|---|---|
+    /// | **空状态**（本测试断言的对象） | 2700 | **11250** |
+    /// | 骨架层（`SkeletonRow` × 3，同款结构与间距） | 0 | **0** |
+    /// | 空白（`Color.clear`） | 0 | **0** |
+    ///
+    /// 取 **3000**：离空状态的 11250 有 3.7 倍余量，离骨架/空白的 0 是「有」与「无」之差。
+    /// 骨架之所以是 0，是因为它整块都是 ``DesignTokens/Palette/subtle`` 的浅灰 —— 够亮。
+    ///
+    /// ## 它**守不住**什么（别把这条当万灵药）
+    ///
+    /// 原 bug（「加载完了但没盘 → 骨架永驻」）需要 `skeletonGatePassed == true`，
+    /// 而离屏 `cacheDisplay` 不跑 `.task`（没有事件循环），闸门永远不放行 ——
+    /// **结构上测不到**。所以这条守的是**分支接错**：把 `emptyState` 写成 `skeletonList`、
+    /// 或让列表区什么都不画。原 bug 的守卫是真机 `--preview-main-window-empty-keys`
+    /// （`AppDelegate.checkEmptyStateInsteadOfSkeleton`，见 SPEC §8.29）。
+    ///
+    /// 变异验证：把渲染分支里的 `emptyState` 换成 `skeletonList` → 列表带 11250 → 0，本断言红。
+    @Test func 列表为空时渲染空状态而不是骨架或空白() {
+        let width = DesignTokens.Size.mainWindow.width
+        let height = DesignTokens.Size.mainWindow.height
+        let band = DesignTokens.Size.titleBarBandHeight
+        let size = CGSize(width: width, height: height)
+        let titleRect = CGRect(x: 0, y: 0, width: width, height: band)
+        let listRect = CGRect(x: 0, y: band, width: width, height: height - band)
+
+        // **注入一个空列表**：不挂系统监听（`monitoring: false`），也不去枚举本机磁盘。
+        // 这正是「不依赖物理硬件」的关键 —— 本机插没插盘都不影响。
+        let emptyStore = DiskListStore(monitoring: false)
+        let view = ContentView(skipsInitialRefresh: true, store: emptyStore)
+
+        // **自证**：标题栏必须先有墨迹（标题「外置磁盘」+ 两个图标按钮）。
+        // 没有这条，一次「玻璃/文字根本没渲染出来」的失败会被读成「列表区画了骨架」——
+        // 两者在列表带的数字上长得一模一样（都是 0）。
+        let titleInk = darkInk(view, size: size, in: titleRect)
+        #expect(
+            titleInk > 500,
+            "标题栏只数到 \(titleInk) 个深色像素 —— 这次渲染整个不可信，列表带的结果不能当数"
+        )
+
+        let listInk = darkInk(view, size: size, in: listRect)
+        #expect(
+            listInk > 3000,
+            """
+            列表为空时，列表区只数到 \(listInk) 个深色像素（空状态实测 11250，骨架/空白为 0）——\
+            画的不是空状态。空状态有图标 + 标题 + 两行说明 + 按钮，墨迹应是数千量级；\
+            骨架层整块是 Palette.subtle 的浅灰圆角块，深色墨迹为 0。\
+            判据见 ContentView.showsSkeleton —— 骨架只能由「首屏加载结束」关闭，\
+            不能依赖 onChange(of: disks)（无盘时列表永远不变，那个回调不会触发）。
+            """
+        )
     }
 }

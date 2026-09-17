@@ -19,7 +19,16 @@ import SwiftUI
 /// - 推出走 ``EjectUI.handle``，与菜单栏共用弹窗
 struct ContentView: View {
 
-    @ObservedObject private var store = DiskListStore.shared
+    /// 磁盘列表来源。
+    ///
+    /// **生产路径是 ``DiskListStore/shared``**；离屏出图与真机自检可以注入一个自己造的实例
+    /// （见 ``init(skipsInitialRefresh:store:)``）。
+    ///
+    /// 这里曾经硬编码 `DiskListStore.shared` —— 与 ``MenuPopoverView`` 的 `store:`
+    /// 参数不一致（那边早就可注入，`SnapshotRenderTests` 就靠它出「设计稿那两块盘」的图）。
+    /// 硬编码的后果是：**「列表为空 → 画空状态」这条分支只能靠本机恰好没插盘才走得到**，
+    /// 于是守着它的那条真机断言大部分时间都在跳过（见 ``AppDelegate/checkEmptyStateInsteadOfSkeleton``）。
+    @ObservedObject private var store: DiskListStore
     @State private var isRefreshing = false
     @State private var ejectingDiskId: String? = nil
 
@@ -110,8 +119,17 @@ struct ContentView: View {
     /// 想覆盖「刷新中」的观感请直接渲染 ``RefreshTitleBarButton``（`RefreshButtonTests` 就是这么做的）。
     let skipsInitialRefresh: Bool
 
-    init(skipsInitialRefresh: Bool = false) {
+    /// - Parameters:
+    ///   - skipsInitialRefresh: 见上文。**调用方若自己准备了磁盘列表，必须传 `true`** ——
+    ///     否则 `.task` 会真的去枚举本机磁盘，把它准备的列表覆盖掉。
+    ///   - store: 磁盘列表来源，`nil`（生产）读 ``DiskListStore/shared``。
+    ///     注入空列表实例即可在**任何硬件状态下**渲染空状态 ——
+    ///     这是 `--preview-main-window-empty-keys` 与 `SnapshotRenderTests` 的入口。
+    ///     ⚠️ 与 `skipsInitialRefresh` 是**两个独立参数**，故意不从彼此推导：
+    ///     「读哪份数据」和「要不要自动刷新」是两件事，绑在一起会让调用方猜不出行为。
+    init(skipsInitialRefresh: Bool = false, store: DiskListStore? = nil) {
         self.skipsInitialRefresh = skipsInitialRefresh
+        self.store = store ?? .shared
     }
 
     private var accentColor: AccentColor { AccentColor(rawValue: accentColorRaw) ?? .default }
@@ -464,7 +482,9 @@ struct ContentView: View {
     private func refreshDisks() async {
         isRefreshing = true
         defer { isRefreshing = false }
-        await DiskListStore.shared.refresh()
+        // **刷的是 `store` 自己，不是 `.shared`**：两者在出图/自检里可能是不同实例，
+        // 写 `.shared` 会让「刷新」刷新一个本视图没在观察的对象（界面纹丝不动）。
+        await store.refresh()
         // 显式再刷一次占用：`DiskListStore.refresh()` 会把新数组赋给 `disks`，
         // 正常情况下 ``OccupancyStore`` 的订阅会跟上；这里 await 一次是为了让
         // 「点刷新 → 按钮转完 → 界面已是新结论」这条链路在**同一帧**收口，

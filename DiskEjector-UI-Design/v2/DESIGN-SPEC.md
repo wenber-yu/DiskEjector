@@ -2935,7 +2935,7 @@ dumpMainWindowState(...)              // ← 抓一次就断言
 
 ---
 
-## §8.28 覆盖率掉了 3.58pp，而代码没变（2026-09-17，未完全坐实）
+## §8.28 覆盖率掉了 3.58pp，而代码没变（2026-09-17，已坐实 → §8.28.6）
 
 ### §8.28.1 现象
 
@@ -2995,6 +2995,310 @@ dumpMainWindowState(...)              // ← 抓一次就断言
 
 改动：`DiskEjectorApp.swift`（新增 `waitUntilMainWindowIsKey()`；
 `measureRedLightInkCenter` 改为轮询重试 + 失败信息带激活状态）。
+
+### §8.28.6 坐实（2026-09-17 19:10，外置盘插回后重跑）
+
+`coverage.sh` → **75.56%**（`TOTAL … 1342 328 75.56%`）。75.56 − 72.50 = **3.06pp**。
+
+**为什么这次是干净的 A/B**：`coverage.sh` 的 `-ignore-filename-regex` 排除了 `Views/`、
+`Sources/DiskEjectorApp/`、`/Tests/`，而本轮改的恰好就是 `ContentView.swift` /
+`DiskEjectorApp.swift` / `EmptyStateTests.swift` —— **一个都不在统计口径内**。
+所以两份报告的分母**逐位相同（1342 行）**，差异只可能来自「哪几行被执行」。
+
+**逐文件 diff**（`.build/coverage-ab.txt` 18:04 拔盘 vs `.build/cov-runs/plugged.log` 19:10 插盘）：
+
+| 文件 | 拔盘 | 插盘 | 命中变化 |
+|---|---|---|---|
+| `Services/DiskService.swift` | 39/94 | 77/94 | **+38** |
+| `Services/OccupancyStore.swift` | 110/113 | 113/113 | **+3** |
+
+41 / 1342 = **3.06pp**，与百分比差**一分不差**；其余 15 个文件**零变化**。
+
+**定位到具体代码块**（两个必须知道的解析陷阱：
+① `--scratch-path` 构建会把 JSON 里的 `filename` 改写成 **scratch 目录下的路径**
+（`.build/cov-clean/…/runner.swift`），两份报告只能**按 basename 对齐**；
+② llvm-cov 的 region 是**跨行**的，所以「10 个 region 起点翻转」对应「38 行命中」并不矛盾）：
+
+- `DiskService.swift` **65–116 行**：
+  - 65–67 `guard DiskClassifier.isExternalVolume(attributes) else { continue }`
+    —— 本机**没有任何外置卷**时，`urls` 里每个卷都在这一行 `continue`；
+  - 69–72 `makeDiskInfo(...)` 调用 + `disks.append(info)`；
+  - 79–116 `makeDiskInfo` 全体（读卷容量、组装 `DiskInfo`）。
+- `OccupancyStore.swift` **81–83 行**：`detect:` 的**默认闭包**
+  （`EjectFlowController.shared.checkOccupancy`）—— 没有盘就没有 `detect` 调用。
+
+**完整触发链（这才是根因）**：
+
+```
+测试构造 ContentView() 而不传 store   ← TitleBarBaselineTests:257 / RefreshButtonTests:162,166
+                                        TrafficLightAlignmentTests:137 / MainWindowTests:136
+  → ContentView.swift:41   @ObservedObject private var occupancyStore = OccupancyStore.shared
+  → OccupancyStore.swift:86  diskStore ?? .shared
+  → DiskListStore.shared 的 private init() → DiskService.shared.fetchExternalDisks()
+  → 真实枚举本机卷：找得到外置卷就走 65–116，找不到就全部 continue
+```
+
+**结论：这个覆盖率数字是「开发机上有没有外置卷」的函数。**
+§8.28.2 的排除法结论（拔盘）**方向是对的**，但当时只是相关性；有了逐文件 baseline diff 才是因果。
+
+> **通用判据**：**「只剩一个变量」不足以定案，要能指出「这个变量改了哪一行代码的执行」。**
+> 排他法给出的是候选，**逐行 diff 给出的才是因果**。
+> 做法：每次跑覆盖率都**留一份完整逐文件报告** —— `coverage.sh` 本来就打到 stdout，落盘即可；
+> ⚠️ `preflight.sh` **只回显汇总行，它留不下 baseline**（这正是 §8.28.3 卡住的原因）。
+
+### §8.28.7 残留 0.52pp，以及同一个病根还留在下一层
+
+**残留**：17:26 / 17:30 / 17:39 / 17:45 / 18:49 / 19:16 六次是 **76.08%**（1021 行），
+18:42 与 19:10 是 **75.56%**（1014 行），差 **7 行**，全部落在 `OccupancyDetector.swift`
+（239/290 ↔ 246/290），**同一环境下交替出现**。
+
+已定位到具体 region（两份 JSON 都在，直接 diff）：差别只有一条 —— `(251,10)` 这个 segment
+在 75.56% 里 count 为 **0**、在 76.08% 里为 **9**（它跨到 `for rawField in output.split(…)` 那一行）。
+更说明问题的是 `parseLsof` 主循环的计数**整体从 40 涨到 92**（`(253,88)` 41→94、`(265,35)` 40→92）：
+**这次测试多跑了约一倍的真实 `lsof` 解析**。
+→ 这 7 行取决于「测试期间真实 `lsof` 路径被调用了几次」，由**测试调度 / 异步时序**决定，
+**与硬件无关**。量级 0.52pp，**不足以影响门槛判断**，如实记为「未归因到具体哪条测试」。
+
+**遗留缺陷（下一轮做）**：`ContentView.swift:41` 的 `occupancyStore` **仍然硬编码 `.shared`**
+—— 本轮只把 `store` 做成了可注入。也就是说 §8.29 修掉的那个病根（**视图直读生产单例**）
+**在同一行代码的隔壁还留着一个**。它不影响功能，但让「单测覆盖率」继续随开发机硬件浮动。
+修法：`ContentView(occupancyStore:)` 同样加注入参数，相关测试传 `OccupancyStore(autoStart: false)`。
+
+### §8.28.8 本轮验收（19:16）
+
+| 项 | 结果 |
+|---|---|
+| 全量测试 | **248 条 / 33 suites 全绿** |
+| 三道 CI 门槛 | 全过（零警告构建 / `swift-format lint --strict` / 覆盖率 **76.08%** ≥ 40%） |
+| 覆盖率口径 | 本轮 **75.56%**（19:10）与 **76.08%**（19:16）各一次，**均在已知区间内** |
+| 逐文件 diff | 拔盘 vs 插盘：41 行差异，**其余 15 个文件零变化**，百分比差一分不差 |
+| 基线留存 | `.build/coverage-ab.txt`（72.50%）、`.build/cov-runs/plugged.log`（75.56%）、`.build/cov-runs/plugged-191{0,6}.json` |
+
+改动：`DESIGN-SPEC.md` 本节（§8.28.6–§8.28.8）；`.workbuddy-ai/memory/` 的
+`MEMORY.md`（压缩 + 覆盖率条目改写）、`ENGINEERING-NOTES.md`（补两条判据）。
+**未改任何产品代码** —— 本节全程是量测与归因。
+
+## §8.29 空状态守卫不再依赖物理硬件（2026-09-17）—— 附一次「守卫假绿」的完整取证
+
+### §8.29.1 起因：一条「大部分时间没牙」的守卫
+
+§8.25 修完骨架永驻后，守卫落在真机自检 `checkEmptyStateInsteadOfSkeleton` 里。它**第一句就是跳过条件**：
+
+```swift
+let diskCount = DiskListStore.shared.disks.count
+guard diskCount == 0 else { print("跳过（本机有 N 块外置磁盘）"); return }
+```
+
+对开发者而言「本机没有外置盘」是少数情况 —— 于是这条断言**大部分时间在打印「跳过」**。
+更糟的是它会给人一种「有覆盖」的错觉。本轮把它改成不依赖硬件。
+
+### §8.29.2 为什么注入点此前不存在
+
+`ContentView` 是**最后一个硬编码单例的视图**：
+
+```swift
+@ObservedObject private var store = DiskListStore.shared   // ← 硬编码
+```
+
+对照之下 `MenuPopoverView(store:occupancyStore:…)` 早就可注入 —— `SnapshotRenderTests` 正是靠它
+渲染「设计稿那两块盘」。所以本轮不是发明新机制，而是把 `ContentView` 补齐到同一条约定上。
+
+顺带修掉一个潜伏缺陷：`refreshDisks()` 里写的是 `DiskListStore.shared.refresh()`，
+与视图观察的 `store` 不是同一个对象。生产路径下两者恰好相同所以看不出来，
+一旦注入就会变成「点刷新，界面纹丝不动」。
+
+### §8.29.3 改法：两个**独立**参数，不从彼此推导
+
+```swift
+init(skipsInitialRefresh: Bool = false, store: DiskListStore? = nil) {
+    self.skipsInitialRefresh = skipsInitialRefresh
+    self.store = store ?? .shared
+}
+```
+
+「读哪份数据」和「要不要自动刷新」是两件事。曾想过让 `skipsInitialRefresh` 由
+`store != nil` 推出来（少一个参数），但那样调用方就得靠猜 —— 明确写两个。
+**代价是必须写清依赖关系**：注入 `store` 时若忘了 `skipsInitialRefresh: true`，
+`.task` 会去枚举真实磁盘把注入的列表覆盖掉。这句话写进了 `makeMainWindow` 的文档注释。
+
+装配路径保持不变（**真机与单测同一条**）：`makeMainWindow(store:skipsInitialRefresh:)`
+→ `ContentView(skipsInitialRefresh:store:)`。
+
+### §8.29.4 发布构建里**显式报错**，不静默退化
+
+注入点依赖 `#if DEBUG` 的 `DiskListStore(monitoring:)`，发布构建拿不到。所以：
+
+```swift
+#if DEBUG
+    let injected: DiskListStore? = emptyDisks ? DiskListStore(monitoring: false) : nil
+#else
+    if emptyDisks {
+        print("❌ --preview-main-window-empty-* 只在 DEBUG 构建可用（需要注入 store）")
+        exit(2)
+    }
+    let injected: DiskListStore? = nil
+#endif
+```
+
+**不能让它退化成「跑一次正常预览」** —— 那会让调用方以为空状态查过了。
+
+### §8.29.4b 同一个病根的第二个环境依赖：系统深色外观
+
+注入做完之后，把六条真机自检一起跑了一遍回归，结果 `--preview-main-window-empty-keys` 输出了：
+
+```
+空状态核对：跳过（当前是深色外观，「深色像素」判据不成立）
+✅ 主窗口真机自检通过：…空状态（注入空磁盘列表）
+```
+
+**还是跳过** —— 只不过这次决定它跑不跑的是**系统外观**，不是磁盘。
+
+跳过本身是**对的**（深色底上每个像素都算「深色」，`listInk` 必然远超阈值，
+那不是通过而是假绿）。但「开着深色模式的机器上这条断言永远不跑」与
+「本机没插盘时永远不跑」是**同一个病根**：让环境决定守卫跑不跑。
+
+> **修法**：判据要什么底，就给它什么底 —— 在窗口**上屏之前**把外观切成浅色：
+> ```swift
+> if emptyDisks, autoKeys { mainWindow.appearance = NSAppearance(named: .aqua) }
+> ```
+> 上屏前设 → 第一帧就是浅色，**不需要「等重绘」**（那又是一次时序赌博）。
+> 只在自动（门槛）模式做；人工核对模式保留用户自己的外观，看着更真实。
+> 原来的深色跳过**保留**作为防御 —— 万一外观强制没生效，宁可跳过也不要假绿。
+
+实测（本轮系统正处于深色外观）：
+
+| 条件 | 标题带 | 列表带 |
+|---|---|---|
+| 强制浅色（深色系统下） | 4088 | **11175** |
+| 原生浅色 | 4093 | **11210** |
+
+两者差 0.3%，都远离阈值 2000。代码里的参照值因此写成**区间** `11175~11210`。
+
+> **通用判据**：守卫里每一个 `guard … else { print("跳过"); return }` 都要问一句
+> 「**这个条件由谁决定？**」。若答案是「开发机 / 用户机器的某个设置」，
+> 那这条断言就是**大部分时间没牙**的。能注入的就注入，能强制的就强制。
+
+### §8.29.5 事故：守卫报「通过」，而窗口里画着磁盘
+
+新开关加完，第一次跑 `--preview-main-window-empty-keys` 就**通过**了。数字看着也漂亮：
+
+```
+空状态核对：标题栏墨迹=4322 列表区墨迹=36197（阈值 2000）   ← 通过
+```
+
+按 §8.27 的教训，「通过」也要问一句**为什么通过**。于是让守卫把它抓到的那张窗口图**存下来看**
+（决定性手段：不要再猜判据量到了什么，直接把被测对象打出来）。图上画的是：
+
+```
+外置磁盘 1 块
+wenbo-data  4 TB
+已用 2.65 TB · 剩余 1.35 TB
+⚠️ 3 个程序正在占用   百度网盘 百度网盘 夸克网盘
+```
+
+**一块真实磁盘的行。** 守卫的判据「列表区深色像素 > 2000」被磁盘行**顺便满足**了 ——
+磁盘行的文字量级和空状态差不多（36197 vs 11210）。这是一次**假绿**。
+
+### §8.29.6 根因：注入被 `guard mainWindow == nil` 静默吃掉
+
+`runMainWindowPreview` 里建窗写在 `Task { }` 里，而 `Task` 是 `app.run()` 之后才被调度的 ——
+**`applicationDidFinishLaunching` 里那句 `setupMainWindow()` 先执行**，用**生产 store** 建好了窗口。
+随后预览那次 `setupMainWindow(store: injected, …)` 撞上 `guard mainWindow == nil`，**直接返回**。
+
+而 `setupMainWindow` 上方原有的注释写着：
+
+> **幂等**：`main()` 里的 `--preview-main-window` 会在 `applicationDidFinishLaunching` **之前**
+> 先建一次窗口（预览要立刻把它上屏），随后正常的启动流程又会调一次。
+
+**这个描述与事实相反。** 在 `--preview-main-window-keys`（不注入）时这个次序无关紧要，
+所以它错了很久没人发现；一旦要注入，它就变成「断言测的是另一个对象」。
+
+### §8.29.7 三处修法（缺任何一处，假绿都可能回来）
+
+1. **先让位**：注入时把抢先建好的窗口关掉重建。
+   ```swift
+   if injected != nil, let stale = mainWindow { stale.close(); mainWindow = nil }
+   setupMainWindow(store: injected, skipsInitialRefresh: emptyDisks)
+   ```
+2. **守卫读「建窗时记下的那一份」**：新增 `mainWindowStore`，由 `setupMainWindow` 写入；
+   `checkEmptyStateInsteadOfSkeleton` 不再接受调用方传来的 store。
+   > **判据**：前置条件（「这份数据里没有磁盘」）与断言对象（「窗口画的是什么」）
+   > **必须来自同一个来源**。由调用方各传一份，就等于允许它们不一致 —— 而它们不一致时，
+   > 断言不会红，只会**绿得没有意义**。
+3. **身份自证**：核对 `mainWindowStore === injected`，不等就报错。
+   ```swift
+   if let injected, mainWindowStore !== injected {
+       mismatches.append("注入的磁盘列表没有生效：主窗口读的是…")
+   }
+   ```
+   这一条是**防「因为别的原因通过」**的 —— 光看像素数分不出窗口里画的是空状态还是磁盘行。
+
+### §8.29.8 第二层：离屏守卫（现在能进 CI 了）
+
+注入点就位后，「列表为空 → 画空状态」这条分支第一次可以在**离屏**渲染出来，
+于是补了一条不依赖窗口、每轮 CI 都跑的守卫（`EmptyStateTests.列表为空时渲染空状态而不是骨架或空白`）。
+
+阈值照旧**先量后定**（800×520、2x、**白底**）：
+
+| 渲染内容 | 标题带 | 列表带 |
+|---|---|---|
+| **空状态** | 2700 | **11250** |
+| 骨架层（`SkeletonRow` × 3 直接渲染） | 0 | **0** |
+| 空白（`Color.clear`） | 0 | **0** |
+
+取 **3000**（离 11250 有 3.7 倍余量，离 0 是「有」与「无」之差）。骨架之所以是 0，
+是因为它整块都是 `Palette.subtle` 的浅灰 —— 够亮。
+
+**它守不住什么**（必须写清）：原 bug 需要 `skeletonGatePassed == true`，
+而离屏 `cacheDisplay` 不跑 `.task`（没有事件循环），闸门永远不放行 ——
+**结构上测不到**。它守的是**分支接错**（把 `emptyState` 写成 `skeletonList`、或什么都不画）。
+原 bug 的守卫仍是真机 `--preview-main-window-empty-keys`。
+
+### §8.29.9 量测新坑：`.clear` 底会让「深色墨迹」判据整个失效
+
+第一次量的时候按旧笔记给 `ContentView` 传了 `background: .clear`（那条笔记是为**亮像素**判据写的），
+结果整条带 **166400 个像素全中**（= 1600×104，一个不漏）：
+
+> 透明像素的 `colorAt` 返回全 0（r=g=b=0），而「深色」判据是「任一通道 < 0.75」——
+> 于是**每一块透明区域都被算成墨迹**。
+
+> **判据换了，底也要换**：量「深色墨迹」用白底，量「亮像素」才用 `.clear`。
+
+### §8.29.10 变异验证（两条，都是真机）
+
+| 变异 | 期望 | 实得 |
+|---|---|---|
+| A · `showsSkeleton` 恒返回 `true`（强制骨架） | 墨迹断言红 | 列表区 **394** → ❌ 红，退出码 1 |
+| B · `setupMainWindow` 不记录 `mainWindowStore` | 身份自证红 | ❌「注入的磁盘列表没有生效…」，退出码 1 |
+
+变异 B 尤其值得记：**它同时暴露了假绿之外的第二种失效形态** ——
+守卫读到 `.shared`（1 块盘）后**跳过**，既不红也不绿，只是**什么也没查**。
+身份自证把这个静默跳过变成了红字。
+
+### §8.29.11 修复后确定性
+
+修复前连跑 3 次（`preview-empty` / `rep1` / `rep2`）**全部假绿**（36197）；
+更早那次带变异的构建却真的渲染出了骨架（394）—— **谁先谁后不是能预先断定的**，不能依赖。
+
+修复后连跑 **3/3** 全部 `标题栏=4093 列表区=11210`，与 §8.27 记录的 11210 逐位一致。
+
+### §8.29.12 本轮验收
+
+| 项 | 结果 |
+|---|---|
+| 全量测试 | **248 条 / 33 suites 全绿**（+1 条即新增的离屏守卫） |
+| 三道 CI 门槛 | 全过（零警告构建 / `swift-format lint --strict` / 覆盖率 **76.08%** ≥ 40%） |
+| 六条真机自检 | 全部退出码 **0** |
+| 空状态真机自检 | **3/3 通过**，列表区墨迹 **11210**（阈值 2000）；深色系统下强制浅色后 **11175** 也跑通 |
+| 离屏守卫 | 5 条 `EmptyStateTests` 全绿，新守卫 1.5s |
+| 变异验证 A | 强制骨架 → **394 → 红**（退出码 1；强制浅色环境下复验一次，一致） |
+| 变异验证 B | 不记 store → **身份自证红**（退出码 1） |
+
+改动：`ContentView.swift`（store 可注入 + `refreshDisks` 刷注入的 store）、
+`DiskEjectorApp.swift`（`makeMainWindow` / `setupMainWindow` 带参、`mainWindowStore`、
+`--preview-main-window-empty[-keys]`、先让位 + 身份自证 + 门槛模式强制浅色）、
+`EmptyStateTests.swift`（新增离屏守卫 + 更新文件头分工说明）、
+`MainMenuTests.swift`（修掉一条既有警告：非 Optional 上用了 `?? ""`）。
 
 ---
 
