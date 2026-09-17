@@ -79,4 +79,131 @@ struct ProcessChipLayoutTests {
             "芯片宽度没跟着 displayName 走（短名 \(shortAsDisplayName)pt / 长名 \(longAsDisplayName)pt）——很可能渲染的是 processName"
         )
     }
+
+    // MARK: - 图标：有应用身份时必须画**真图标**，不是回落的空方框
+    //
+    // ## 这条守卫是怎么来的（2026-09-17，用户报「应用图标又不显示了」）
+    //
+    // 用户看走查图 `main-window-multi-light.png`，看到进程芯片的图标位是**空方框**。
+    // 查下来不是产品缺陷，而是**出图夹具**的错：夹具的进程是编的（PID 501 / 5340…），
+    // 本机并不存在，于是 `proc_pidpath` 取不到路径 → `ProcessAppResolver.icon(for:)`
+    // 返回 `nil` → `ProcessChip` 回落成 SF Symbol `app`（那个空方框）。
+    // 夹具已修（见 `SnapshotRenderTests.SampleApp`）。
+    //
+    // 但**修完夹具还缺一条断言**：整个仓库此前**没有任何测试**盯住
+    // `ProcessChip.iconView` 这个 `if let … else` 分支的**接线**。
+    // `ProcessAppResolverTests` 只测了解析器本身（「有 bundle 时 icon(for:) 非 nil」），
+    // 没测「视图有没有真的把它画出来」—— 这正是本项目反复踩的
+    // 「判定逻辑测了、接线没测」（另见 `EmptyStateTests` / `MainWindowDiskListTests` 文件头）。
+    // 缺了它，把 `iconView` 整个换成固定 `Image(systemName: "app")` 也全绿。
+
+    /// 图标槽（pt，原点左上）。
+    ///
+    /// 由 ``ProcessChip`` 的结构算出来，不是量出来的：
+    /// `HStack(spacing: 6) { iconView.frame(20×20); Text }` + `.padding(.leading, 3)`
+    /// + `.frame(height: 26)` → x ∈ [3, 23]、y ∈ [(26−20)/2, …]。
+    /// 只取**左半**槽（宽 10pt）：右半可能蹭到文字的抗锯齿边。
+    private var iconSlot: CGRect {
+        let side = DesignTokens.Size.processChipIcon
+        let inset = (DesignTokens.Size.processChipHeight - side) / 2
+        return CGRect(x: 3, y: inset, width: side / 2, height: side)
+    }
+
+    /// 图标槽里**彩色像素**的个数：`max(通道) − min(通道) > 40`（0…255）。
+    ///
+    /// ## 判据为什么是「彩色」而不是「墨迹」
+    ///
+    /// 这个 20×20 槽里可能出现两种东西：
+    ///
+    /// | 渲染 | 长相 | 通道差 |
+    /// |---|---|---|
+    /// | **真应用图标**（Finder） | 蓝色填充 + 白色笑脸 | 大（蓝 ≈ 150） |
+    /// | **回落** SF Symbol `app` | **灰色**圆角方框描边 | ≈ 30（`#86868B`） |
+    ///
+    /// 两者**墨迹量是同一量级**（都「画了点东西」），所以数墨迹分不开；
+    /// 而**色彩是二值的** —— 真图标一定有色相，灰色描边一定没有。阈值 40 落在
+    /// 150 与 30 之间，两侧各留 2 倍以上余量。
+    ///
+    /// ⚠️ **必须带对照组**（本仓库栽过两次「0 命中 = 真的没有 vs 判据本身坏了」）：
+    /// 下面那条用例同时断言「有身份 → 彩色多」与「无身份 → 彩色 ≈ 0」。
+    private func colorfulPixels(process: OccupyingProcess) -> Int {
+        _ = NSApplication.shared
+        let chip = ProcessChip(process: process)
+        // 先量出芯片的自然尺寸，再按它渲染 —— 尺寸精确时芯片正好铺满宿主，
+        // 图标槽才会落在上面算出来的坐标上（宿主比芯片大时 SwiftUI 会居中，坐标就漂了）。
+        let probe = NSHostingController(rootView: chip)
+        probe.view.layoutSubtreeIfNeeded()
+        let size = probe.view.fittingSize
+        guard
+            size.width > 0, size.height > 0,
+            let rep = OffscreenRender.bitmap(chip, size: size)
+        else { return -1 }
+
+        let scale: CGFloat = 2
+        let x0 = Int(iconSlot.minX * scale)
+        let x1 = Int(iconSlot.maxX * scale)
+        let y0 = Int(iconSlot.minY * scale)
+        let y1 = Int(iconSlot.maxY * scale)
+        guard x0 < x1, y0 < y1, x1 <= rep.pixelsWide, y1 <= rep.pixelsHigh else { return -1 }
+
+        var n = 0
+        for x in x0..<x1 {
+            for y in y0..<y1 {
+                guard let c = rep.colorAt(x: x, y: y) else { continue }
+                let channels = [c.redComponent, c.greenComponent, c.blueComponent]
+                let spread = (channels.max() ?? 0) - (channels.min() ?? 0)
+                if spread * 255 > 40 { n += 1 }
+            }
+        }
+        return n
+    }
+
+    /// 系统里一个**任何 macOS 都有**的应用（Finder）—— 走查图与这条守卫共用同一份样本。
+    private var finderAppPath: String? {
+        let path = "/System/Library/CoreServices/Finder.app"
+        return FileManager.default.fileExists(atPath: path) ? path : nil
+    }
+
+    /// **有应用身份 → 画真图标**；**没有 → 才回落**。两条一起跑，互为对照。
+    ///
+    /// 变异验证：
+    /// - 把 `iconView` 整个换成 `Image(systemName: "app")` → 第一条变红（彩色 0）；
+    /// - 把 `iconView` 改成「永远取通用应用图标」 → 第一条变红（通用图标是灰的）。
+    @Test func 有应用身份时画真图标无身份时才回落() throws {
+        let finder = try #require(finderAppPath, "系统里找不到 Finder.app —— 本机无法跑这条断言")
+        let size = DesignTokens.Size.processChipIcon
+
+        // ① 有 `appBundlePath`：真图标（Finder 是蓝色的）。
+        let withApp = OccupyingProcess(
+            pid: 1234, processName: "Finder", displayName: "Finder",
+            appBundlePath: finder, path: "/Volumes/Demo/clip.mp4")
+        let withAppColors = colorfulPixels(process: withApp)
+
+        // ② 什么都没有（生产上等于「这个 PID 已经不在了」）：回落成灰色 `app` 空方框。
+        let bare = OccupyingProcess(pid: 0, processName: "ghost", path: "/Volumes/Demo/clip.mp4")
+        let bareColors = colorfulPixels(process: bare)
+
+        // **自证**：两次渲染都必须在位。`-1` 表示渲染或坐标算错了 ——
+        // 那时两个数字都不能当数（否则「都是 0」会被读成「判据对了」）。
+        #expect(withAppColors >= 0, "渲染失败（-1）—— 这次的数字不可信")
+        #expect(bareColors >= 0, "渲染失败（-1）—— 这次的数字不可信")
+
+        #expect(
+            withAppColors > 100,
+            """
+            有 `appBundlePath` 时图标槽里只有 \(withAppColors) 个彩色像素 —— 画的不是真应用图标。\
+            真图标是彩色填充（Finder 蓝，20×20pt 槽在 2x 下约 \(Int(size * size * 4 / 2)) 个像素可着色）；\
+            灰色 SF Symbol `app` 描边的通道差只有 ~30，低于阈值 40。\
+            这就是用户 2026-09-17 报的「应用图标又不显示了」。
+            """
+        )
+        #expect(
+            bareColors < 20,
+            """
+            没有应用身份时图标槽里却有 \(bareColors) 个彩色像素（期望 ≈ 0）—— \
+            回落分支画的不是灰色 `app`。这条是上面那条的**对照**：\
+            它不成立就说明「彩色」这个判据本身区分不开两种情况，上面那条的绿是假的。
+            """
+        )
+    }
 }

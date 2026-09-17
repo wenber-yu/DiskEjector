@@ -3861,6 +3861,8 @@ mv .build/probe-keep .build/probe
 
 ### §8.33.5 本轮验收
 
+> ⚠️ 本节数字是**前半轮**的；同日追加的「芯片图标」修复见 §8.33.6（最终数字以那里为准）。
+
 | 项 | 结果 |
 |---|---|
 | 全量测试 | **266 条 / 35 suites 全绿**（+5 条、+1 suite，即新增的 `MainWindowDiskListTests`） |
@@ -3881,6 +3883,140 @@ mv .build/probe-keep .build/probe
 `mainWindow(disks:occupancy:)`，并修掉「例外只有出图」那句过期话）、
 `Tests/DiskEjectorAppTests/SnapshotRenderTests.swift`（+3 张图、`fixtureDisk` 夹具、修掉文件头缺口说明）、
 本文件。
+
+---
+
+## §8.33.6 同日追加：走查图里的「应用图标不显示了」（用户报）
+
+### §8.33.6.1 现象与结论
+
+用户看本轮新出的 `main-window-multi-light.png`，指出进程芯片的图标位是**空方框**：
+「怎么占用进程的应用图标又不显示了？」
+
+**查下来不是产品缺陷，是出图夹具的错。** 但这条错**必须修**，理由在 §8.33.6.4。
+
+### §8.33.6.2 根因链（四步，每步都可查）
+
+```
+夹具进程只填了 pid / processName / path     （SnapshotRenderTests.procs）
+  → PID 是编的（5340 / 39298 / 501 …），本机并不存在   ← pgrep 逐个查过
+  → proc_pidpath 失败 → appBundlePath 与 executablePath 都是 nil
+  → ProcessAppResolver.icon(for:) 的 guard 直接 return nil
+  → ProcessChip 回落成 SF Symbol `app`（灰色圆角方框描边）
+```
+
+`icon(for:)` 第一行就是：
+
+```swift
+guard let path = process.appBundlePath ?? process.executablePath else { return nil }
+```
+
+生产路径上这两个字段由 ``ProcessAppResolver/enrich(_:)`` 用 `proc_pidpath` **按 PID 查出来**。
+夹具绕过了 `enrich`（直接构造 `OccupyingProcess` 并自己给 `displayName`），
+**却没补上这两个身份字段** —— 于是造出了一个生产上几乎不会出现的状态。
+
+> **判据：夹具「绕过生产的那一步」时，要把它**产出**的字段一并补上。**
+> `enrich` 的产出是三个字段（`displayName` / `appBundlePath` / `executablePath`），
+> 夹具只补了第一个 —— 缺的两个恰好是**图标**的唯一来源。
+> 「绕过一步」与「绕过一步的产出」是两件事，后者不会自动跟着来。
+
+### §8.33.6.3 产品代码不动 —— 那个回落是对的
+
+回落成空方框**不是 bug**，它真正的含义是「**这个 PID 已经不在了**」：
+
+- `enrich` 对**任何还活着的进程**都能填上 `executablePath`，连 `/bin/sleep` 都有
+  （`ProcessAppResolverTests.非应用内进程回落为进程名` 实测）；
+- 所以 `tail` / `ffmpeg` 这类 CLI 进程拿到的是**可执行文件自身的系统图标**，不是空方框；
+- 只有「进程已退出 / 无权查看」才会两条路径都取不到。
+
+既然产品代码是对的，**就没动它** —— 只在 `ProcessChip.iconView` 上补了一段注释，
+把这个回落分支的**真实含义**写清楚（这次被误读，就是因为那里一个字都没有）。
+
+### §8.33.6.4 为什么这条夹具的错必须修（不只是「图不好看」）
+
+**本机尚未授予完全磁盘访问 → 真实应用里根本不显示进程芯片。**
+也就是说，**走查图是这台机器上唯一能看见芯片长相的地方**。
+一个只存在于走查图里的夹具缺陷，**与产品缺陷在证据上不可区分** ——
+用户就是这么读的，而读者没有任何办法自己分辨。
+
+> **判据：如果某个状态的唯一观测面是一个**夹具产出的**画面，
+> 那这个夹具的保真度就是这个状态的可观测性上限。**
+> 此时「夹具编得对不对」不再是「出图的小事」，而是**证据链的一环**。
+
+### §8.33.6.5 修法：夹具补上真实应用身份，样本与设计稿同源
+
+| 项 | 改前 | 改后 |
+|---|---|---|
+| 样本进程 | `IINA`(5340) / `tail`(39298) —— 某次排查时**本机真实占用者**的名字 | `Finder`(1234) / `图像捕捉`(5678) —— **设计稿的样本**（`01-main-window.html` 与 `03-eject-flow.html` 画的都是这两个） |
+| `appBundlePath` | **无** | `/System/Library/CoreServices/Finder.app`、`/System/Applications/Image Capture.app` |
+| PID | 5340 / 39298 | **1234 / 5678**（与设计稿逐字一致） |
+
+**为什么换成设计稿的样本**：走查图是拿来跟设计稿**并排比**的，样本该同源 ——
+这与面板那段早就用了设计稿那两块盘（Samsung T7 / WD Blue）是同一条原则。
+原先的 `IINA` / `tail` 从没在设计稿里出现过，PID 又对不上，本来就比不了。
+
+**为什么只用 `/System/…`**：那是**任何 macOS 都保证存在**的，出图因此与机器无关
+（`IINA.app` 本机装了、别的机器不一定）。解析不到时用 `try #require` **让出图直接失败**，
+**不要静默退回空方框** —— 那正是这次要修的病：「失败要响，不要悄悄退化成上一次的坏样子」。
+
+CLI 那一档**单独出一张图**（`row-busy-cli-light`，`tail` + `executablePath: /usr/bin/tail`）：
+它的图标来源与上面那组不同（`executablePath` 而非 `appBundlePath`），
+混在一张图里将来没人说得清「那个图标为什么长得不一样」；
+而它恰恰最容易被误读成「图标缺失」，所以需要自己有一张图 + 一句说明。
+
+### §8.33.6.6 补上缺的那条守卫：接线没人测
+
+修完夹具还缺一条断言 —— **整个仓库此前没有任何测试盯住 `ProcessChip.iconView`
+这个 `if let … else` 的接线**。`ProcessAppResolverTests` 只测了解析器本身
+（「有 bundle 时 `icon(for:)` 非 nil」），没测「视图有没有真的把它画出来」。
+缺了它，把 `iconView` 整个换成固定的 `Image(systemName: "app")` **也全绿**。
+
+新增 `ProcessChipLayoutTests.有应用身份时画真图标无身份时才回落`。
+
+**判据：图标槽里的「彩色像素数」（`max通道 − min通道 > 40`）**，而不是墨迹量：
+
+| 渲染 | 长相 | 通道差 |
+|---|---|---|
+| 真应用图标（Finder） | 蓝色填充 + 白色笑脸 | **≈ 150** |
+| 回落 SF Symbol `app` | **灰色**圆角方框描边 | **≈ 30**（`#86868B`） |
+
+两者**墨迹量是同一量级**（都「画了点东西」），数墨迹分不开；而**色彩是二值的** ——
+真图标一定有色相，灰色描边一定没有。阈值 40 落在 150 与 30 之间，两侧各留 2 倍余量。
+
+**实测标定（20×20pt 槽的左半 10pt，2x、浅色）**：
+
+| 输入 | 彩色像素 |
+|---|---|
+| `appBundlePath = Finder.app` | **544** |
+| 两者皆 `nil` | **0** |
+
+断言 `> 100` 与 `< 20`。**必须成对**（本仓库栽过两次「0 命中 = 真的没有 vs 判据本身坏了」）：
+第二条不成立就说明「彩色」这个判据区分不开两种情况，第一条的绿是假的。
+
+**变异验证**：把 `iconView` 的条件改成 `if let icon = …, false`（永远走回落）
+→ 彩色从 **544 → 0**，`有应用身份时画真图标无身份时才回落` 变红。已还原。
+
+### §8.33.6.7 顺带坐实的一件事
+
+`SnapshotRenderTests` 的进程样本改完后，**弹窗走查图与设计稿对上了**：
+`alert-busy-light.png` 现在画的是 `Finder · PID 1234` + `图像捕捉 · PID 5678`，
+与 `03-eject-flow.html` 的样本逐字一致（此前是 `IINA · PID 5340` / `tail · PID 39298`，
+设计稿里根本没这两个）。**修图标的同时把「比不了」也一并解决了。**
+
+### §8.33.6.8 验收
+
+| 项 | 结果 |
+|---|---|
+| 全量测试 | **267 条 / 35 suites 全绿**（+1：新增的芯片图标接线断言） |
+| 三道 CI 门槛 | 全过（零警告含测试目标 / `swift-format lint --strict` / 覆盖率 **77.06%** ≥ 40%） |
+| 出图 | **28 → 29 张**（+1：`row-busy-cli-light`） |
+| 图标修复 | `main-window-multi-{light,dark}` / `alert-busy-*` / `menu-popover-*` / `row-busy-*` 的芯片图标**全部回来了**（Finder 蓝色图标、图像捕捉相机图标） |
+| 变异验证 | 1 条，抓到预期断言（544 → 0） |
+| 产品代码改动 | **只有注释**（`ProcessChip.iconView` 补了回落分支的说明）→ 无行为变更 |
+
+改动：`Tests/DiskEjectorAppTests/SnapshotRenderTests.swift`（`SampleApp` + 样本与设计稿同源 +
+`row-busy-cli-light`）、`Tests/DiskEjectorAppTests/ProcessChipLayoutTests.swift`（+1 条）、
+`Sources/Views/DesignSystemComponents.swift`（注释）、本文件。
 
 ---
 

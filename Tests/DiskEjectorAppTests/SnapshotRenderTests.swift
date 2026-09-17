@@ -49,10 +49,86 @@ struct SnapshotRenderTests {
         deviceModel: "SanDisk Extreme 55AE"
     )
 
-    private let procs = [
-        OccupyingProcess(pid: 5340, processName: "IINA", path: "/Volumes/My Passport/clip.mp4"),
-        OccupyingProcess(pid: 39298, processName: "tail", path: "/Volumes/My Passport/clip.mp4"),
-    ]
+    // MARK: - 进程样本（走查图里芯片的图标来源）
+
+    /// 走查图里进程芯片用的**真实应用身份**。
+    ///
+    /// ## 为什么必须给（2026-09-17 补，用户报「应用图标又不显示了」）
+    ///
+    /// 出图夹具里的进程原本只填了 `pid` / `processName` / `path` ——
+    /// **没填 `appBundlePath`，也没填 `executablePath`**，而那两个字段正是
+    /// ``ProcessAppResolver/icon(for:)`` 唯一的图标来源：
+    ///
+    /// ```swift
+    /// guard let path = process.appBundlePath ?? process.executablePath else { return nil }
+    /// ```
+    ///
+    /// 生产路径上这两个字段由 ``ProcessAppResolver/enrich(_:)`` 用 `proc_pidpath`
+    /// **按 PID 查出来**；而夹具的 PID 是编的（5340 / 39298…），本机并不存在 →
+    /// `proc_pidpath` 失败 → 两条路径都是 `nil` → `icon(for:)` 返回 `nil` →
+    /// ``ProcessChip`` 回落成 SF Symbol `app`（**一个空方框**）。
+    ///
+    /// 于是**所有忙态走查图里的进程芯片都画成空方框**，而设计稿画的是「有图标的芯片」。
+    /// 走查时会被读成「应用图标没显示」这种产品缺陷 —— 用户看
+    /// `main-window-multi-light.png` 时正是这么读的。
+    ///
+    /// ## 产品代码不需要改
+    ///
+    /// `icon(for:)` 返回 `nil` 时回落成空方框是**对的** —— 它真正的含义是
+    /// 「这个 PID 已经不在了」。错的是**夹具**：它造出了一个生产上几乎不会出现的状态，
+    /// 还把它当成常态出图。（生产上只要进程还活着，`enrich` 就一定能拿到
+    /// `executablePath` —— 连 `/bin/sleep` 这种 CLI 都有，见 `ProcessAppResolverTests`。）
+    ///
+    /// ## 为什么用系统卷上的应用
+    ///
+    /// 只有 `/System/…` 是**任何 macOS 都保证存在**的，出图因此与机器无关。
+    /// 而且它们的图标正是设计稿要表达的那两个（Finder 的文件夹、图像捕捉的相机）——
+    /// `01-main-window.html` 与 `03-eject-flow.html` 画的样本进程就是这两个。
+    private enum SampleApp {
+        /// 取第一个存在的候选路径。都不存在返回 `nil`（调用方用 `#require` 报错，
+        /// **不要静默退回空方框** —— 那正是这次要修的病）。
+        static func firstExisting(_ candidates: [String]) -> String? {
+            candidates.first { FileManager.default.fileExists(atPath: $0) }
+        }
+
+        static var finder: String? {
+            firstExisting(["/System/Library/CoreServices/Finder.app"])
+        }
+
+        static var imageCapture: String? {
+            firstExisting([
+                "/System/Applications/Image Capture.app",
+                "/Applications/Image Capture.app",
+            ])
+        }
+    }
+
+    /// 忙态样本进程 —— **与设计稿的样本一致**（`01-main-window.html` 的磁盘行与
+    /// `03-eject-flow.html` 的弹窗画的都是 `Finder` + `图像捕捉`）。
+    ///
+    /// 此前这里是 `IINA` / `tail`（PID 5340 / 39298）：那是某次排查时本机真实占用者的名字，
+    /// **不是设计稿的样本**，而且因为 PID 是编的、又没填应用身份，图标一律是空方框。
+    /// 走查图是拿来跟设计稿并排比的 —— 样本该同源（同 ``designDisks`` 用面板设计稿那两块盘）。
+    ///
+    /// - Note: `appBundlePath` 走 ``SampleApp`` 解析，**不硬编码到具体机型**；
+    ///   解析不到时 `try #require` 会让出图直接失败，而不是悄悄出一张空方框图。
+    private func sampleProcs(finderApp: String, imageCaptureApp: String) -> [OccupyingProcess] {
+        [
+            OccupyingProcess(
+                pid: 1234, processName: "Finder", displayName: "Finder",
+                appBundlePath: finderApp, path: "/Volumes/My Passport/clip.mp4"),
+            OccupyingProcess(
+                pid: 5678, processName: "图像捕捉", displayName: "图像捕捉",
+                appBundlePath: imageCaptureApp, path: "/Volumes/My Passport/clip.mp4"),
+        ]
+    }
+
+    /// **非 app 内的 CLI 进程**样本（`tail`）：身份字段里只有 `executablePath`，
+    /// 图标取自可执行文件自身的系统图标 —— 这是生产上 `tail` / `ffmpeg` 的真实长相，
+    /// 与「空方框」不是一回事，单独出一张图以免混进上面那组被误读。
+    private let cliProc = OccupyingProcess(
+        pid: 39298, processName: "tail", displayName: "tail",
+        executablePath: "/usr/bin/tail", path: "/Volumes/My Passport/clip.mp4")
 
     /// `02-menu-bar.html` 里面板展示的那两块盘 —— 名称、容量、占用都与设计稿逐字一致。
     ///
@@ -212,6 +288,18 @@ struct SnapshotRenderTests {
         // 的截断位置与真机不一致，走查时看到的换行/省略号都是假的。
         let menuW = DesignTokens.Size.menuPopoverWidth - 16
 
+        // 进程样本的**应用身份**：必须解析到真实 `.app`，否则芯片图标位是空方框
+        // （2026-09-17 修，见 ``SampleApp``）。
+        //
+        // ⚠️ 用 `try #require` 而不是 `?? ""`：解析不到就**让出图直接失败**。
+        // 静默退回的后果是「又出一张空方框图」，而这正是这次要修的 bug ——
+        // **失败要响，不要悄悄退化成上一次的坏样子**。
+        let finderApp = try #require(
+            SampleApp.finder, "系统里找不到 Finder.app —— 进程芯片的图标会退回空方框")
+        let imageCaptureApp = try #require(
+            SampleApp.imageCapture, "系统里找不到「图像捕捉」—— 进程芯片的图标会退回空方框")
+        let procs = sampleProcs(finderApp: finderApp, imageCaptureApp: imageCaptureApp)
+
         // ---- 磁盘行：三种判定状态（设计稿 06-states.html 的状态矩阵）----
         let states: [(String, OccupancyResult)] = [
             ("busy", .occupied(procs)),
@@ -232,6 +320,17 @@ struct SnapshotRenderTests {
         try dump(
             DiskRow(disk: disk, occupancy: .occupied(procs), accent: .default, onEject: {}, density: .compact),
             width: mainW, name: "row-compact-busy-light")
+
+        // **非 app 内的 CLI 进程**（`tail`）：芯片图标取自可执行文件本身，**不是空方框**。
+        //
+        // 单独出一张的理由：这一档与上面那组的图标**来源不同**（`executablePath` 而不是
+        // `appBundlePath`）。混在同一张图里，将来谁也说不清「那个图标为什么长得不一样」；
+        // 也正因为这一档容易被误读成「图标缺失」，才需要它自己有一张图 + 一句说明。
+        try dump(
+            DiskRow(
+                disk: disk, occupancy: .occupied([cliProc]), accent: .default, onEject: {},
+                density: .regular),
+            width: mainW, name: "row-busy-cli-light")
 
         // ---- 主窗口（设计稿 01-main-window.html）----
         // 直读 DiskListStore.shared，渲染的是本机真实磁盘与首帧占用态。
@@ -267,11 +366,11 @@ struct SnapshotRenderTests {
         //
         // ⚠️ **不能只靠出图**：本文件只在 `DE_SNAPSHOTS=1` 下跑，不进 CI。
         // 机器无关的断言在 `MainWindowDiskListTests`（数琥珀条）。
+        //
+        // 占用样本用与磁盘行同一组 ``procs``（Finder + 图像捕捉，带真实应用身份）——
+        // 芯片图标的来源是 `appBundlePath`，编一个只有名字的进程就会画成空方框。
         let multiOccupancy: [String: OccupancyResult] = [
-            "/Volumes/Samsung T7": .occupied([
-                OccupyingProcess(pid: 501, processName: "Finder", path: "/Volumes/Samsung T7/a.mov"),
-                OccupyingProcess(pid: 502, processName: "图像捕捉", path: "/Volumes/Samsung T7/b.heic"),
-            ]),
+            "/Volumes/Samsung T7": .occupied(procs),
             "/Volumes/WD Blue": OccupancyResult.none,
         ]
         let multiWindow = await ViewFixtures.mainWindow(
@@ -289,14 +388,10 @@ struct SnapshotRenderTests {
             fixtureDisk(name: "影音盘", bsd: "disk7s2", total: 2_000_000_000_000, used: 1_700_000_000_000),
             fixtureDisk(name: "备份盘", bsd: "disk8s2", total: 4_000_000_000_000, used: 2_600_000_000_000),
         ]
-        var compactOccupancy: [String: OccupancyResult] = [:]
-        for (i, d) in compactDisks.enumerated() {
-            let pid = Int32(900 + i)
-            let probe = d.mountPath + "/a.mov"
-            compactOccupancy[d.mountPath] =
-                i.isMultiple(of: 2)
-                ? .occupied([OccupyingProcess(pid: pid, processName: "Finder", path: probe)])
-                : OccupancyResult.none
+        // 一忙一安全交替：一次看清紧凑行的两种配色（忙碌的琥珀条 / 安全的绿勾）。
+        let compactOccupancy: [String: OccupancyResult] = compactDisks.enumerated().reduce(into: [:]) {
+            table, item in
+            table[item.element.mountPath] = item.offset.isMultiple(of: 2) ? .occupied(procs) : OccupancyResult.none
         }
         let compactWindow = await ViewFixtures.mainWindow(
             disks: compactDisks, occupancy: compactOccupancy)
@@ -317,14 +412,20 @@ struct SnapshotRenderTests {
         // 这条就做得到了。
         let designStore = DiskListStore(monitoring: false)
         designStore.replaceDisksForTesting(designDisks)
+        // `detect` 收的是**挂载路径**，所以样本进程的 `path` 用传进来的那个（与真机一致）。
+        // 两个**应用身份**（`appBundlePath`）从外面捕获进来 —— `String` 是 `Sendable`，
+        // 闭包仍满足 `@Sendable`。
         let designOccupancy = OccupancyStore(
             diskStore: designStore,
             detect: { path in
-                // 不捕获任何外部值，闭包天然 `@Sendable`。
                 guard path.hasSuffix("Samsung T7") else { return .none }
                 return .occupied([
-                    OccupyingProcess(pid: 501, processName: "Finder", path: path + "/a.mov"),
-                    OccupyingProcess(pid: 502, processName: "图像捕捉", path: path + "/b.heic"),
+                    OccupyingProcess(
+                        pid: 1234, processName: "Finder", displayName: "Finder",
+                        appBundlePath: finderApp, path: path + "/a.mov"),
+                    OccupyingProcess(
+                        pid: 5678, processName: "图像捕捉", displayName: "图像捕捉",
+                        appBundlePath: imageCaptureApp, path: path + "/b.heic"),
                 ])
             },
             autoStart: false)

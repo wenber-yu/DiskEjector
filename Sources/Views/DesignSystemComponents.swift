@@ -637,6 +637,22 @@ struct ProcessChip: View {
             format: L10n.tr(.processExecutableNameFormat), process.displayName, process.processName)
     }
 
+    /// 应用图标；取不到时回落成 SF Symbol `app`。
+    ///
+    /// ## 那个回落分支什么时候才会走到（2026-09-17 补注）
+    ///
+    /// **只在「这个 PID 已经不在了」时** —— 不是「CLI 进程没有图标」。
+    /// ``ProcessAppResolver/icon(for:)`` 的取值顺序是
+    /// `appBundlePath ?? executablePath`，而生产路径上
+    /// ``ProcessAppResolver/enrich(_:)`` 用 `proc_pidpath` 给**任何还活着的进程**都填上了
+    /// `executablePath`（`/bin/sleep` 这种也有，见 `ProcessAppResolverTests`）。
+    /// 所以 `tail` / `ffmpeg` 这类 CLI 进程拿到的是**可执行文件自身的系统图标**，
+    /// 不是这个灰色方框。
+    ///
+    /// ⚠️ **出图夹具踩过这个坑**：夹具的进程是编的（PID 501 / 5340…），本机并不存在
+    /// → 两条路径都是 `nil` → 走查图上所有进程芯片都成了空方框，被读成「图标缺失」。
+    /// 夹具已修（`SnapshotRenderTests.SampleApp`），接线由
+    /// `ProcessChipLayoutTests.有应用身份时画真图标无身份时才回落` 守着。
     @ViewBuilder
     private var iconView: some View {
         if let icon = ProcessAppResolver.icon(for: process) {
