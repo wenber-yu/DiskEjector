@@ -13,7 +13,14 @@ concurrency:
 
 env:
   # 脚本大量输出中文，显式固定 UTF-8 locale，避免 runner 默认 locale 下输出乱码。
+  # ⚠️ **它不会改变 `Locale.current`**（实测：设了 `LC_ALL=en_US.UTF-8` 后
+  # `Locale.current` 仍是 `zh_CN`）—— `Locale.current` 由 `AppleLocale` 决定。
+  # 所以**不能用它来复现「CI 上文案类断言失败」**；CI 的英文环境来自 runner 的系统语言。
   LC_ALL: en_US.UTF-8
+  # 门槛失败时**全量回显**日志（0 = 不限行数）。
+  # 本地默认只回显 30 行；CI 上必须全量 —— 否则断言消息会被截掉，
+  # 只能反复推 CI 靠猜（2026-09-17 踩到：19 个 issue 只露出 12 个）。
+  PREFLIGHT_FAIL_TAIL: "0"
 
 jobs:
   quality:

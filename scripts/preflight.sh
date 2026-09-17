@@ -77,8 +77,17 @@ gate_header() {
 
 # run_gate <标题> <命令...>
 # 输出重定向到日志：成功只回显尾部 3 行（保留覆盖率数字这类关键摘要），
-# 失败回显尾部 30 行供定位。**不把命令输出直接接到管道上**——`cmd | tail` 会让
+# 失败回显尾部若干行供定位。**不把命令输出直接接到管道上**——`cmd | tail` 会让
 # `$?` 变成 tail 的状态，把失败判成成功（本项目踩过这个坑）。
+#
+# 失败回显行数由 `PREFLIGHT_FAIL_TAIL` 控制：默认 30（本地迭代够用），
+# **`0` = 全量回显**（CI 用）。
+#
+# 为什么必须有「全量」这一档：2026-09-17 CI 门槛 3 红了 **19 个 issue**，
+# 而 `tail -30` 只露出 12 个 —— 被截掉的正好是**断言消息**所在的位置
+# （swift-testing 的 issue 详情混在通过行之间），于是本地只能靠猜。
+# 截断日志把「一次能查清的事」变成「要反复推 CI 猜」，这才是真正的浪费。
+FAIL_TAIL="${PREFLIGHT_FAIL_TAIL:-30}"
 run_gate() {
     local title="$1"
     shift
@@ -88,8 +97,13 @@ run_gate() {
         echo "   ✓ 通过"
         return 0
     fi
-    echo "   ✗ 未通过，日志尾部："
-    sed 's/^/     /' "$LOG" | tail -30
+    if [ "$FAIL_TAIL" = "0" ]; then
+        echo "   ✗ 未通过，日志全量回显（PREFLIGHT_FAIL_TAIL=0）："
+        sed 's/^/     /' "$LOG"
+    else
+        echo "   ✗ 未通过，日志尾部 ${FAIL_TAIL} 行（设 PREFLIGHT_FAIL_TAIL=0 可全量回显）："
+        sed 's/^/     /' "$LOG" | tail -n "$FAIL_TAIL"
+    fi
     return 1
 }
 
