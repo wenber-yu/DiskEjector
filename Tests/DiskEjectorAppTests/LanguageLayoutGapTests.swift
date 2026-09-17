@@ -81,6 +81,44 @@ struct LanguageLayoutGapTests {
         )
     }
 
+    /// **给设计侧的方案依据**（2026-09-18 实测）。
+    ///
+    /// 不只是英文放不下 —— **中文在 440 宽下需要 564.25，容器 566，只剩 1.75pt 余量**。
+    /// 也就是说中文只是「刚好塞进去」，再加一行就溢出。566 这个高度本身没有缓冲。
+    ///
+    /// 固定高度 566、只改宽度实测：
+    ///
+    /// | 面板宽 | zh-Hans | en | 英文装得下 |
+    /// |---|---|---|---|
+    /// | 440（当前） | 564.25 | 612.25 | 否，溢出 46.25 |
+    /// | 460 | 548.25 | 596.25 | 否，溢出 30.25 |
+    /// | **480** | 548.25 | 564.25 | **是** |
+    ///
+    /// 二分测得临界宽度 **477pt**。结论：**加宽到 480 即可两种语言都装下，不必改高度**
+    /// （且中文余量从 1.75pt 变成 17.75pt，有了缓冲）。
+    ///
+    /// 这条断言把「加宽有效」从说法变成可复现的测量：将来文案若变长到 480 也装不下，
+    /// 这里会红，提醒该方案已失效。**它断言的是一个尚未采纳的方案，不是当前行为。**
+    @Test func 加宽到480后中英都放得下_方案依据() {
+        let container = DesignTokens.Size.settingsPanel.height
+        let proposed: CGFloat = 480
+
+        let zh = TestLanguage.with(TestLanguage.design) { settingsNeed(panelWidth: proposed) }
+        let en = TestLanguage.with("en") { settingsNeed(panelWidth: proposed) }
+        print("[layout-gap] 宽 \(proposed) 时需要：zh=\(zh)pt，en=\(en)pt，容器=\(container)pt")
+
+        #expect(
+            zh <= container,
+            "加宽到 \(proposed) 后中文反而放不下了（\(zh) > \(container)）—— 方案不成立，请重新量")
+        #expect(
+            en <= container,
+            """
+            加宽到 \(proposed) 后英文仍放不下（需要 \(en)pt，容器 \(container)pt）——
+            「加宽即可」这个方案已失效，请重新量临界宽度，别照着 477 这个旧数字改设计稿。
+            """
+        )
+    }
+
     @Test func 英文下引导面板更高_已知缺陷() {
         let width = DesignTokens.Size.onboardingPanelWidth
         // 设计稿总高 503.3（中文实测）。这里只比较中英差异，不重复断言绝对值。
