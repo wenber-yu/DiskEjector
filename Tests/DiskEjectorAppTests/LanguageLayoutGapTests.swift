@@ -56,6 +56,20 @@ struct LanguageLayoutGapTests {
         // 中文下必须放得下 —— 这是设计稿的硬契约，由 SettingsLayoutTests 详查。
         #expect(zh <= container, "中文下不该溢出（\(zh) > \(container)）—— 这属于 SettingsLayoutTests 的管辖")
 
+        // 「英文确实更长」是下面那条「英文放不下」的**前提**。
+        // 两者相等只有两种可能：① `TestLanguage` 的钉失效（`L10n.forcedLocale` 没传到渲染）；
+        // ② 英文文案缺失、`tr` 回退到中文源语言。**两种都不是「缺陷被修好」**。
+        // 没有这一条时，钉失效会以「英文放得下了」的面貌出现，把人引向
+        // 「删掉本文件」这个**相反**的动作 —— 一条会骗人的诊断比没有诊断更糟。
+        #expect(
+            en > zh,
+            """
+            英文下（\(en)pt）没有比中文下（\(zh)pt）高 —— 这不是缺陷被修好了，
+            而是「钉语言」失效或英文文案缺失导致回退到中文。
+            请检查 L10n.forcedLocale 是否还能传到 SwiftUI 渲染。
+            """
+        )
+
         // 英文下**确实放不下**：钉住这个已知缺陷。
         #expect(
             en > container,
