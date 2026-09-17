@@ -33,10 +33,17 @@ struct OnboardingLayoutTests {
     /// **全部按中文实测**，所以「与设计稿一致」的前提就是**先在中文下渲染**。
     /// 不钉就跟随 `Locale.current`，于是同一份代码在英文机器上必红
     /// （2026-09-17 CI 连续 6 次红即此因）。英文下的实际表现由 `LanguageLayoutGapTests` 单独记录。
-    private func renderedSize(_ view: some View, width: CGFloat) -> CGSize {
+    ///
+    /// ⚠️ **`view` 必须是 `@autoclosure`**：调用点的实参表达式（如
+    /// `ActionButton(title: L10n.tr(.notNow), …)`、`makeView().callout`）
+    /// 会在**进入本函数之前**求值，而那些表达式里就有 `L10n.tr` ——
+    /// 若在这里收普通参数，文案会在钉住的作用域**之外**就解析成英文，钉了等于没钉
+    /// （2026-09-17 实测：改成本函数内部钉之后，这 4 条断言仍以完全相同的方式红着）。
+    /// `@autoclosure` 把求值推迟到闭包里，于是它落在 `withValue` 之内。
+    private func renderedSize<V: View>(_ view: @autoclosure () -> V, width: CGFloat) -> CGSize {
         TestLanguage.with(TestLanguage.design) {
             _ = NSApplication.shared
-            let hosting = NSHostingController(rootView: view)
+            let hosting = NSHostingController(rootView: view())
             return hosting.sizeThatFits(in: CGSize(width: width, height: .greatestFiniteMagnitude))
         }
     }

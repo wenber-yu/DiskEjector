@@ -112,10 +112,11 @@ struct AlertLayoutTests {
     /// ⚠️ **在中文下渲染**：本文件所有高度基准（弹窗总高、头部、区块、提示块）都来自
     /// **中文实测**的设计稿，所以量之前必须先把语言钉住。不钉就跟随 `Locale.current`
     /// → 英文机器上必红（2026-09-17 CI 连续 6 次红即此因：四处高度差 18–19pt）。
-    private func size(_ view: some View, width: CGFloat = Spec.width) -> CGSize {
+    /// ⚠️ 同样用 `@autoclosure`：实参表达式（含 `L10n.tr`）必须在钉住的作用域内求值。
+    private func size<V: View>(_ view: @autoclosure () -> V, width: CGFloat = Spec.width) -> CGSize {
         TestLanguage.with(TestLanguage.design) {
             _ = NSApplication.shared
-            return NSHostingController(rootView: view).sizeThatFits(
+            return NSHostingController(rootView: view()).sizeThatFits(
                 in: CGSize(width: width, height: CGFloat.greatestFiniteMagnitude))
         }
     }

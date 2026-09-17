@@ -177,7 +177,12 @@ struct OnboardingWindowTests {
         #expect(window.canBecomeKey, "不能成为 key 的话回车/Esc/按钮点击全都失效")
         #expect(window.contentViewController === hosting)
         // 窗口标题保留（只是不绘制）：Mission Control、窗口菜单、辅助功能读到的仍是它。
-        #expect(window.title == L10n.tr(.fdaOnboardingTitle))
+        //
+        // ⚠️ 期望值必须显式取**设计稿语言**的那一份：窗口是在 `makePanel()` 里、
+        // 钉住中文的那个作用域内建的（`window.title` 因此恒为中文），
+        // 而 `L10n.tr(.fdaOnboardingTitle)` 走 `Locale.current` ——
+        // 两侧语言不同时这条会红，且**红的原因跟被测代码毫无关系**。
+        #expect(window.title == TestLanguage.designText(.fdaOnboardingTitle))
 
         // **建窗不上屏**：单测跑到这里如果窗口可见，就是抢了用户的焦点。
         #expect(!window.isVisible)

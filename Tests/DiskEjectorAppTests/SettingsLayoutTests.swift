@@ -41,10 +41,14 @@ struct SettingsLayoutTests {
     /// 所以「内容放得下 / 不留大片空白」这两条的前提就是**先在中文下渲染**。
     /// 不钉就跟随 `Locale.current` → 英文机器上必红（2026-09-17 CI 连续 6 次红即此因：
     /// 英文下内容需要 612.25pt，容器 566pt）。英文的实际表现由 `LanguageLayoutGapTests` 记录。
-    private func renderedSize(_ view: some View, width: CGFloat) -> CGSize {
+    ///
+    /// ⚠️ **`view` 必须是 `@autoclosure`**：实参表达式在**进入本函数之前**求值，
+    /// 而它可能含 `L10n.tr`（分区标题、行标签 …），不推迟求值就会解析成 `Locale.current` 的
+    /// 那一版，钉住渲染也救不回来。理由同 `OnboardingLayoutTests.renderedSize`。
+    private func renderedSize<V: View>(_ view: @autoclosure () -> V, width: CGFloat) -> CGSize {
         TestLanguage.with(TestLanguage.design) {
             _ = NSApplication.shared
-            let hosting = NSHostingController(rootView: view)
+            let hosting = NSHostingController(rootView: view())
             return hosting.sizeThatFits(in: CGSize(width: width, height: .greatestFiniteMagnitude))
         }
     }
