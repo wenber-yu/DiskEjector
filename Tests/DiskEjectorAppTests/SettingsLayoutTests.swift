@@ -36,10 +36,17 @@ struct SettingsLayoutTests {
     /// 手法可靠性用**已知高度的磁盘行**做过对照（真值 158pt）：
     /// `sizeThatFits` → 158 ✓ ／ `fittingSize` → 158（高度对但宽度错）／ 位图扫描 → 369 ✗
     /// （`bitmapImageRepForCachingDisplay` 的缓冲区不保证清零，会扫到未初始化内存）。
+    ///
+    /// ⚠️ **在中文下渲染**：本文件断言的面板高度（440×566）是**按中文实测**出来的，
+    /// 所以「内容放得下 / 不留大片空白」这两条的前提就是**先在中文下渲染**。
+    /// 不钉就跟随 `Locale.current` → 英文机器上必红（2026-09-17 CI 连续 6 次红即此因：
+    /// 英文下内容需要 612.25pt，容器 566pt）。英文的实际表现由 `LanguageLayoutGapTests` 记录。
     private func renderedSize(_ view: some View, width: CGFloat) -> CGSize {
-        _ = NSApplication.shared
-        let hosting = NSHostingController(rootView: view)
-        return hosting.sizeThatFits(in: CGSize(width: width, height: .greatestFiniteMagnitude))
+        TestLanguage.with(TestLanguage.design) {
+            _ = NSApplication.shared
+            let hosting = NSHostingController(rootView: view)
+            return hosting.sizeThatFits(in: CGSize(width: width, height: .greatestFiniteMagnitude))
+        }
     }
 
     /// 渲染成位图后，统计**卡片内部的行间分隔线**条数。

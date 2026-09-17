@@ -431,7 +431,20 @@ struct EjectFlowControllerTests {
     @Test func 无法列出进程时不给空区块() {
         let model = EjectAlertModel.busy(disk: makeDisk(), occupying: [])
         #expect(model.section == nil)
-        #expect(model.subtitle.contains("完全磁盘访问"))
+
+        // 与语言无关的两条：占位符已替换、带上了磁盘名。
+        #expect(!model.subtitle.contains("%@"), "格式化占位符必须已被替换")
+        #expect(model.subtitle.contains("测试盘"), "说明句要指名是哪块盘，否则多盘时用户不知道在说哪一块")
+
+        // 「说明句自带授权引导」是**中文设计稿的文案契约**，所以显式在中文下解析再核对。
+        // 不能直接写 `model.subtitle.contains("完全磁盘访问")` —— 那样结论会随运行机器的
+        // 系统语言变（英文版文案里没有这几个字），于是本地绿、CI 红。见 `TestLanguage`。
+        let designSubtitle = String(
+            format: L10n.tr(.ejectBusyNoProcessInfo, locale: Locale(identifier: TestLanguage.design)),
+            "测试盘")
+        #expect(
+            designSubtitle.contains("完全磁盘访问"),
+            "说明句必须指明去「完全磁盘访问」授权，否则用户不知道该给什么权限")
     }
 
     /// 警示必须写清动作序列（设计稿文案原则），且与 ``EjectFlowController/terminateAndEject``
@@ -440,11 +453,15 @@ struct EjectFlowControllerTests {
     @MainActor
     @Test func 占用弹窗警示写清动作序列() {
         let text = EjectUI.busyWarningText
+        // 与语言无关的两条：品牌名走本地化键、占位符已替换。
         #expect(text.contains(L10n.tr(.appName)), "品牌名应走本地化，而不是硬编码 DiskEjector")
-        #expect(text.contains("正常退出"), "缺少第一步「先请求正常退出」")
-        #expect(text.contains("强制结束"), "缺少第二步「强制结束」")
-        #expect(text.contains("重新尝试推出"), "缺少第三步「重新尝试推出」")
         #expect(!text.contains("%@"), "格式化占位符必须已被替换")
+
+        // 三步动作序列是**中文设计稿的文案契约**，显式在中文下核对（见 `TestLanguage`）。
+        let design = L10n.tr(.ejectBusyWarning, locale: Locale(identifier: TestLanguage.design))
+        #expect(design.contains("正常退出"), "缺少第一步「先请求正常退出」")
+        #expect(design.contains("强制结束"), "缺少第二步「强制结束」")
+        #expect(design.contains("重新尝试推出"), "缺少第三步「重新尝试推出」")
     }
 
     // MARK: 弹窗版式契约

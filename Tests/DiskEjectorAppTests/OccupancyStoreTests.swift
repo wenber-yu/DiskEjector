@@ -37,11 +37,20 @@ private func makeDisk(_ path: String) -> DiskInfo {
 
 /// 轮询等待条件成立。**不用固定 `sleep`**：那要么白等、要么在慢机器上假红。
 ///
-/// 超时给到 10s：单独跑时通常 10ms 内就成立，但全量测试里主 actor 被别的用例占着，
-/// 3s 会偶发假红（实测过一次）。
+/// 超时给到 30s：单独跑时通常 10ms 内就成立，但全量测试里主 actor 被别的用例占着，
+/// 3s 会偶发假红（实测过一次）→ 提到 10s；2026-09-17 CI 上 10s **仍然没等到**
+/// （`磁盘列表一变就重测占用` 失败：`arrived` 为 false）→ 再放宽到 30s。
+///
+/// ⚠️ **放宽超时是在买时间，不是在修根因**：这条等待依赖「Combine sink →
+/// `Task { @MainActor … }` → `refresh`」这条链路被主 actor 调度。
+/// CI runner 比开发机慢约一倍（同批用例 25–34s vs 本地 10–18s），
+/// 且 swift-testing 并行跑用例时主 actor 会被别的 `@MainActor` 用例争抢。
+/// 真根因是「这条链路没有可等待的信号」，只能轮询；
+/// 若哪天它开始常态化超时，该做的是给 `OccupancyStore` 加一个可 await 的刷新句柄，
+/// 而不是继续加超时。
 @MainActor
 private func waitUntil(
-    timeout: TimeInterval = 10,
+    timeout: TimeInterval = 30,
     _ condition: () async -> Bool
 ) async -> Bool {
     let deadline = Date().addingTimeInterval(timeout)

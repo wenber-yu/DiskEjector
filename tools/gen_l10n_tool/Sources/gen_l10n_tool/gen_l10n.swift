@@ -111,11 +111,27 @@ struct GenL10nTool {
         \(tableBlock)
             ]
 
+            /// **语言覆盖**（任务局部作用域）。`nil` = 跟随 `Locale.current`（生产行为）。
+            ///
+            /// **为什么需要**：设计稿的排版数字（面板 440×566、引导窗 503.3、按钮 50/102、
+            /// 路径小标 226 …）全部按**中文**实测，「排版与设计稿一致」这类断言
+            /// **只有钉在确定的中文下才有意义**。不钉就跟随 `Locale.current`，
+            /// 于是同一份代码在英文机器上必红 —— 2026-09-17 CI 连续 6 次红即此因
+            /// （19 个 issue 里 18 个都是它，而本地一直绿，只因为本机是中文环境）。
+            ///
+            /// **为什么用 `@TaskLocal` 而不是全局 `var`**：swift-testing 并行跑用例，
+            /// 全局可变状态会串台（一个用例把语言改成英文，另一个正在渲染的用例跟着变）。
+            /// 任务局部只在 `withValue` 闭包内生效、随子任务传播，天然按用例隔离。
+            ///
+            /// ⚠️ **生产代码从不设置它**：应用里 `tr` 永远走 `Locale.current`。
+            @TaskLocal static var forcedLocale: Locale?
+
             /// 取本地化文本。解析顺序：精确语言匹配 → 同语族回退（如 zh-Hans/zh-Hant 互通）
             /// → 回退源语言（\(sourceLang)）。
             static func tr(_ key: Key, locale: Locale = .current) -> String {
                 let entry = Self.table[key] ?? [:]
-                let id = locale.identifier.split(separator: "_").first.map(String.init) ?? \(swiftStrLiteral(sourceLang))
+                let resolved = Self.forcedLocale ?? locale
+                let id = resolved.identifier.split(separator: "_").first.map(String.init) ?? \(swiftStrLiteral(sourceLang))
                 if let v = entry[id] { return v }
                 if id.hasPrefix("zh") {
                     return entry["zh-Hans"] ?? entry["zh-Hant"] ?? key.rawValue

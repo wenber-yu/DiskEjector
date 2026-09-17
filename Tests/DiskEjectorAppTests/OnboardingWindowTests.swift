@@ -52,25 +52,38 @@ struct OnboardingWindowTests {
         OnboardingView(accent: .default, onOpenSettings: {}, onLater: {})
     }
 
+    /// ⚠️ **都钉在中文下**：本文件的 503.3 / 380 来自**中文实测**的设计稿。
+    ///
+    /// 与 `AlertLayoutTests` 同理，`makePanel()` 得连**建窗**一起钉 ——
+    /// `AppDelegate.makeOnboardingPanel` 会在构造时用 `sizeThatFits` 定 `contentSize`，
+    /// 那一刻就会解析文案。钉晚了只是把已经成型的文本排版一遍。
+    /// 不钉 → 英文机器上窗口高会变成 560pt（2026-09-17 CI 实测差 56.7pt）。
+    /// 英文的实际表现由 `LanguageLayoutGapTests` 记录。
     private func makeHosting() -> NSHostingController<OnboardingView> {
-        let hosting = NSHostingController(rootView: makeView())
-        if #available(macOS 13.3, *) { hosting.safeAreaRegions = [] }
-        return hosting
+        TestLanguage.with(TestLanguage.design) {
+            let hosting = NSHostingController(rootView: makeView())
+            if #available(macOS 13.3, *) { hosting.safeAreaRegions = [] }
+            return hosting
+        }
     }
 
     /// 只建窗，**不上屏** —— 单测不抢用户焦点（与 `AlertLayoutTests` 对弹窗窗口的处理一致）。
     private func makePanel() -> (window: NSWindow, hosting: NSHostingController<OnboardingView>) {
-        _ = NSApplication.shared
-        return AppDelegate.makeOnboardingPanel(root: makeView())
+        TestLanguage.with(TestLanguage.design) {
+            _ = NSApplication.shared
+            return AppDelegate.makeOnboardingPanel(root: makeView())
+        }
     }
 
     private func measuredHeight(of hosting: NSHostingController<OnboardingView>) -> CGFloat {
-        // 先布局一次再量：宿主视图还没按「宽 380」排过版时，量出来会有约 0.5pt 的抖动
-        // （实测 500.45 vs 499.95）—— 断言里那点容差就是留给它的。
-        hosting.view.layoutSubtreeIfNeeded()
-        return hosting.sizeThatFits(
-            in: CGSize(width: width, height: .greatestFiniteMagnitude)
-        ).height
+        TestLanguage.with(TestLanguage.design) {
+            // 先布局一次再量：宿主视图还没按「宽 380」排过版时，量出来会有约 0.5pt 的抖动
+            // （实测 500.45 vs 499.95）—— 断言里那点容差就是留给它的。
+            hosting.view.layoutSubtreeIfNeeded()
+            return hosting.sizeThatFits(
+                in: CGSize(width: width, height: .greatestFiniteMagnitude)
+            ).height
+        }
     }
 
     // MARK: - 尺寸

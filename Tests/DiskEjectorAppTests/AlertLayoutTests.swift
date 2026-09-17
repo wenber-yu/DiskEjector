@@ -84,21 +84,40 @@ struct AlertLayoutTests {
         ]
     }
 
+    /// ⚠️ **造模型也必须钉语言**，只钉渲染没用。
+    ///
+    /// `EjectAlertModel.busy(...)` / `.failure(...)` 内部就调用了 `L10n.tr`
+    /// （标题、说明句、警示文案全在**构造时**解析成字符串），
+    /// 之后渲染只是把这批已经成型的文本排版。若模型在钉住的作用域之外构造，
+    /// 钉渲染就是白钉 —— 文案仍是 `Locale.current` 的那一份。
+    ///
+    /// 这是本 suite 相比 `OnboardingLayoutTests` 多出来的一个坑：
+    /// 后者量的是纯 SwiftUI 视图（文本在 body 里解析），钉住渲染就够了。
     private var designBusy: EjectAlertModel {
-        .busy(disk: makeDisk(), occupying: designProcesses)
+        TestLanguage.with(TestLanguage.design) {
+            .busy(disk: makeDisk(), occupying: designProcesses)
+        }
     }
 
     private var designFailure: EjectAlertModel {
-        .failure(disk: makeDisk(), failure: .inUse)
+        TestLanguage.with(TestLanguage.design) {
+            .failure(disk: makeDisk(), failure: .inUse)
+        }
     }
 
     // MARK: 量测
 
     /// 按设计稿宽度量一个视图（`sizeThatFits(in:)` 才认宽度约束）。
+    ///
+    /// ⚠️ **在中文下渲染**：本文件所有高度基准（弹窗总高、头部、区块、提示块）都来自
+    /// **中文实测**的设计稿，所以量之前必须先把语言钉住。不钉就跟随 `Locale.current`
+    /// → 英文机器上必红（2026-09-17 CI 连续 6 次红即此因：四处高度差 18–19pt）。
     private func size(_ view: some View, width: CGFloat = Spec.width) -> CGSize {
-        _ = NSApplication.shared
-        return NSHostingController(rootView: view).sizeThatFits(
-            in: CGSize(width: width, height: CGFloat.greatestFiniteMagnitude))
+        TestLanguage.with(TestLanguage.design) {
+            _ = NSApplication.shared
+            return NSHostingController(rootView: view).sizeThatFits(
+                in: CGSize(width: width, height: CGFloat.greatestFiniteMagnitude))
+        }
     }
 
     private func height(_ model: EjectAlertModel) -> CGFloat {

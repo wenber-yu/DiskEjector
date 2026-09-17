@@ -28,10 +28,17 @@ struct OnboardingLayoutTests {
     /// ⚠️ 必须用 `sizeThatFits(in:)`：`NSHostingView.fittingSize` 返回的是
     /// **无宽度约束的理想尺寸**，宽度根本没生效（详见
     /// `SettingsLayoutTests.renderedSize` 的对照实验）。
+    ///
+    /// ⚠️ **在中文下渲染**：本文件断言的设计稿数字（503.3 / 52 / 135.5 / 54 / 30 / 50 / 102 / 226）
+    /// **全部按中文实测**，所以「与设计稿一致」的前提就是**先在中文下渲染**。
+    /// 不钉就跟随 `Locale.current`，于是同一份代码在英文机器上必红
+    /// （2026-09-17 CI 连续 6 次红即此因）。英文下的实际表现由 `LanguageLayoutGapTests` 单独记录。
     private func renderedSize(_ view: some View, width: CGFloat) -> CGSize {
-        _ = NSApplication.shared
-        let hosting = NSHostingController(rootView: view)
-        return hosting.sizeThatFits(in: CGSize(width: width, height: .greatestFiniteMagnitude))
+        TestLanguage.with(TestLanguage.design) {
+            _ = NSApplication.shared
+            let hosting = NSHostingController(rootView: view)
+            return hosting.sizeThatFits(in: CGSize(width: width, height: .greatestFiniteMagnitude))
+        }
     }
 
     // MARK: 整体
@@ -170,14 +177,19 @@ struct OnboardingLayoutTests {
     /// 「小标的插入位置」—— 小标是个带底色的独立视图，格式化字符串给不了。
     /// 切分逻辑要是坏了（比如空段没丢掉），行首会多出半个间距，小标不再贴着边。
     @Test func 注释模板按占位符切分且丢掉空段() {
+        // 显式取**设计稿语言**的文案：切分位置由该语言的 `%@` 决定，
+        // 走 `Locale.current` 会让结论随机器语言变（英文模板的切分结果不同）。
         let pieces = OnboardingView.notePieces(
-            of: L10n.tr(.fdaOnboardingStep2Note), pill: L10n.tr(.fdaOnboardingPathAdd))
+            of: TestLanguage.designText(.fdaOnboardingStep2Note),
+            pill: TestLanguage.designText(.fdaOnboardingPathAdd))
 
         #expect(pieces.count == 3, "「文字 + 小标 + 文字」应切成 3 段，实际 \(pieces.count)")
         #expect(pieces[1].isPill, "中间那段是小标")
         #expect(!pieces[0].isPill && !pieces[2].isPill, "首尾两段是文字")
         #expect(
-            pieces.map(\.text) == ["若不在列表中，点左下角", L10n.tr(.fdaOnboardingPathAdd), "从「应用程序」添加"],
+            pieces.map(\.text) == [
+                "若不在列表中，点左下角", TestLanguage.designText(.fdaOnboardingPathAdd), "从「应用程序」添加",
+            ],
             "切分结果不对：\(pieces.map(\.text)) —— 段首尾的空白必须被吃掉，否则行首会多出半个间距")
 
         // 模板以占位符开头/结尾时，空段不能进布局。
@@ -194,7 +206,8 @@ struct OnboardingLayoutTests {
     /// 说明段里的 `**粗体**` 与换行是**设计稿的内容**，不是格式巧合：
     /// 加粗的那半句是「为什么要给权限」，`<br>` 之后的半句是「不给会怎样」。
     @Test func 说明段带加粗标记与换行() {
-        let body = L10n.tr(.fdaOnboardingBody)
+        // 加粗标记与硬换行是**中文设计稿的文案特征**，故显式在设计稿语言下取。
+        let body = TestLanguage.designText(.fdaOnboardingBody)
         #expect(body.contains("**"), "说明段必须保留 Markdown 加粗标记，否则整段会读成一句平铺的说明")
         #expect(body.contains("\n"), "设计稿在两句之间有一个硬换行（`<br>`），丢了会合成一行")
     }
@@ -202,10 +215,10 @@ struct OnboardingLayoutTests {
     /// 第 1 步的正文与第 2 步的正文里各有一处需要保留原样的专名。
     @Test func 步骤正文里的专名原样保留() {
         #expect(
-            L10n.tr(.fdaOnboardingStep2Text).contains("DiskEjector"),
+            TestLanguage.designText(.fdaOnboardingStep2Text).contains("DiskEjector"),
             "第 2 步要让用户在系统设置的列表里找到这个确切的名字")
         #expect(
-            L10n.tr(.fdaOnboardingStep3Text).contains("DiskEjector"),
+            TestLanguage.designText(.fdaOnboardingStep3Text).contains("DiskEjector"),
             "第 3 步同样要指名道姓，否则「切回哪个应用」是含糊的")
     }
 }
