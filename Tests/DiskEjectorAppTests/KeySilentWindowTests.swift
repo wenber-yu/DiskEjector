@@ -98,7 +98,10 @@ struct KeySilentWindowTests {
     /// 任何一处写回 `NSWindow(...)` / `NSPanel(...)`，规则就静默失效 ——
     /// 而且失效的表现只是「偶尔响一声」，没有断言的话谁也不会发现。
     @Test func 四个窗口都用了不敲钟的窗口类() {
-        let main = AppDelegate.makeMainWindow()
+        // 走 `ViewFixtures` 而不是裸调 `AppDelegate.makeMainWindow()`：
+        // 后者两个 store 都是生产单例，会真的去枚举本机磁盘（见 `ViewFixtures` 文件头）。
+        // 这里要验的是**窗口类**，与磁盘数据无关。
+        let main = ViewFixtures.mainWindowHandle()
         #expect(main is KeySilentWindow, "主窗口没走 KeySilentWindow —— ⌘C 会重新开始敲钟")
 
         let settings = AppDelegate.makeSettingsWindow()
@@ -117,7 +120,12 @@ struct KeySilentWindowTests {
         )
         // 弹窗的类型断言在这里是**同义反复**（它就是 EjectAlertPanel），
         // 真正要守的是「它覆盖了兜底方法」—— 那一条在上面的 `窗口类确实覆盖了兜底方法`。
-        // 这里顺手确认它确实继承自 NSPanel（决定 `hidesOnDeactivate` 默认值的那件事）。
-        #expect(alert is NSPanel)
+        //
+        // 这里确认它确实继承自 NSPanel（决定 `hidesOnDeactivate` 默认值的那件事）。
+        // ⚠️ **不能写 `alert is NSPanel`** —— `alert` 的静态类型就是 `EjectAlertPanel`，
+        // 编译器直接判定该表达式恒真（`-warnings-as-errors` 下报 `'is' test is always true`）。
+        // 恒真的断言等于没有断言：它既挡不住「基类被改成 NSWindow」，也给人「查过了」的错觉。
+        // 走运行时的 `isSubclass(of:)`，编译器折叠不掉。
+        #expect(type(of: alert).isSubclass(of: NSPanel.self), "弹窗的基类不是 NSPanel，hidesOnDeactivate 的默认值会变")
     }
 }

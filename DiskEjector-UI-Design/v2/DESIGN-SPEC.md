@@ -3059,6 +3059,14 @@ dumpMainWindowState(...)              // ← 抓一次就断言
 → 这 7 行取决于「测试期间真实 `lsof` 路径被调用了几次」，由**测试调度 / 异步时序**决定，
 **与硬件无关**。量级 0.52pp，**不足以影响门槛判断**，如实记为「未归因到具体哪条测试」。
 
+> ⚠️ **§8.30 推翻了上面这句「与硬件无关」** —— 那 7 行不是独立的时序噪声，
+> 而是**同一条硬件暗道的另一种表现**：`OccupancyStore.shared` 的 **15s 轮询**是否恰好落在
+> 测试窗口内，决定了真实 `lsof` 被跑几次。堵掉暗道后 `OccupancyStore.swift` 的默认
+> `detect` 计数归 **0**，`OccupancyDetector` 稳定在 **239/290**（不再是 239 ↔ 246）。
+> **教训**：写「与 X 无关」之前，先问**这条路径是谁触发的** ——
+> 我当时的推理是「两次测量在同一台机器上」，但真正的自变量不是「哪台机器」，
+> 而是「那条暗道这次跑没跑」。**同机 ≠ 同条件。**
+
 **遗留缺陷（下一轮做）**：`ContentView.swift:41` 的 `occupancyStore` **仍然硬编码 `.shared`**
 —— 本轮只把 `store` 做成了可注入。也就是说 §8.29 修掉的那个病根（**视图直读生产单例**）
 **在同一行代码的隔壁还留着一个**。它不影响功能，但让「单测覆盖率」继续随开发机硬件浮动。
@@ -3299,6 +3307,116 @@ wenbo-data  4 TB
 `--preview-main-window-empty[-keys]`、先让位 + 身份自证 + 门槛模式强制浅色）、
 `EmptyStateTests.swift`（新增离屏守卫 + 更新文件头分工说明）、
 `MainMenuTests.swift`（修掉一条既有警告：非 Optional 上用了 `?? ""`）。
+
+## §8.30 把「测试摸硬件」这条暗道彻底堵掉（2026-09-17）—— 附一次「覆盖率掉 5.5pp 反而是好事」
+
+### §8.30.1 起因
+
+§8.28.7 末尾留了一处：`ContentView.swift:41` 的 `occupancyStore` 仍硬编码 `.shared`，
+而 `OccupancyStore.shared` 的默认 `diskStore` 就是 `DiskListStore.shared` ——
+于是「构造一个 `ContentView()`」这件事本身就会去摸本机磁盘。
+
+### §8.30.2 第一步：`occupancyStore` 也可注入
+
+与 ``MenuPopoverView`` 对齐（那边早就可注入，`ContentView` 是最后一个直读 `.shared` 的）：
+
+```swift
+init(skipsInitialRefresh: Bool = false, store: DiskListStore? = nil,
+     occupancyStore: OccupancyStore? = nil)
+```
+
+新增 `Tests/DiskEjectorAppTests/ViewFixtures.swift`：**任何渲染 `ContentView` 的测试都走它**，
+不要写 `ContentView()`。它提供 `stores()`（**配对**的列表 + 占用）、`mainWindow()`、
+以及 `mainWindowHandle()`（走生产装配路径、只换数据来源）。
+
+### §8.30.3 最有用的手法：用**行级计数**数「还剩几处」
+
+只改视图层之后覆盖率从 76.08% 只掉到 **74.89%** —— **说明暗道没堵干净**。
+这时候**不要猜**，直接读 JSON 的 segment 计数：
+
+| 位置 | 计数 | 含义 |
+|---|---|---|
+| `DiskListStore.swift:22`（`private init()`） | **1** | 还是被摸了一次 |
+| `DiskListStore.swift:51/52/54`（`refresh()`） | **0** | 已经没人调了 ✓ |
+| `DiskService.swift:28`（`fetchExternalDisks` 入口） | **1** | 还是被调了一次 |
+| `OccupancyStore.swift:81`（默认 `detect`） | **1** | 还是跑了一次 |
+
+四个「1」指向**同一个调用点** —— 顺着找下去是 `AppDelegate.makeMainWindow()`：
+`MainWindowTests` 与 `KeySilentWindowTests` 直接调它（**这是对的**，见 §8.9
+「真机与单测同一条装配路径」），而它的两个 store 都取 `.shared`。
+
+> **判据**：**「还差多少」是可以量的，不要靠推理。** 把候选路径上的关键行拿出来看计数：
+> 是 0 就断了；是「恰好 1」几乎总是指向**唯一一个**调用点。
+
+### §8.30.4 第二步：把 `occupancyStore` 穿进窗口装配路径
+
+`makeMainWindow` / `setupMainWindow` 各加一个 `occupancyStore: OccupancyStore? = nil`，
+与既有 `store:` 同一约定（`nil` = 生产单例）。**两个 store 是配对关系** ——
+只注入 `store` 会让窗口「列表是注入的、占用结论来自真机」。
+
+顺带修掉 `--preview-main-window-empty` 里同一个不一致：它此前只注入 `DiskListStore`，
+`ContentView` 的占用仍读生产单例（还白起了一条 15s 的真实 `lsof` 轮询）。
+现在 `injectedOccupancy` 由 `injected` 派生，成对进出。
+
+### §8.30.5 结果：`DiskService` 掉到 **0/94**，而这是好事
+
+| 文件 | 改前 | 只改视图 | 改完装配 | 补测试后 |
+|---|---|---|---|---|
+| `Services/DiskService.swift` | 77/94 | 77/94 | **0/94** | **41/94** |
+| `Services/DiskListStore.swift` | 33/38 | 24/38 | 9/38 | 9/38 |
+| `Services/OccupancyStore.swift` | 113/113 | 113/113 | 106/113 | 106/113 |
+| `Services/OccupancyDetector.swift` | 246/290 | 239/290 | 239/290 | 239/290 |
+| **脚本口径 TOTAL** | **76.08%** | 74.89% | **67.51%** | **70.57%** |
+
+`DiskService.swift:28`（`fetchExternalDisks` 入口）的计数变成 **0** —— 测试里**一次都没调过**。
+
+**那 77 行从来就不是被单测覆盖的**，是「某个测试构造 `ContentView` → 摸到生产单例
+→ 本机恰好插着盘」蹭来的。把暗道堵掉之后它诚实地掉到 0。
+
+> **判据**：**覆盖率掉了不等于回归，也可能是「原来那部分覆盖率是假的」。**
+> 区分方法：看它原来是被**断言**覆盖的，还是被**副作用**覆盖的 ——
+> 后者会在有人整理依赖关系时整块蒸发，而前者不会。
+
+### §8.30.6 补上 `DiskServiceTests`
+
+`DiskService` 分两层：**枚举**（要 `DASession` + 真实卷，只能靠 `IntegrationEjectTests`）
+与**组装**（`makeDiskInfo(url:description:)`，纯拼装）。后者改成 `internal` 后可以单测：
+
+- 描述齐全 → 各字段按字典落位；并钉住 `usedBytes + freeBytes == totalBytes`；
+- **描述缺 BSD 名** → 回退成 `url.lastPathComponent`（静默退化：不报错，只是设备名变成卷名）；
+- **读不到容量** → 返回 `nil`，而不是一块 0 字节的盘。
+
+三条测试把 `DiskService` 从 0/94 拉回 **41/94**。剩下的 53 行是枚举层 ——
+在**能挂 dmg 的机器上由 `IntegrationEjectTests` 覆盖**；本沙箱挡下了写探针
+（`/Volumes/DiskEjectorCanary/.../.write-probe` 被拒），所以这里是 0。
+
+### §8.30.7 顺手修掉的两件事
+
+1. **一条没有牙的断言**：`KeySilentWindowTests` 的 `#expect(alert is NSPanel)` ——
+   `alert` 的静态类型就是 `EjectAlertPanel`，编译器判定该表达式**恒真**。
+   改成运行时的 `type(of: alert).isSubclass(of: NSPanel.self)`（编译器折叠不掉），
+   原意（`hidesOnDeactivate` 的默认值取决于基类）保留。
+2. **门槛的覆盖面比它声称的窄**：`preflight.sh` 门槛 1 是
+   `swift build -Xswiftc -warnings-as-errors`，**不含 `--build-tests`** → 测试目标不在门内。
+   上面那条恒真断言正是因此活了很久（`swift test` 不把警告当错误）。
+   已加 `--build-tests`，并把原因写进脚本注释。
+   > 与 §6.4 那 13 条并发错误**是同一个病根**：**门槛看起来在守，实际覆盖面更窄。**
+
+### §8.30.8 本轮验收
+
+| 项 | 结果 |
+|---|---|
+| 全量测试 | **251 条 / 34 suites 全绿**（+3 即新增的 `DiskServiceTests`） |
+| 三道 CI 门槛 | 全过（零警告构建**含测试目标** / `swift-format lint --strict` / 覆盖率 **70.57%** ≥ 40%） |
+| 覆盖率变化 | 76.08% → **70.57%**：其中 **−3.06pp 是假覆盖被戳破**、约 −2.4pp 是 `DiskListStore`/`OccupancyStore` 的暗道一并归零、**+3.06pp** 由新增测试补回 |
+| 硬件解耦 | `DiskService.fetchExternalDisks()` 在测试里调用 **0 次**；`DiskListStore.shared` 初始化 **0 次** |
+
+改动：`ContentView.swift`（`occupancyStore` 可注入）、`DiskEjectorApp.swift`
+（`makeMainWindow` / `setupMainWindow` 带 `occupancyStore:`、预览侧成对注入）、
+`DiskService.swift`（`makeDiskInfo` 改 `internal` 并写清两处静默退化）、
+`ViewFixtures.swift`（新增）、`DiskServiceTests.swift`（新增）、
+`EmptyStateTests` / `MainWindowTests` / `KeySilentWindowTests` / `RefreshButtonTests` /
+`TitleBarBaselineTests` / `TrafficLightAlignmentTests`（改走夹具）、`scripts/preflight.sh`（门槛 1 加 `--build-tests`）。
 
 ---
 

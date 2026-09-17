@@ -135,8 +135,13 @@ struct EmptyStateTests {
 
         // **注入一个空列表**：不挂系统监听（`monitoring: false`），也不去枚举本机磁盘。
         // 这正是「不依赖物理硬件」的关键 —— 本机插没插盘都不影响。
-        let emptyStore = DiskListStore(monitoring: false)
-        let view = ContentView(skipsInitialRefresh: true, store: emptyStore)
+        //
+        // ⚠️ **必须走 `ViewFixtures`**，不要自己拼 `ContentView(skipsInitialRefresh:store:)`：
+        // 漏掉 `occupancyStore` 的话，`ContentView` 仍会去碰 `OccupancyStore.shared`，
+        // 而那条链的尽头是**本机磁盘**（`DiskListStore.shared` → `fetchExternalDisks()`）。
+        // 本文件曾经正是这么写的 —— 于是「不依赖硬件」的守卫自己在悄悄摸硬件。
+        // 取证见 `ViewFixtures` 文件头与 `DESIGN-SPEC.md` §8.28.6。
+        let view = ViewFixtures.mainWindow(disks: [])
 
         // **自证**：标题栏必须先有墨迹（标题「外置磁盘」+ 两个图标按钮）。
         // 没有这条，一次「玻璃/文字根本没渲染出来」的失败会被读成「列表区画了骨架」——

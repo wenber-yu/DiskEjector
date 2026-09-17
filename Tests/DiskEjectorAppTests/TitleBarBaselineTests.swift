@@ -254,7 +254,7 @@ struct TitleBarBaselineTests {
         let height = DesignTokens.Size.mainWindow.height
         guard
             let ink = titleInk(
-                ContentView(),
+                ViewFixtures.mainWindow(),
                 width: DesignTokens.Size.mainWindow.width, height: height,
                 rows: 0...(DesignTokens.Size.titleBarHeight - 8), who: "主窗口")
         else {

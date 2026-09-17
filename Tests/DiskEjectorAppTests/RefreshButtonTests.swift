@@ -158,12 +158,14 @@ struct RefreshButtonTests {
             size: box, in: whole, appearance: .darkAqua, background: glass)
 
         // 被测对象：出图开关下的主窗口，以及**同款图标的设置按钮**当参照。
+        // 走 `ViewFixtures` 而不是裸 `ContentView` —— 后者的两个 store 都是生产单例，
+        // 会让这条渲染去摸本机磁盘（见 `ViewFixtures` 文件头）。
         let steady = OffscreenRender.brightPixels(
-            ContentView(skipsInitialRefresh: true),
+            ViewFixtures.mainWindow(),
             size: DesignTokens.Size.mainWindow, in: refreshBox, appearance: .darkAqua,
             background: .clear)
         let gear = OffscreenRender.brightPixels(
-            ContentView(skipsInitialRefresh: true),
+            ViewFixtures.mainWindow(),
             size: DesignTokens.Size.mainWindow, in: gearBox, appearance: .darkAqua,
             background: .clear)
 
@@ -191,7 +193,7 @@ struct RefreshButtonTests {
             steady >= 130,
             """
             出图时刷新按钮处只有 \(steady) 个墨迹像素（箭头 ≈174、spinner ≈93、空白 0）—— \
-            `ContentView(skipsInitialRefresh: true)` 没停在稳态。最可能的原因：\
+            `ViewFixtures.mainWindow()` 没停在稳态。最可能的原因：\
             `.task` 里那句 `guard !skipsInitialRefresh` 被删了，自动刷新又跑起来了。
             """
         )

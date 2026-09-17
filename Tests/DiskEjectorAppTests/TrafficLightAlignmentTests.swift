@@ -134,7 +134,7 @@ struct TrafficLightAlignmentTests {
 
         _ = NSApplication.shared
         let hosting = NSHostingView(
-            rootView: ContentView(skipsInitialRefresh: true).background(Color.white))
+            rootView: ViewFixtures.mainWindow().background(Color.white))
         hosting.appearance = NSAppearance(named: .aqua)
         hosting.frame = CGRect(x: 0, y: 0, width: width, height: height)
         hosting.layoutSubtreeIfNeeded()

@@ -76,7 +76,19 @@ class DiskService: @unchecked Sendable {
     }
 
     /// 从卷 URL 与 DiskArbitration 描述组装 `DiskInfo`；容量信息缺失时返回 `nil`。
-    private func makeDiskInfo(url: URL, description: [String: Any]) -> DiskInfo? {
+    ///
+    /// **对测试开放（`internal` 而非 `private`）**：它是**纯组装**，不碰 DASession、
+    /// 不做 I/O 之外的事，只要喂一个 URL 与一个描述字典就能验。
+    ///
+    /// 这一点是被一次覆盖率事故逼出来的：2026-09-17 发现 `DiskService` 的那 77 行
+    /// **从来不是被单测覆盖的** —— 是「某个测试构造了 `ContentView` → 摸到生产单例
+    /// → 本机恰好插着盘」蹭来的（见 `DESIGN-SPEC.md` §8.28.6）。
+    /// 把那条暗道堵掉之后它诚实地掉到 0%，`DiskServiceTests` 就是补上的那一块。
+    ///
+    /// ⚠️ 这里有两处**静默退化**值得单独守住：`bsdName` 在描述缺 key 时会回退成
+    /// `url.lastPathComponent`（把卷名当设备名用），容量缺失时整块盘被跳过。
+    /// 两者都不会报错，只会让界面少一块盘或显示错一个设备名。
+    func makeDiskInfo(url: URL, description: [String: Any]) -> DiskInfo? {
         let values: URLResourceValues
         do {
             values = try url.resourceValues(forKeys: [

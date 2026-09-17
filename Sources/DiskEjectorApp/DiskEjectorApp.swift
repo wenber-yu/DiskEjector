@@ -893,6 +893,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             let injected: DiskListStore? = nil
         #endif
 
+        // **两个 store 必须配对，不能只注入列表。**
+        //
+        // 只注入 `store` 而让 `ContentView` 的 `occupancyStore` 仍读生产单例时，那个 store 的
+        // `diskStore` 是 `DiskListStore.shared` —— 于是窗口里出现一个自相矛盾的画面：
+        // **列表是空的，占用结论却来自本机真盘**；顺带还起了一条真实 `lsof` 轮询（15s 一次）。
+        // 空状态自检本身看不出这个问题（没有磁盘行就没有占用可显示），所以它更该被写死在这里。
+        let injectedOccupancy: OccupancyStore? =
+            injected.map { OccupancyStore(diskStore: $0, autoStart: false) }
+
         Task {
             var mismatches: [String] = []
 
@@ -905,7 +914,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 stale.close()
                 mainWindow = nil
             }
-            setupMainWindow(store: injected, skipsInitialRefresh: emptyDisks)
+            setupMainWindow(
+                store: injected, skipsInitialRefresh: emptyDisks, occupancyStore: injectedOccupancy)
 
             // **让空状态自检也不依赖系统外观。**
             //
@@ -1921,10 +1931,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     /// 第一个从此没人引用、关不掉也释放不了。
     ///
     /// ⚠️ **它一旦返回，`mainWindowStore` 就与 `mainWindow` 绑定** —— 后续自检都读它。
-    private func setupMainWindow(store: DiskListStore? = nil, skipsInitialRefresh: Bool = false) {
+    private func setupMainWindow(
+        store: DiskListStore? = nil,
+        skipsInitialRefresh: Bool = false,
+        occupancyStore: OccupancyStore? = nil
+    ) {
         guard mainWindow == nil else { return }
         mainWindowStore = store
-        mainWindow = Self.makeMainWindow(store: store, skipsInitialRefresh: skipsInitialRefresh)
+        mainWindow = Self.makeMainWindow(
+            store: store, skipsInitialRefresh: skipsInitialRefresh, occupancyStore: occupancyStore)
     }
 
     /// 建主窗口。**真机与单测走同一条装配路径**（`MainWindowTests` 直接调它）。
@@ -1939,8 +1954,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     ///   - skipsInitialRefresh: 见 ``ContentView/init(skipsInitialRefresh:store:)``。
     ///     ⚠️ **注入 `store` 时必须同时传 `true`** —— 否则内容视图的 `.task` 会去枚举本机磁盘，
     ///     把注入的列表覆盖掉，空状态自检当场失效（而且失效得很安静）。
+    ///   - occupancyStore: 内容视图读的占用结论来源；`nil` = ``OccupancyStore/shared``。
+    ///     **与 `store` 是配对关系**：只注入 `store` 会让窗口「列表是注入的、占用结论来自真机」。
+    ///     单测与预览请用 ``ViewFixtures``（测试）或 `runMainWindowPreview`（预览）里配好的一对。
     static func makeMainWindow(
-        store: DiskListStore? = nil, skipsInitialRefresh: Bool = false
+        store: DiskListStore? = nil,
+        skipsInitialRefresh: Bool = false,
+        occupancyStore: OccupancyStore? = nil
     ) -> NSWindow {
         let win = KeySilentWindow(
             contentRect: NSRect(
@@ -1990,7 +2010,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // （实测离屏窗口恒为 520）。守卫在 `MainWindowTests` 与真机自检
         // `--preview-main-window-keys`（量真实窗口尺寸）。
         let hosting = NSHostingView(
-            rootView: ContentView(skipsInitialRefresh: skipsInitialRefresh, store: store))
+            rootView: ContentView(
+                skipsInitialRefresh: skipsInitialRefresh, store: store,
+                occupancyStore: occupancyStore))
         if #available(macOS 13.3, *) { hosting.safeAreaRegions = [] }
         win.contentView = hosting
 

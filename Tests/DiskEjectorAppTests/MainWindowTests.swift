@@ -50,10 +50,13 @@ struct MainWindowTests {
     ///
     /// 走 `AppDelegate.makeMainWindow()` —— **真机与单测同一条装配路径**。
     /// 单测自己再搭一个「差不多的窗口」等于什么都没验。
+    ///
+    /// ⚠️ 经 ``ViewFixtures/mainWindowHandle()`` 走，**不要裸调 `AppDelegate.makeMainWindow()`** ——
+    /// 后者的两个 store 都取生产单例，会真的去枚举本机磁盘（见 ``ViewFixtures`` 文件头）。
     private func makeWindow() -> NSWindow {
         // 建窗口、建 hosting 都需要 `NSApplication.shared` 存在。
         _ = NSApplication.shared
-        return AppDelegate.makeMainWindow()
+        return ViewFixtures.mainWindowHandle()
     }
 
     private func hosting(of window: NSWindow) -> NSHostingView<ContentView>? {
@@ -133,7 +136,7 @@ struct MainWindowTests {
     ///
     /// 容差 0.5pt 留给坐标取整。
     @Test func 玻璃必须铺满比设计稿高的宿主() {
-        let host = NSHostingView(rootView: ContentView())
+        let host = NSHostingView(rootView: ViewFixtures.mainWindow())
         // 与 `makeMainWindow` 的配置保持一致：这里问的是**视图结构**，不是宿主配置。
         if #available(macOS 13.3, *) { host.safeAreaRegions = [] }
 

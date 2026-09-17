@@ -38,7 +38,19 @@ struct ContentView: View {
     /// 15s 定时器。菜单栏面板另抄了一份 `@State`、且**没有定时器**，于是
     /// 「主窗口说被占用、面板说可以安全推出」在结构上就是可能的（2026-09-15 用户报告）。
     /// 状态与刷新节奏现在都收在 ``OccupancyStore``，两个界面退化成纯读取。
-    @ObservedObject private var occupancyStore = OccupancyStore.shared
+    ///
+    /// **可注入**，与 ``MenuPopoverView/occupancyStore`` 一致（那边早就可注入，
+    /// 本视图是最后一个还在直读 `.shared` 的）。
+    ///
+    /// ⚠️ **这一行曾经硬编码 `OccupancyStore.shared`，而那是一条通到硬件的暗道**：
+    /// `OccupancyStore.shared` 的默认 `diskStore` 是 `DiskListStore.shared`，
+    /// 它的 `private init()` 会**同步真的去枚举本机磁盘**；默认 `detect` 还会真的跑 `lsof`。
+    /// 于是「构造一个 `ContentView()`」这件事本身就会去摸本机的盘 ——
+    /// 后果是**单测覆盖率随开发机上有没有插外置盘浮动 3.06pp**
+    /// （41 行，实测坐实，取证见 `DESIGN-SPEC.md` §8.28.6）。
+    ///
+    /// 渲染 `ContentView` 的测试请走 ``ViewFixtures``，**不要写 `ContentView()`**。
+    @ObservedObject private var occupancyStore: OccupancyStore
 
     /// 是否已授予「完全磁盘访问」（FDA）。决定是否在主窗口顶部展示未授权横幅。
     ///
@@ -127,9 +139,19 @@ struct ContentView: View {
     ///     这是 `--preview-main-window-empty-keys` 与 `SnapshotRenderTests` 的入口。
     ///     ⚠️ 与 `skipsInitialRefresh` 是**两个独立参数**，故意不从彼此推导：
     ///     「读哪份数据」和「要不要自动刷新」是两件事，绑在一起会让调用方猜不出行为。
-    init(skipsInitialRefresh: Bool = false, store: DiskListStore? = nil) {
+    ///   - occupancyStore: 占用结论来源，`nil`（生产）读 ``OccupancyStore/shared``。
+    ///     与 `store` 同样是**独立**参数：调用方注入的这两个 store **必须是配对的**
+    ///     （``OccupancyStore`` 用哪个 `diskStore` 决定了它测哪几块盘），
+    ///     但本视图不替调用方推导 —— 猜错会得到一个「列表是 A、占用结论是 B」的画面，
+    ///     而这种错在界面上几乎看不出来。
+    init(
+        skipsInitialRefresh: Bool = false,
+        store: DiskListStore? = nil,
+        occupancyStore: OccupancyStore? = nil
+    ) {
         self.skipsInitialRefresh = skipsInitialRefresh
         self.store = store ?? .shared
+        self.occupancyStore = occupancyStore ?? .shared
     }
 
     private var accentColor: AccentColor { AccentColor(rawValue: accentColorRaw) ?? .default }

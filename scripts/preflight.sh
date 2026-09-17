@@ -99,9 +99,17 @@ echo "DiskEjector 预检（仓库：${REPO_ROOT}）"
 # 门槛 1：构建（警告视为错误）
 # 覆盖 Swift 6 严格并发下的 actor-isolation 问题——这类问题在默认构建里只是
 # 警告，只有加了该 flag 才会让构建失败。
+#
+# **`--build-tests` 不可省**：不加它时编译的只有 **App 目标**，测试目标不在门内。
+# 2026-09-17 实际踩到：`KeySilentWindowTests` 里有一条 `#expect(alert is NSPanel)`
+# —— `alert` 的静态类型就是 `EjectAlertPanel`，编译器判定该表达式**恒真**
+# （`-warnings-as-errors` 下报 `'is' test is always true`），
+# 而它在测试目标里，门槛 1 一直看不见；同时 `swift test` 不把这个警告当错误，
+# 于是这条**没有牙的断言**活了很久。与 §6.4 那 13 条并发错误是同一个病根：
+# **门槛的覆盖面比它声称的窄**。谁再把 `--build-tests` 去掉，这条就回来。
 # ---------------------------------------------------------------
-run_gate "构建（-Xswiftc -warnings-as-errors）" \
-    swift build --package-path "$PACKAGE_DIR" -Xswiftc -warnings-as-errors \
+run_gate "构建（-Xswiftc -warnings-as-errors，含测试目标）" \
+    swift build --package-path "$PACKAGE_DIR" --build-tests -Xswiftc -warnings-as-errors \
     ${SWIFT_SANDBOX_FLAGS[@]+"${SWIFT_SANDBOX_FLAGS[@]}"} \
     || FAILED=$((FAILED + 1))
 
