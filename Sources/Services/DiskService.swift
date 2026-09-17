@@ -13,6 +13,24 @@ import OSLog
 /// DiskArbitration 提供的是设备自身声明的属性，是 macOS 上判断「这块盘能不能拔」的
 /// 事实来源（Finder 同样基于它）。实测在 App Sandbox 下 `DADiskCopyDescription` 可正常读取，
 /// 因此可以用于上架版本。
+///
+/// ## 为什么这个类被拆成「薄胶水 + 纯函数」两层
+///
+/// 原先整条枚举路径（问挂载点 → 建 `DASession` → 逐卷取 DA 描述 → 判定 → 组装）写在一个
+/// 函数体里，于是**单测里一行都跑不到** —— 它要求本机真的插着一块外置盘。
+/// 2026-09-17 的覆盖率取证（`DESIGN-SPEC.md` §8.30）把这条依赖暴露了出来：
+/// 那 77 行「覆盖率」其实是从生产单例蹭来的**假覆盖**。
+///
+/// 现在拆成三层：
+///
+/// | 层 | 内容 | 怎么测 |
+/// |---|---|---|
+/// | **胶水** | `DASessionCreate` / `DADiskCreateFromVolumePath` | 只能真机（`IntegrationEjectTests` 自挂 dmg） |
+/// | **判定 + 折叠** | `assembleDisks` / `classifyAndBuild` | **纯函数**，喂假描述字典即可 |
+/// | **组装** | `makeDiskInfo(url:values:description:)` | **纯函数**，喂构造出的 `URLResourceValues` |
+///
+/// > **判据**：**「测不到」通常不是「不可测」，而是「依赖写死在函数体里」。**
+/// > 把碰系统的那几行挤到最外层的胶水里，中间那层自然就成了纯函数。
 class DiskService: @unchecked Sendable {
     static let shared = DiskService()
 
@@ -25,54 +43,82 @@ class DiskService: @unchecked Sendable {
     ///
     /// 该调用涉及磁盘 I/O 与 DiskArbitration 查询，**应在后台线程执行**，不要在主线程调用
     /// （菜单栏每次展开都会触发，主线程卡顿会直接表现为菜单展开迟滞）。
-    func fetchExternalDisks() -> [DiskInfo] {
-        let urls =
-            FileManager.default.mountedVolumeURLs(
-                includingResourceValuesForKeys: nil,
-                options: []
-            ) ?? []
+    ///
+    /// - Parameter mountedVolumeURLs: 挂载点列表的来源。默认问系统；测试注入空列表或一个
+    ///   假路径，就能在**不插任何盘**的前提下把这条路径走到收尾。
+    func fetchExternalDisks(
+        mountedVolumeURLs: @Sendable () -> [URL] = DiskService.liveMountedVolumeURLs
+    ) -> [DiskInfo] {
+        let urls = mountedVolumeURLs()
 
         guard let session = DASessionCreate(kCFAllocatorDefault) else {
             Self.logger.error("无法创建 DASession，本次不返回任何磁盘")
             return []
         }
 
-        var disks: [DiskInfo] = []
-
-        for url in urls {
+        // 这一段是**唯一**碰 DiskArbitration 的地方：把 URL 换成描述字典。
+        // 拿到描述之后的全部判断都在 `assembleDisks` 里，而那部分是纯的、可测的。
+        return assembleDisks(urls: urls) { url in
             guard let disk = DADiskCreateFromVolumePath(kCFAllocatorDefault, session, url as CFURL),
                 let description = DADiskCopyDescription(disk) as? [String: Any]
-            else {
-                // 取不到 DA 描述的卷一律跳过：宁可漏列，也不能把性质不明的卷
-                // 当成外置盘交给用户去「推出」。
+            else { return nil }
+            return description
+        }
+    }
+
+    /// 生产实现：问系统要挂载点。
+    ///
+    /// 抽成 `static` 函数（而不是写在 `fetchExternalDisks` 里）是为了能被当作默认参数注入。
+    static func liveMountedVolumeURLs() -> [URL] {
+        FileManager.default.mountedVolumeURLs(includingResourceValuesForKeys: nil, options: []) ?? []
+    }
+
+    /// **纯折叠**：把「卷 URL 列表」＋「取描述的办法」折成 `DiskInfo` 列表。
+    ///
+    /// 三个「不列这块盘」的分支全在这里，且都能用假数据走到：
+    ///
+    /// 1. **取不到 DiskArbitration 描述** —— 宁可漏列，也不能把性质不明的卷当成外置盘
+    ///    交给用户去「推出」；
+    /// 2. **`DiskClassifier` 判定为非外置可推出**（内置盘 / 网络卷 / 系统映像）；
+    /// 3. **组装失败**（容量读不到）。
+    ///
+    /// - Parameter description: 返回 `nil` 表示该卷没有 DA 描述。
+    func assembleDisks(
+        urls: [URL],
+        description: (URL) -> [String: Any]?
+    ) -> [DiskInfo] {
+        var disks: [DiskInfo] = []
+        for url in urls {
+            guard let description = description(url) else {
                 Self.logger.debug("卷缺少 DiskArbitration 描述，跳过: \(url.path, privacy: .public)")
                 continue
             }
-
-            let deviceInternal = description[kDADiskDescriptionDeviceInternalKey as String] as? Bool
-            let deviceProtocol = description[kDADiskDescriptionDeviceProtocolKey as String] as? String
-            let isNetwork = description[kDADiskDescriptionVolumeNetworkKey as String] as? Bool
-            let isEjectable = description[kDADiskDescriptionMediaEjectableKey as String] as? Bool
-
-            let attributes = DiskClassifier.Attributes(
-                deviceInternal: deviceInternal,
-                deviceProtocol: deviceProtocol,
-                isNetworkVolume: isNetwork,
-                isEjectable: isEjectable,
-                mountPath: url.path
-            )
-
-            guard DiskClassifier.isExternalVolume(attributes) else {
-                continue
-            }
-
-            guard let info = makeDiskInfo(url: url, description: description) else {
+            guard let info = classifyAndBuild(url: url, description: description) else {
                 continue
             }
             disks.append(info)
         }
-
         return disks
+    }
+
+    /// **纯判定 + 组装**：给定卷 URL 与其 DiskArbitration 描述，判断是否外置可推出并组装。
+    ///
+    /// 返回 `nil` 的两种原因调用方不需要区分（都是「不列这块盘」）：
+    /// 判定为不可推出，或容量读不到。
+    func classifyAndBuild(url: URL, description: [String: Any]) -> DiskInfo? {
+        let attributes = DiskClassifier.Attributes(
+            deviceInternal: description[kDADiskDescriptionDeviceInternalKey as String] as? Bool,
+            deviceProtocol: description[kDADiskDescriptionDeviceProtocolKey as String] as? String,
+            isNetworkVolume: description[kDADiskDescriptionVolumeNetworkKey as String] as? Bool,
+            isEjectable: description[kDADiskDescriptionMediaEjectableKey as String] as? Bool,
+            mountPath: url.path
+        )
+
+        guard DiskClassifier.isExternalVolume(attributes) else {
+            return nil
+        }
+
+        return makeDiskInfo(url: url, description: description)
     }
 
     /// 从卷 URL 与 DiskArbitration 描述组装 `DiskInfo`；容量信息缺失时返回 `nil`。
@@ -102,13 +148,35 @@ class DiskService: @unchecked Sendable {
             return nil
         }
 
-        guard let totalCapacity = values.volumeTotalCapacity,
-            let availableCapacity = values.volumeAvailableCapacity
-        else {
+        return Self.makeDiskInfo(
+            url: url,
+            totalCapacity: values.volumeTotalCapacity,
+            availableCapacity: values.volumeAvailableCapacity,
+            volumeName: values.volumeName,
+            description: description
+        )
+    }
+
+    /// **纯组装**：从容量、卷名与描述字典拼 `DiskInfo`；容量缺失时返回 `nil`。
+    ///
+    /// 参数刻意收成 `Int?` / `String?` 而**不是** `URLResourceValues`：后者的属性是**只读**的，
+    /// 只能由 `URL.resourceValues(forKeys:)` 产生，于是「容量缺失」「卷名缺失」这两条
+    /// **静默退化**就永远没法用构造出来的值去验 —— 那正是它们最该被测的地方。
+    ///
+    /// > **判据**：纯函数依赖**基础类型**才真的可测；一旦形参是一个「只能由 I/O 产生」的
+    /// > 框架类型，可测性就在签名上丢掉了，哪怕函数体里一行 I/O 都没有。
+    static func makeDiskInfo(
+        url: URL,
+        totalCapacity: Int?,
+        availableCapacity: Int?,
+        volumeName: String?,
+        description: [String: Any]
+    ) -> DiskInfo? {
+        guard let totalCapacity, let availableCapacity else {
             return nil
         }
 
-        let volumeName = values.volumeName ?? ""
+        let volumeName = volumeName ?? ""
         let bsdName =
             (description[kDADiskDescriptionMediaBSDNameKey as String] as? String)
             ?? url.lastPathComponent

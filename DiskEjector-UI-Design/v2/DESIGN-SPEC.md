@@ -3420,6 +3420,183 @@ init(skipsInitialRefresh: Bool = false, store: DiskListStore? = nil,
 
 ---
 
+## §8.31 把「测不到」变成「可测」：`DiskService` 从 41/94 到 102/108（2026-09-17）
+
+§8.30 结束时 `DiskService` 停在 **41/94**，剩下的 53 行是整条 `fetchExternalDisks()`。
+当时的结论是「枚举层只能在能挂 dmg 的机器上由 `IntegrationEjectTests` 覆盖」——
+**这个结论是错的**。本节是把它推翻的过程。
+
+### §8.31.1 那 53 行到底是什么
+
+用 `--segments` 把死行点出来（`cov-diff.py --segments DiskService.swift`）：
+
+```
+28  fetchExternalDisks() 整个函数头
+33  FileManager.default.mountedVolumeURLs(...)
+35  guard let session = DASessionCreate(...) else
+42  for url in urls
+45  guard let disk = DADiskCreateFromVolumePath(...)   ← DA 查询
+48  logger.debug("卷缺少 DiskArbitration 描述，跳过")
+50  continue
+65  guard DiskClassifier.isExternalVolume(attributes) else
+67  continue
+69  guard let info = makeDiskInfo(...) else
+71  continue
+73  disks.append(info)
+```
+
+一眼能看出问题：**里面只有 45 一行是「真的要一台设备」，其余全是纯逻辑** ——
+循环、三个跳过分支、组装。它们之所以没被覆盖，不是因为「不可测」，
+而是因为**碰系统的那两行和纯逻辑写在同一个函数体里**。
+
+> **判据：「测不到」通常不是「不可测」，而是「依赖写死在函数体里」。**
+
+### §8.31.2 拆法：把碰系统的挤到最外层的「薄胶水」里
+
+```
+┌─ 胶水层 ────────────────────────────────────────────────┐
+│ DASessionCreate / DADiskCreateFromVolumePath            │  只剩这几行，交给真机
+└─────────────────────────────────────────────────────────┘
+              ↓ 传入「URL → 描述字典」这个闭包
+┌─ 纯折叠层 ──────────────────────────────────────────────┐
+│ assembleDisks(urls:description:)                        │  循环 + 三个跳过分支
+│ classifyAndBuild(url:description:)                      │  DiskClassifier 判定
+└─────────────────────────────────────────────────────────┘
+              ↓
+┌─ 纯组装层 ──────────────────────────────────────────────┐
+│ makeDiskInfo(url:totalCapacity:availableCapacity:        │  两处静默退化
+│              volumeName:description:)                    │
+└─────────────────────────────────────────────────────────┘
+```
+
+三个要点，每个都踩过：
+
+**① 纯函数的形参必须是基础类型。**
+
+第一版把纯组装写成 `makeDiskInfo(url:values:description:)`，`values` 是 `URLResourceValues`。
+编译能过，但**测试写不出来** —— `URLResourceValues` 的属性**全是只读的**，
+只能由 `URL.resourceValues(forKeys:)` 产生，没有任何办法造一个「缺容量」的出来。
+
+```
+error: cannot assign to property: 'volumeTotalCapacity' is a get-only property
+```
+
+→ 改成 `totalCapacity: Int?` / `availableCapacity: Int?` / `volumeName: String?`，立刻可测。
+
+> **可测性是在签名上决定的**，哪怕函数体里一行 I/O 都没有。
+> 形参一旦是「只能由 I/O 产生」的框架类型，纯函数就退化成了不可测函数。
+
+**② 注入点要有默认值，但「生产默认实现」必须另有一条测试。**
+
+`fetchExternalDisks(mountedVolumeURLs: @Sendable () -> [URL] = DiskService.liveMountedVolumeURLs)` ——
+默认值让生产调用方一行都不用改（`DiskListStore` / `DiskEjectorApp` 全是无参调用）。
+
+代价是 `liveMountedVolumeURLs()` 在单测里**一次都不执行**，被死行判定点了出来。
+补一条：
+
+```swift
+#expect(!DiskService.liveMountedVolumeURLs().isEmpty, "系统盘总是挂载着的")
+#expect(urls.contains { $0.path == "/" }, "根卷一定在挂载列表里")
+```
+
+> **判据**：为可测性注入之后，别忘了给「生产默认实现」本身留一条测试 ——
+> 否则你测的永远是你注入的那个假东西，真实那条路成了盲区。
+
+**③ 胶水层也要有冒烟测试，且带自证。**
+
+`fetchExternalDisks(mountedVolumeURLs: { [tempDir] })` 走的是**真实** `DASessionCreate`
+与**真实** `DADiskCreateFromVolumePath`。但它有个陷阱：如果 `DASessionCreate` 在这台机器上
+建不出来，函数第一步就返回 `[]`，测试会**因为别的原因变绿**。所以把前提也断言掉：
+
+```swift
+#expect(session != nil, "本机 DASessionCreate 建不出来 —— 这条冒烟测试无从谈起，先查环境")
+```
+
+### §8.31.3 一次自我纠错：注释也会说谎
+
+上面那条冒烟测试，我原先写的注释是：
+
+> ~~「它不会命中任何真实设备，于是 `DADiskCreateFromVolumePath` 返回 nil，
+> 正好把『拿不到 DA 描述就跳过』那条分支走一遍。」~~
+
+**这是错的。** 用 segment 计数一核就露馅：
+
+```
+[61, 42, 1, True, ...]   ← DADiskCreateFromVolumePath 执行了
+[64, 18, 1, True, ...]   ← DADiskCopyDescription 成功拿到了描述
+[64, 32, 0, True, ...]   ← else { return nil } 这条路 count 为 0，没走
+[65, 31, 1, True, ...]   ← return description 执行了
+```
+
+真实情况是：DiskArbitration **会沿着临时目录的路径找到它所在的那个卷**（系统盘）并给出描述，
+随后 `DiskClassifier` 以「内置盘」把它排除。也就是说这条测试走的是
+**真实 DA 查询 + 真实判定**，比我原先以为的那条路更有价值。
+
+> **判据：「测试通过」不等于「测试按你想的那条路通过」。**
+> 写完冒烟测试后，用 segment 计数把**实际执行路径**核一遍。**注释也要有证据。**
+
+### §8.31.4 变异验证：确认新测试有牙
+
+把 `assembleDisks` 里 classify 分支的 `continue` 改成 `break`：
+
+```
+✘ Test 混合列表里跳过一块不影响其它块() recorded an issue:
+    Expectation failed: (disks.count → 0) == 1
+    ↳ 内置卷被跳过时不能把后面的外置卷一起带走
+```
+
+变红、且红在**正确的断言**上（`count` 从 1 变 0，而不是别的偶然失败）。验证后已还原。
+
+> 这条测试守的是循环的**短路方向** —— `continue` 写成 `break`、或把判定提到循环外，
+> 都会让「列表里只有第一块盘」这种 bug 溜过去，而**单卷测试发现不了**。
+
+### §8.31.5 结果
+
+| 项 | 前 | 后 |
+|---|---|---|
+| `DiskService.swift` 命中/总数 | **41 / 94** | **102 / 108** |
+| 门槛口径行覆盖率 | **70.57%** | **74.34%**（+3.77pp） |
+| JSON 口径（含测试与视图） | 75.42% | 75.99% |
+| 测试条数 | 251 条 / 34 suites | **261 条 / 34 suites**（`DiskServiceTests` 3 → 13） |
+| 三道 CI 门槛 | — | 全过（零警告含测试目标 / `swift-format lint --strict` / 覆盖率 ≥ 40%） |
+
+**剩余死行只有 8 个，其中 7 个不是语句**：`50`（默认参数声明）、`67` / `102` / `122` / `158` / `196`（闭合括号，gap region）、
+`74`（`liveMountedVolumeURLs` 的闭合括号）。**真正没执行过的只有一处**：
+
+```swift
+guard let session = DASessionCreate(kCFAllocatorDefault) else {
+    Self.logger.error("无法创建 DASession，本次不返回任何磁盘")
+    return []            // ← 唯一的死代码
+}
+```
+
+`DASessionCreate` 在 macOS 上不会失败，这是一条**防御性兜底**。
+要覆盖它得把 session 工厂也做成注入点，而 `DASession` 是 Core Foundation 类型、
+在 Swift 6 严格并发下进 `@Sendable` 闭包签名会引入新的约束 ——
+**为 2 行兜底代码付这个代价不值**，因此显式记录为「已知未覆盖」，而不是假装它被覆盖了。
+
+> **判据**：覆盖率的终点不是 100%，而是**「剩下的每一处死代码都能说清为什么」**。
+
+### §8.31.6 本轮验收
+
+| 项 | 结果 |
+|---|---|
+| 全量测试 | **261 条 / 34 suites 全绿** |
+| 三道 CI 门槛 | 全过，覆盖率 **74.34%** ≥ 40% |
+| 残留挂载点 | 无（`/Volumes` 只有 `Macintosh HD` / 快照 / `wenbo-data`） |
+| 变异验证 | `continue` → `break` 后 `混合列表里跳过一块不影响其它块` 变红，已还原 |
+| 硬件解耦 | 13 条 `DiskServiceTests` 全部不依赖本机插了什么盘（`/` 与临时目录是唯一夹具） |
+
+改动：`Sources/Services/DiskService.swift`（拆三层 + `mountedVolumeURLs` 注入点 +
+`makeDiskInfo` 纯组装版）、`Tests/DiskEjectorAppTests/DiskServiceTests.swift`（3 → 13 条）。
+
+**顺带修好的技能**（`swift-coverage-forensics`）：死行判定从「该行存在一个 count==0 的
+segment」改成「**该行所有 segment 的 count 都为 0**」—— 实测 `Logger.debug("… \(x, privacy: .public)")`
+会因为插值额外产生一个 count==0 的 segment，按前者判会把它误报成死行（本节的 `93` 行
+第一版就被误报过）。
+
+---
+
 ## 9. 文件清单
 
 ```
