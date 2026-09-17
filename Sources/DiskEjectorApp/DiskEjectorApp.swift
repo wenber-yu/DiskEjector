@@ -749,6 +749,24 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    /// 等主窗口真的成为 **key**（最多 2 秒）。
+    ///
+    /// **为什么「应用活跃」不够**：交通灯的**红色只在 key 窗口上绘制** ——
+    /// 应用已在前台但窗口还没拿到 key 时，系统仍把三个灯画成灰色，
+    /// 于是红灯像素扫描得到 0。2026-09-17 实测这条断言因此**偶发变红**（约 1/3 次），
+    /// 而当时窗口尺寸、玻璃、内容墨迹全部正常。
+    ///
+    /// ⚠️ 这里和 ``measureRedLightInkCenter`` 里的重试是**两道保险**，不是重复：
+    /// 这一道等状态，那一道等绘制。激活状态与重绘不是同一时刻发生的事 ——
+    /// 只等状态仍可能抓到「状态已变、像素还没重画」的那一帧。
+    @MainActor
+    private func waitUntilMainWindowIsKey() async {
+        let deadline = Date().addingTimeInterval(2)
+        while Date() < deadline, !(mainWindow?.isKeyWindow ?? false) {
+            try? await Task.sleep(nanoseconds: 50_000_000)
+        }
+    }
+
     /// 把面板窗口的状态打到终端，并就地核对几件**只有真机才知道**的事。
     ///
     /// 四条断言各有明确后果：
@@ -833,6 +851,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             showMainWindow()
             NSApp.activate(ignoringOtherApps: true)
             await waitUntilAppIsActive()
+            // ⚠️ **「应用活跃」不等于「主窗口是 key」**：交通灯的红色只在 **key 窗口**上画，
+            // 而窗口拿到 key 要等下一次通知。只等 `NSApp.isActive` 会偶发抓到**灰灯**
+            // （红灯像素 = 0，实测约 1/3 次）—— 见 ``measureRedLightInkCenter`` 里记的那次。
+            await waitUntilMainWindowIsKey()
             // 等窗口上屏并把 SwiftUI 的视图树建好（玻璃是 `NSViewRepresentable`，
             // 要等 AppKit 那一层真的建出来才找得到）。
             try? await Task.sleep(nanoseconds: 600_000_000)
@@ -982,45 +1004,73 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private func measureRedLightInkCenter(
         window: NSWindow, label: String, mismatches: inout [String]
     ) -> CGFloat? {
-        let windowID = CGWindowID(window.windowNumber)
-        guard
-            let cg = CGWindowListCreateImage(
-                CGRect.null, .optionIncludingWindow, windowID, .boundsIgnoreFraming)
-        else {
-            mismatches.append("\(label) 抓不到主窗口的真机图像，无法核对红灯的**渲染**位置")
-            return nil
-        }
-        // `NSBitmapImageRep(cgImage:)` 在 macOS 上**不是** Optional，不能放在 `guard let` 里。
-        let rep = NSBitmapImageRep(cgImage: cg)
         let scale = window.backingScaleFactor
         let band = DesignTokens.Size.titleBarBandHeight
         let y0 = Int((band / 2 - 7) * scale)
-        let y1 = min(rep.pixelsHigh, Int((band / 2 + 7) * scale))
-        let xLimit = min(rep.pixelsWide, Int(200 * scale))
+        let y1 = Int((band / 2 + 7) * scale)
+        let xLimit = Int(200 * scale)
+
+        // ⚠️ **交通灯的红色只在窗口处于活跃态时才画**（2026-09-17 实测）：
+        // 应用还没抢到前台时，系统把三个灯画成**灰色** —— 窗口已上屏、内容墨迹正常，
+        // 但红色像素是 **0**。抓一次就断言，会把「还没激活完」误报成「红灯没画出来」，
+        // 于是这条断言**偶发变红**（实测约 1/3 次），跑久了没人再看它 ——
+        // 一个会随机变红的守卫比没有守卫更糟。
+        //
+        // 所以这里**轮询重试**，而不是抓一次就下结论：每轮之间跑一次 run loop，
+        // 让 AppKit 有机会把标题栏按活跃态重画。重试只在「数不可信」时发生，
+        // **红灯真的画歪了不会重试**（那时 count 仍是合理的 450 上下，直接走下面的中心断言）。
+        var count = 0
         var minX = Int.max
         var maxX = Int.min
-        var count = 0
-        for y in y0..<y1 {
-            for x in 0..<xLimit {
-                guard let c = rep.colorAt(x: x, y: y) else { continue }
-                // 红灯 ≈ #FF5F57：红分量高、且明显压过绿蓝。
-                let isRed =
-                    c.redComponent > 0.7
-                    && c.redComponent - c.greenComponent > 0.25
-                    && c.redComponent - c.blueComponent > 0.2
-                if isRed {
-                    count += 1
-                    if x < minX { minX = x }
-                    if x > maxX { maxX = x }
+        var pixelsWide = 0
+        let deadline = Date().addingTimeInterval(3)
+        while true {
+            let windowID = CGWindowID(window.windowNumber)
+            if let cg = CGWindowListCreateImage(
+                CGRect.null, .optionIncludingWindow, windowID, .boundsIgnoreFraming)
+            {
+                // `NSBitmapImageRep(cgImage:)` 在 macOS 上**不是** Optional，不能放 `guard let` 里。
+                let rep = NSBitmapImageRep(cgImage: cg)
+                pixelsWide = rep.pixelsWide
+                count = 0
+                minX = Int.max
+                maxX = Int.min
+                for y in y0..<min(rep.pixelsHigh, y1) {
+                    for x in 0..<min(rep.pixelsWide, xLimit) {
+                        guard let c = rep.colorAt(x: x, y: y) else { continue }
+                        // 红灯 ≈ #FF5F57：红分量高、且明显压过绿蓝。
+                        let isRed =
+                            c.redComponent > 0.7
+                            && c.redComponent - c.greenComponent > 0.25
+                            && c.redComponent - c.blueComponent > 0.2
+                        if isRed {
+                            count += 1
+                            if x < minX { minX = x }
+                            if x > maxX { maxX = x }
+                        }
+                    }
                 }
+                // **自证**：12pt 直径的圆在 2x 下约 450 个像素。太少说明只扫到抗锯齿边缘，
+                // 太多说明把别的东西（红色按钮、窗口外内容）扫了进来 —— 两种都不能算通过。
+                if count > 50, count < 4000 { break }
             }
+            guard Date() < deadline else { break }
+            // 跑一次 run loop：激活状态的变化要靠它才会变成一次重绘。
+            RunLoop.current.run(until: Date().addingTimeInterval(0.15))
         }
-        // **自证**：12pt 直径的圆在 2x 下约 450 个像素。太少说明只扫到抗锯齿边缘，
-        // 太多说明把别的东西（红色按钮、窗口外内容）扫了进来 —— 两种都不能算通过。
+
         guard count > 50, count < 4000 else {
+            // **失败信息必须能分辨两种原因**：环境（没抢到前台 → 灯是灰的）还是缺陷。
+            // 第一版只说「这个数不可信」，排查时得自己重跑一遍才知道是哪种。
+            let inactive = !window.isKeyWindow || !NSApp.isActive
             mismatches.append(
                 "\(label) 标题栏那一条里扫到 \(count) 个红色像素（12pt 圆的合理量级是 200…900）——"
-                    + "要么玻璃没渲染完，要么扫描范围把红色按钮包了进来。这个数不可信")
+                    + "当时 NSApp.isActive=\(NSApp.isActive) 主窗口isKey=\(window.isKeyWindow) "
+                    + "图像宽=\(pixelsWide)px。"
+                    + (count == 0 && inactive
+                        ? "**应用没抢到前台**，系统把交通灯画成了灰色 —— 这是环境问题，"
+                            + "不是布局缺陷；在交互式终端里重跑，或先点一下窗口再跑。"
+                        : "要么玻璃没渲染完，要么扫描范围把红色按钮包了进来。这个数不可信"))
             return nil
         }
         let center = CGFloat(minX + maxX) / 2 / scale
