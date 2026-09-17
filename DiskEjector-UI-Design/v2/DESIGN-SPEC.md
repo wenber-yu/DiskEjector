@@ -4020,6 +4020,91 @@ CLI 那一档**单独出一张图**（`row-busy-cli-light`，`tail` + `executabl
 
 ---
 
+## §8.34 发版：v2026.09.17.5（2026-09-17）
+
+用户指令：「提交推送发版吧」。本轮**不改产品代码**，只做提交 / 推送 / 打 tag / 出分发产物，
+外加发版过程中暴露出来的三个坑。
+
+| 项 | 结果 |
+|---|---|
+| 提交 | `0d02ef2`、`c6578c8`、`06ed19e` 三个（此前已提交、未推送） |
+| 推送 | `a2c6d50..06ed19e  master -> master` |
+| tag | **`v2026.09.17.5`**（附注，指向 `06ed19e`）＋ 补推漏掉的 `v2026.09.17.1` |
+| 产物 | `dist/DiskEjector.dmg`（2 126 490 B）＋ `dist/DiskEjector.zip`（1 431 125 B） |
+| 版本四元组 | `2026.09.17.5` / 构建 `53` / 提交 `06ed19e` / 脏计数 `0` |
+
+> 远端 Release 列表为空 —— 本项目的「发版」= 附注 tag + 推送 tag，
+> `dist/` 里的 dmg / zip 供**手工**上传（本机没有 `gh` CLI）。
+
+### §8.34.1 一处真实遗留：`v2026.09.17.1` 从来没推到远端
+
+比对本地与远端 tag 时发现：`.2 / .3 / .4` 都在远端，只有 `v2026.09.17.1` 缺席。
+它指向 `0d0ca5b`，是 HEAD 的祖先、附注完整 —— 纯粹是上一轮 `git push` 漏带了它，本轮补推。
+
+> **判据：发版不止「推 master」。** tag 是版本号的来源（`git describe --tags --abbrev=0`），
+> 漏推一个 tag 不会立刻有任何症状，但下一次在**另一台机器**上克隆时，`git describe`
+> 会给出一个更旧的版本号，而设置窗口会如实把它显示出来 —— 现象与「版本号写错了」一模一样。
+
+### §8.34.2 `grep -v '\^{}'` 在 BSD grep 下静默返回空
+
+查远端 tag 时写了 `git ls-remote --tags origin | sed … | grep -v '\^{}'`，
+结果**一个字都没输出**（退出码 0），差点据此得出「远端一个 tag 都没有」的结论。
+
+原因：`\^{}` 里的 `{}` 被 BSD grep 当成了**区间量词**，空区间是非法模式。
+换成定长匹配 `grep -vF '^{}'` 立刻正常（**1456 字节**）。
+
+> 这是本项目已知那一类「静默返回空」陷阱的又一例。**口诀仍然有效：先 `| wc -c` 再怀疑结论。**
+
+### §8.34.3 打包前工作区里冒出来的 `_probe.html.done`
+
+本轮开工时 `git status` 是干净的；几分钟后（打包前复查）多出 1 项未跟踪：
+
+```
+?? DiskEjector-UI-Design/v2/screens/_probe.html.done     # 16 805 B
+```
+
+内容是 `05-settings.html` 的副本 + 注入的 `dsMeasure` 探针。
+**它不是 `tools/design-compare.py` 的产物** —— 那个脚本把 `_probe.html` 移到
+`.build/design-cmp/_probe-last.html`（`PROBE_TMP.replace(...)`），文件名不带 `.done`。
+来源未确定（已确认当时没有 python / design-compare 进程在跑）。
+按「设计稿目录里的探针中间产物」处理，与 §8.33.4 清掉的 `.build/probe` 同类：
+移入废纸篓（`~/.Trash/_probe.html.done.20260917`，可逆），移走后复查未重现。
+
+> **为什么必须清掉而不是留着：** `build_app.sh` 把 `git status --porcelain` 的**条数**
+> 写进 `DEBuildDirtyCount`。带着这一项打包，产物里会写着 `dirty=1`，
+> 设置窗口于是显示「这不是 tag 对应的那个构建」—— 一个**假警报被烧进了正式产物**。
+
+### §8.34.4 发行产物能跑的自检集合 ≠ 开发机上的自检集合
+
+从挂载卷里跑六个 `-keys` 场景，**五个通过**，`--preview-main-window-empty-keys` 退出码 **2**：
+
+```
+❌ --preview-main-window-empty-* 只在 DEBUG 构建可用（需要注入 store）
+```
+
+查源码（`DiskEjectorApp.swift:884`）：该场景的注入点是 `#if DEBUG` 的
+`DiskListStore(monitoring:)`，发布构建拿不到，于是**故意报错退出**，
+而不是静默退化成「正常预览」。这是**设计如此**，不是回归 —— 这条 `exit(2)` 正是
+§8.29 那轮「守卫别依赖环境」的产物。
+
+> **判据：「产物能跑」这条验收的场景清单要按构建配置分开。**
+> 把 DEBUG-only 的自检算进发行产物验收，会得到一个**假失败**；
+> 而为了让它「过」去把它放宽成静默跳过，就会毁掉这条 `exit(2)` 的全部价值。
+> 发行产物上能跑的是**五个**：`alerts / onboarding / popover / main-window / settings`。
+
+### §8.34.5 验收（沿用 §8.32.5「三件产物、三种验法」）
+
+| 产物 | 验法 | 结果 |
+|---|---|---|
+| `dist/DiskEjector.app` | 读 `Info.plist` 四元组 | `2026.09.17.5` / `53` / `06ed19e` / `0` |
+| `DiskEjector.dmg` | `hdiutil attach` → 读**挂载卷里那个 bundle** 的四元组；再验签名 | 四元组与上面逐字一致（证明 `Bundle.main` 解析得到 Info.plist）；`codesign --verify --deep --strict` = `valid on disk` ＋ `satisfies its Designated Requirement`；`flags=0x10000(runtime)`；`app-sandbox` 计数 **0**（direct 渠道正确） |
+| `DiskEjector.zip` | `unzip -t` → `ditto -x -k` 解出后**直接跑** | `No errors detected`；解出的 app 自检通过，且它**自己报出**「版本行：**2026.09.17.5 · 53**（从 .app 的 Info.plist 读取）」「脏构建提示行：不显示（dirty=0）」 |
+
+签名身份：自签（`DiskEjector Dev Signing` ← `DiskEjector Dev CA`，`TeamIdentifier=not set`）
+→ 保 TCC 授权稳定，但**无法公证**。产物未公证，用户首次打开需右键「打开」放行。
+
+---
+
 ## 9. 文件清单
 
 ```
