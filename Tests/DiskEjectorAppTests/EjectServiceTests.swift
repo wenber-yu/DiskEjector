@@ -83,6 +83,19 @@ struct ByteFormatTests {
 
     /// `.file` 风格使用 1000 进制；MB 及以上与 Finder「显示简介」完全一致。
     /// 1000 字节处为 SI 标准写法 `kB`（小写 k），这是系统 API 的实际输出。
+    ///
+    /// ⚠️ **别给「MB 以下」补字面量断言**。`ByteCountFormatStyle` 的输出是本地化的，
+    /// 但本地化**只发生在 MB 以下**。2026-09-18 实测（见 `ByteFormat.string`）：
+    ///
+    /// | 值 | zh-Hans | en |
+    /// |---|---|---|
+    /// | 1 kB / 1 MB / 1 GB / 4 TB | 完全相同 | 完全相同 |
+    /// | 0 | `0字节` | `0 bytes` |
+    /// | 500 | `500字节` | `500 bytes` |
+    ///
+    /// 所以下面四条是**侥幸落在一致区**，并不代表这些字面量是安全的。
+    /// 要给小容量写断言，得先给 `ByteFormat.string` 加 locale 参数并显式指定，
+    /// 否则就是重演 2026-09-17 那次「本地绿、CI 红」—— 见 `TestLanguage`。
     @Test func 千进制与Finder一致() {
         #expect(ByteFormat.string(1_000) == "1 kB")
         #expect(ByteFormat.string(1_000_000) == "1 MB")
