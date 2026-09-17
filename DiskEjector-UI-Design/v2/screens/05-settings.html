@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light" data-accent="blue">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>设置面板 · DiskEjector UI v2</title>
+<link rel="stylesheet" href="../assets/ds.css">
+<style>
+  .note-list { margin: 0; padding-left: 18px; font-size: var(--fs-12); color: var(--text-2); line-height: 1.7; }
+  .note-list li { margin-bottom: 6px; }
+  .note-list b { color: var(--text-1); }
+  .note-list code { font-family: var(--font-mono); font-size: var(--fs-11); background: var(--bg-subtle); padding: 1px 5px; border-radius: var(--r-xs); }
+  .shead {
+    flex: none; height: 52px; display: flex; align-items: center;
+    padding: 0 16px; border-bottom: 0.5px solid var(--hairline);
+  }
+  .shead__title { font-size: var(--fs-15); font-weight: 600; letter-spacing: -0.01em; }
+  .aboutrow {
+    display: flex; align-items: center; gap: 14px;
+    margin-top: var(--s-5); padding: 13px 16px;
+    border-radius: var(--r-md); background: var(--bg-raised);
+    box-shadow: inset 0 0 0 0.5px var(--border), var(--e1);
+  }
+  .aboutrow__icon {
+    width: 44px; height: 44px; flex: none; border-radius: 12px;
+    display: flex; align-items: center; justify-content: center;
+    background: linear-gradient(160deg, var(--accent), var(--accent-hover));
+    color: #fff; box-shadow: var(--e1);
+  }
+  .aboutrow__icon svg { width: 23px; height: 23px; }
+  .linkbtn {
+    border: 0; background: transparent; padding: 0; cursor: pointer;
+    font-family: var(--font-ui); font-size: var(--fs-12); font-weight: 500;
+    color: var(--accent); display: inline-flex; align-items: center; gap: 4px;
+  }
+  .linkbtn:hover { text-decoration: underline; }
+  .linkbtn svg { width: 12px; height: 12px; }
+</style>
+</head>
+<body class="ds">
+<div class="wallpaper">
+<div class="doc">
+
+  <nav class="doc__nav">
+    <a href="../index.html">设计规范总览</a>
+    <a href="01-main-window.html">主窗口</a>
+    <a href="02-menu-bar.html">菜单栏面板</a>
+    <a href="03-eject-flow.html">推出流程弹窗</a>
+    <a href="04-onboarding.html">授权引导</a>
+    <a href="05-settings.html" aria-current="page">设置面板</a>
+    <a href="06-states.html">状态矩阵</a>
+    <a href="07-dark.html">深色模式</a>
+  </nav>
+
+  <p class="doc__eyebrow">Screen 05 · Settings</p>
+  <h1 class="doc__title">设置面板</h1>
+  <p class="doc__lede">
+    设置面板只有四组内容，且<strong>每一组都对应一个用户会主动产生的疑问</strong>：
+    「能不能别那么透明」「能不能换个颜色」「能不能开机就在」「出问题了去哪看」。
+    没有对应问题的项，就不该出现在这里。
+  </p>
+
+  <div class="artboard" style="gap:64px">
+
+    <!-- ============ 设置面板 ============ -->
+    <div class="frame">
+      <div class="frame__label">440 × 566 · 四组内容全部可见，无需滚动</div>
+
+      <div class="win" style="width:var(--w-settings);height:566px">
+        <div class="shead">
+          <span class="shead__title">设置</span>
+          <span style="flex:1"></span>
+          <button class="btn btn--outline btn--sm">完成</button>
+        </div>
+
+        <div class="settings__body">
+
+          <!-- 外观 -->
+          <div class="sgroup">
+            <div class="sgroup__title">外观</div>
+            <div class="scard">
+              <div class="sline">
+                <div class="sline__text">
+                  <div class="sline__label">视觉效果</div>
+                  <div class="sline__desc">透明模式使用系统毛玻璃；色调模式使用固定的浅色背景。</div>
+                </div>
+                <div class="sline__control">
+                  <div class="seg" role="tablist">
+                    <button class="seg__opt" role="tab" aria-selected="true">透明</button>
+                    <button class="seg__opt" role="tab" aria-selected="false">色调</button>
+                  </div>
+                </div>
+              </div>
+
+              <div class="sline">
+                <div class="sline__text">
+                  <div class="sline__label">强调色</div>
+                </div>
+                <div class="sline__control">
+                  <div class="swatches">
+                    <button class="swatch swatch--blue"   data-accent-btn="blue"   aria-pressed="true"  aria-label="蓝色"></button>
+                    <button class="swatch swatch--purple" data-accent-btn="purple" aria-pressed="false" aria-label="紫色"></button>
+                    <button class="swatch swatch--orange" data-accent-btn="orange" aria-pressed="false" aria-label="橙色"></button>
+                    <button class="swatch swatch--green"  data-accent-btn="green"  aria-pressed="false" aria-label="绿色"></button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 通用 -->
+          <div class="sgroup">
+            <div class="sgroup__title">通用</div>
+            <div class="scard">
+              <div class="sline">
+                <div class="sline__text">
+                  <div class="sline__label">在 Dock 中显示图标</div>
+                </div>
+                <div class="sline__control">
+                  <button class="switch" role="switch" aria-checked="false" aria-label="在 Dock 中显示图标"></button>
+                </div>
+              </div>
+
+              <div class="sline">
+                <div class="sline__text">
+                  <div class="sline__label">登录时启动</div>
+                  <div class="sline__desc">开机后自动驻留菜单栏，插盘即可用。</div>
+                </div>
+                <div class="sline__control">
+                  <button class="switch" role="switch" aria-checked="true" aria-label="登录时启动"></button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 诊断 -->
+          <div class="sgroup">
+            <div class="sgroup__title">诊断</div>
+            <div class="scard">
+              <div class="sline">
+                <div class="sline__text">
+                  <div class="sline__label">错误日志</div>
+                  <div class="sline__desc">记录每次推出失败的时间、磁盘与原因。</div>
+                </div>
+                <div class="sline__control">
+                  <button class="linkbtn">在访达中显示 <i data-i="externalLink"></i></button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 关于 -->
+          <div class="aboutrow">
+            <div class="aboutrow__icon"><i data-i="eject"></i></div>
+            <div style="flex:1;min-width:0">
+              <div style="font-size:var(--fs-13);font-weight:600">磁盘推出助手</div>
+              <div style="font-size:var(--fs-11);color:var(--text-3);margin-top:2px;font-variant-numeric:tabular-nums">
+                版本 1.0.0 · 构建 42 · Developer ID 直发版
+              </div>
+            </div>
+            <button class="btn btn--outline btn--sm">检查更新</button>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ 登录项需批准 ============ -->
+    <div class="frame">
+      <div class="frame__label">通用分组 · 登录项需系统批准时的第三态</div>
+
+      <div style="width:400px;padding:20px;border-radius:var(--r-lg);background:rgba(255,255,255,0.66);box-shadow:var(--e2);-webkit-backdrop-filter:blur(20px);backdrop-filter:blur(20px)">
+        <div class="sgroup" style="margin:0">
+          <div class="sgroup__title">通用</div>
+          <div class="scard">
+            <div class="sline">
+              <div class="sline__text">
+                <div class="sline__label">在 Dock 中显示图标</div>
+              </div>
+              <div class="sline__control">
+                <button class="switch" role="switch" aria-checked="false" aria-label="在 Dock 中显示图标"></button>
+              </div>
+            </div>
+
+            <div class="sline">
+              <div class="sline__text">
+                <div class="sline__label">登录时启动</div>
+              </div>
+              <div class="sline__control">
+                <button class="switch" role="switch" aria-checked="true" aria-label="登录时启动"></button>
+              </div>
+            </div>
+
+            <div class="sline" style="background:var(--warn-soft)">
+              <div class="sline__text">
+                <div class="sline__label" style="color:var(--warn-text);font-weight:500">等待系统批准</div>
+                <div class="sline__desc">注册已提交，但还需在系统设置中手动打开，否则不会自动启动。</div>
+              </div>
+              <div class="sline__control">
+                <button class="btn btn--outline btn--sm">打开系统设置</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <p class="spec-note" style="max-width:400px">
+        <b>这是一个必须显式画出的第三态。</b>若把登录项只按布尔值建模，开关会显示「已开启」
+        但实际不启动——用户以为设好了，重启后却发现没有。因此 <code>.requiresApproval</code>
+        必须单独成行、用琥珀底强调，并给出唯一动作入口；此状态下反复调用注册不会推进，
+        所以不提供「重试」按钮。
+      </p>
+    </div>
+
+    <!-- ============ 强调色 ============ -->
+    <div class="frame">
+      <div class="frame__label">强调色 · 界面即时响应，无需重启</div>
+      <div style="width:340px;padding:16px;border-radius:var(--r-md);background:rgba(255,255,255,0.7);box-shadow:var(--e2)">
+        <div style="display:flex;align-items:center;gap:10px">
+          <div style="flex:1;font-size:var(--fs-13);font-weight:500">强调色</div>
+          <div class="swatches">
+            <button class="swatch swatch--blue"   data-accent-btn="blue"   aria-pressed="true"  aria-label="蓝色"></button>
+            <button class="swatch swatch--purple" data-accent-btn="purple" aria-pressed="false" aria-label="紫色"></button>
+            <button class="swatch swatch--orange" data-accent-btn="orange" aria-pressed="false" aria-label="橙色"></button>
+            <button class="swatch swatch--green"  data-accent-btn="green"  aria-pressed="false" aria-label="绿色"></button>
+          </div>
+        </div>
+        <div style="margin-top:16px;display:flex;align-items:center;gap:10px">
+          <div class="diskicon"><i data-i="drive"></i></div>
+          <div style="flex:1;min-width:0">
+            <div style="font-size:var(--fs-13);font-weight:600">Samsung T7</div>
+            <div class="meter" style="margin-top:6px">
+              <div class="meter__track"><div class="meter__fill" style="width:30%"></div></div>
+              <span class="meter__pct">30%</span>
+            </div>
+          </div>
+          <button class="btn btn--primary btn--sm"><i data-i="eject"></i>推出</button>
+        </div>
+      </div>
+      <p class="spec-note" style="max-width:340px">
+        点色板可实时预览强调色对图标容器、容量条、按钮、选中态的影响。
+        深色模式下四色各自有独立的深色取值（见「深色模式」页）。
+      </p>
+    </div>
+
+  </div>
+
+  <!-- ===================== 说明 ===================== -->
+  <div class="doc__section">
+    <h2 class="doc__h2">设计说明 <em>Rationale</em></h2>
+    <div class="grid2">
+      <div class="panel">
+        <h3 class="doc__h3" style="margin-top:0">要点</h3>
+        <ul class="note-list">
+          <li><b>「视觉效果」用分段控件而不是开关。</b>两个互斥选项一眼看全，也不需要「关闭透明效果」这种双重否定。</li>
+          <li><b>登录项第三态单独成行</b>（见右侧artboard），用琥珀底 + 唯一动作入口。</li>
+          <li><b>诊断区是新增的。</b>推出失败时用户最需要的是「去哪看」。把日志入口放进设置，弹窗里的「查看日志」才有落点。</li>
+          <li><b>关于区改成横向一行。</b>居中大图标 + 竖排版本号的写法要吃掉 206pt；横向布局压到 70pt，同样的信息，四分之一的代价。</li>
+          <li><b>面板高度是量出来的。</b>四组内容在中英文下的实测高度决定 <code>440 × 566</code>；改任何一段文案后需同步复测，否则底部会被折叠到滚动区外——这正是旧版「设置排版不好看」的真实原因。</li>
+        </ul>
+      </div>
+
+      <div class="panel">
+        <h3 class="doc__h3" style="margin-top:0">规格 Handoff</h3>
+        <ul class="note-list">
+          <li>面板 <code>440 × 566</code>，以 sheet 形式从主窗口弹出</li>
+          <li>头部高 <code>52</code>；内容内边距 <code>20 / 20 / 16</code></li>
+          <li>分组标题 <code>11 / 600</code> + 字距 <code>0.05em</code>，距卡片 <code>6</code>；组间距 <code>20</code></li>
+          <li>设置行最小高 <code>44</code>，内边距 <code>11 / 12</code>；行间 <code>0.5px</code> 内嵌分隔线</li>
+          <li>开关 <code>38 × 22</code>，滑块 <code>18</code>，行程 <code>16</code></li>
+          <li>分段控件高 <code>28</code>（外 <code>2</code> 内边距 + 选项 <code>24</code>），圆角 <code>7 / 5</code></li>
+          <li>色板 <code>22 × 22</code>，选中态外描边 <code>2px</code>、偏移 <code>4</code></li>
+          <li>关于行内边距 <code>13 / 16</code>；应用图标 <code>44 × 44</code>，圆角 <code>12</code></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+</div>
+</div>
+<script src="../assets/ds.js"></script>
+</body>
+</html>

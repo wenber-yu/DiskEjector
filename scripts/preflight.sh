@@ -16,6 +16,8 @@
 #   ./scripts/preflight.sh                 # 构建（警告视为错误）+ 格式检查
 #   ./scripts/preflight.sh --with-tests    # 额外跑测试与覆盖率门槛
 #   COVERAGE_MIN=45 ./scripts/preflight.sh --with-tests   # 自定义覆盖率门槛
+#   DISABLE_SANDBOX=1 ./scripts/preflight.sh               # 受管环境：跳过 SwiftPM 沙盒
+#                                                          # （报 sandbox_apply 失败时用）
 #
 # 【退出码】
 #   0 全部门槛通过；1 至少一道未通过（逐道打印）；2 参数错误。
@@ -29,12 +31,22 @@ PACKAGE_DIR="$REPO_ROOT"
 FORMAT_CONFIG="$REPO_ROOT/.swift-format"
 COVERAGE_MIN="${COVERAGE_MIN:-40}"
 
+# DISABLE_SANDBOX=1：跳过 SwiftPM 自带的 sandbox-exec。
+# 受管执行环境自身已在一层沙箱内时，嵌套 sandbox-exec 会报
+# "sandbox_apply: Operation not permitted" 并让构建失败（与代码无关）。
+# 仅影响构建期隔离，不改变检查结论；CI 不应设置此变量。
+SWIFT_SANDBOX_FLAGS=()
+if [ "${DISABLE_SANDBOX:-0}" = "1" ]; then
+    echo "ⓘ DISABLE_SANDBOX=1：swift build 将跳过 SwiftPM 沙盒（仅供受管环境使用）"
+    SWIFT_SANDBOX_FLAGS+=(--disable-sandbox)
+fi
+
 WITH_TESTS=0
 for arg in "$@"; do
     case "$arg" in
         --with-tests) WITH_TESTS=1 ;;
         -h | --help)
-            sed -n '3,22p' "${BASH_SOURCE[0]}"
+            sed -n '3,23p' "${BASH_SOURCE[0]}"
             exit 0
             ;;
         *)
@@ -90,6 +102,7 @@ echo "DiskEjector 预检（仓库：${REPO_ROOT}）"
 # ---------------------------------------------------------------
 run_gate "构建（-Xswiftc -warnings-as-errors）" \
     swift build --package-path "$PACKAGE_DIR" -Xswiftc -warnings-as-errors \
+    ${SWIFT_SANDBOX_FLAGS[@]+"${SWIFT_SANDBOX_FLAGS[@]}"} \
     || FAILED=$((FAILED + 1))
 
 # ---------------------------------------------------------------

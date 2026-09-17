@@ -78,11 +78,94 @@ struct MainMenuTests {
         // ⌘M 最小化
         #expect(item("m")?.action == #selector(NSWindow.performMiniaturize(_:)))
 
-        // ⌘1 显示主窗口 —— 菜单栏模式下 ⌘W 关掉窗口后靠它找回
-        #expect(item("1")?.action == #selector(AppDelegate.showMainWindow))
+        // ⌘O 显示主窗口 —— 菜单栏模式下 ⌘W 关掉窗口后靠它找回。
+        //
+        // **键位必须是 ⌘O 而不是 ⌘1**：菜单栏面板的动作行把这一项标成 `⌘O`
+        // （设计稿 `.actionrow__key`），两处不一致时用户照着面板按会没反应。
+        #expect(item("o")?.action == #selector(AppDelegate.showMainWindow))
+
+        // ⌘R 刷新磁盘列表 —— 同样在面板动作行里有标注
+        #expect(item("r")?.action == #selector(AppDelegate.refreshDisks))
+
+        // ⌘, 设置 —— macOS 惯例键位，面板动作行也标了
+        #expect(item(",")?.action == #selector(AppDelegate.showSettings))
     }
 
-    /// 两个 App 自有动作必须显式指向 delegate，否则菜单项会被置灰（拿不到接收者）。
+    /// **面板上画出来的键位必须真的能用。**
+    ///
+    /// 菜单栏面板的动作行行尾有一列快捷键提示（设计稿 `.actionrow__key`）。
+    /// 它是**画上去的**——若主菜单里没有对应项，那个 `⌘R` 就只是装饰：
+    /// 用户按下组合键毫无反应，而且不报错、不崩溃，只有用户来投诉才发现。
+    ///
+    /// 这条断言把「面板标注」与「主菜单接线」两边锁在一起：
+    /// 任何一边改了键位而另一边没跟上，测试立刻变红。
+    @Test func 面板标注的快捷键与主菜单实际绑定一致() throws {
+        _ = installWithDelegate()
+        let main = try #require(NSApplication.shared.mainMenu)
+        let items = flatten(main)
+
+        // 键位清单**直接读视图的那份数据**（`MenuPopoverView.actionRows`），不在这里手抄一遍。
+        // 手抄的话，视图里改了键位而测试没跟上，两边一起错，断言照样绿。
+        for row in MenuPopoverView.actionRows {
+            // 面板上画的是 `⌘O`，`keyEquivalent` 要的是 `o`。
+            let key = row.shortcut.dropFirst().lowercased()
+            let wired = items.first {
+                $0.keyEquivalent == key && $0.keyEquivalentModifierMask == [.command]
+            }
+            #expect(
+                wired != nil,
+                "面板动作行「\(L10n.tr(row.titleKey))」标注了 \(row.shortcut)，但主菜单里没有这一项 —— 那个键位是假的，按下去不会有反应"
+            )
+        }
+    }
+
+    /// 面板动作行的**条数与顺序**必须与设计稿一致。
+    ///
+    /// 设计稿 `02-menu-bar.html` 的动作区是固定的四行：打开主窗口 / 刷新磁盘列表 / 设置 / 退出。
+    /// 少一行（比如「刷新」）用户就少一个入口，多一行则面板比设计稿高出一整行。
+    ///
+    /// ⚠️ **深色稿 `07-dark.html` 里只有三行**（漏了「刷新磁盘列表」），
+    /// 那是深色稿自身的陈旧——`02-menu-bar.html` 是面板的专属屏幕，以它为准。
+    @Test func 面板动作行与设计稿的四行一致() {
+        #expect(
+            MenuPopoverView.actionRows.count == 4,
+            "面板动作区应有 4 行（设计稿 02-menu-bar.html），实际 \(MenuPopoverView.actionRows.count) 行"
+        )
+        #expect(
+            MenuPopoverView.actionRows.map(\.shortcut) == ["⌘O", "⌘R", "⌘,", "⌘Q"],
+            "面板动作行的键位与顺序必须与设计稿一致，实际 \(MenuPopoverView.actionRows.map(\.shortcut))"
+        )
+        #expect(MenuPopoverView.actionRows.last?.isDestructive == true, "「退出」是唯一的破坏性动作")
+    }
+
+    /// **同一个动作不能有两个名字。**
+    ///
+    /// 面板动作行的「退出」与主菜单「退出磁盘推出助手」（⌘Q）是同一个动作。
+    /// 面板上若写成光秃秃的「退出」，用户会以为那是两件不同的事
+    /// （一个是关窗口、一个是退应用）。设计稿 `02-menu-bar.html` 写的是
+    /// `退出 DiskEjector` —— 带应用名。
+    ///
+    /// 这条断言把两边锁在一起：改任一边的文案而另一边没跟上，测试立刻变红。
+    @Test func 面板的退出项与主菜单退出项同名() throws {
+        _ = installWithDelegate()
+        let main = try #require(NSApplication.shared.mainMenu)
+        let items = flatten(main)
+
+        let quitItem = try #require(
+            items.first { $0.keyEquivalent == "q" && $0.keyEquivalentModifierMask == [.command] })
+        let panelQuit = try #require(MenuPopoverView.actionRows.last)
+
+        #expect(
+            L10n.tr(panelQuit.titleKey) == quitItem.title,
+            "面板的退出项写着「\(L10n.tr(panelQuit.titleKey))」，主菜单的 ⌘Q 写着「\(quitItem.title ?? "")」—— 同一个动作，两种名字"
+        )
+    }
+
+    /// 四个 App 自有动作必须显式指向 delegate，否则菜单项会被置灰（拿不到接收者）。
+    ///
+    /// 「设置…」与「刷新磁盘列表」是**菜单栏面板动作行的键位落点**：
+    /// 面板在屏幕最上方、主窗口常常是关着的，这两项没有窗口可依，
+    /// 走 nil-target 会沿响应链找到底也找不到接收者。
     @Test func 自有动作指向应用委托() throws {
         let delegate = installWithDelegate()
         let main = try #require(NSApplication.shared.mainMenu)
@@ -93,6 +176,12 @@ struct MainMenuTests {
 
         let hide = try #require(items.first { $0.action == #selector(AppDelegate.hideApp(_:)) })
         #expect(hide.target === delegate)
+
+        let refresh = try #require(items.first { $0.action == #selector(AppDelegate.refreshDisks) })
+        #expect(refresh.target === delegate)
+
+        let settings = try #require(items.first { $0.action == #selector(AppDelegate.showSettings) })
+        #expect(settings.target === delegate)
     }
 
     /// 「窗口」菜单要交给 AppKit 托管（`NSApp.windowsMenu`），

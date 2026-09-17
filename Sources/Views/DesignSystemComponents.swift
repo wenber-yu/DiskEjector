@@ -1,31 +1,131 @@
+import AppKit
 import SwiftUI
+
+// 本文件是设计稿 `DiskEjector-UI-Design/v2/` 的**基础组件库** Swift 实现。
+// 每个组件上方都标注了它在 `assets/ds.css` 里的对应类与关键尺寸来源。
+// 改视觉先改设计稿与 ``DesignTokens``，再回来对齐这里 —— 不要在视图里写魔法数。
+
+// MARK: - Hairline（1 物理像素发丝线）
+//
+// 设计稿的分隔线统一是 `box-shadow: inset 0 0.5px 0 var(--hairline)`
+// （见 `ds.css` 的 `.sline + .sline`）—— 0.5 CSS px 在 2x 屏上正好是 **1 物理像素**。
+//
+// **为什么不能直接写 `.frame(height: 0.5)`**：
+// `0.5` 是**亚像素高度**，SwiftUI 对它的取整方向不确定。实测同一个
+// `Rectangle().fill(hairline).frame(height: 0.5)`：
+// - 放在设置面板「外观」卡的第二行上 → 取整成 1pt（2 物理像素），看得见；
+// - 放在「通用」卡的第二行上 → 取整成 0pt，**整条线凭空消失**。
+// 症状是「分隔线时有时无」，而且改一个字号或文案长度就会换另一条线消失，
+// 排查时极易误判成颜色、透明度或 z 轴层级问题（实测排了三轮才定位到取整）。
+//
+// 现在的画法把**布局高度**和**绘制高度**分开：
+// - 布局高度固定 `1pt`（整数，取整无歧义，永远不会塌成 0）；
+// - 绘制高度 `1 / displayScale`，2x 屏正好 1 物理像素、1x 屏 1 像素。
+// 于是「有 1pt 的位置放线」和「线只占 1 物理像素」两件事互不干扰。
+//
+// 副作用：作为**布局元素**（而非 overlay）使用时它会占 1pt 高度，
+// 而设计稿的 `inset box-shadow` 不占高度。所以能用 overlay 的地方优先用 overlay。
+struct Hairline: View {
+
+    /// 线的颜色。默认取调色板的 `hairline`（8% 墨色）。
+    var color: Color = DesignTokens.Palette.hairline
+
+    @Environment(\.displayScale) private var displayScale
+
+    var body: some View {
+        Canvas { context, size in
+            context.fill(
+                Path(CGRect(x: 0, y: 0, width: size.width, height: 1 / displayScale)),
+                with: .color(color))
+        }
+        .frame(height: 1)
+        // 纯装饰：不参与命中测试，否则会把下方行的点击区挡掉。
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
+}
+
+// MARK: - 按设计稿的 CSS line-height 排版
+//
+// **为什么需要这个东西**：CSS 的 `line-height` 定义的是**行盒高度**，对每一行（含第一行）
+// 都生效；SwiftUI 的 `Text` 用的是字体自然行高（12pt 只有 15pt），`lineSpacing` 又只补
+// **行与行之间**。于是同一段文字在两边差出 3pt/行：
+//
+// | | CSS `line-height: 1.5`（12pt） | SwiftUI 默认 |
+// |---|---|---|
+// | 单行 | 18 | 15 |
+// | 三行 | 54 | 45 |
+//
+// 单行看不出，三行的提示块差 9pt —— 落到弹窗上就是整体高度偏出十几 pt
+// （实测 A 变体多 17pt、B 变体少 11pt，而「看起来对不对」的走查完全没发现）。
+//
+// **手法**：`lineSpacing` 补上差额，再把差额的一半补在上下内边距上。
+// 设差额 `d = 设计行高 − 自然行高`：
+// - 单行：`自然 + d = 设计行高` ✓
+// - n 行：`n × 自然 + (n−1) × d（行间距） + d（内边距） = n × 设计行高` ✓
+//
+// 补在**上下各一半**而不是全补在上面，是为了和 CSS 的 half-leading 一致 ——
+// 行盒里多出来的高度上下均分，文字在行盒内保持居中，基线位置也就跟着对齐了。
+//
+// ⚠️ **不要试图用 `NSParagraphStyle` 的 `minimumLineHeight`**：`Text(AttributedString)`
+// 会**忽略**段落样式（实测设了 18 仍按 15 排版），此路不通。
+extension View {
+
+    /// 按设计稿的 CSS `line-height` 排版。
+    ///
+    /// - Parameters:
+    ///   - multiple: 设计稿的行高倍数（见 ``DesignTokens/LineHeight``）。
+    ///   - fontSize: 该段文字的字号 —— 用来查自然行高并算出要补的差额。
+    func designLineHeight(_ multiple: CGFloat, fontSize: CGFloat) -> some View {
+        let delta = fontSize * multiple - DesignTokens.naturalLineHeight(fontSize)
+        // 自然行高已经高于设计行高时（理论上不会发生）不反向压缩，交给系统。
+        let inset = max(0, delta)
+        return lineSpacing(inset).padding(.vertical, inset / 2)
+    }
+}
 
 // MARK: - IconBadge（圆角图标容器）
 //
-// 设计稿用法：图标坐在 `rgba(accent, 0.10~0.12)` 透明色背景的圆角方块里，
-// 强调色直接用 AccentColor 渲染（蓝/紫/橙/绿都成立）。
+// 设计稿 `.diskicon` / `.crow__icon` / `.empty__art`：图标坐在带浅色底的圆角方块里。
+// 被占用时整块切琥珀配色（`.diskicon--busy`），这是「判定优先」的第一层线索。
 
 struct IconBadge: View {
     enum Style {
-        /// 主窗口磁盘卡片头：40×40，accent 12% 透明背景，5pt 图标。
-        case diskCard
-        /// 菜单栏磁盘行：32×32，accent 10% 透明背景，4.5pt 图标。
+        /// 主窗口磁盘行：40 × 40，圆角 10，图标 22。
+        case diskRow
+        /// 菜单栏磁盘行：32 × 32，圆角 10，图标 18。
         case menuRow
-        /// 弹窗警告图标：透明背景，警告色 8pt 图标。
-        case dialogWarning
-        /// 弹窗 FDA 锁图标：透明背景，强调色 8pt 图标。
-        case dialogPrimary
-        /// 空状态大图标：64×64，muted 背景，12pt 图标。
-        case emptyState
-        /// 设置面板 About：56×56，accent 实心背景，白色 7pt 图标。
+        /// 紧凑行：30 × 30，圆角 8，图标 17。
+        case compactRow
+        /// 空状态大图标：76 × 76，圆角 18，图标 36。
+        case emptyArt
+        /// 菜单栏面板空状态图标：56 × 56，圆角 14，图标 36。
+        ///
+        /// **与 `.emptyArt` 不是同一档**：面板只有 360pt 宽，76 的方块在空状态里
+        /// 比文案还重。设计稿在 `02-menu-bar.html` 里把它覆盖成 56 / 圆角 14。
+        case menuEmptyArt
+        /// 设置面板「关于」行：44 × 44，圆角 12，accent 实心 + 白色图标。
         case settingsAbout
+        // ⚠️ 这里曾经还有 `dialogWarning` / `dialogPrimary`（「无底色，警告色/强调色 32pt」），
+        // 2026-09-16 设计走查时删掉。两条理由：
+        //
+        // 1. **死代码**：全仓库（`Sources/` + `Tests/`）只有声明处引用，没有任何实例化点
+        //    —— 其余六个 case 都有 ≥2 处（声明 + 使用）。`style:` 实参也全是字面量，
+        //    不存在动态构造。
+        // 2. **规格是错的**：设计稿的弹窗图标**永远**坐在 `.alert__icon` 浅底容器里
+        //    （38 × 38、圆角 10、图标 20；`ds.css` 只有 `--warn` / `--danger` / `--info`
+        //    三个修饰符，**没有「无底色」这一档**）。那条正确的规格由 ``AlertIcon`` 承担。
+        //
+        // 留着它的代价与 `.actionrow--danger` 染红同类：下一个读到这里的人会以为
+        // 「设计稿的弹窗警告图标是一个 32pt 无底色的琥珀图标」，然后照着它做一个
+        // 不合规的弹窗 —— **一个过时的规格比没有规格更危险**。
     }
 
     let systemName: String
     let style: Style
     let accent: AccentColor
-
-    @Environment(\.colorScheme) private var scheme
+    /// 是否处于「被占用」状态（切琥珀配色）。仅行内样式有意义。
+    var isBusy: Bool = false
 
     var body: some View {
         let cfg = configuration()
@@ -37,6 +137,10 @@ struct IconBadge: View {
                 RoundedRectangle(cornerRadius: cfg.radius, style: .continuous)
                     .fill(cfg.background)
             )
+            .overlay(
+                RoundedRectangle(cornerRadius: cfg.radius, style: .continuous)
+                    .strokeBorder(cfg.border, lineWidth: 0.5)
+            )
             .accessibilityHidden(true)
     }
 
@@ -46,224 +150,477 @@ struct IconBadge: View {
         let radius: CGFloat
         let background: Color
         let foreground: Color
+        let border: Color
     }
 
     private func configuration() -> Config {
         let accentColor = accent.swiftUIColor
         switch style {
-        case .diskCard:
-            // 头部纯图标（无背景方块），保持约束框用于对齐 + accent 主调。
+        case .diskRow:
             return Config(
-                container: 28,
+                container: DesignTokens.Size.diskIconContainer,
                 iconSize: 22,
-                radius: 0,
-                background: .clear,
-                foreground: accentColor
+                radius: DesignTokens.Radius.md,
+                background: isBusy
+                    ? DesignTokens.Palette.warningSoft : DesignTokens.Palette.accentSoft(accent),
+                foreground: isBusy ? DesignTokens.Palette.warning : accentColor,
+                border: isBusy
+                    ? DesignTokens.Palette.warningLine : DesignTokens.Palette.accentRing(accent)
             )
         case .menuRow:
+            // **与 `.diskRow` 不是同一档**（设计稿两条独立规则）：
+            //   `.mrow__icon  { width:32px; height:32px; border-radius: var(--r-sm)=6px;
+            //                   background: var(--accent-soft); color: var(--accent); }
+            //   `.mrow__icon svg { width: 17px }`
+            // 没有描边。曾经沿用 `.diskRow` 的圆角 10 + 0.5px `accent-ring`，
+            // 32pt 的方块上圆角从 6 变 10，四角明显「胖」了一圈，还多出一条设计稿没有的边。
             return Config(
                 container: DesignTokens.Size.menuIconContainer,
-                iconSize: 18,
-                radius: DesignTokens.Radius.md - 2,
-                background: accentColor.opacity(0.10),
-                foreground: accentColor
+                iconSize: DesignTokens.Size.menuIconSize,
+                radius: DesignTokens.Size.menuIconRadius,
+                background: isBusy
+                    ? DesignTokens.Palette.warningSoft : DesignTokens.Palette.accentSoft(accent),
+                foreground: isBusy ? DesignTokens.Palette.warning : accentColor,
+                border: .clear
             )
-        case .dialogWarning:
+        case .compactRow:
             return Config(
-                container: 0,
-                iconSize: 32,
-                radius: 0,
-                background: .clear,
-                foreground: DesignTokens.Palette.warning
+                container: DesignTokens.Size.compactIconContainer,
+                iconSize: 17,
+                radius: DesignTokens.Radius.sm + 2,
+                background: isBusy
+                    ? DesignTokens.Palette.warningSoft : DesignTokens.Palette.accentSoft(accent),
+                foreground: isBusy ? DesignTokens.Palette.warning : accentColor,
+                border: isBusy
+                    ? DesignTokens.Palette.warningLine : DesignTokens.Palette.accentRing(accent)
             )
-        case .dialogPrimary:
+        case .emptyArt:
             return Config(
-                container: 0,
-                iconSize: 32,
-                radius: 0,
-                background: .clear,
-                foreground: accentColor
+                container: DesignTokens.Size.emptyArtSize,
+                iconSize: 36,
+                radius: DesignTokens.Radius.xl,
+                background: DesignTokens.Palette.subtle,
+                foreground: DesignTokens.Palette.textDecorative,
+                border: .clear
             )
-        case .emptyState:
+        case .menuEmptyArt:
             return Config(
-                container: 64,
-                iconSize: 32,
-                radius: 32,
-                background: DesignTokens.Palette.mutedBackground,
-                foreground: DesignTokens.Palette.mutedForeground
+                container: DesignTokens.Size.menuEmptyArtSize,
+                iconSize: DesignTokens.Size.menuEmptyArtIcon,
+                radius: DesignTokens.Radius.lg,
+                background: DesignTokens.Palette.subtle,
+                foreground: DesignTokens.Palette.textDecorative,
+                border: .clear
             )
         case .settingsAbout:
             return Config(
-                container: 56,
-                iconSize: 28,
-                radius: 16,
+                container: DesignTokens.Size.aboutRowIcon,
+                iconSize: 22,
+                radius: DesignTokens.Radius.md,
                 background: accentColor,
-                foreground: .white
+                foreground: .white,
+                border: .clear
             )
         }
     }
 }
 
-// MARK: - PrimaryButton（主按钮）
+// MARK: - AlertIcon（弹窗图标容器）
 //
-// 设计稿用法：圆角 md（10），高 32（标题栏图标按钮是 28），padding 0 16，
-// accent 实心背景，白色文字，hover 时 opacity 0.9。
+// 设计稿 `.alert__icon`：38 × 38、圆角 10、图标 20，坐在同色系浅底上。
+// 与 ``IconBadge`` 的区别是**它带语义色**：琥珀=被占用（`.alert__icon--warn`）、
+// 红=破坏性失败（`.alert__icon--danger`）。这两种颜色在设计稿里是**专义**的
+// （§2.1：琥珀只表示被占用、红只表示破坏性），所以不做成通用的可配色组件。
 
-struct PrimaryButton: View {
-    let title: String
-    let systemImage: String?
-    let action: () -> Void
-    let accent: AccentColor
-
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: 6) {
-                if let systemImage {
-                    Image(systemName: systemImage)
-                        .font(.system(size: 14, weight: .medium))
-                }
-                Text(title)
-                    .font(.system(size: DesignTokens.FontSize.primaryButton, weight: .medium))
-            }
-            .foregroundStyle(.white)
-            .padding(.horizontal, DesignTokens.Spacing.lg)
-            .frame(height: DesignTokens.Size.primaryButtonHeight)
-            .background(
-                RoundedRectangle(cornerRadius: DesignTokens.Radius.md, style: .continuous)
-                    .fill(accent.swiftUIColor)
-            )
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .onHover { hovering in
-            // 用 SwiftUI 自带 hover 动效不能改背景色，这里用 NSViewRepresentable
-            // 监听 enter/exit 不划算；直接靠系统按钮的 active 反馈即可。
-            _ = hovering
-        }
-        .help(title)
+/// 弹窗左上角图标。设计稿 `.alert__icon--warn` / `.alert__icon--danger`。
+struct AlertIcon: View {
+    enum Kind {
+        /// 琥珀 + 三角感叹号 —— 「即将推出，但被占用」。
+        case warning
+        /// 红 + × —— 推出失败。
+        case danger
+        /// 强调色 + 自选图标 —— 供其它弹窗复用。
+        case accent(String)
     }
-}
 
-// MARK: - SecondaryButton（次要按钮，描边/文字）
-//
-// 设计稿用法：圆角 md，muted 背景，1px 边框，文字 13px / 500。
-
-struct SecondaryButton: View {
-    let title: String
-    let systemImage: String?
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: 6) {
-                if let systemImage {
-                    Image(systemName: systemImage)
-                        .font(.system(size: 13, weight: .medium))
-                }
-                Text(title)
-                    .font(.system(size: DesignTokens.FontSize.primaryButton, weight: .medium))
-            }
-            .foregroundStyle(DesignTokens.Palette.foreground)
-            .padding(.horizontal, DesignTokens.Spacing.lg)
-            .frame(height: DesignTokens.Size.primaryButtonHeight)
-            .background(
-                RoundedRectangle(cornerRadius: DesignTokens.Radius.md, style: .continuous)
-                    .fill(DesignTokens.Palette.mutedBackground)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: DesignTokens.Radius.md, style: .continuous)
-                    .strokeBorder(DesignTokens.Palette.border, lineWidth: 1)
-            )
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .help(title)
-    }
-}
-
-// MARK: - TextButton（纯文字按钮）
-//
-// 设计稿"打开系统设置"链接、"完成"等场景：透明背景，accent 文字，hover 加淡背景。
-//
-// **用 SwiftUI Button + .buttonStyle(.plain)**：相比 `onTapGesture`，SwiftUI Button
-// 第一次点击响应更可靠（`onTapGesture` 在 SwiftUI 首次渲染后有约 1 个 runloop tick
-// 的注册延迟，会让"第一次点击没反应"——这是用户报告的核心症状）。
-//
-// **去焦点环**：`.focusable(false)` + `.disableFocusRingIfAvailable()`，
-// 与 MenuActionRow / ejectButton 保持同一处理策略。
-
-struct TextButton: View {
-    let title: String
-    let action: () -> Void
+    let kind: Kind
     var accent: AccentColor = .default
 
     var body: some View {
-        Button(action: action) {
-            Text(title)
-                .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(accent.swiftUIColor)
-                .padding(.horizontal, DesignTokens.Spacing.md)
-                .padding(.vertical, 6)
-                .contentShape(Rectangle())
+        Image(systemName: symbol)
+            .font(.system(size: DesignTokens.Size.alertIconSize, weight: .medium))
+            .foregroundStyle(foreground)
+            .frame(
+                width: DesignTokens.Size.alertIconContainer,
+                height: DesignTokens.Size.alertIconContainer
+            )
+            .background(
+                RoundedRectangle(cornerRadius: DesignTokens.Radius.md, style: .continuous)
+                    .fill(background)
+            )
+            .accessibilityHidden(true)
+    }
+
+    private var symbol: String {
+        switch kind {
+        case .warning: return "exclamationmark.triangle"
+        case .danger: return "xmark"
+        case .accent(let name): return name
         }
-        .buttonStyle(.plain)
-        .focusable(false)
-        .disableFocusRingIfAvailable()
-        .onHover { hovering in
-            if hovering { NSCursor.pointingHand.push() } else { NSCursor.pop() }
+    }
+
+    private var foreground: Color {
+        switch kind {
+        case .warning: return DesignTokens.Palette.warning
+        case .danger: return DesignTokens.Palette.error
+        case .accent: return accent.swiftUIColor
         }
-        .help(title)
-        .accessibilityAddTraits(.isButton)
+    }
+
+    private var background: Color {
+        switch kind {
+        case .warning: return DesignTokens.Palette.warningSoft
+        case .danger: return DesignTokens.Palette.errorSoft
+        case .accent: return DesignTokens.Palette.accentSoft(accent)
+        }
     }
 }
 
-// MARK: - ProcessTag（进程标签）
+// MARK: - AlertCallout（弹窗警示块）
 //
-// 设计稿"磁盘详情 - 占用进程列表"：圆角 pill（仅 muted 背景，**无边框**）+ 应用图标 + 应用名。
-// 宽度按内容自适应（不设 maxWidth）：让 pill 紧贴内容、左右不留大片空白，
-// 多个 pill 在磁盘行下方排成一行，视觉上更轻盈。
-// 名称过长时单行截断（`.truncationMode(.tail)`），靠 `.help()` 暴露完整名给用户。
+// 设计稿 `.callout`：圆角 6、内边距 9/11、左侧 14pt 图标 + 12pt 文字、0.5px 同色内描边。
 //
-// **「应用名」与「图标」都来自 ``OccupyingProcess/displayName`` 与 ``ProcessAppResolver``**：
-// 不再直接用进程可执行名（会把 `Bunny` 显示成 `IMVIDEO`），也不再按名字模糊匹配图标
-// （匹配不上就只剩通用图标）。图标取不到时才回落到 SF Symbol。
+// **为什么不做成「一段彩色文字」**：设计稿把警示/提示从正文里拎出来单独成块，
+// 是为了让它在扫读时先被看到。实测（`03-eject-flow.html`）块高 72（红）/ 54（蓝），
+// 明显高于同字号的普通段落 —— 这个高度差本身就是信息层级。
 
-struct ProcessTag: View {
-    let process: OccupyingProcess
+/// 弹窗内的警示 / 提示块。设计稿 `.callout` / `.callout--info`。
+struct AlertCallout: View {
+    enum Kind {
+        /// 红底红字 —— 「关闭它们会丢失未保存的内容」。
+        case danger
+        /// 强调色底、正文色字 —— 「这次失败已记入日志」。
+        case info
+    }
 
-    /// 图标尺寸：与 diskCard icon 视觉对齐（取值来自令牌，避免两处各写一个数）。
-    private let iconSize = DesignTokens.Size.processTagIcon
+    let kind: Kind
+    let systemImage: String
+    let text: String
+    var accent: AccentColor = .default
 
     var body: some View {
-        // **参数顺序**：SwiftUI 要求 `alignment` 必须写在 `spacing` 之前，
-        // 写成 `HStack(spacing:alignment:)` 会编译失败。
+        // 图标**垂直居中**在提示块里，与设计稿渲染结果一致。
+        //
+        // ⚠️ 设计稿自身在这里是矛盾的：`.callout svg` 写的是 `margin-top: 1px`（顶部对齐），
+        // 但 `ds.js` 会给所有 `<i>`/`<span>` 图标包裹层加上 `display:inline-flex;
+        // align-items:center`，而该包裹层作为 `.callout` 的 flex 项被拉满内容高度 ——
+        // 于是**实际渲染出来是居中的**（实测：A 变体 72pt 高的块里 svg 顶边在 29pt，
+        // 正是居中位置）。用户比对的是渲染结果，所以这里跟渲染结果走。
+        HStack(alignment: .center, spacing: DesignTokens.Spacing.sm) {
+            Image(systemName: systemImage)
+                .font(.system(size: DesignTokens.Size.calloutIconSize, weight: .medium))
+                .foregroundStyle(iconColor)
+                // 设计稿 `.callout svg { width: 14px; height: 14px; flex: none }`：
+                // 图标列是**固定 14pt** 的，不随字形包围盒伸缩。
+                //
+                // **少了这层 `frame` 照样编译、也照样好看，但列宽是错的**：SF Symbol 在
+                // 14pt 字号下的包围盒是 **17pt 宽**（`exclamationmark.triangle` 实测 17×16），
+                // 比设计稿多占 3pt，文字列会从 316pt 缩到 313pt。
+                // 而警示文案正好卡在折行边界上（每行 26 个汉字 = 312pt）：
+                // 316pt 列留 4pt 余量，313pt 列只剩 1pt —— 字号或文案稍有变化就会多顶出一行。
+                // 列宽已钉成测试（`警示块图标列固定为设计稿的14`）。
+                .frame(
+                    width: DesignTokens.Size.calloutIconSize,
+                    height: DesignTokens.Size.calloutIconSize)
+            Text(text)
+                .font(.system(size: DesignTokens.FontSize.caption))
+                .foregroundStyle(textColor)
+                .designLineHeight(
+                    DesignTokens.LineHeight.relaxed, fontSize: DesignTokens.FontSize.caption
+                )
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(.horizontal, DesignTokens.Size.calloutPaddingH)
+        .padding(.vertical, DesignTokens.Size.calloutPaddingV)
+        .background(
+            RoundedRectangle(cornerRadius: DesignTokens.Radius.sm, style: .continuous)
+                .fill(background)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: DesignTokens.Radius.sm, style: .continuous)
+                .strokeBorder(border, lineWidth: 0.5)
+        )
+    }
+
+    private var background: Color {
+        switch kind {
+        case .danger: return DesignTokens.Palette.errorSoft
+        case .info: return DesignTokens.Palette.accentSoft(accent)
+        }
+    }
+
+    private var border: Color {
+        switch kind {
+        case .danger: return DesignTokens.Palette.errorLine
+        case .info: return DesignTokens.Palette.accentRing(accent)
+        }
+    }
+
+    /// 图标颜色 = **同块的文字颜色**。
+    ///
+    /// 设计稿的 `.callout svg` 没有自己的 `color`，图标 SVG 用的是
+    /// `stroke="currentColor"`（见 `ds.js` 的 `build()`），所以它继承 `.callout`
+    /// 的 `color`：红块是 `--danger-text`、信息块是 `--text-1`。
+    ///
+    /// **曾经红块用 `--danger`（亮红）、信息块用强调色** —— 都比设计稿跳一档。
+    /// 在 `04-onboarding.png` 上采样证实：信息块里的盾牌是 `rgb(29,29,31)`
+    /// （正文色），不是强调色蓝。图标比正文跳，会让「这是一段说明」变成
+    /// 「这是一个警告」，而提示块本身已经用底色说了这件事。
+    private var iconColor: Color { textColor }
+
+    private var textColor: Color {
+        switch kind {
+        case .danger: return DesignTokens.Palette.errorText
+        case .info: return DesignTokens.Palette.foreground
+        }
+    }
+}
+
+// MARK: - 按钮
+//
+// 设计稿 `.btn` 三个尺寸 × 五个变体。**高度/内边距/字号全部来自令牌**，
+// 视图侧只选变体，不自己调数值 —— 否则同一排按钮会各自高低不齐。
+
+/// 按钮变体（设计稿 `.btn--*`）。
+enum ButtonVariant: Equatable {
+    /// 强调色实心 —— 「推出」（空闲）。
+    case primary
+    /// 红色实心 —— 「关闭并推出」（被占用）。**破坏性专用**。
+    case danger
+    /// 透明 + 1px 描边 —— 取消、打开系统设置。
+    case outline
+    /// 中性浅底 —— 次级动作。
+    case neutral
+    /// 透明 + 强调色文字 —— 链接式动作。
+    case ghost
+}
+
+/// 按钮尺寸（设计稿 `.btn` / `.btn--sm` / `.btn--lg`）。
+enum ButtonSize {
+    /// 高 34 / 内边距 16 —— 主行动（弹窗主按钮）。
+    case large
+    /// 高 30 / 内边距 12 —— 默认（弹窗次按钮）。
+    case medium
+    /// 高 26 / 内边距 10 / 字号 12 —— 行内、面板。
+    case small
+
+    var height: CGFloat {
+        switch self {
+        case .large: return DesignTokens.Size.buttonLargeHeight
+        case .medium: return DesignTokens.Size.buttonMediumHeight
+        case .small: return DesignTokens.Size.buttonSmallHeight
+        }
+    }
+    var paddingH: CGFloat {
+        switch self {
+        case .large: return DesignTokens.Spacing.lg
+        case .medium: return DesignTokens.Spacing.md
+        case .small: return 10
+        }
+    }
+    var fontSize: CGFloat {
+        switch self {
+        case .large: return DesignTokens.FontSize.body
+        case .medium: return DesignTokens.FontSize.body
+        case .small: return DesignTokens.FontSize.caption
+        }
+    }
+    var iconSize: CGFloat {
+        switch self {
+        case .large: return 14
+        case .medium: return 14
+        case .small: return 13
+        }
+    }
+}
+
+/// 按钮的 **hover 底色**：一个比按钮盒子向内缩 ``DesignTokens/Size/hoverBackgroundInset``
+/// 的圆角矩形，圆角取同心值。
+///
+/// ## 为什么单独一个类型
+///
+/// 三处 hover 底色（标题栏「刷新」、标题栏「设置」、设置面板「完成」）共用同一条规则，
+/// 而「底色到底多大」**必须能被量到**。内联在各自的 `.background(…)` 里的话，
+/// `hovering` 是 `@State private`、只能由真实鼠标移动触发（`.onHover` 需要应用在前台
+/// 且鼠标真的移过去，`NSApp.postEvent` 合成的 NSEvent 走不到窗口服务器），
+/// 离屏测试根本够不着 —— 这条规则就没人守。抽出来之后 ``HoverBackgroundTests``
+/// 可以直接把 `color` 设成纯色、量出它渲染后的真实包围盒。
+///
+/// ## 只负责「底色」这一层
+///
+/// ``ActionButton`` 的 1px 描边是**另一层**（`.overlay`），不能跟着缩 ——
+/// 设置面板的「完成」是 `.outline`，描边一起缩掉它就没有外框了。
+///
+/// ⚠️ **别把 `.padding` 挪到调用方的 `.frame` 之前**：那会把
+/// `foregroundStyle(hovering ? …)` 的作用范围一起改掉（图标颜色就不随 hover 变了）。
+struct HoverBackground: View {
+    /// 底色。
+    ///
+    /// 调用方直接传「当前该显示的颜色」：``ActionButton`` 传它自己的 `background`
+    /// （不 hover 时就是 `.clear`，等于不占视觉），``TitleBarIconButton`` 传
+    /// `hovering ? subtle : .clear`。
+    let color: Color
+    /// 向内缩多少点。
+    ///
+    /// 默认就是用户要的那一档；``ActionButton`` 里「底色一直存在」的变体传 **0**
+    /// —— 那些底色就是按钮本身的形，跟着缩会变成「hover 时按钮缩水」，是另一种效果。
+    var inset: CGFloat = DesignTokens.Size.hoverBackgroundInset
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: DesignTokens.Radius.concentric(inset: inset), style: .continuous)
+            .fill(color)
+            .padding(inset)
+    }
+}
+
+/// 统一按钮。设计稿的 `.btn` 系列。
+///
+/// **用 SwiftUI `Button` 而不是 `onTapGesture`**：SwiftUI Button 的点击响应在 macOS 上
+/// 经过 NSButton 路径，第一次点击立即可触发；`onTapGesture` 在首次渲染后存在约 1 个
+/// runloop tick 的注册延迟，会出现「第一次点击没反应」——这是本项目用户报告过的核心症状。
+///
+/// **去焦点环**：`.buttonStyle(.plain)` + `.focusable(false)` + `disableFocusRingIfAvailable()`。
+struct ActionButton: View {
+    let title: String
+    var systemImage: String?
+    var variant: ButtonVariant = .neutral
+    var size: ButtonSize = .medium
+    var accent: AccentColor = .default
+    var isEnabled: Bool = true
+    /// 无障碍标签。行内按钮必须带上磁盘名（设计稿 §6 VoiceOver 第 2 条），
+    /// 否则用户听到的是一串无差别的「推出」。
+    var accessibilityLabel: String?
+    /// 键盘快捷键。弹窗的默认按钮用 `.defaultAction`（回车）、取消按钮用 `.cancelAction`（Esc）。
+    ///
+    /// **必须加在 `Button` 上而不是外层**：`.keyboardShortcut` 只对它修饰的 `Button` 生效，
+    /// 加在包裹它的自定义视图上不会向下传递。所以这里把它作为参数收进来。
+    var keyboardShortcut: KeyboardShortcut?
+    let action: () -> Void
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var hovering = false
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 6) {
+                if let systemImage {
+                    Image(systemName: systemImage)
+                        .font(.system(size: size.iconSize, weight: .medium))
+                }
+                Text(title)
+                    .font(.system(size: size.fontSize, weight: .medium))
+            }
+            .foregroundStyle(foreground)
+            .padding(.horizontal, size.paddingH)
+            .frame(height: size.height)
+            .background(HoverBackground(color: background, inset: hoverBackgroundInset))
+            .overlay(
+                RoundedRectangle(cornerRadius: DesignTokens.Radius.sm, style: .continuous)
+                    .strokeBorder(borderColor, lineWidth: 1)
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .keyboardShortcut(keyboardShortcut)
+        .focusable(false)
+        .disableFocusRingIfAvailable()
+        .onHover { hovering = $0 }
+        .animation(DesignTokens.Motion.animation(DesignTokens.Motion.fast, reduceMotion: reduceMotion), value: hovering)
+        .opacity(isEnabled ? 1 : 0.45)
+        .disabled(!isEnabled)
+        .help(title)
+        .accessibilityLabel(accessibilityLabel ?? title)
+        .accessibilityAddTraits(.isButton)
+    }
+
+    private var background: Color {
+        switch variant {
+        case .primary: return accent.swiftUIColor.opacity(hovering ? 0.86 : 1)
+        case .danger: return DesignTokens.Palette.error.opacity(hovering ? 0.86 : 1)
+        case .outline: return hovering ? DesignTokens.Palette.subtle : .clear
+        case .neutral: return hovering ? DesignTokens.Palette.subtleHighlight : DesignTokens.Palette.subtle
+        case .ghost: return hovering ? accent.swiftUIColor.opacity(0.10) : .clear
+        }
+    }
+
+    /// **底色**相对按钮盒子向内缩多少点（用户 2026-09-16：「hover 效果背景小一点」）。
+    ///
+    /// 只对「底色**悬浮才出现**」的变体生效（``ButtonVariant/outline``、``ButtonVariant/ghost``）：
+    /// 它们常态是 `.clear`，收小底色不会动到任何「常态可见的形」。
+    ///
+    /// ``ButtonVariant/primary`` / ``ButtonVariant/danger`` / ``ButtonVariant/neutral`` 的底色
+    /// **一直存在**，它就是按钮本身的形 —— 跟着缩会让按钮在 hover 时「缩水」一下。
+    /// 那是另一种效果（「按钮变小」），不是用户要的（「hover 的背景小一点」）。
+    ///
+    /// ⚠️ **内缩只加在 `.background` 的形状上**，`.overlay` 的 1px 描边必须留在盒子边缘 ——
+    /// 设置面板的「完成」就是 `.outline`，把描边一起缩掉它就没有外框了。
+    private var hoverBackgroundInset: CGFloat {
+        switch variant {
+        case .outline, .ghost: return DesignTokens.Size.hoverBackgroundInset
+        case .primary, .danger, .neutral: return 0
+        }
+    }
+
+    private var foreground: Color {
+        switch variant {
+        case .primary, .danger: return .white
+        case .outline, .neutral: return DesignTokens.Palette.foreground
+        case .ghost: return accent.swiftUIColor
+        }
+    }
+
+    private var borderColor: Color {
+        variant == .outline ? DesignTokens.Palette.borderStrong : .clear
+    }
+}
+
+// MARK: - ProcessChip（进程芯片）
+//
+// 设计稿 `.chip`：高 26、全圆角、`bg-raised` + e1 阴影。
+// 结构 = 应用图标 20 × 20（圆角 5）+ 显示名 12/500。
+//
+// **「应用名」与「图标」都来自 ``OccupyingProcess/displayName`` 与 ``ProcessAppResolver``**：
+// 直接用进程可执行名会把 `Bunny` 显示成 `IMVIDEO`（用户认不出的内部名）。
+
+struct ProcessChip: View {
+    let process: OccupyingProcess
+
+    private var iconSize: CGFloat { DesignTokens.Size.processChipIcon }
+
+    var body: some View {
         HStack(alignment: .center, spacing: 6) {
             iconView
-                // 显式固定图标容器为 iconSize，避免 NSImage 自带透明边距影响视觉中心。
                 .frame(width: iconSize, height: iconSize)
             Text(process.displayName)
-                .font(.system(size: DesignTokens.FontSize.processTag, weight: .regular))
+                .font(.system(size: DesignTokens.FontSize.caption, weight: .medium))
                 .foregroundStyle(DesignTokens.Palette.foreground)
                 .lineLimit(1)
                 .truncationMode(.tail)
-                // 文字与图标同高，并在 22pt 容器内垂直居中，避免默认行高导致视觉上"偏下"。
-                .frame(height: iconSize, alignment: .center)
         }
-        .padding(.horizontal, 8)
-        // **内容在背景色块内垂直居中**：内高固定为 ``DesignTokens/Size/processTagHeight``，
-        // 居中由 `.frame(height:)` 的结构保证，不再依赖上下 padding 凑数值。
-        //
-        // 旧实现是 `.padding(.top, 8) / .padding(.bottom, 3)`（注释称「让标签视觉上更靠上」），
-        // 但**内部 padding 不对称只会让内容在色块里下压，并不会把色块本身在卡片里上移**——
-        // 实测：色块高 33pt，内容中心比色块中心低 2.5pt（上留白 9.5pt / 下留白 4pt），
-        // 视觉上就是「图标和名字没居中、贴在色块底部」。
-        .frame(height: DesignTokens.Size.processTagHeight)
-        // **无 maxWidth**：pill 宽度严格按图标 + 文本 + 内边距 自适应，
-        // 不会有"右侧大片空白"。若整体超卡片宽，truncationMode(.tail) 自动加 "…"。
-        // **无边框 overlay**：去掉 1px border 让 pill 与磁盘卡片视觉分离更柔和。
+        .padding(.leading, 3)
+        .padding(.trailing, 9)
+        // 内高固定为契约值：居中由 `.frame(height:)` 的结构保证，
+        // 不靠上下不对称的 padding 凑（那会让内容在色块里下压）。
+        .frame(height: DesignTokens.Size.processChipHeight)
         .background(
-            RoundedRectangle(cornerRadius: DesignTokens.Radius.md, style: .continuous)
-                .fill(DesignTokens.Palette.mutedBackground)
+            Capsule(style: .continuous)
+                .fill(DesignTokens.Palette.raised)
+        )
+        .shadow(
+            color: DesignTokens.Elevation.e1.color,
+            radius: DesignTokens.Elevation.e1.radius,
+            y: DesignTokens.Elevation.e1.y
         )
         .help(tooltip)
         .accessibilityElement(children: .ignore)
@@ -272,9 +629,8 @@ struct ProcessTag: View {
 
     /// 悬停提示：显示名与进程名一致时就是显示名；不一致时补上进程名。
     ///
-    /// 这一行的价值是**让用户能自己验证**——磁盘明明是被 `Bunny` 占用的，为什么在系统的进程
-    /// 列表里找不到 `Bunny`？因为它的可执行文件叫 `IMVIDEO`。两个名字都给出来，
-    /// 用户既能确认「就是它」，也不会再被两个名字搞混。
+    /// 这一行的价值是**让用户能自己验证**——磁盘明明是被 `Bunny` 占用的，
+    /// 为什么在系统的进程列表里找不到 `Bunny`？因为它的可执行文件叫 `IMVIDEO`。
     private var tooltip: String {
         guard process.displayName != process.processName else { return process.displayName }
         return String(
@@ -289,112 +645,308 @@ struct ProcessTag: View {
                 .frame(width: iconSize, height: iconSize)
         } else {
             Image(systemName: "app")
-                .font(.system(size: iconSize, weight: .regular))
+                .font(.system(size: 14, weight: .regular))
                 .foregroundStyle(DesignTokens.Palette.mutedForeground)
                 .frame(width: iconSize, height: iconSize)
         }
     }
 }
 
-// MARK: - StorageProgressBar（容量进度条）
-//
-// 设计稿用法：muted 背景轨道，accent 填充，圆角 full，h-1.5（6pt）。
-
-struct StorageProgressBar: View {
-    let ratio: Double  // 0.0 ~ 1.0
-    let accent: AccentColor
+/// 「还有 N 个」芯片（设计稿 `.chip--more`）：透明底 + 1px 描边。
+struct ProcessChipOverflow: View {
+    let count: Int
 
     var body: some View {
-        GeometryReader { geo in
-            ZStack(alignment: .leading) {
-                RoundedRectangle(cornerRadius: 3, style: .continuous)
-                    .fill(DesignTokens.Palette.mutedBackground)
-                RoundedRectangle(cornerRadius: 3, style: .continuous)
-                    .fill(accent.swiftUIColor)
-                    .frame(width: max(0, min(1, ratio)) * geo.size.width)
-                    .animation(DesignTokens.Motion.standard, value: ratio)
-            }
-        }
-        .frame(height: 6)
-        .accessibilityHidden(true)
+        Text("+\(count)")
+            .font(.system(size: DesignTokens.FontSize.caption))
+            .foregroundStyle(DesignTokens.Palette.mutedForeground)
+            .padding(.horizontal, 10)
+            .frame(height: DesignTokens.Size.processChipHeight)
+            .overlay(
+                Capsule(style: .continuous)
+                    .strokeBorder(DesignTokens.Palette.borderStrong, lineWidth: 1)
+            )
+            .accessibilityLabel("+\(count)")
     }
 }
 
-// MARK: - FdaBanner（FDA 授权引导横幅）
+// MARK: - StorageMeter（容量条 + 百分比）
 //
-// 设计：跟磁盘卡片同款卡片样式（圆角 + 1px 边框 + 极轻 accent 染色 + 长条横向铺满）。
-// 文案分两行：① 主结论（粗体 prominent）② 操作引导（次要静音）。
-// 左右结构：左侧 lock 图标 + 文案（VStack 内两行），右侧固定「打开系统设置」按钮。
+// 设计稿 `.meter`：轨道高 5 全圆角，右侧百分比**固定宽 34** —— 固定宽才能让
+// 多行磁盘的百分比数字纵向对齐（数字用 `tabular-nums` 等宽）。
+// 用量超过 90% 时切琥珀（`.meter--high`），但**不改变语义**：琥珀仍只表示「被占用」，
+// 这里只是复用同一支暖色表达「注意」，不参与「能否推出」的判定。
 
-struct FdaBanner: View {
-    let messageLead: String
-    let messageTail: String
-    let actionLabel: String
-    let action: () -> Void
+struct StorageMeter: View {
+    let ratio: Double
     let accent: AccentColor
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    /// 高用量阈值（设计稿 `.meter--high`）。
+    private let highThreshold = 0.9
+
+    private var isHigh: Bool { ratio >= highThreshold }
+
     var body: some View {
-        HStack(alignment: .center, spacing: 12) {
-            Image(systemName: "lock")
-                .font(.system(size: 14, weight: .medium))
-                .foregroundStyle(accent.swiftUIColor)
-                .accessibilityHidden(true)
-            // 两行文案：上半段主结论（粗），下半段操作引导（淡）。
-            VStack(alignment: .leading, spacing: 4) {
-                Text(messageLead)
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(DesignTokens.Palette.foreground)
-                    .lineLimit(2)
-                    .fixedSize(horizontal: false, vertical: true)
-                Text(messageTail)
-                    .font(.system(size: 12))
-                    .foregroundStyle(DesignTokens.Palette.mutedForeground)
-                    .lineLimit(3)
-                    .fixedSize(horizontal: false, vertical: true)
+        HStack(spacing: DesignTokens.Spacing.sm) {
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule(style: .continuous)
+                        .fill(DesignTokens.Palette.subtle)
+                    Capsule(style: .continuous)
+                        .fill(isHigh ? DesignTokens.Palette.warning : accent.swiftUIColor)
+                        .frame(width: max(0, min(1, ratio)) * geo.size.width)
+                }
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            // 固定按钮（独立右侧，不被滚动带走）
-            TextButton(title: actionLabel, action: action, accent: accent)
+            .frame(height: DesignTokens.Size.meterHeight)
+
+            Text(percentText)
+                .font(.system(size: DesignTokens.FontSize.footnote, weight: .medium))
+                .monospacedDigit()
+                .foregroundStyle(
+                    isHigh ? DesignTokens.Palette.warningText : DesignTokens.Palette.mutedForeground
+                )
+                // 设计稿 `.meter` 实测高 16 = 百分比那一行的行盒（11pt × 1.45）。
+                // 不加这一句时整个容量条只有 14（被 5pt 的轨道衬着看不出来），
+                // 但磁盘行的总高会因此比设计稿矮 2pt —— 三块盘就是 6pt。
+                .designLineHeight(
+                    DesignTokens.LineHeight.base, fontSize: DesignTokens.FontSize.footnote
+                )
+                .frame(width: DesignTokens.Size.meterPercentWidth, alignment: .trailing)
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 12)
-        .background(
-            RoundedRectangle(cornerRadius: DesignTokens.Radius.md, style: .continuous)
-                .fill(accent.swiftUIColor.opacity(0.06))
+        .animation(
+            DesignTokens.Motion.animation(DesignTokens.Motion.slow, reduceMotion: reduceMotion),
+            value: ratio
         )
-        .overlay(
-            RoundedRectangle(cornerRadius: DesignTokens.Radius.md, style: .continuous)
-                .strokeBorder(DesignTokens.Palette.border, lineWidth: 1)
+        .accessibilityElement(children: .ignore)
+        // 只报百分比：容量条拿不到「已用 / 剩余」字节数，硬塞 `usageFormat` 会读成
+        // 「30.0% 已使用 ( / )」这种半截句子（实测过）。完整容量由同一行的 meta 文案承载，
+        // 此处不必重复，免得 VoiceOver 把同一件事念两遍。
+        .accessibilityLabel(String(format: L10n.tr(.usagePercentFormat), ratio * 100))
+    }
+
+    private var percentText: String {
+        String(format: "%.0f%%", ratio * 100)
+    }
+}
+
+// MARK: - CapacityBadge（总容量徽标）
+//
+// 设计稿 `.row__fs`：11/500、`bg-subtle` 全圆角、`tabular-nums`。
+// 总容量从「meta 行里的一段文字」提为**名称右侧的徽标**，
+// 因为它属于「身份」层（这是哪块盘），而 meta 行留给「已用/剩余」（变化更快的信息）。
+//
+// **行高也要跟着设计稿走**：`.row__fs` 实测 18 高（11pt 的行盒 16 + 上下各 1 内边距）。
+// 用自然行高时只有 16，徽标比磁盘名矮一截，与名称基线对齐时会显得「贴不住」。
+
+struct CapacityBadge: View {
+    let text: String
+
+    var body: some View {
+        Text(text)
+            .font(.system(size: DesignTokens.FontSize.footnote, weight: .medium))
+            .monospacedDigit()
+            .foregroundStyle(DesignTokens.Palette.mutedForeground)
+            .designLineHeight(DesignTokens.LineHeight.base, fontSize: DesignTokens.FontSize.footnote)
+            .padding(.horizontal, 7)
+            .background(
+                Capsule(style: .continuous).fill(DesignTokens.Palette.subtle)
+            )
+            .fixedSize()
+            .accessibilityHidden(true)
+    }
+}
+
+// MARK: - TextLinkButton（行尾文字链接）
+//
+// 设计稿设置面板的 `.linkbtn`：`12 / 500`、强调色、**图标在文字右侧**（`gap:4`、svg 12）。
+//
+// **为什么不能拿 `ActionButton(variant: .ghost)` 顶替**：那是按钮 —— 有 26pt 的固定高度
+// 与 10pt 的左右内边距，图标默认在**左**。设计稿这一处是**行内链接**：实测控件盒只有
+// 88 × 17（文字 + 12pt 图标，没有按钮内边距）。用按钮会让设置行右侧多出一块
+// 视觉重量，并把这个控件从「链接」读成「按钮」——VoiceOver 的角色也会跟着变。
+
+struct TextLinkButton: View {
+    let title: String
+    var systemImage: String?
+    var accent: AccentColor = .default
+    let action: () -> Void
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var hovering = false
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 4) {
+                Text(title)
+                    .font(.system(size: DesignTokens.FontSize.caption, weight: .medium))
+                    // 下划线是 hover 的唯一反馈（设计稿 `.linkbtn:hover`）——
+                    // 链接没有底色可改，不加这一条鼠标移上去毫无变化。
+                    .underline(hovering)
+                if let systemImage {
+                    Image(systemName: systemImage)
+                        .font(.system(size: 11, weight: .medium))
+                }
+            }
+            .foregroundStyle(accent.swiftUIColor)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .focusable(false)
+        .disableFocusRingIfAvailable()
+        .onHover { hovering = $0 }
+        .animation(
+            DesignTokens.Motion.animation(DesignTokens.Motion.fast, reduceMotion: reduceMotion),
+            value: hovering
         )
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(messageLead + " " + messageTail + " " + actionLabel)
+        .help(title)
+        .accessibilityLabel(title)
         .accessibilityAddTraits(.isButton)
     }
 }
 
-// MARK: - SafeToEjectRow（"无进程占用"状态行）
+// MARK: - NoticeBanner（顶部横幅）
 //
-// 紧凑单行：✓（小尺寸绿）+ "无进程占用"。无背景，无边框；
-// 与 ProcessTag 视觉重量一致，让「无占用」与「有占用 + 标签」看起来同级。
+// 设计稿 `.banner`：整条横向铺满。两种语义：`.warning`（未授权，需要用户行动）/
+// `.success`（刚授权成功，确认反馈）。
+//
+// **两者的描边不同**：琥珀是上下各一条 0.5px，成功是一圈完整的 0.5px —— 见
+// ``topHairline`` / ``ring`` 的注释。
+//
+// **文字是正文色而不是语义色**（设计稿 `.banner__text { color: var(--text-1) }`）：
+// 语义由底色 + 图标承载就够了，文字再染成琥珀/绿色反而把对比度从 16:1 拉到 4.6:1，
+// 而且一屏里出现两处彩色文字会让「哪里真的需要我动手」变模糊。
+//
+// **高度由内容决定，不设 minHeight**：设计稿里未授权横幅是 46（因为右侧有 26pt 的按钮
+// 撑着），授权成功横幅只有 37（没有按钮）。给它钉一个 46 的 `minHeight` 会让
+// 后者凭空高出 9pt —— 一条只闪 3 秒的绿条没必要和带按钮的那条一样高。
 
-struct SafeToEjectRow: View {
+struct NoticeBanner: View {
+    enum Kind {
+        case warning
+        case success
+    }
+
+    let kind: Kind
+    let icon: String
+    let message: String
+    var actionTitle: String?
+    var accent: AccentColor = .default
+    var action: (() -> Void)?
+
     var body: some View {
-        HStack(spacing: 6) {
-            Image(systemName: "checkmark")
-                .font(.system(size: 11, weight: .bold))
-                .foregroundStyle(DesignTokens.Palette.success)
-            Text(L10n.tr(.noProcessOccupied))
-                .font(.system(size: DesignTokens.FontSize.processTag))
-                .foregroundStyle(DesignTokens.Palette.success)
+        HStack(alignment: .center, spacing: DesignTokens.Spacing.md) {
+            // 设计稿 `.banner__icon` 是 16 × 16 的固定列（svg 尺寸）。
+            Image(systemName: icon)
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(iconColor)
+                .frame(width: 16, height: 16)
+                .accessibilityHidden(true)
+
+            Text(message)
+                .font(.system(size: DesignTokens.FontSize.caption))
+                .foregroundStyle(DesignTokens.Palette.foreground)
+                .designLineHeight(
+                    DesignTokens.LineHeight.base, fontSize: DesignTokens.FontSize.caption
+                )
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            if let actionTitle, let action {
+                ActionButton(
+                    title: actionTitle,
+                    variant: .outline,
+                    size: .small,
+                    accent: accent,
+                    action: action
+                )
+            }
         }
+        .padding(.horizontal, DesignTokens.Spacing.xl)
+        .padding(.vertical, 10)
+        .background(background)
+        .overlay(alignment: .top) { topHairline }
+        .overlay(alignment: .bottom) { bottomHairline }
+        .overlay { ring }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(L10n.tr(.safeToEject))
+    }
+
+    private var background: Color {
+        switch kind {
+        case .warning: return DesignTokens.Palette.warningSoft
+        case .success: return DesignTokens.Palette.successSoft
+        }
+    }
+    private var iconColor: Color {
+        switch kind {
+        case .warning: return DesignTokens.Palette.warning
+        case .success: return DesignTokens.Palette.success
+        }
+    }
+
+    /// 琥珀横幅的描边 = **上下各一条 0.5px**（设计稿 `.banner` 的
+    /// `inset 0 -0.5px 0, inset 0 0.5px 0`），读作「插进来的一条」。
+    @ViewBuilder
+    private var topHairline: some View {
+        if kind == .warning { Hairline(color: DesignTokens.Palette.warningLine) }
+    }
+    @ViewBuilder
+    private var bottomHairline: some View {
+        if kind == .warning { Hairline(color: DesignTokens.Palette.warningLine) }
+    }
+
+    /// 成功横幅的描边 = **一圈完整的 0.5px**（设计稿 `04-onboarding.html` 里
+    /// 那条成功横幅的 `box-shadow: inset 0 0 0 0.5px var(--ok-line)`），
+    /// 读作「一个已经确认的块」。
+    ///
+    /// **两种语义的描边方式在设计稿里就是不同的**，不是笔误：琥珀条是「插进来的」，
+    /// 成功条是「确认好的」。曾经两者都画上下两条线 —— 成功横幅左右两侧没有边界，
+    /// 绿底在窗口边缘「化」进背景里，看起来像没画完。
+    @ViewBuilder
+    private var ring: some View {
+        if kind == .success {
+            Rectangle().strokeBorder(DesignTokens.Palette.successLine, lineWidth: 0.5)
+        }
     }
 }
 
-// MARK: - EmptyStateView（空状态卡片）
+// MARK: - SkeletonRow（首屏骨架）
 //
-// 设计稿用法：圆形 64×64 图标容器（muted 背景）+ 标题 + 描述（260px maxWidth）+ 次要按钮。
+// 设计稿 §5.3：磁盘枚举通常 < 50ms，骨架屏**只在超过 300ms** 时出现，避免闪烁。
+// 这个阈值由调用方（``ContentView``）用延迟控制，组件本身只负责长相。
+
+struct SkeletonRow: View {
+    var body: some View {
+        HStack(spacing: DesignTokens.Spacing.md) {
+            RoundedRectangle(cornerRadius: DesignTokens.Radius.md, style: .continuous)
+                .fill(DesignTokens.Palette.subtle)
+                .frame(
+                    width: DesignTokens.Size.diskIconContainer,
+                    height: DesignTokens.Size.diskIconContainer)
+            VStack(alignment: .leading, spacing: DesignTokens.Size.rowIdGap) {
+                bar(width: 140, height: 14)
+                bar(width: 200, height: 11)
+            }
+            Spacer(minLength: 0)
+            bar(width: 72, height: DesignTokens.Size.buttonSmallHeight)
+        }
+        .padding(DesignTokens.Size.rowPadding)
+        .accessibilityHidden(true)
+    }
+
+    private func bar(width: CGFloat, height: CGFloat) -> some View {
+        RoundedRectangle(cornerRadius: DesignTokens.Radius.xs, style: .continuous)
+            .fill(DesignTokens.Palette.subtle)
+            .frame(width: width, height: height)
+    }
+}
+
+// MARK: - EmptyStateView（空状态）
+//
+// 设计稿 `.empty`：**不用警告色**（不是出错，是还没开始）；
+// 文案要提前解释筛选规则（「系统盘与网络卷不会被列出」），
+// 消灭用户「插了盘却看不到」的困惑。
 
 struct EmptyStateView: View {
     let systemName: String
@@ -406,31 +958,33 @@ struct EmptyStateView: View {
     let accent: AccentColor
 
     var body: some View {
-        VStack(spacing: 0) {
-            Spacer()
-            VStack(spacing: 0) {
-                IconBadge(systemName: systemName, style: .emptyState, accent: accent)
-                    .padding(.bottom, 16)
-                Text(title)
-                    .font(.system(size: DesignTokens.FontSize.diskCardName, weight: .medium))
-                    .foregroundStyle(DesignTokens.Palette.foreground)
-                Text(description)
-                    .font(.system(size: 13))
-                    .foregroundStyle(DesignTokens.Palette.mutedForeground)
-                    .multilineTextAlignment(.center)
-                    .lineLimit(3)
-                    .frame(maxWidth: 280)
-                    .padding(.top, 8)
-                SecondaryButton(
-                    title: actionTitle,
-                    systemImage: actionSystemImage,
-                    action: action
-                )
-                .padding(.top, 20)
-            }
-            Spacer()
+        VStack(spacing: DesignTokens.Spacing.sm) {
+            Spacer(minLength: 0)
+            IconBadge(systemName: systemName, style: .emptyArt, accent: accent)
+                .padding(.bottom, DesignTokens.Spacing.sm)
+            Text(title)
+                .font(.system(size: DesignTokens.FontSize.title, weight: .semibold))
+                .foregroundStyle(DesignTokens.Palette.foreground)
+            Text(description)
+                .font(.system(size: DesignTokens.FontSize.body))
+                .foregroundStyle(DesignTokens.Palette.mutedForeground)
+                .multilineTextAlignment(.center)
+                .lineSpacing(4)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: 320)
+                .padding(.top, DesignTokens.Spacing.sm)
+            ActionButton(
+                title: actionTitle,
+                systemImage: actionSystemImage,
+                variant: .outline,
+                size: .small,
+                accent: accent,
+                action: action
+            )
+            .padding(.top, DesignTokens.Spacing.md)
+            Spacer(minLength: 0)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .padding(40)
+        .padding(.horizontal, DesignTokens.Spacing.xxxl)
     }
 }

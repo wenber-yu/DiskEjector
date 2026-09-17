@@ -1,0 +1,756 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light" data-accent="blue" data-page-node-id="KDpUFp20joNBmg1TZKvFQs">
+<head data-page-node-id="rrvKeVJ8FrjLeQ0hAsnsge">
+<meta charset="UTF-8" data-page-node-id="aJxMpU5HPnePFNn2Kocotg">
+<meta name="viewport" content="width=device-width, initial-scale=1.0" data-page-node-id="ZHjCOHyG9aejvaH904FyQQ">
+<title>DiskEjector UI v2 · 设计规范</title>
+<link rel="stylesheet" href="assets/ds.css" data-page-node-id="QCcOULkyBtfw1bhNAvRbb2">
+<style>
+  .hero { margin-bottom: 8px; }
+  .hero__brand { display: flex; align-items: center; gap: 14px; margin-bottom: 20px; }
+  .hero__mark {
+    width: 56px; height: 56px; flex: none; border-radius: 15px;
+    display: flex; align-items: center; justify-content: center;
+    background: linear-gradient(160deg, var(--accent), var(--accent-hover));
+    color: #fff; box-shadow: var(--e2);
+  }
+  .hero__mark svg { width: 28px; height: 28px; }
+  .hero__name { font-size: 22px; font-weight: 700; letter-spacing: -0.02em; }
+  .hero__meta { font-size: var(--fs-12); color: var(--text-2); margin-top: 3px; }
+
+  .toolbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }
+
+  .note-list { margin: 0; padding-left: 18px; font-size: var(--fs-12); color: var(--text-2); line-height: 1.75; }
+  .note-list li { margin-bottom: 7px; }
+  .note-list b { color: var(--text-1); }
+  .note-list code { font-family: var(--font-mono); font-size: var(--fs-11); background: var(--bg-subtle); padding: 1px 5px; border-radius: var(--r-xs); }
+
+  .swatchgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(148px, 1fr)); gap: 10px; }
+  .swatchcard { padding: 0; border-radius: var(--r-md); overflow: hidden; background: var(--bg-raised); box-shadow: inset 0 0 0 0.5px var(--border); }
+  .swatchcard__chip { height: 52px; }
+  .swatchcard__body { padding: 9px 11px 11px; }
+  .swatchcard__name { font-size: var(--fs-12); font-weight: 600; }
+  .swatchcard__hex { font-family: var(--font-mono); font-size: 10px; color: var(--text-2); margin-top: 2px; }
+  .swatchcard__use { font-size: 10px; color: var(--text-3); margin-top: 5px; line-height: 1.4; }
+
+  table.spec { width: 100%; border-collapse: collapse; font-size: var(--fs-12); }
+  table.spec th {
+    text-align: left; font-size: var(--fs-11); font-weight: 600; color: var(--text-2-strong);
+    letter-spacing: 0.05em; text-transform: uppercase;
+    padding: 0 10px 8px; border-bottom: 0.5px solid var(--border);
+  }
+  table.spec td { padding: 10px; border-bottom: 0.5px solid var(--hairline); vertical-align: middle; }
+  table.spec tr:last-child td { border-bottom: 0; }
+  table.spec code { font-family: var(--font-mono); font-size: var(--fs-11); color: var(--text-1); }
+  table.spec .dim { color: var(--text-2); }
+
+  .comp { padding: 18px; border-radius: var(--r-md); background: var(--bg-raised); box-shadow: inset 0 0 0 0.5px var(--border); }
+  .comp__label {
+    font-family: var(--font-mono); font-size: 10px; color: var(--text-3);
+    margin-bottom: 12px; letter-spacing: 0.03em;
+  }
+  .comp__row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+
+  /* 屏幕索引卡 */
+  .screens { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 16px; }
+  .scard-link {
+    display: block; text-decoration: none; color: inherit;
+    border-radius: var(--r-lg); overflow: hidden;
+    background: rgba(255, 255, 255, 0.66);
+    box-shadow: inset 0 0 0 0.5px var(--border-strong), var(--e1);
+    -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px);
+    transition: transform var(--t-base) var(--ease), box-shadow var(--t-base) var(--ease);
+  }
+  :root[data-theme="dark"] .scard-link { background: rgba(40, 40, 44, 0.66); }
+  .scard-link:hover { transform: translateY(-2px); box-shadow: inset 0 0 0 0.5px var(--border-strong), var(--e2); }
+  .scard-link__thumb {
+    height: 124px; padding: 12px; display: flex; flex-direction: column; gap: 6px;
+    background: var(--bg-subtle); box-shadow: inset 0 -0.5px 0 var(--border);
+    overflow: hidden;
+  }
+  .scard-link__body { padding: 12px 14px 14px; }
+  .scard-link__no { font-family: var(--font-mono); font-size: 10px; color: var(--text-3); }
+  .scard-link__title { font-size: var(--fs-13); font-weight: 600; margin-top: 3px; }
+  .scard-link__desc { font-size: var(--fs-11); color: var(--text-2); margin-top: 4px; line-height: 1.5; }
+  /* 缩略线框 */
+  .wf-bar { height: 8px; border-radius: 3px; background: var(--bg-subtle-hi); }
+  .wf-block { border-radius: 6px; background: var(--bg-raised); box-shadow: inset 0 0 0 0.5px var(--border); }
+  .wf-chip { height: 14px; border-radius: 999px; background: var(--bg-raised); box-shadow: inset 0 0 0 0.5px var(--border); }
+</style>
+</head>
+<body class="ds" data-page-node-id="Tt1j2h9vqAlICfXgeVCE0q">
+<div class="wallpaper" data-page-node-id="2ZHenZp5ZCoF0jd215jLom">
+<div class="doc" data-page-node-id="fdNJY7TqA8uDe0c3MsheUx">
+
+  <nav class="doc__nav" data-page-node-id="hCMROzW7UcpDa74fLWBHys">
+    <a href="index.html" aria-current="page" data-page-node-id="m9EKrIFQNUl5tAJyliBZeF">设计规范总览</a>
+    <a href="screens/01-main-window.html" data-page-node-id="4ktwDWiVXX0MkfAOGCEVCC">主窗口</a>
+    <a href="screens/02-menu-bar.html" data-page-node-id="Gp5YiWM6k1ivNt8dcxH8KW">菜单栏面板</a>
+    <a href="screens/03-eject-flow.html" data-page-node-id="YGFaoVJAU30vtDKNU3JEEZ">推出流程弹窗</a>
+    <a href="screens/04-onboarding.html" data-page-node-id="rOSQRIQALs0DU5wzhwtvsQ">授权引导</a>
+    <a href="screens/05-settings.html" data-page-node-id="BKj0Egk38gYwBAai57gMyN">设置面板</a>
+    <a href="screens/06-states.html" data-page-node-id="3hXltfsVaeR4bYBeJR8VGY">状态矩阵</a>
+    <a href="screens/07-dark.html" data-page-node-id="hj7tpfHZ5AHJZBZ9EHY6AW">深色模式</a>
+  </nav>
+
+  <!-- ==================== HERO ==================== -->
+  <div class="hero" data-page-node-id="iNdw2t4EBs8b3CEogdy86c">
+    <div class="hero__brand" data-page-node-id="sbcAlTGY80SgY3n6m8UW7l">
+      <div class="hero__mark" data-page-node-id="bXViftd51IABYwYnGEnEGa"><i data-i="eject" data-page-node-id="mAWebBnGQGjvvYG5WMoIML"></i></div>
+      <div data-page-node-id="qHLHDCais84fnTtuW1D5Tk">
+        <div class="hero__name" data-page-node-id="ErIjm9Vx3vGW0mziYjT4Ir">磁盘推出助手 · 界面设计规范</div>
+        <div class="hero__meta" data-page-node-id="CcVDUAqy1I6Ragr1YWdhnD">DiskEjector UI Design System v2 · macOS 14+ · SwiftUI · 2026-09</div>
+      </div>
+    </div>
+
+    <p class="doc__eyebrow" data-page-node-id="P5KeZHfto3g2BXTYIvVEAp">Design Thesis</p>
+    <h1 class="doc__title" style="font-size:30px;max-width:820px" data-page-node-id="vVS9ix8OEQBg1FyRUb6MhA">
+      用户打开这个应用时，只问一个问题：<br data-page-node-id="P4E32YaSHoy2q1MyzAREiM">「我现在能拔了吗？」
+    </h1>
+    <p class="doc__lede" style="max-width:780px" data-page-node-id="OLvUlHhp1uMDB2R64SSq8s">
+      旧版界面把「磁盘名 / 容量 / 进度条 / 占用进程 / 推出按钮」平铺成五层等权重的信息，
+      用户必须<strong data-page-node-id="Q30V3Cii9bZteGIFe33Zuf">读完整行</strong>才能做出判断。v2 把信息按<strong data-page-node-id="7BIlicg1K52ioTupg4JTQc">判定 → 身份 → 证据 → 动作</strong>
+      重新分层：先给结论，再给理由，最后给动作。
+    </p>
+
+    <div class="toolbar" data-page-node-id="CzodjNAJTmlV5xI15Mo1CF">
+      <button class="btn btn--outline btn--sm" data-theme-btn="light" aria-pressed="true" data-page-node-id="FREx2D4iKJObnwHkbUabDY">浅色</button>
+      <button class="btn btn--outline btn--sm" data-theme-btn="dark" data-page-node-id="EE5QZRVbvLLEoohIA7vFFk">深色</button>
+      <span style="width:12px" data-page-node-id="N0tFqTXbligmtwmNloK9g5"></span>
+      <span style="font-size:var(--fs-11);color:var(--text-2)" data-page-node-id="d3izDvrj31AA7G8NCfXtn7">强调色</span>
+      <div class="swatches" data-page-node-id="3xTUGxstdgIwMeGxDaSbIw">
+        <button class="swatch swatch--blue"   data-accent-btn="blue"   aria-pressed="true"  aria-label="蓝色" data-page-node-id="JWR1cpFswSXDW2SG6yIT9j"></button>
+        <button class="swatch swatch--purple" data-accent-btn="purple" aria-pressed="false" aria-label="紫色" data-page-node-id="ZBwmBITfTn08xh8PHUy8JQ"></button>
+        <button class="swatch swatch--orange" data-accent-btn="orange" aria-pressed="false" aria-label="橙色" data-page-node-id="cIbCECLBFsehocIjwpO8Q8"></button>
+        <button class="swatch swatch--green"  data-accent-btn="green"  aria-pressed="false" aria-label="绿色" data-page-node-id="qGm8LCIKUDb8ybbsUgODrA"></button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== 三条论点 ==================== -->
+  <div class="doc__section" style="margin-top:32px" data-page-node-id="7bh0IuyjaoMvhlYNnAylka">
+    <div class="grid3" data-page-node-id="mFE1jAuiBpCvNdFK2ejorA">
+      <div class="panel" data-page-node-id="1ZUStucGcqOPUIWR3S1ILr">
+        <div class="alert__icon alert__icon--warn" style="margin-bottom:12px" data-page-node-id="J7W4lUMzzRNrgcMdPLhKY4"><i data-i="eye" data-page-node-id="ydXzlhSAXwWhF21n2RknWB"></i></div>
+        <div style="font-size:var(--fs-15);font-weight:600;margin-bottom:6px" data-page-node-id="0ITAL7ND2HNxjxJxQHwwNJ">判定优先</div>
+        <div style="font-size:var(--fs-12);color:var(--text-2);line-height:1.65" data-page-node-id="sPcF2vGtqNOgMndpF4mCWR">
+          每块盘的第一视觉权重给「能不能拔」这个结论，而不是磁盘名。
+          结论用<strong data-page-node-id="JSah9Eh0lEg8LOEfv1Gpiv">图标 + 文字 + 颜色</strong>三重编码，扫视即可完成判断。
+        </div>
+      </div>
+      <div class="panel" data-page-node-id="dYHBBeNrt6O8FYxLKaJfDB">
+        <div class="alert__icon alert__icon--info" style="margin-bottom:12px" data-page-node-id="LmslgCHMyBkwLHFZBwAMcn"><i data-i="layers" data-page-node-id="EhBYPtp9BmNq8LAsgRWwMt"></i></div>
+        <div style="font-size:var(--fs-15);font-weight:600;margin-bottom:6px" data-page-node-id="hR3e8IqQcOAVZP5oHaZcCC">证据前置</div>
+        <div style="font-size:var(--fs-12);color:var(--text-2);line-height:1.65" data-page-node-id="WREohhuPVrthoUCGki3924">
+          「是谁占着」是本应用存在的理由，所以它从卡片底部的小标签升格为独立证据区，
+          用琥珀底色承载，并显示真实应用图标而不是进程名。
+        </div>
+      </div>
+      <div class="panel" data-page-node-id="asfAerqDqeDamUDSOvZoNp">
+        <div class="alert__icon alert__icon--danger" style="margin-bottom:12px" data-page-node-id="Mc97tFmJ5BfILFEHeG7jxu"><i data-i="eject" data-page-node-id="JhlTdvRxBjd9ySSjMxyD4C"></i></div>
+        <div style="font-size:var(--fs-15);font-weight:600;margin-bottom:6px" data-page-node-id="bSKq99q1U62mMV82gN3MP2">动作随状态变形</div>
+        <div style="font-size:var(--fs-12);color:var(--text-2);line-height:1.65" data-page-node-id="NueFlnPJq6VyOaZOlkVyoi">
+          空闲时是强调色「推出」，被占用时变成红色「关闭并推出」。
+          破坏性在<strong data-page-node-id="YG5Dxb5Aqyz2J1RHIuw1ii">按钮本身</strong>就可见，不必点完才知道。
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== 色彩 ==================== -->
+  <div class="doc__section" data-page-node-id="Ip6JTkPARNx79wZQtIwfCn">
+    <h2 class="doc__h2" data-page-node-id="1x90idhMLWwcQIqzMcNLY2">色彩 <em data-page-node-id="tFrWjOCVFb2p0Zul3VWGOv">Color</em></h2>
+    <p class="doc__h2desc" data-page-node-id="HXs7wT77V2B5tVJUPUdldo">
+      全部取自 Apple 系统色，保证与 macOS 原生控件同源。语义色只承担一种含义：
+      <strong data-page-node-id="0Kxz15AxizJaYehPq2OImH">琥珀 = 被占用</strong>，<strong data-page-node-id="7yRtWlr98kfQ4aCNtcoVzj">红色 = 破坏性</strong>，<strong data-page-node-id="uOlFJNG4Nbj4AacCWktLfz">绿色 = 可安全操作</strong>。
+    </p>
+
+    <div class="doc__h3" data-page-node-id="WkVkeOKMKFCppgPQV42qaB">表面 Surfaces</div>
+    <div class="swatchgrid" style="margin-bottom:20px" data-page-node-id="vGDYWROlLmgwVHQwOhntUZ">
+      <div class="swatchcard" data-page-node-id="0Zja0XZDKrHJwypTo59Y8i"><div class="swatchcard__chip" style="background:var(--bg-base)" data-page-node-id="kJPC9MWwlqe6b77a5aGdOt"></div><div class="swatchcard__body" data-page-node-id="YaoiO7soFQYoBe7bSjDJam"><div class="swatchcard__name" data-page-node-id="EMtSrdgEprbqz7Cbs9JKsu">窗口实体面</div><div class="swatchcard__hex" id="c-base" data-page-node-id="4IEfqApwMufoakJNhsFcRq"></div><div class="swatchcard__use" data-page-node-id="qLQq4YorGkai0eeBP3cXs8">色调模式 / 不透明底</div></div></div>
+      <div class="swatchcard" data-page-node-id="fTpCsEBsnj16Fr0BERxjPf"><div class="swatchcard__chip" style="background:var(--bg-raised)" data-page-node-id="3sQIV95N5OvLoF9LuK81mm"></div><div class="swatchcard__body" data-page-node-id="y6wZF8vzHk9oqxnYzmH9EW"><div class="swatchcard__name" data-page-node-id="2Kyt6JzV4qKDDVABonXCgL">浮层 / 卡片</div><div class="swatchcard__hex" id="c-raised" data-page-node-id="tE98LA73udKotTLhAcq5wi"></div><div class="swatchcard__use" data-page-node-id="aEJ1OZIiUyGNnUTLNNwvHb">设置卡片、进程芯片</div></div></div>
+      <div class="swatchcard" data-page-node-id="1Z6A63kNz20U3qv4F3O9aF"><div class="swatchcard__chip" style="background:var(--bg-subtle)" data-page-node-id="nyGtVb1JBYYJAI1sniDRDs"></div><div class="swatchcard__body" data-page-node-id="UMa8sx1WsFyjWVBzcP1p62"><div class="swatchcard__name" data-page-node-id="nvojKScEXxQfEUW6fHBInU">静默填充</div><div class="swatchcard__hex" id="c-subtle" data-page-node-id="yofylRN6ufL0oIF0e1PfIh"></div><div class="swatchcard__use" data-page-node-id="CxQB0X5yYAfnlCz4WVNr0H">悬停底、分段控件槽</div></div></div>
+      <div class="swatchcard" data-page-node-id="kbblzdEuAqG8OLDYRANTPf"><div class="swatchcard__chip" style="background:var(--bg-sunken)" data-page-node-id="gWe6sGvDExCef6ZL3My94n"></div><div class="swatchcard__body" data-page-node-id="R8iSdmyj1iZLrgPJSY2VKK"><div class="swatchcard__name" data-page-node-id="Yb25JBJhpC5kyuXDC4OIzb">凹陷区</div><div class="swatchcard__hex" id="c-sunken" data-page-node-id="b0uTjvY4M6pIvfICtdpNbZ"></div><div class="swatchcard__use" data-page-node-id="G4dlFoc6HjvVgP9XjdwD8B">证据区、弹窗底栏</div></div></div>
+      <div class="swatchcard" data-page-node-id="AxFHbvIh3DHisqFOUJjFVI"><div class="swatchcard__chip" style="background:var(--bg-glass)" data-page-node-id="3Glvx1wCb7D0QkbqQv2UN4"></div><div class="swatchcard__body" data-page-node-id="BJFMBqoxf3KXwfcFd1EqHn"><div class="swatchcard__name" data-page-node-id="zjTl9Zcex6sKtgoQHCgIwM">毛玻璃面</div><div class="swatchcard__hex" id="c-glass" data-page-node-id="odgPmDfuGXELF2JqF9xFkY"></div><div class="swatchcard__use" data-page-node-id="fcfVnT6yHCplDLPWcjHL5K">窗口 / 面板主体</div></div></div>
+      <div class="swatchcard" data-page-node-id="HP4kzetPuLEfPZrpku47h9"><div class="swatchcard__chip" style="background:var(--border)" data-page-node-id="o1hUoymu1vlB9kYhY4PwUc"></div><div class="swatchcard__body" data-page-node-id="E5cMkrg8QXCpd6foumr5Zl"><div class="swatchcard__name" data-page-node-id="WVyP1oYkVsV10cIS6iToOy">描边</div><div class="swatchcard__hex" id="c-border" data-page-node-id="osC3xTwbKywSLQ9DubbdR9"></div><div class="swatchcard__use" data-page-node-id="sB7rOoKb6t8S3XmDh4a3VM">卡片、分隔、芯片</div></div></div>
+    </div>
+
+    <div class="doc__h3" data-page-node-id="u0ST6AafDnP1kilo0JhhCV">语义色 Semantic</div>
+    <div class="swatchgrid" style="margin-bottom:20px" data-page-node-id="uom6R3AyUDg8WhcSQFKvRO">
+      <div class="swatchcard" data-page-node-id="s4fjVuq8vrlnMWNh0M7Dk3"><div class="swatchcard__chip" style="background:var(--warn)" data-page-node-id="omE0JeLHNYPWiJruqdg5QT"></div><div class="swatchcard__body" data-page-node-id="gDbIUNQ9n8opB9ep9I2uz8"><div class="swatchcard__name" data-page-node-id="vpwPx2QjfCRws7l6DewJka">被占用</div><div class="swatchcard__hex" id="c-warn" data-page-node-id="2e4UXpocwXEIQ8E7FCG8Go"></div><div class="swatchcard__use" data-page-node-id="vCeP9Qkp0YQfUYpfnrXISM">琥珀条、证据区、占用文字</div></div></div>
+      <div class="swatchcard" data-page-node-id="xjefMJfXQhMvjHf4Y8q25g"><div class="swatchcard__chip" style="background:var(--danger)" data-page-node-id="mpjjrnytyeGEkwVClXgmWZ"></div><div class="swatchcard__body" data-page-node-id="vaysVuRhpw2K22HN9NZ2EE"><div class="swatchcard__name" data-page-node-id="mH1f8d85BrSnBK6BEC9Uv6">破坏性</div><div class="swatchcard__hex" id="c-danger" data-page-node-id="eEsOEfaP2EsfMMJeVcRrQy"></div><div class="swatchcard__use" data-page-node-id="eUfB5TFArSjrWor84K00Wz">仅「关闭并推出」</div></div></div>
+      <div class="swatchcard" data-page-node-id="ZeAAuWPWWREqThnc2Bm3no"><div class="swatchcard__chip" style="background:var(--ok)" data-page-node-id="5ORBhIGmENk80mssFu1ed0"></div><div class="swatchcard__body" data-page-node-id="OHz5Sf8cYPGmzt3vs0BNp0"><div class="swatchcard__name" data-page-node-id="N5wK60kufZA8VlOFwBvPlv">可安全推出</div><div class="swatchcard__hex" id="c-ok" data-page-node-id="kPTAQFNhPTztZghhmdZxeu"></div><div class="swatchcard__use" data-page-node-id="l9pqE56JDDXxgzjLCFAtwH">✓ 结论行</div></div></div>
+      <div class="swatchcard" data-page-node-id="L8fNjNSn347EabFYQUUret"><div class="swatchcard__chip" style="background:var(--accent)" data-page-node-id="5o31fzGZk9UgK4E6cXbGuD"></div><div class="swatchcard__body" data-page-node-id="ylQZZwmjzSUrmj6DD7xHHA"><div class="swatchcard__name" data-page-node-id="yq8c2vy9hqFlHHJauNoGc2">强调（可换）</div><div class="swatchcard__hex" id="c-accent" data-page-node-id="9TV0npQucfHf3RHWl0cmoH"></div><div class="swatchcard__use" data-page-node-id="uG93qyVQm0nrZSW0yTiS5o">主按钮、容量条、图标</div></div></div>
+    </div>
+
+    <div class="doc__h3" data-page-node-id="wi58rcouVuIfEOHwToIIpJ">文字 Text</div>
+    <div class="panel" data-page-node-id="dRG8rW9tO8TljqHnFAE6ym">
+      <table class="spec" data-page-node-id="eG54UoRV2yTkBehZ2LYBr0">
+        <thead data-page-node-id="v0zVTCSy2I69XBZp2kQcuC"><tr data-page-node-id="ntWxFFpqHlTh9cH1lziXke"><th style="width:180px" data-page-node-id="wyUOLs2oA3KFeGMMC0xSa1">令牌</th><th style="width:200px" data-page-node-id="rxts4n66O4SFovUEiIxFLW">示例</th><th style="width:150px" data-page-node-id="WFUbnHPixl7SnUCWm2O1cD">对比度</th><th data-page-node-id="mahVsXi12X4Xyta2HzPOAn">用途</th></tr></thead>
+        <tbody data-page-node-id="HfNyidcPXXR3USfGChRJD5">
+          <tr data-page-node-id="Y4NpMFfLY4GhyDSOzfeFGf"><td data-page-node-id="s7ADJme2DXS6tBZIYFp70G"><code data-page-node-id="XY7IDSxDWGYbEJePMviUis">--text-1</code></td><td data-page-node-id="KJyAFLb4zIwSOsuRdln3Zh"><span style="color:var(--text-1);font-size:var(--fs-13)" data-page-node-id="bA3re1OfhuHafQBPYN3LFQ">磁盘名、标题</span></td><td data-page-node-id="Hxy6DhKz1SPcTMMvf7F6Ru"><code data-page-node-id="HNlhwe5ojMsN9v1T74IKcO">16.1 : 1</code></td><td class="dim" data-page-node-id="Zt2GkhPQFQa3kKo02m5mIW">主文字，AA / AAA 均达标</td></tr>
+          <tr data-page-node-id="bv8V5VC2xlSuomTTbWKful"><td data-page-node-id="0wXMuR4xnHliu6cZvGAMvM"><code data-page-node-id="OD4DVFZkI6ua6G5g3zFBls">--text-2-strong</code></td><td data-page-node-id="LfWUcGx4cEbuRzqER80XVx"><span style="color:var(--text-2-strong);font-size:var(--fs-11);font-weight:600" data-page-node-id="aYNo5E6fGuok813krIZeJo">分组标题</span></td><td data-page-node-id="kBsToDFD7wIVhb6SIRMl4o"><code data-page-node-id="fbTBDw4uddc6a9teTaPfIR">6.3 : 1</code></td><td class="dim" data-page-node-id="G6fu04WKtum0PBigtTPwJq">小号加粗标题</td></tr>
+          <tr data-page-node-id="E72zzGDCPoGU9JGWLAXOuo"><td data-page-node-id="hxms7qaiPLQK3fSqyYUKCS"><code data-page-node-id="9UMH2GfOIaFJaJBH5QjHJl">--text-2</code></td><td data-page-node-id="GRW2dEvLvWHH0Ogqu0Wkxv"><span style="color:var(--text-2);font-size:var(--fs-12)" data-page-node-id="FkD6NR6b8sCqSEqaZV8Y9h">已用 300 GB · 剩余 700 GB</span></td><td data-page-node-id="z3WjCqy23FkN9tP1G8TWT2"><code data-page-node-id="nebFBrSP9pwhip2ESXsDA4">4.6 : 1</code></td><td class="dim" data-page-node-id="qDBdApYroH2msvDyHrhgmX">说明、容量、次要标签</td></tr>
+          <tr data-page-node-id="6dAAn63WnyNehVuT1tBWAU"><td data-page-node-id="7t8FNewi8VKHij51ScopzI"><code data-page-node-id="ZIl2q5SDPHJBwWpztd0D2C">--text-3</code></td><td data-page-node-id="ljDuxeFDpEAkAnmPQUvvLd"><span style="color:var(--text-3);font-size:var(--fs-11)" data-page-node-id="v03i6ZnEw3JUs9Df17Tfy1">装饰 / 占位</span></td><td data-page-node-id="nR4W9x0WQYH4SbWHCKbCTQ"><code data-page-node-id="pEjGHdaBOjdb63LyIiVcHs">2.2 : 1</code></td><td class="dim" data-page-node-id="xfcCOZB5LDWcdDtqCZjd0K">仅用于装饰，不承载信息</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ==================== 字体 ==================== -->
+  <div class="doc__section" data-page-node-id="q3NpT4Nh3zkP8InkZhpuZX">
+    <h2 class="doc__h2" data-page-node-id="szkZlVY6vCsHySPOQSF3cG">字体 <em data-page-node-id="DgB6qbBblT3QG0Q6m9mF07">Typography</em></h2>
+    <p class="doc__h2desc" data-page-node-id="m0Xam1jUQOszBvLpfkkHb3">
+      系统字体栈，不引入自定义字体。数字一律启用 <code data-page-node-id="mcA20zqICaHxPTGoXVD4gC">tabular-nums</code>——
+      容量与百分比在多行之间必须纵向对齐，否则会形成锯齿状的视觉噪声。
+    </p>
+    <div class="panel" data-page-node-id="FaJg1VsubXbAlIM3KrmvZN">
+      <table class="spec" data-page-node-id="PW25NVmL2bn5RFbvLP4Eqr">
+        <thead data-page-node-id="cW9jAa5bhEvgowxohimAU4"><tr data-page-node-id="jPuqCGRND9Jqy8dfWqBFKg"><th style="width:90px" data-page-node-id="NB7O4qQCwzIAXPInyFHtHP">字号</th><th style="width:90px" data-page-node-id="BJz7UxCz2RGD1bGyYPG9Gm">字重</th><th style="width:220px" data-page-node-id="gkqyKxN8kp3oQiop6xDTKl">示例</th><th data-page-node-id="VEln21fxOCL6cGfuDHnHLW">用途</th></tr></thead>
+        <tbody data-page-node-id="kvv1BYQO8UfrMpPXNslk7m">
+          <tr data-page-node-id="MA8DCruFnuNK3Sy9uye1Am"><td data-page-node-id="pjp3S1cFIrqUO4O12p6LkS"><code data-page-node-id="LjnGkFliFkEvZrofeXzE1I">20 / 600</code></td><td data-page-node-id="eW6TVZIBt1ZKUsxJccWsHW"><code data-page-node-id="mGgD2Kr05C8gcvFNTxH4c4">Semibold</code></td><td data-page-node-id="8K9WSRPdI0dUjEHA0uZ52q"><span style="font-size:20px;font-weight:600;letter-spacing:-0.02em" data-page-node-id="Cl7KhkRAGDFRqHu9PWObk1">磁盘推出助手</span></td><td class="dim" data-page-node-id="FS6NjSP4kOldtVEWj42Fur">弹窗 / 引导标题</td></tr>
+          <tr data-page-node-id="NHiBls0IcKaWh4DLM4wwa1"><td data-page-node-id="ClEpVQHgssxQ2poM4PMGOB"><code data-page-node-id="XvvswuaGywONwzkwH6jF7N">17 / 600</code></td><td data-page-node-id="lKvq6MY2N3LMaZKWJdnFsa"><code data-page-node-id="rjXkTHNrLRBatkW3xZgFUR">Semibold</code></td><td data-page-node-id="n9pqpUvtMpoFsKbioHgPjT"><span style="font-size:17px;font-weight:600;letter-spacing:-0.01em" data-page-node-id="a1O4zXOxFXV2a6sJHeCzJD">需要完全磁盘访问</span></td><td class="dim" data-page-node-id="T8uydPUjANWlzU6d9WGbBQ">引导页主标题</td></tr>
+          <tr data-page-node-id="Ju1irnlk1F7E3cR4eLJUhm"><td data-page-node-id="UOYPoP14VPbasYd2oEKf9N"><code data-page-node-id="4QJHQjY61ardAof33jily7">15 / 600</code></td><td data-page-node-id="6sBTb4cpqwzeIoOClZEEnB"><code data-page-node-id="JhjRug3HGDFeUDEDEnHRH5">Semibold</code></td><td data-page-node-id="YpmxWrXHHFBlXU7LLpwcrb"><span style="font-size:15px;font-weight:600;letter-spacing:-0.01em" data-page-node-id="ANCiiQbgdIiupsxdreoj1C">Samsung T7</span></td><td class="dim" data-page-node-id="jtqUbiMTOrYibfI30lnwCD">磁盘名、窗口标题、弹窗标题</td></tr>
+          <tr data-page-node-id="c0IvLqJC21ufxDV05JOhG4"><td data-page-node-id="LvTVavP2P6VGxSFju1dVzU"><code data-page-node-id="BCizr7xa9yZgjfpSRNBeeg">13 / 600</code></td><td data-page-node-id="8KVf3IxwYzEx9OZTueElcM"><code data-page-node-id="P53qjXVfVAS7YsFv0QJGie">Semibold</code></td><td data-page-node-id="5U2zkSPKFtAILSO9SuAG8E"><span style="font-size:13px;font-weight:600" data-page-node-id="caj26ZHpelNYz6XMDBTwr2">紧凑行磁盘名</span></td><td class="dim" data-page-node-id="jxjaaHKtV4EepcnyJU9h0H">高密度模式</td></tr>
+          <tr data-page-node-id="zKxeioIeLj9hCS5H7wniO2"><td data-page-node-id="2yAORg6SDzYjFFARe9nHNs"><code data-page-node-id="GC9iz1QQgpGjNNEvq6u5sm">13 / 400</code></td><td data-page-node-id="aQNzH16kYnGFE7CK5K5RNS"><code data-page-node-id="kSostPKBOpIxEFxJ94sGie">Regular</code></td><td data-page-node-id="GkOsL6eXUQs8uhp5hcDCpy"><span style="font-size:13px" data-page-node-id="PG5uJFokmHkk3GIe3uZcLJ">设置项、动作行、正文</span></td><td class="dim" data-page-node-id="6sFTHQ2qVdsF8Df68c9bLW">界面正文</td></tr>
+          <tr data-page-node-id="wnY2IqWquBdrimTQGO64kQ"><td data-page-node-id="Bg6iHVQ6Z9LTIOaJ2Ws0lh"><code data-page-node-id="i3Yhq3sSN35UX5SeWAdbjO">12 / 400</code></td><td data-page-node-id="FTq7oOjGLL4MgSkFb3KP0R"><code data-page-node-id="adH5EwfkVcO3H3tnxeh5bQ">Regular</code></td><td data-page-node-id="9hsnrGXUEZpEkHE7Nir2g7"><span style="font-size:12px;color:var(--text-2)" data-page-node-id="EQW8sZPDztwMhR3wofNW5e">已用 300 GB · 剩余 700 GB</span></td><td class="dim" data-page-node-id="cyCFHRGFJxtMUwF73bVCVB">容量、说明、弹窗正文</td></tr>
+          <tr data-page-node-id="JgSN0gp3fdbjsxztDSakVe"><td data-page-node-id="rbHBaUGiONYn3E87QZpCQt"><code data-page-node-id="ZZIRZX3GvGDf9tM1AfoS2P">11 / 400</code></td><td data-page-node-id="0pxKa2LxXcZsJwWX7RjB7H"><code data-page-node-id="jXBjrNxqhhZcyV65cEkutz">Regular</code></td><td data-page-node-id="EMsaQ8n8FmsiWVa2h6xCrj"><span style="font-size:11px;color:var(--text-2)" data-page-node-id="ROENsj3BG01fhtsVzBT6Kr">可安全推出 · 30% · ⌘Q</span></td><td class="dim" data-page-node-id="DgGHXczqvkoF9n5pCgsxQk">状态、百分比、快捷键</td></tr>
+          <tr data-page-node-id="7yfbfOeBhQwNUHH2h2jGk9"><td data-page-node-id="qCBC0BFrN1DwQzCQkO2kwP"><code data-page-node-id="1yF9E8CStWLWxlwMUVK3i7">11 / 600</code></td><td data-page-node-id="Wz1i8nsjLMqg9zmOoBE91y"><code data-page-node-id="vuRX6uqOuGq7U0KbKbeY7d">Semibold</code></td><td data-page-node-id="NXGBqXYOBpnQVtJkwHBTs7"><span style="font-size:11px;font-weight:600;color:var(--text-2-strong);letter-spacing:0.05em" data-page-node-id="3izcZiezXv5ITX30yEU8VR">分组标题</span></td><td class="dim" data-page-node-id="9t6MTBjiZdwfO2yDVCZrVX">设置分组、弹窗小节</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ==================== 空间与形状 ==================== -->
+  <div class="doc__section" data-page-node-id="GUYRAkKiVMkRJJwcLCsYPd">
+    <h2 class="doc__h2" data-page-node-id="AynRDSFBZwRMV5yHddHIyd">空间 · 形状 · 动效 <em data-page-node-id="KD4oaT63ouByeAfJecPG3i">Space &amp; Motion</em></h2>
+    <div class="grid2" data-page-node-id="2naMVTSr3caUlO8v6LCsfl">
+      <div class="panel" data-page-node-id="6kUmiwAlYnoe2jx5lZb5rw">
+        <div class="doc__h3" style="margin-top:0" data-page-node-id="a3cXHmAhq7HgAxn0Xgj1T4">间距 4pt 基准</div>
+        <table class="spec" data-page-node-id="7qh8GFBHGWeyvbqHFXsLGr">
+          <tbody data-page-node-id="b2ui0dvErWOMsU3nSUVRID">
+            <tr data-page-node-id="mLXmxzmnDhdpsLpk3xQNXo"><td style="width:110px" data-page-node-id="cMeT7c4Xz4Bb4YyAxNm0jA"><code data-page-node-id="wYYe5u3PeyAOBQ4YhpgU2p">--s-1 = 4</code></td><td class="dim" data-page-node-id="B6AGiNhC2CwkYjvRwn9POz">图标与文字、芯片间距</td></tr>
+            <tr data-page-node-id="hKAOYx4Cofcaf7Qczf03vl"><td data-page-node-id="qlhA66ADNRmcGdCAlXaGJG"><code data-page-node-id="BFbhCvJxHyBy01UV1Uk5bQ">--s-2 = 8</code></td><td class="dim" data-page-node-id="pzocGaLmcB4koDngMZr91X">按钮间距、行间距</td></tr>
+            <tr data-page-node-id="AyTpEB3OJ8ThRgrHqcM5oO"><td data-page-node-id="c1BP5XFfGuDVYAYH1Cr64g"><code data-page-node-id="xVoJ3bGb6FgWoGGsEnqh6l">--s-3 = 12</code></td><td class="dim" data-page-node-id="ZwvEInZp7xJ0Vf9dYPxDQw">行内边距、图标与文本列间距</td></tr>
+            <tr data-page-node-id="MrClZAm77UgOKXCrsue3Nj"><td data-page-node-id="H8ngiK7ocEduRDKHNXu52g"><code data-page-node-id="0CGFtcNrXbJ1daWpQFIwkA">--s-4 = 16</code></td><td class="dim" data-page-node-id="hf5XCXy54Qkp0z80SRBZvC">列表左右内边距、卡片内边距</td></tr>
+            <tr data-page-node-id="HcwniG9kT7KfzgSaIxVJoo"><td data-page-node-id="uR5FdJDjrElVvadeexmOdQ"><code data-page-node-id="Tt3EAEyTDK8910TiwGlWN8">--s-5 = 20</code></td><td class="dim" data-page-node-id="pLHFMAnxWyOlSL8cpaCCig">窗口内边距、弹窗内边距</td></tr>
+            <tr data-page-node-id="7xEN3QMfgDbZMTBkSgFiN5"><td data-page-node-id="1ZB4lZZk4LtraQJcnr1c2O"><code data-page-node-id="YEjHWUQ1Q3koZlxC4Xx4lF">--s-6 = 24</code></td><td class="dim" data-page-node-id="URb5GT9zYwNGm3ZE0OgOgE">引导面板内边距</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="panel" data-page-node-id="J5xxJulGkdcyp97a4ryIfp">
+        <div class="doc__h3" style="margin-top:0" data-page-node-id="FeL8nCFI4gVUpo6lbMZEhm">圆角</div>
+        <table class="spec" data-page-node-id="3YsXsDDfAVd0Toz380r9Ag">
+          <tbody data-page-node-id="a3CsdRqmm4GUyNTSJHEAlD">
+            <tr data-page-node-id="uGn5YraGXQv82NH4Wy01lP"><td style="width:110px" data-page-node-id="VTORx2H1IghtOZK3uF5kco"><code data-page-node-id="hU7sKMW0fHXJ5Ek6Jl8lRw">4 / 6</code></td><td class="dim" data-page-node-id="FPflHPSQZc84VtpBKCks2y">芯片内小标、按钮、分段选项</td></tr>
+            <tr data-page-node-id="hdrJO8FYt5qTGGcFstO9xu"><td data-page-node-id="4totH1Mni9g1ByDMtEClUS"><code data-page-node-id="062pUMP23ps9MJxRUGEWYT">10</code></td><td class="dim" data-page-node-id="K7xGAkNOljG4eGJYuKwzlH">磁盘行、证据区、设置卡片、图标容器</td></tr>
+            <tr data-page-node-id="fNZX6DoHSirSLkZCHWjqTL"><td data-page-node-id="nbGh48WFiyLurQOiartmM2"><code data-page-node-id="6Y2oE3phEXsMuJF4f7NSjf">12</code></td><td class="dim" data-page-node-id="aWCajWII5zd2FOnC6GILXO">主窗口外框</td></tr>
+            <tr data-page-node-id="i3t6DNI7DZjuRHEomxaqF7"><td data-page-node-id="FauYnGYGesn9EIh9AA1PB4"><code data-page-node-id="nrGryaEP6pjg70wfk7prQP">14</code></td><td class="dim" data-page-node-id="pUmsUdOen3YHgfSfDZJndj">菜单栏面板、弹窗、引导面板</td></tr>
+            <tr data-page-node-id="Q10LjZyuAz5MCRQiFexbDf"><td data-page-node-id="ASkkTBsgu03nR9DShs91GN"><code data-page-node-id="Wr2pBpet0HVZ3nrasuwPXZ">999</code></td><td class="dim" data-page-node-id="dZVsfdySHSCOagAyHHroMT">容量条、芯片、开关、色板</td></tr>
+          </tbody>
+        </table>
+
+        <div class="doc__h3" data-page-node-id="Y4rvci9ggbsPEKipFkfBrE">阴影</div>
+        <table class="spec" data-page-node-id="2igBSDm1lSxNWE9Mlai60e">
+          <tbody data-page-node-id="JzK6rM4FgjFtpDDG4CrR1j">
+            <tr data-page-node-id="dJ18Itw0FPCnrSRtoqaBcD"><td style="width:110px" data-page-node-id="OodP9SOljwGckwMfIVmpzE"><code data-page-node-id="xXFcvx5aathZonRRgEGH9A">--e1</code></td><td class="dim" data-page-node-id="8qedcdUDtbdDysRn1Wx0sh">卡片、芯片、按钮</td></tr>
+            <tr data-page-node-id="DJAFOoHTEPsxMT3nVSHtjf"><td data-page-node-id="UJe4ebM9XLeVcMBrBH6BKR"><code data-page-node-id="u0FBYA8BGoKqCRsMDkSQZ0">--e2</code></td><td class="dim" data-page-node-id="VRCwEwIqyL9NJpXLm2EXYf">悬停抬升、浮层</td></tr>
+            <tr data-page-node-id="HpqagcBHnQHK8oNNkkVLHc"><td data-page-node-id="Bq9iJ1dLlCU64rRTGR4G7d"><code data-page-node-id="FC6KCRc8ocBD34Ynjl7Qq4">--e3</code></td><td class="dim" data-page-node-id="dEf4BPEDbUIOy9pCWH04Bt">窗口、弹窗（最大）</td></tr>
+          </tbody>
+        </table>
+
+        <div class="doc__h3" data-page-node-id="eIcDOkBu5V3wPbyVBbqoi9">动效</div>
+        <table class="spec" data-page-node-id="eAZFm6hgDQROtoRlyJfxdj">
+          <tbody data-page-node-id="wLj9qkKBYIMTtk3iR6loDZ">
+            <tr data-page-node-id="z1h4zRYBoe0trV4AosCVeN"><td style="width:110px" data-page-node-id="KwamGr8C8pps6YROPaa8zh"><code data-page-node-id="fXYtAWBsHUAikvT8EhUeBl">120ms</code></td><td class="dim" data-page-node-id="aC40DBPjZRHPTxmiOD7l8a">悬停、颜色过渡</td></tr>
+            <tr data-page-node-id="WgHu2JjHcf1M7nv0C9dCHa"><td data-page-node-id="W5DpHNXNz4ZYGVOB8pGGmo"><code data-page-node-id="5AjIZPTcoLf1oZY3dxEhGv">180ms</code></td><td class="dim" data-page-node-id="KDfmFR473Ou92VaTbE3orL">开关、分段控件、展开收起</td></tr>
+            <tr data-page-node-id="IaCBDFGnIVExvCVJeELN1u"><td data-page-node-id="H3Nwhi0CDk67ptOZBRBYBV"><code data-page-node-id="DtnspX2cIafk6r30DiCSOZ">260ms</code></td><td class="dim" data-page-node-id="nMI3WUIPUyIROczG2Rb5sh">容量条填充</td></tr>
+            <tr data-page-node-id="GidaKOXEmThHFm1UKJCPiQ"><td data-page-node-id="VqToOuiUrF7XvnSrkkzrpF"><code data-page-node-id="zseL6LVpzOWsVVHp3sun76">缓动</code></td><td class="dim" data-page-node-id="1em9MFnLjJa5qMSp9XsqV7"><code data-page-node-id="qg4sZ7znKDdGw8JFIeDS4D">cubic-bezier(.32,.72,0,1)</code>，尊重 <code data-page-node-id="HeZgFuEflifFVpoJhKBC5B">prefers-reduced-motion</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== 组件库 ==================== -->
+  <div class="doc__section" data-page-node-id="hrbd2H4GtFw8N6yhjMVwdG">
+    <h2 class="doc__h2" data-page-node-id="YhEuFSTi7tmn0A5KJ3JOGD">组件库 <em data-page-node-id="FYQmzIw4M80g8aCQkUecSc">Components</em></h2>
+    <p class="doc__h2desc" data-page-node-id="JJBYSqBcCJzOSyVpavKqMb">
+      下列组件均为实时渲染，可直接切换右上角的主题与强调色查看所有状态。
+    </p>
+
+    <div class="doc__h3" data-page-node-id="b6Lhh75B35Pe5iAOkLBlDC">按钮 Button</div>
+    <div class="grid2" data-page-node-id="8ABF5qKl3CuVV4ktmGB73A">
+      <div class="comp" data-page-node-id="TlUxj7xZBBMySF668gEfSp">
+        <div class="comp__label" data-page-node-id="ELbIAV0W7Ah2tdorLEGiuA">variant × state</div>
+        <div class="comp__row" style="margin-bottom:12px" data-page-node-id="l7bbFlnG78uiC1ByfbLhlN">
+          <button class="btn btn--primary" data-page-node-id="rxE35tpsrWo8bDsGItKNQl"><i data-i="eject" data-page-node-id="dLWqcegUiRPeoFz4YpVAwS"></i>推出</button>
+          <button class="btn btn--danger" data-page-node-id="QUgmvIMu1AJFSMAMF9eJID"><i data-i="eject" data-page-node-id="oD9aKIgDCnkNl1kgpYQiKn"></i>关闭并推出</button>
+          <button class="btn btn--outline" data-page-node-id="4bxNQu53E2mG6xFqia0H4v">取消</button>
+          <button class="btn" data-page-node-id="HHdaeJ196aASbLi9HZ6G6P">默认</button>
+          <button class="btn btn--ghost" data-page-node-id="408AVHUfegpg41WWOGf8na">打开系统设置</button>
+        </div>
+        <div class="comp__row" data-page-node-id="SmH5LZnqOqCL5SqpXGlGE5">
+          <button class="btn btn--primary" disabled style="opacity:.45;cursor:default" data-page-node-id="aLolhFAsbXiNQ4VmeLMHlk"><i data-i="eject" data-page-node-id="O3iOAt3l3saQCXUz3FeHZ7"></i>已禁用</button>
+          <button class="btn btn--outline" style="opacity:.75;cursor:default" data-page-node-id="jdi4JcOHhjjhqCChBNwwsB"><span class="spin" data-page-node-id="GGlDHh6qyftIS24tASXtQv"><i data-i="spinner" data-page-node-id="rxVrvoe5WZbA1FqYZnyyi7"></i></span>推出中</button>
+          <button class="btn btn--primary btn--lg" data-page-node-id="iiBBtRlRlCqGiqtHNbMP1E">大号</button>
+          <button class="btn btn--outline btn--sm" data-page-node-id="tSkqZuWtFKdBYCctLNfB7C">小号</button>
+        </div>
+      </div>
+      <div class="comp" data-page-node-id="DlevLxnpz4TwhR4suPg0T2">
+        <div class="comp__label" data-page-node-id="5R41cuoFHYG5htiENPECvb">尺寸</div>
+        <table class="spec" data-page-node-id="zzu8FOasq6ndqkFmLJL60n">
+          <tbody data-page-node-id="lXcSWGjinmWr8cMPTKHDYm">
+            <tr data-page-node-id="oZM66HZviWar0zkCJwnyAr"><td style="width:90px" data-page-node-id="sAmCoTAqGksfDRGqlQdR4y"><code data-page-node-id="NKR66X0ptdEGhD5gFNM6AN">lg</code></td><td class="dim" data-page-node-id="t7xB89gAwFBBLNMzpcoQWw">高 34 · 内边距 16 · 字号 13</td></tr>
+            <tr data-page-node-id="VvkvdSAqIqllQIjcHHJIMX"><td data-page-node-id="rwQ0A5lEhsuBnjHAxOkEhR"><code data-page-node-id="C3IPpfKkEDtum1s1xp8lbT">md</code></td><td class="dim" data-page-node-id="SRUAXbLcbXWkAR94rxHsZ2">高 30 · 内边距 12 · 字号 13（默认）</td></tr>
+            <tr data-page-node-id="EoIWjjwaDMyixk2Xm4rmzL"><td data-page-node-id="XxtwellACFhaGIIvZOcsk4"><code data-page-node-id="0OG8P4UBQxX8u3g4j84VP3">sm</code></td><td class="dim" data-page-node-id="SmCkXkf61fFuAEGSJj9jpm">高 26 · 内边距 10 · 字号 12（行内 / 面板）</td></tr>
+            <tr data-page-node-id="eISlFRFGwYr3uCPDEsS4A2"><td data-page-node-id="QrAnOOrsT2HdnHlPkcA4sm"><code data-page-node-id="uYHuXSbMyhFjJ5D81myweA">focus</code></td><td class="dim" data-page-node-id="r3iGRTbV3Z9Gkknl7rYuNG">2px 强调色环 + 2px 偏移，<b data-page-node-id="x3A4KDYYIxDM3n0BJCIXdr">仅键盘触发</b>（<code data-page-node-id="z4QmdJwMzyRGBkOMHCzQhv">:focus-visible</code>）</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="doc__h3" data-page-node-id="gSSoSOjFyDgsshVTFTIavo">磁盘行 Disk Row</div>
+    <div class="comp" style="margin-bottom:16px" data-page-node-id="SzbG0dLCfmCpkClA1vnP2t">
+      <div class="comp__label" data-page-node-id="kPcY8O8eTovHKuQ2XBi1Gr">完整行 · ≤ 3 块磁盘 · 含容量条与证据区</div>
+      <div class="disklist" style="max-width:720px" data-page-node-id="5ErhFFKlT9zzCYAdu1viFl">
+        <div class="row row--busy" data-page-node-id="zMgAKCZw6KvZT7CcOBvMQa">
+          <div class="row__icon" data-page-node-id="mwVBzqXOzgkDSaT0xIlPna"><div class="diskicon diskicon--busy" data-page-node-id="njLjgDa3ttJB3FkixN2yxq"><i data-i="drive" data-page-node-id="cLou91EEa77WewMDSuuH9N"></i></div></div>
+          <div class="row__main" data-page-node-id="akJ4ulwAaseVCCnqGcDUEl">
+            <div class="row__head" data-page-node-id="wQjHkZQx8HnDV0kVmMARwc">
+              <div class="row__id" data-page-node-id="rQWnzZboSTwXkR6VejJFur">
+                <div class="row__nameline" data-page-node-id="mWykJsGqIysSzMBlLpg6Fx"><span class="row__name" data-page-node-id="RdlTFPCowFsZeq6B7uFeKV">Samsung T7</span><span class="row__fs" data-page-node-id="b7EGdmQBmjIj00mmWxQsRX">1 TB</span></div>
+                <div class="row__meta" data-page-node-id="IQAAK7TJDLDB9WK5yaFlF9">已用 <b data-page-node-id="xNbQYlHiAbuKgFWbEQOJp0">300 GB</b> · 剩余 <b data-page-node-id="mRJWmf0P2Mw2sR4U9gLfYS">700 GB</b></div>
+              </div>
+              <div class="row__act" data-page-node-id="Hm6CxgeA4sVhEBBhQwlZqO"><button class="btn btn--danger btn--sm" data-page-node-id="6RmsfeEDZQvORe5mBnFcAA"><i data-i="eject" data-page-node-id="QDWFrGTRQQcFhrNeXZnqfI"></i>关闭并推出</button></div>
+            </div>
+            <div class="meter" data-page-node-id="7w1XKENQtHlrgRrxFAxKn0">
+              <div class="meter__track" data-page-node-id="LZ2xLn8QldoLv9BbrMdYeS"><div class="meter__fill" style="width:30%" data-page-node-id="EUh5EXRnwwgbAmiXPvT2Pc"></div></div>
+              <span class="meter__pct" data-page-node-id="Bamc2tycqzNtjpCvImxtDw">30%</span>
+            </div>
+            <div class="row__evid" data-page-node-id="v6OwFY96QXvWd2HGcZ3CG3">
+              <div class="evid evid--busy" data-page-node-id="Hz5L1UIuc3dfFM1gi32QVg">
+                <div class="evid__head" data-page-node-id="kXlwqpcmUCwpsBh416gkpS"><i data-i="warn" data-page-node-id="eYxBGPAzqN5FykIlmlPtOh"></i><span data-page-node-id="M0AwsYi0oFkHSuCkkEdBGe"><span class="evid__count" data-page-node-id="X3j9yp5fm4v25fr0PbjtZW">2</span> 个程序正在占用</span></div>
+                <div class="evid__chips" data-page-node-id="wAOYxJBRsZgYVHguuHPKnW">
+                  <span class="chip" data-page-node-id="iqacxejzvT6heiGHmoPWF2"><span class="appicon appicon--finder" data-page-node-id="sdkx6cwThxWamqtqLthxJt"><i data-i="folder" data-page-node-id="WAndP1zFbpv8f6fpBY4iMk"></i></span><span class="chip__name" data-page-node-id="tEIa3FLq2heIvu1CHXNXti">Finder</span><span class="chip__pid" data-page-node-id="XmpqzSArzLRAaiEuN34CES">1234</span></span>
+                  <span class="chip" data-page-node-id="eOgTPu1O8S3Es2Bb92ehm5"><span class="appicon appicon--photo" data-page-node-id="TEHe5tDpizpqFFoy0Guhq2"><i data-i="photo" data-page-node-id="9Wn3Yq10NsOTe4LVsmefpJ"></i></span><span class="chip__name" data-page-node-id="ubCv8838NkShB44AEzzXy8">图像捕捉</span><span class="chip__pid" data-page-node-id="p9PH24lA9gbn1gsDcNGsgx">5678</span></span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="row" data-page-node-id="MYos73lhQqvRGqxAyqEfQ5">
+          <div class="row__icon" data-page-node-id="oi8lJjtAusunLEJ82wKqzr"><div class="diskicon" data-page-node-id="Vfaz72MqZ5UEn8OoqIOb6G"><i data-i="drive" data-page-node-id="bhqAGhdXbtO00Gx9aiJ26L"></i></div></div>
+          <div class="row__main" data-page-node-id="w7fCGfl0ieu3JHQHLD1Gt8">
+            <div class="row__head" data-page-node-id="ZeSyJWIzKoBffHdh0iyjK1">
+              <div class="row__id" data-page-node-id="2Zn83152uaBKaVofagFoNj">
+                <div class="row__nameline" data-page-node-id="to8WnmOA6h3i2yBJMwBGpi"><span class="row__name" data-page-node-id="Qx4qPKAM5aftezbf7eVx5D">WD Blue</span><span class="row__fs" data-page-node-id="hukrPABlvy6kcEkftMVoYp">500 GB</span></div>
+                <div class="row__meta" data-page-node-id="4qAsFFWH48Dru0Or3hxrXq">已用 <b data-page-node-id="wwnnjSj2WjWnDiQNW30GFt">120 GB</b> · 剩余 <b data-page-node-id="yvJkJfIpZ4vEdM94FmRAAy">380 GB</b></div>
+              </div>
+              <div class="row__act" data-page-node-id="63C3z3kdBXz5fjJGrVmEc9"><button class="btn btn--primary btn--sm" data-page-node-id="Tkdxa5P5bsdHCZOLG8fJ9r"><i data-i="eject" data-page-node-id="Xeh7M9YXLnzQAwEsFf6Aj8"></i>推出</button></div>
+            </div>
+            <div class="meter" data-page-node-id="bZGfOP9kF8PGFzpOatoKpn">
+              <div class="meter__track" data-page-node-id="I7JRNsCJwgSsdW40hwrKVM"><div class="meter__fill" style="width:24%" data-page-node-id="Wh2bXNdjmAkVoiFCflXlDj"></div></div>
+              <span class="meter__pct" data-page-node-id="IFGqI2nUnE1v9gcmTi8CXi">24%</span>
+            </div>
+            <div class="row__evid" data-page-node-id="Bk217zVUSfuQ3dAfPplBHD">
+              <div class="evid evid--safe" data-page-node-id="xbDi7ALqh2FVkHIhnZ5wwd"><span class="statusline" data-page-node-id="5v444rfTf4aNi3Hmo9doSX"><i data-i="check" data-page-node-id="iWE7nTM1k8oEyYVAGRDwMY"></i>没有程序占用，可以安全推出</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="comp" style="margin-bottom:16px" data-page-node-id="LEfaWm8RXP4uIuvLmBtaHe">
+      <div class="comp__label" data-page-node-id="Snmhb6PvuG28LqLbpsxU8E">紧凑行 · ≥ 4 块磁盘自动启用 · 行高 46</div>
+      <div class="disklist" style="gap:4px;max-width:720px" data-page-node-id="MmjKyoNCUuQ8Wppo2WkUyP">
+        <div class="crow crow--busy" data-page-node-id="2wXF4TIK65BBQFPLllg1fM">
+          <div class="crow__icon crow__icon--busy" data-page-node-id="KAJB3TDzO2icXcQphfxoDF"><i data-i="drive" data-page-node-id="tQ15VjdEpIweG0OxSDeWM9"></i></div>
+          <span class="crow__name" data-page-node-id="UKaHB7GGUXN8UVUAg8N1S0">Samsung T7</span>
+          <span class="crow__meta" data-page-node-id="zr1J8UNJ4yjMrlo9cG3Nhc">1 TB · 已用 300 GB · 剩余 700 GB</span>
+          <span class="crow__grow" data-page-node-id="tmJ43UGdjjXbKDh1A2SUce"></span>
+          <span class="crow__status" data-page-node-id="5uaY0V6B4Ya4BZrMnmin73"><i data-i="warn" data-page-node-id="yKtlrRC2PgAShz7ovsijx1"></i>2 个程序占用</span>
+          <button class="btn btn--danger btn--sm crow__btn" data-page-node-id="AAvvhh0gsRWyfLB4tZd1Oo">关闭并推出</button>
+        </div>
+        <div class="crow" data-page-node-id="UBeRrvjk3EA4TrOfFraEAs">
+          <div class="crow__icon" data-page-node-id="MmZlVEcESnk2wabZKAllC1"><i data-i="drive" data-page-node-id="n4sDEDu75cbeueNGAXlAV2"></i></div>
+          <span class="crow__name" data-page-node-id="H7RdfulMGFfyfVRo57zG2G">WD Blue</span>
+          <span class="crow__meta" data-page-node-id="CrTSJGVewU6vikGFyZ62eO">500 GB · 已用 120 GB · 剩余 380 GB</span>
+          <span class="crow__grow" data-page-node-id="pqgDC0amghb5TR91cbyKaQ"></span>
+          <span class="crow__status crow__status--safe" data-page-node-id="Ct8I5ruknKbHdgyWlW2kNz"><i data-i="check" data-page-node-id="f2CCuahaGnhdizW2Q6Dotg"></i>可安全推出</span>
+          <button class="btn btn--primary btn--sm crow__btn" data-page-node-id="2hsf5R5wGVtbbqWt2Y0aAE">推出</button>
+        </div>
+        <div class="crow" data-page-node-id="HWgItWxP2bJSmUmvx0PSpv">
+          <div class="crow__icon" data-page-node-id="x4q82eTJFfa494VZ84URSj"><i data-i="drive" data-page-node-id="40mWcV2HZKnRZ2j5kBHAJF"></i></div>
+          <span class="crow__name" data-page-node-id="MASuXGAMJ9bhk8TCKDHov4">Untitled</span>
+          <span class="crow__meta" data-page-node-id="xBgmJANY7ashrYRvMjnXlZ">64 GB · 已用 12 GB · 剩余 52 GB</span>
+          <span class="crow__grow" data-page-node-id="nj7333362yGnxMVwPR4aNz"></span>
+          <span class="crow__status crow__status--unknown" data-page-node-id="f3gC9GMgQp3XXizMyTusx3">占用情况未知</span>
+          <button class="btn btn--primary btn--sm crow__btn" data-page-node-id="EZIaG1nEERQpl7gIFJ4uUf">推出</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid2" style="margin-bottom:16px" data-page-node-id="CvelmvGOBuexn1dAiZADmy">
+      <div class="comp" data-page-node-id="2lG9ZdJC60mM6LbkS6D0DQ">
+        <div class="comp__label" data-page-node-id="1Rm1jDP9dKyNuTGCMJPnWU">状态行 / 证据区</div>
+        <div style="display:flex;flex-direction:column;gap:10px" data-page-node-id="9FVAD3BEGjCI9B5jwv4aRr">
+          <div class="evid evid--safe" style="padding:0" data-page-node-id="L2kjxTDgWAQDrjbRnMbMNv"><span class="statusline" data-page-node-id="Qjy9D57zIyCmnmnRlStx6D"><i data-i="check" data-page-node-id="4ZhxYYWppBK1Typvf7hnN7"></i>没有程序占用，可以安全推出</span></div>
+          <div class="evid evid--unknown" data-page-node-id="UvBjKnRCqfWAFe2ywiXHb7"><div class="evid__head" data-page-node-id="6c5OCmGeURD3R4EjBHltlN"><i data-i="info" data-page-node-id="9uWFL3fBBdUtlTu3jN4Cuz"></i><span data-page-node-id="wSYdcUcumFvbM5Mr46cSEQ">占用情况未知</span><span class="evid__hint" data-page-node-id="VQ928aqD5H4C3XJiASXwTf">授权后可检测</span></div></div>
+          <div class="evid evid--busy" data-page-node-id="obYnKuMqwA238AEtPWMcYD"><div class="evid__head" data-page-node-id="X2KXz67v0bqlWHOpYAbABt"><i data-i="warn" data-page-node-id="auQNFoyHlIO7dpAMhiH6HF"></i><span data-page-node-id="DAn8j59CCUHLL4F3Ti2N4N"><span class="evid__count" data-page-node-id="Nt7L54lDVlkgjCrCsQW3XP">3</span> 个程序正在占用</span></div></div>
+        </div>
+      </div>
+      <div class="comp" data-page-node-id="fCtJ4bXNyr2yTgcJZPm5nj">
+        <div class="comp__label" data-page-node-id="k83VP55tOXbuAtuNMKpes4">横幅 Banner</div>
+        <div style="display:flex;flex-direction:column;gap:10px" data-page-node-id="b2wDSQDxM0irXHWvDu3Zue">
+          <div class="banner" style="border-radius:var(--r-md);padding:9px 12px" data-page-node-id="qFm5VOZ3zuuIjFOV9O2NXw">
+            <span class="banner__icon" data-page-node-id="cciBO19O3S2UDgTbaMjCqC"><i data-i="lock" data-page-node-id="tUJwXQBamymyboMu4Ah1KQ"></i></span>
+            <span class="banner__text" data-page-node-id="0aNDP9AGu501HqAVvf5OXL">需要「完全磁盘访问」才能看到<strong data-page-node-id="C9mNpRBRK7JFy0shHF0G7G">是谁占用了磁盘</strong></span>
+            <button class="btn btn--outline btn--sm" data-page-node-id="2dMdGIe2DmqAPNC8oXAT0S">打开系统设置</button>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;padding:9px 12px;border-radius:var(--r-md);background:var(--ok-soft);box-shadow:inset 0 0 0 0.5px var(--ok-line)" data-page-node-id="YOPNFo4kLElutn87EQhZ2r">
+            <span style="color:var(--ok);display:inline-flex" data-page-node-id="ywJzk3p6hrBExfQxtMWEyi"><i data-i="checkCircle" data-page-node-id="5h1Q2AtUnCtIM7JkA7PXW1"></i></span>
+            <span style="font-size:var(--fs-12)" data-page-node-id="Pime5YYf4Yea3Setn8JL9I">已获得完全磁盘访问，占用检测正常</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;padding:9px 12px;border-radius:var(--r-md);background:var(--danger-soft);box-shadow:inset 0 0 0 0.5px var(--danger-line)" data-page-node-id="avXSrI217kwuTNPkyOWR9u">
+            <span style="color:var(--danger);display:inline-flex" data-page-node-id="rO0ilPUkF89AIkjQA9nmDg"><i data-i="x" data-page-node-id="vDZPWyugXrzAxql3fsfEyV"></i></span>
+            <span style="font-size:var(--fs-12);color:var(--danger-text)" data-page-node-id="SMfPoeuzDCEEQ7xztGchiQ">无法推出「Samsung T7」</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid2" data-page-node-id="gw2uBxWM91CNERcEfRvs2a">
+      <div class="comp" data-page-node-id="zm4R19m61M35wSaATViony">
+        <div class="comp__label" data-page-node-id="io04ASa8umLgcrULaDdOJy">表单控件</div>
+        <div style="display:flex;flex-direction:column;gap:16px" data-page-node-id="5PNTqHFO5BHLbftiHywvXh">
+          <div class="comp__row" data-page-node-id="k38SJNj4SY2DtQfJmmCawc">
+            <button class="switch" role="switch" aria-checked="false" aria-label="关" data-page-node-id="iTDIQv3xyeTUqziPjW3erX"></button>
+            <button class="switch" role="switch" aria-checked="true" aria-label="开" data-page-node-id="e7hu6e9LRqV50C1jjFg9As"></button>
+            <span style="font-size:var(--fs-11);color:var(--text-2)" data-page-node-id="01vJDNG3mcFZ11Wvs3kqRS">开关 38 × 22</span>
+          </div>
+          <div class="comp__row" data-page-node-id="a7iQwH4FGJLdCjw383gBrl">
+            <div class="seg" role="tablist" data-page-node-id="RGpztHzuU01DoV5WVxjLYF">
+              <button class="seg__opt" role="tab" aria-selected="true" data-page-node-id="ijYmPpjDAuq3lHyR5DWfX5">透明</button>
+              <button class="seg__opt" role="tab" aria-selected="false" data-page-node-id="k1agmk7XbLqMrJrMdaav9p">色调</button>
+            </div>
+            <span style="font-size:var(--fs-11);color:var(--text-2)" data-page-node-id="btpPoMEeWYrlqHNUB0kZTX">分段控件</span>
+          </div>
+          <div class="comp__row" data-page-node-id="QA4pRRtIgRpOtcw4JyGO8G">
+            <div class="swatches" data-page-node-id="BZgciwdtM5ELAgfkVzsCaA">
+              <button class="swatch swatch--blue" data-accent-btn="blue" aria-pressed="true" aria-label="蓝" data-page-node-id="l7Pi14F1DmZOErB8MhXnp8"></button>
+              <button class="swatch swatch--purple" data-accent-btn="purple" aria-pressed="false" aria-label="紫" data-page-node-id="4yaCCm66NvTDJgulRomUKS"></button>
+              <button class="swatch swatch--orange" data-accent-btn="orange" aria-pressed="false" aria-label="橙" data-page-node-id="99XjV1FVO9BVPBQpOCWCAE"></button>
+              <button class="swatch swatch--green" data-accent-btn="green" aria-pressed="false" aria-label="绿" data-page-node-id="9Hr0HdtmvhwqdvBnEAYlft"></button>
+            </div>
+            <span style="font-size:var(--fs-11);color:var(--text-2)" data-page-node-id="cbiVKEqkOsHDfGc6clGkvg">色板（选中态带外环）</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="comp" data-page-node-id="oatqyC7BCAbt7bhqLGW9vD">
+        <div class="comp__label" data-page-node-id="M0yb1I5kfy9V0Etu1ZmHCZ">菜单栏动作行</div>
+        <div style="max-width:300px" data-page-node-id="8lZwnGWIr9xs8AJUJM1UNV">
+          <button class="actionrow" data-page-node-id="1JOqfqMjjS7YBCvJM2pMPu"><i data-i="window" data-page-node-id="237QcBIm0DKFvcA2RF7coS"></i>打开主窗口<span class="actionrow__key" data-page-node-id="Fu9a6BC0ReV4ONYX3zM3nF">⌘O</span></button>
+          <button class="actionrow" data-page-node-id="VvVpWsNjVA8gpTWCxijr9F"><i data-i="refresh" data-page-node-id="uXMKyeEJVyKudL9zg2W5v8"></i>刷新磁盘列表<span class="actionrow__key" data-page-node-id="xXXK2GemGDq7eHcul6g7z1">⌘R</span></button>
+          <button class="actionrow" data-page-node-id="2O7hy22NdBqCLeqYkXv8AG"><i data-i="gear" data-page-node-id="oAjYYWrg4nIFhgX8H2mziB"></i>设置<span class="actionrow__key" data-page-node-id="2aMMpLLT3LykSNeRRWRvHM">⌘,</span></button>
+          <button class="actionrow actionrow--danger" data-page-node-id="Xn3oXJpdI99Jo2CKp0mp6L"><i data-i="power" data-page-node-id="0Hg2Ge05YGYyFmGlIfurBj"></i>退出<span class="actionrow__key" data-page-node-id="sOCDWGC9F4v7qqSOGFrPo5">⌘Q</span></button>
+        </div>
+      </div>
+    </div>
+
+    <div class="doc__h3" data-page-node-id="ensW8yr1WiKUbsHd94v1fj">进程芯片 Process Chip</div>
+    <div class="comp" data-page-node-id="zOiC3vrUYEHCqPz78AXDcF">
+      <div class="comp__label" data-page-node-id="f3TlBPId7wuZPqpXtA6TKK">应用图标 + 显示名（+ 可选 PID）· 真实实现取系统图标而非进程可执行名</div>
+      <div class="comp__row" data-page-node-id="T1bG16VxYqqvix1hNhkoQT">
+        <span class="chip" data-page-node-id="G9I4YKcftvl6svWz2eJL1J"><span class="appicon appicon--finder" data-page-node-id="H0k7Xd8bEKWRlZ6PBXVLcx"><i data-i="folder" data-page-node-id="7iG3GbM4x7FFBvF4leHIkk"></i></span><span class="chip__name" data-page-node-id="liYQtVRdezWjoZWrjaVE9o">Finder</span></span>
+        <span class="chip" data-page-node-id="vGzdjeMDD2FXPuimAPbjeO"><span class="appicon appicon--photo" data-page-node-id="N4sWh8ylIQph8SWadLIJBi"><i data-i="photo" data-page-node-id="uC0FA2WfpCS3sAibbbHb85"></i></span><span class="chip__name" data-page-node-id="PQDrxheqOLaGOtQPN1v5dp">图像捕捉</span><span class="chip__pid" data-page-node-id="U62Ghr7uqWKgngMFt6ibuv">5678</span></span>
+        <span class="chip" data-page-node-id="zn4Mvtj3J7wC2aRqWAlSvE"><span class="appicon appicon--music" data-page-node-id="gzxjENUKzGClhOQgQaAQa1"><i data-i="music" data-page-node-id="dXGCtWShQferVGLUpgGntP"></i></span><span class="chip__name" data-page-node-id="UTBjBxfKjITHg9RNlCXWAf">Bunny</span></span>
+        <span class="chip" data-page-node-id="fZ1erMjXfraWwlOY0h82Nk"><span class="appicon appicon--code" data-page-node-id="fo3HbrxElYg4Px4KpySxFC"><i data-i="code" data-page-node-id="4VVexb8yxyW5h8RI8wlHhl"></i></span><span class="chip__name" data-page-node-id="Oqt8ayEXCUMIjbHHdPQKDC">Xcode</span></span>
+        <span class="chip" data-page-node-id="f1YdmDgAqphtZG8LZWTFhB"><span class="appicon appicon--backup" data-page-node-id="khhZMu3dk1OU7IW0LQuqEa"><i data-i="cloud" data-page-node-id="LmFu5ZkhNERH7hCk1KhH2A"></i></span><span class="chip__name" data-page-node-id="1Y5Q3cgeV8NPI6UrADYqED">时间机器</span></span>
+        <span class="chip chip--more" data-page-node-id="NbWdHaqKZF9vKFG0cIZvBY">+2</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== 屏幕索引 ==================== -->
+  <div class="doc__section" data-page-node-id="CckoqOAPbccETNN2OurNtN">
+    <h2 class="doc__h2" data-page-node-id="qEGsn5OWHmQydRSi0vyRmv">屏幕 <em data-page-node-id="jp3GHxymGJzb04AyLGKa1t">Screens</em></h2>
+    <p class="doc__h2desc" data-page-node-id="8bqIYy8IJ4RsT5nuE24CMw">点击任意卡片进入该屏幕的完整设计稿与交付规格。</p>
+
+    <div class="screens" data-page-node-id="3fAssCtsoSqzA30wf9kvdY">
+      <a class="scard-link" href="screens/01-main-window.html" data-page-node-id="jhhlZ4aSFwfznmsJ7oqHeH">
+        <div class="scard-link__thumb" data-page-node-id="29RM2yRVD5DLJhJxTnakOs">
+          <div class="wf-bar" style="width:34%" data-page-node-id="IRbEcDR38YdKmaB6C8E0Jh"></div>
+          <div class="wf-block" style="height:26px;display:flex;align-items:center;gap:6px;padding:0 8px" data-page-node-id="Mfl9wLhVMMQTuVNmVjXEjC">
+            <div style="width:10px;height:10px;border-radius:4px;background:var(--warn-soft);box-shadow:inset 0 0 0 3px var(--warn)" data-page-node-id="C44HsFKF2u6EBrLbpHHyY9"></div>
+            <div class="wf-bar" style="width:40%;height:6px" data-page-node-id="eFcQcIqAeLPI31BBJ5bOZB"></div>
+            <div style="flex:1" data-page-node-id="nJma9gYw7EIC8BUx6pScZR"></div>
+            <div style="width:34px;height:11px;border-radius:4px;background:var(--danger)" data-page-node-id="0PtrlQshErJbEvB1Hx7jIe"></div>
+          </div>
+          <div class="wf-block" style="height:26px;display:flex;align-items:center;gap:6px;padding:0 8px" data-page-node-id="1HdpXb50hI2mAcEC9eCPTA">
+            <div style="width:10px;height:10px;border-radius:4px;background:var(--accent-soft);box-shadow:inset 0 0 0 3px var(--accent)" data-page-node-id="FHpi0EggaGPZHAmXkgUg39"></div>
+            <div class="wf-bar" style="width:32%;height:6px" data-page-node-id="fx7r4vsD6DZPe85jzykHEb"></div>
+            <div style="flex:1" data-page-node-id="CvPgRcuSa14oPG4DY165FA"></div>
+            <div style="width:34px;height:11px;border-radius:4px;background:var(--accent)" data-page-node-id="o6WG8IYyLAc6yzeWBm3Btl"></div>
+          </div>
+          <div class="wf-block" style="height:26px;display:flex;align-items:center;gap:6px;padding:0 8px" data-page-node-id="URzwrvX7q7ZxL09ar7SFBE">
+            <div style="width:10px;height:10px;border-radius:4px;background:var(--accent-soft);box-shadow:inset 0 0 0 3px var(--accent)" data-page-node-id="Kn79hsS0DRueYkWxCgK92z"></div>
+            <div class="wf-bar" style="width:38%;height:6px" data-page-node-id="1QA5gSr44FnA7OH7qJxUgJ"></div>
+            <div style="flex:1" data-page-node-id="RvE0NYLx3yBNCa1U3JsUG3"></div>
+            <div style="width:34px;height:11px;border-radius:4px;background:var(--accent)" data-page-node-id="3EKatRbM5gDcSAOZfw2tCL"></div>
+          </div>
+        </div>
+        <div class="scard-link__body" data-page-node-id="DI63WvP7dDvroOkVNxo6ql">
+          <div class="scard-link__no" data-page-node-id="ZRLnxGd5trRnDqJcNxiWNn">SCREEN 01</div>
+          <div class="scard-link__title" data-page-node-id="aPj80B7cZxB303vHTNfQtJ">主窗口</div>
+          <div class="scard-link__desc" data-page-node-id="Yf6WqLqiWXr1pT8VntaInZ">800 × 520 · 判定优先的磁盘行、容量条、证据区、状态绑定主按钮</div>
+        </div>
+      </a>
+
+      <a class="scard-link" href="screens/02-menu-bar.html" data-page-node-id="NfNetpLO3IgvqabW7CQFWx">
+        <div class="scard-link__thumb" style="align-items:center" data-page-node-id="WQHY6f11BFeAFB0AZFASTI">
+          <div class="wf-block" style="width:76%;height:96px;display:flex;flex-direction:column;gap:6px;padding:9px" data-page-node-id="bearqbyC0muSeHvnvp279C">
+            <div style="display:flex;align-items:center;gap:6px" data-page-node-id="UX8iFRNRHWkaDts7DlQ5YT">
+              <div style="width:12px;height:12px;border-radius:4px;background:var(--accent)" data-page-node-id="8kgR5mfYvMsqV3AmuZQBkk"></div>
+              <div class="wf-bar" style="width:40%;height:6px" data-page-node-id="jRkST3WiK33K6N5HMl18CN"></div>
+              <div style="flex:1" data-page-node-id="4Oqg9B89NaapJlrqjFOGFS"></div>
+              <div class="wf-chip" style="width:22px;height:9px" data-page-node-id="AQHaZgaAXgWGy34s7ucG4o"></div>
+            </div>
+            <div style="height:1px;background:var(--hairline)" data-page-node-id="uCxb4d6x4wBtv5UDVvxhOC"></div>
+            <div style="display:flex;align-items:center;gap:6px" data-page-node-id="rMhL7qQ6vawnXhfI6rFTVk">
+              <div style="width:14px;height:14px;border-radius:5px;background:var(--warn-soft);box-shadow:inset 0 0 0 4px var(--warn)" data-page-node-id="r3CHHEBFnbXACMQ114yaMa"></div>
+              <div style="flex:1;display:flex;flex-direction:column;gap:3px" data-page-node-id="b53dtFElS7UG2XnuikcsEZ">
+                <div class="wf-bar" style="width:60%;height:5px" data-page-node-id="BFqMpOhgjTBzEv4mMOMh2i"></div>
+                <div class="wf-bar" style="width:44%;height:5px" data-page-node-id="CErqXSea5KSpCR5orq26BF"></div>
+              </div>
+              <div style="width:14px;height:14px;border-radius:4px;background:var(--danger-soft)" data-page-node-id="QMHGTN6widawoOpxDYpQiU"></div>
+            </div>
+            <div style="display:flex;align-items:center;gap:6px" data-page-node-id="b5P5JfCsQNLRugdYHEjNFS">
+              <div style="width:14px;height:14px;border-radius:5px;background:var(--accent-soft)" data-page-node-id="EFbbw0MpwPADzAdeaCqMR2"></div>
+              <div style="flex:1;display:flex;flex-direction:column;gap:3px" data-page-node-id="AEoe4M7w85RtppLZZcTst0">
+                <div class="wf-bar" style="width:50%;height:5px" data-page-node-id="SLbGwrdx49qa1V6SKSEPMp"></div>
+                <div class="wf-bar" style="width:38%;height:5px" data-page-node-id="tmwhrhHsH9N6oiAo2x4D1s"></div>
+              </div>
+              <div style="width:14px;height:14px;border-radius:4px;background:var(--bg-subtle)" data-page-node-id="UpbBiQLPInCGUSffwxgnci"></div>
+            </div>
+          </div>
+        </div>
+        <div class="scard-link__body" data-page-node-id="MK3mNtmziF3adRyEVETmGS">
+          <div class="scard-link__no" data-page-node-id="ArtxqdPGxG5hQuwegLK3XL">SCREEN 02</div>
+          <div class="scard-link__title" data-page-node-id="gVk4A14hj9lV5BkEfuxhn0">菜单栏面板</div>
+          <div class="scard-link__desc" data-page-node-id="uZRH7e8g6f4AUIqRkzLCzY">360pt · 一行一块盘、一行一个动作，键盘可达</div>
+        </div>
+      </a>
+
+      <a class="scard-link" href="screens/03-eject-flow.html" data-page-node-id="NTAueRMi0yTLsCysM55sA1">
+        <div class="scard-link__thumb" style="align-items:center;justify-content:center" data-page-node-id="i8uy14r5lc5jHargBJncP5">
+          <div class="wf-block" style="width:80%;height:98px;display:flex;flex-direction:column;gap:6px;padding:9px" data-page-node-id="vljEDlNfgGQRlJcQrScEU4">
+            <div style="display:flex;gap:6px;align-items:flex-start" data-page-node-id="R0L1l399quwsvMpCWFg66D">
+              <div style="width:14px;height:14px;border-radius:5px;background:var(--warn-soft);box-shadow:inset 0 0 0 4px var(--warn)" data-page-node-id="V7spIt2IzhgSEesyhBE0LS"></div>
+              <div style="flex:1;display:flex;flex-direction:column;gap:4px" data-page-node-id="Gde6VQunA1llKH4HeR8GRX">
+                <div class="wf-bar" style="width:70%;height:6px" data-page-node-id="FH1a5oGiLuqDMz2NE1BKKa"></div>
+                <div class="wf-bar" style="width:92%;height:5px" data-page-node-id="1dUmXrwQx2G0PAgIFpxJET"></div>
+              </div>
+            </div>
+            <div class="wf-chip" style="width:100%;height:13px" data-page-node-id="giE08a0IVHaECWD7fr8RIU"></div>
+            <div class="wf-chip" style="width:100%;height:13px" data-page-node-id="zNZyFQG2lC8AZTA3oYIoCt"></div>
+            <div style="flex:1" data-page-node-id="8StckayGu7YdxH4SrPGZRm"></div>
+            <div style="display:flex;gap:5px;justify-content:flex-end" data-page-node-id="dMhhwRGcdJLrbiWjnXacq2">
+              <div style="width:30px;height:12px;border-radius:4px;background:var(--bg-subtle)" data-page-node-id="df4X3AhFDCZ8Sr5ohNotTf"></div>
+              <div style="width:46px;height:12px;border-radius:4px;background:var(--danger)" data-page-node-id="nyQ8L21UkMHlCa6Qqf8lOP"></div>
+            </div>
+          </div>
+        </div>
+        <div class="scard-link__body" data-page-node-id="Gm5FaG7jzVXShaCT8Ccf3a">
+          <div class="scard-link__no" data-page-node-id="5t1X73mLFv4S8R22mTy4K2">SCREEN 03</div>
+          <div class="scard-link__title" data-page-node-id="kd8c4IBJBYyEJYJhTuOIur">推出流程弹窗</div>
+          <div class="scard-link__desc" data-page-node-id="kqP7QyrSMr5u5OGQSNeIIj">占用确认（破坏性）与失败留痕 · 空闲路径零弹窗</div>
+        </div>
+      </a>
+
+      <a class="scard-link" href="screens/04-onboarding.html" data-page-node-id="hBDaUQYDDJNWAHnC6YzTS7">
+        <div class="scard-link__thumb" style="align-items:center;justify-content:center" data-page-node-id="pGEJvSfkSEeCSRQhX8C0lR">
+          <div class="wf-block" style="width:70%;height:98px;display:flex;flex-direction:column;align-items:center;gap:7px;padding:10px" data-page-node-id="XIWPj5tUkbpqN9CovQMmgM">
+            <div style="width:20px;height:20px;border-radius:7px;background:var(--accent-soft);box-shadow:inset 0 0 0 5px var(--accent)" data-page-node-id="22VwI8z1sZfeAnOBCE7J3T"></div>
+            <div class="wf-bar" style="width:62%;height:6px" data-page-node-id="qWThpipWJ123Rqa4TBz47b"></div>
+            <div class="wf-bar" style="width:84%;height:5px" data-page-node-id="bvXQKgkzWzzDdub7ySqTWh"></div>
+            <div style="display:flex;gap:6px;align-items:center;width:84%;margin-top:2px" data-page-node-id="ZBqhv8eGq3dlFrSLPoKBcG">
+              <div style="width:9px;height:9px;border-radius:999px;background:var(--accent)" data-page-node-id="IIT8Bx8Qw1fDxgz0xwh5bW"></div>
+              <div class="wf-bar" style="flex:1;height:5px" data-page-node-id="0NiOt1JGsQrcQD1vuUzB8m"></div>
+            </div>
+            <div style="display:flex;gap:6px;align-items:center;width:84%" data-page-node-id="qP5arwNLJ2vIBsZfntrnhv">
+              <div style="width:9px;height:9px;border-radius:999px;background:var(--accent)" data-page-node-id="iWJ12jB2N775t7L2xtmjtd"></div>
+              <div class="wf-bar" style="flex:1;height:5px" data-page-node-id="JtIMiYwvy0EP2YrYwSbB7F"></div>
+            </div>
+          </div>
+        </div>
+        <div class="scard-link__body" data-page-node-id="hDA3G2jzdrhSSjOVTzBEPn">
+          <div class="scard-link__no" data-page-node-id="fnVPQf1YCHJJe1NwhCUCHz">SCREEN 04</div>
+          <div class="scard-link__title" data-page-node-id="pzJfA7iyfLSgTpBuMWkqFG">完全磁盘访问引导</div>
+          <div class="scard-link__desc" data-page-node-id="6zlJcUbJTNY26ILUtpSkHL">380pt · 唯一一次主动打断，说清为什么与怎么做</div>
+        </div>
+      </a>
+
+      <a class="scard-link" href="screens/05-settings.html" data-page-node-id="7u0HAybVejDG3qJ1Z94SVb">
+        <div class="scard-link__thumb" style="align-items:center;justify-content:center" data-page-node-id="cfDD2uckPt6YJzEDd5ekPu">
+          <div class="wf-block" style="width:78%;height:98px;display:flex;flex-direction:column;gap:6px;padding:9px" data-page-node-id="zm3DWHRW4MhLfMZN9JOJOf">
+            <div style="display:flex;align-items:center;gap:6px" data-page-node-id="pqo4SjQhUvEhO7ttyxT6hH">
+              <div class="wf-bar" style="width:22%;height:5px" data-page-node-id="I7GWPnb5rAZZKUfCbGkNba"></div>
+              <div style="flex:1" data-page-node-id="1ACZN2OQOADyveaH704FSH"></div>
+              <div style="width:34px;height:11px;border-radius:4px;background:var(--bg-subtle);box-shadow:inset 0 0 0 1px var(--border)" data-page-node-id="HSRg9CJz0aI5RM8AVeIg65"></div>
+            </div>
+            <div class="wf-chip" style="width:100%;height:14px" data-page-node-id="dNWOGfAsZeNSBUX1tiXfZw"></div>
+            <div class="wf-chip" style="width:100%;height:14px" data-page-node-id="kZUYyyCpg0XVlTC27wduhN"></div>
+            <div class="wf-chip" style="width:100%;height:14px" data-page-node-id="5PVF6ndfBLSsU2kD9UNly1"></div>
+            <div class="wf-chip" style="width:100%;height:14px" data-page-node-id="78GkXIMo3QUtjxHM4zD9ID"></div>
+          </div>
+        </div>
+        <div class="scard-link__body" data-page-node-id="XE6h2fDGeaQtKvWgYcSV0c">
+          <div class="scard-link__no" data-page-node-id="zH64Ri8YrGOEE640VSZ3sm">SCREEN 05</div>
+          <div class="scard-link__title" data-page-node-id="SuFhddaBwDG7JnISVaoRcT">设置面板</div>
+          <div class="scard-link__desc" data-page-node-id="Jhie0iH3uytFICpfBqVpkM">440 × 566 · 四组内容、登录项第三态、诊断入口</div>
+        </div>
+      </a>
+
+      <a class="scard-link" href="screens/06-states.html" data-page-node-id="M24nqDxzYi5DghPqsQalUJ">
+        <div class="scard-link__thumb" style="align-items:center;justify-content:center" data-page-node-id="pXnECda31IZeOeqDVb4PmU">
+          <div class="wf-block" style="width:78%;height:98px;display:flex;align-items:center;justify-content:center" data-page-node-id="BI16tDFIZDb6AM2sON59Er">
+            <div style="display:flex;flex-direction:column;align-items:center;gap:6px" data-page-node-id="wtauW1jF5tktXWBi6aRjmE">
+              <div style="width:22px;height:22px;border-radius:8px;background:var(--bg-subtle)" data-page-node-id="DQ9EosWY5ZUIkNx5QAVFDs"></div>
+              <div class="wf-bar" style="width:46px;height:6px" data-page-node-id="Egrx9YxsKwpdC6oHIRVn7R"></div>
+              <div class="wf-bar" style="width:64px;height:5px" data-page-node-id="RIIpr09ciMR5UZBgFAY3BP"></div>
+            </div>
+          </div>
+        </div>
+        <div class="scard-link__body" data-page-node-id="TQUMGoviErtgX368mrgoBL">
+          <div class="scard-link__no" data-page-node-id="EaxEx69wcz5nD1lamiG1Od">SCREEN 06</div>
+          <div class="scard-link__title" data-page-node-id="nHqhz1B8TnTTYP1KnvFnUF">状态矩阵</div>
+          <div class="scard-link__desc" data-page-node-id="M0sDIFCAshBcBykBH3QTWU">空 / 多 / 忙 / 未知四种边缘状态与视觉语言对照</div>
+        </div>
+      </a>
+
+      <a class="scard-link" href="screens/07-dark.html" data-page-node-id="Cmz0f5TDE7kN6mh3JKGX7A">
+        <div class="scard-link__thumb" style="background:#1c1c1e;box-shadow:inset 0 -0.5px 0 rgba(255,255,255,.08)" data-page-node-id="yPlLekmo9fKPXJ7oGmA3fu">
+          <div style="height:8px;border-radius:3px;background:rgba(255,255,255,.14);width:34%" data-page-node-id="N8cxMq3OZlLIfmvOn3GrMz"></div>
+          <div style="border-radius:6px;background:#2c2c2e;height:26px;display:flex;align-items:center;gap:6px;padding:0 8px" data-page-node-id="yfTvV1x1cY1eM4GbMmVyNB">
+            <div style="width:10px;height:10px;border-radius:4px;background:rgba(255,159,10,.22)" data-page-node-id="KAwpvgajFQiKToGIgmToDn"></div>
+            <div style="height:6px;border-radius:3px;background:rgba(255,255,255,.14);width:40%" data-page-node-id="IWhWJlIOERKkvXVIys5e6h"></div>
+            <div style="flex:1" data-page-node-id="95MDmRWvMG86ArweMGIBQT"></div>
+            <div style="width:34px;height:11px;border-radius:4px;background:#ff453a" data-page-node-id="nqTUNYzjsO4iUtFCdJQSKo"></div>
+          </div>
+          <div style="border-radius:6px;background:#2c2c2e;height:26px;display:flex;align-items:center;gap:6px;padding:0 8px" data-page-node-id="D0D937gvlVoE9OZOFMg9V0">
+            <div style="width:10px;height:10px;border-radius:4px;background:rgba(64,156,255,.22)" data-page-node-id="qxffwosvwbEvqsOBFvMp3V"></div>
+            <div style="height:6px;border-radius:3px;background:rgba(255,255,255,.14);width:32%" data-page-node-id="SgHgmr9cMt5doypfW5awir"></div>
+            <div style="flex:1" data-page-node-id="1ZhRhFBHnN7vRRAxgaE3ts"></div>
+            <div style="width:34px;height:11px;border-radius:4px;background:#409cff" data-page-node-id="6qj1CWH5BW6XoTo5JynQLS"></div>
+          </div>
+          <div style="border-radius:6px;background:#2c2c2e;height:26px;display:flex;align-items:center;gap:6px;padding:0 8px" data-page-node-id="OD8PddIEc7zqLfsb0Wu7mf">
+            <div style="width:10px;height:10px;border-radius:4px;background:rgba(64,156,255,.22)" data-page-node-id="C0o4PRBKrGiSoFjzCB6clh"></div>
+            <div style="height:6px;border-radius:3px;background:rgba(255,255,255,.14);width:38%" data-page-node-id="daMnEkh7fhlBH0AQjWIdr1"></div>
+            <div style="flex:1" data-page-node-id="aF7yppNEjS3QABnvlUJadj"></div>
+            <div style="width:34px;height:11px;border-radius:4px;background:#409cff" data-page-node-id="hQHFJDtpNCiECPT9oMUIny"></div>
+          </div>
+        </div>
+        <div class="scard-link__body" data-page-node-id="v2UnSXv8N4QTORi2XKWoDS">
+          <div class="scard-link__no" data-page-node-id="Ac2kqKW7K7J80nBvHNLQBj">SCREEN 07</div>
+          <div class="scard-link__title" data-page-node-id="8TTCvLWWs0PEftPhygQpaM">深色模式</div>
+          <div class="scard-link__desc" data-page-node-id="EkAP6W2HIhuNf9G2k8jSNo">跟随系统 · 令牌层切换 · 深色专用色板与三个坑</div>
+        </div>
+      </a>
+    </div>
+  </div>
+
+  <!-- ==================== 无障碍 ==================== -->
+  <div class="doc__section" data-page-node-id="XikB8OyY72vcdUhCfJMrqV">
+    <h2 class="doc__h2" data-page-node-id="XII8BNX4pgb1DJ58BW8OZ5">无障碍 <em data-page-node-id="raqtolJ7jJbTgLrbLVH4TK">Accessibility</em></h2>
+    <p class="doc__h2desc" data-page-node-id="W3jougckNh0DKSYiF8mJao">目标是 WCAG 2.1 AA。以下每一条都能在实现中被检验。</p>
+    <div class="grid2" data-page-node-id="v4jfKmhtJaopjt0MG24YWT">
+      <div class="panel" data-page-node-id="smX7ly2gHupEVqGmWmFHzn">
+        <h3 class="doc__h3" style="margin-top:0" data-page-node-id="H3GQ1smY8FBkFGKOAHGCbC">必须做到</h3>
+        <ul class="note-list" data-page-node-id="3zM65xSSYRIPRUu1YAXRlk">
+          <li data-page-node-id="uYmhBoLUdpFLRGDGtA5VXF"><b data-page-node-id="Bf8yiWMnk4Ms4ogmQBnmxK">正文对比度 ≥ 4.5:1</b>，非文本控件 ≥ 3:1。已核对：琥珀文字 <code data-page-node-id="3MmPhcn9pV8R7IwUzQkNDy">#B25000</code> 4.65:1、成功文字 <code data-page-node-id="w5nAIAk2NcdHX7kmr0nwPM">#1E7A38</code> 4.94:1、危险文字 <code data-page-node-id="nf6dsZYHDkFXvSt5wI8Ijj">#C1190F</code> 5.1:1。</li>
+          <li data-page-node-id="T5gUvMIHZ1QS0Bs4QHGSgl"><b data-page-node-id="zAjKq6bQhh2iecG0dVhuIw">状态不靠颜色单独表达。</b>「被占用」同时有：左侧琥珀条 + 警告图标 + 文字结论 + 红色按钮，四重冗余。</li>
+          <li data-page-node-id="g36iIw8IhlMBD0JBvvLHZZ"><b data-page-node-id="mjZhZSWE1OL6FAMTH6dcao">键盘可达。</b>面板内所有交互元素可按 Tab 遍历，焦点环 2px 且仅在 <code data-page-node-id="cfCDs9VfnrA5V0To1KcFK0">:focus-visible</code> 时出现。</li>
+          <li data-page-node-id="TxN2Hxozb8rkT2IWpqd8i5"><b data-page-node-id="6VNf4HDZ9na6K7f5jtoveV">点击目标 ≥ 26 × 26</b>，主要动作 ≥ 30 高。</li>
+          <li data-page-node-id="E4yip2YrHBzPJ5jqwh80kD"><b data-page-node-id="Y8ZuZrZ7rQAhBmi8mygs53">尊重「减弱动态效果」。</b><code data-page-node-id="40g7Adgylgv0Al4I0RnV4C">prefers-reduced-motion</code> 下所有过渡降为 0。</li>
+          <li data-page-node-id="QlwCDrL4YGUUONosA2nPSq"><b data-page-node-id="asYeJE0Uo7EgJgdrd8Dhu4">文字放大 200% 不破版。</b>所有容器用内边距而非固定高度约束。</li>
+        </ul>
+      </div>
+      <div class="panel" data-page-node-id="o7kLt8I1Je4BOh9hDMLEOc">
+        <h3 class="doc__h3" style="margin-top:0" data-page-node-id="fQKyHhjkQkcBgH9BAJEbSn">VoiceOver 三个易错点</h3>
+        <ul class="note-list" data-page-node-id="kiTc7OA4spCjJrzMswLLEz">
+          <li data-page-node-id="FulnmQgHEvPTQxd92x1nwQ"><b data-page-node-id="KoZtnQtpXZ3oYrzJ38lbL9">行内按钮必须独立可访问。</b>磁盘行合并标签时<strong data-page-node-id="g8z7EYeFc8bXD3EMaREnb8">只合并「名称 + 容量」</strong>；把整行 <code data-page-node-id="dSz9HN78KEhRVkPrisDdl2">combine</code> 会把推出按钮一起吞进去，结果是「能读不能点」。</li>
+          <li data-page-node-id="pNeXF7cqGtTJzJ0yWkrpBL"><b data-page-node-id="cTUGAoJcRi3leq6aHEDnjE">按钮标签必须带磁盘名。</b>「推出 Samsung T7」而非「推出」——多块盘时一串同名按钮毫无区分度。</li>
+          <li data-page-node-id="yMETyrWNbeout8CdIa50nc"><b data-page-node-id="dUmZYBG8dH0cNaaYrGAKZ1">菜单栏自定义视图不会自动获得可访问性。</b><code data-page-node-id="UtEUzDiIAwx8BWnXC0xrUt">NSMenuItem.view</code> 一旦设置，系统不再提供默认支持，必须显式设置 role 与 label，装饰图标要 <code data-page-node-id="ACpxIB66pG5v1IBZHCNNC6">accessibilityHidden(true)</code>。</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== 交付 ==================== -->
+  <div class="doc__section" data-page-node-id="vjtR3C3xTECeX1CWxBRFnC">
+    <h2 class="doc__h2" data-page-node-id="AnKtmsbGaOrwRG8AaE6eDj">交付说明 <em data-page-node-id="JpU255Ks65jzzWsHvhksAT">Handoff</em></h2>
+    <div class="grid3" data-page-node-id="5rdMQEHsCuJdqSAIY1fVLL">
+      <div class="panel" data-page-node-id="31EDVzMXDTlpAnFbsLc80H">
+        <div style="font-size:var(--fs-13);font-weight:600;margin-bottom:8px" data-page-node-id="GedTKGAWtHPvKV1G2g8Uyl">文件结构</div>
+        <div style="font-family:var(--font-mono);font-size:var(--fs-11);color:var(--text-2);line-height:1.9" data-page-node-id="jQYztcsKe3lbyYpdwJsHCj">
+          v2/<br data-page-node-id="Ce3QCIqlxsN9BzWEFG0qYA">
+          ├─ index.html &nbsp;<span style="color:var(--text-3)" data-page-node-id="iXNVtXw6ioDpUHCQfXRKRS">← 本页</span><br data-page-node-id="7W5ycvVCLu0rJiyVAhUOtk">
+          ├─ DESIGN-SPEC.md<br data-page-node-id="BGYmaEJEXGFNPRn0mOFZwS">
+          ├─ assets/ds.css<br data-page-node-id="fsvtokETmeySqOczPPyulN">
+          ├─ assets/ds.js<br data-page-node-id="3MBed7xFYJ5iISEMS1nNpi">
+          └─ screens/01…07.html
+        </div>
+      </div>
+      <div class="panel" data-page-node-id="QSIgSQwM9hUr4uBhEjVWra">
+        <div style="font-size:var(--fs-13);font-weight:600;margin-bottom:8px" data-page-node-id="ZtHvCYrntSEtZweLTWjeDK">对应到 SwiftUI</div>
+        <ul class="note-list" style="margin-top:0" data-page-node-id="8wCwJpTx0xnVNJyNJoQvLx">
+          <li data-page-node-id="AD6fMSh7EFILa2MD6kmgkW"><code data-page-node-id="1mP50dtul5n1RqlThlJC4e">assets/ds.css</code> 的令牌 → 扩展 <code data-page-node-id="mXrAc0u7Fy04qWC8ICwcfd">DesignTokens.swift</code></li>
+          <li data-page-node-id="P94qhOGUu3QhWtR1wX0mrk">行 / 芯片 / 证据区 → 新增 <code data-page-node-id="5vHD5O66oZ2sbMpvdbExKf">DiskRow.swift</code>、<code data-page-node-id="LaGpIaARjtdxSqZnbnDm5X">ProcessChip.swift</code></li>
+          <li data-page-node-id="8uF5nEi052avXJuBjiUSye">高密度模式 → <code data-page-node-id="O5xUc7T6dbLmz4hcNJN3Hb">MenuDiskRow</code> 增加 <code data-page-node-id="fV7JYX1qYXASePwzduIWMP">density</code> 参数</li>
+        </ul>
+      </div>
+      <div class="panel" data-page-node-id="PlzYXxtpumoYtHaZ2T4mAZ">
+        <div style="font-size:var(--fs-13);font-weight:600;margin-bottom:8px" data-page-node-id="eZUk4j5dW2E3gt1YMXPXMm">落地前需要确认</div>
+        <ul class="note-list" style="margin-top:0" data-page-node-id="PFvYZvYpckuxa4zywoxvDD">
+          <li data-page-node-id="LbZ3W7AjnCLL1Qo3qwOXAS">被占用时按钮直接写「关闭并推出」属于<strong data-page-node-id="swAmUa6etY89eZmvJ58Qyo">交互变更</strong>，需产品确认</li>
+          <li data-page-node-id="yy6xrWDqc0rFqAOf1CJTrW">高密度模式的切换阈值（≥ 4 块）需按实际磁盘尺寸复核</li>
+          <li data-page-node-id="oagXuTmSmmG05BVqxBSUs5">设置面板高度 <code data-page-node-id="K8MP4QAFDkOyg5pSNqSYjA">566</code> 为中英文实测值，改文案后需复测</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <div style="margin-top:56px;padding-top:20px;border-top:0.5px solid var(--border);display:flex;justify-content:space-between;flex-wrap:wrap;gap:12px;font-size:var(--fs-11);color:var(--text-3)" data-page-node-id="fCPwfa54ncGJyfPTUWrsuG">
+    <span data-page-node-id="BVdQmr4b6CD7l01klyoecS">DiskEjector UI Design System v2 · 2026-09</span>
+    <span data-page-node-id="uC1WOCC7albLbsB1dT2N4r">设计：UI Designer · 实现就绪，可交付开发</span>
+  </div>
+
+</div>
+</div>
+<script src="assets/ds.js"></script>
+<script>
+// 把当前令牌的实值写到色卡上，方便开发直接抄
+(function () {
+  var map = {
+    'c-base': '--bg-base', 'c-raised': '--bg-raised', 'c-subtle': '--bg-subtle',
+    'c-sunken': '--bg-sunken', 'c-glass': '--bg-glass', 'c-border': '--border',
+    'c-warn': '--warn', 'c-danger': '--danger', 'c-ok': '--ok', 'c-accent': '--accent'
+  };
+  function paint() {
+    var cs = getComputedStyle(document.documentElement);
+    Object.keys(map).forEach(function (id) {
+      var el = document.getElementById(id);
+      if (el) el.textContent = cs.getPropertyValue(map[id]).trim();
+    });
+  }
+  window.addEventListener('load', paint);
+  document.querySelectorAll('[data-theme-btn],[data-accent-btn]').forEach(function (b) {
+    b.addEventListener('click', function () { setTimeout(paint, 0); });
+  });
+})();
+</script>
+</body>
+</html>

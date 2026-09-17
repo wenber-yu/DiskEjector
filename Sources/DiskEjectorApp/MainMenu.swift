@@ -49,6 +49,17 @@ enum MainMenu {
             keyEquivalent: "")
         menu.addItem(.separator())
 
+        // ⌘, 设置 —— 菜单栏面板的动作行会把这个组合键画在行尾（设计稿 `.actionrow__key`），
+        // 所以它必须真的存在：macOS 的 ⌘ 快捷键只经主菜单的 `keyEquivalent` 分发，
+        // 菜单里没有这一项，面板上那个 `⌘,` 就是假的。
+        let settings = menu.addItem(
+            withTitle: L10n.tr(.settingsEllipsis),
+            action: #selector(AppDelegate.showSettings),
+            keyEquivalent: ",")
+        settings.target = NSApp.delegate
+
+        menu.addItem(.separator())
+
         // ⌘H 走 AppDelegate 自己的分流实现：代理类 App 不能被系统隐藏，
         // 直接用 `NSApplication.hide(_:)` 会让 ⌘H 在菜单栏模式下变成死键（见 `AppDelegate.hideApp`）。
         let hideApp = menu.addItem(
@@ -80,8 +91,17 @@ enum MainMenu {
     // MARK: - 文件菜单
 
     /// ⌘W 的落点：`performClose:` 会沿响应链找到当前键窗口，主窗口与设置窗口共用同一条目。
+    ///
+    /// 另带 ⌘R 刷新磁盘列表 —— 菜单栏面板的动作行会把这个组合键画在行尾，
+    /// 而 ⌘ 快捷键只能经主菜单分发，所以必须在这里真的挂上一项。
     private static func fileMenuItem() -> NSMenuItem {
         let menu = NSMenu(title: L10n.tr(.menuFile))
+        menu.addItem(
+            withTitle: L10n.tr(.refreshDisks),
+            action: #selector(AppDelegate.refreshDisks),
+            keyEquivalent: "r"
+        ).target = NSApp.delegate
+        menu.addItem(.separator())
         menu.addItem(
             withTitle: L10n.tr(.menuCloseWindow),
             action: #selector(NSWindow.performClose(_:)),
@@ -114,15 +134,18 @@ enum MainMenu {
 
     // MARK: - 窗口菜单
 
-    /// 除系统标准项外，额外提供「显示主窗口」（⌘1）：菜单栏模式下用 ⌘W 关掉主窗口后，
+    /// 除系统标准项外，额外提供「显示主窗口」（⌘O）：菜单栏模式下用 ⌘W 关掉主窗口后，
     /// 这是除菜单栏弹窗之外的第二个入口，避免窗口关掉就找不回来。
+    ///
+    /// **键位取 ⌘O 而不是 ⌘1**：设计稿 `02-menu-bar.html` 的动作行把「打开主窗口」
+    /// 标成 `⌘O`，面板上画的就是它。两处必须是同一个组合键，否则用户照着面板按会没反应。
     private static func windowMenuItem() -> NSMenuItem {
         let menu = NSMenu(title: L10n.tr(.menuWindow))
 
         let showMain = menu.addItem(
             withTitle: L10n.tr(.openMainWindow),
             action: #selector(AppDelegate.showMainWindow),
-            keyEquivalent: "1")
+            keyEquivalent: "o")
         showMain.target = NSApp.delegate
         menu.addItem(.separator())
 

@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light" data-accent="blue">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>授权引导 · DiskEjector UI v2</title>
+<link rel="stylesheet" href="../assets/ds.css">
+<style>
+  .note-list { margin: 0; padding-left: 18px; font-size: var(--fs-12); color: var(--text-2); line-height: 1.7; }
+  .note-list li { margin-bottom: 6px; }
+  .note-list b { color: var(--text-1); }
+  .note-list code { font-family: var(--font-mono); font-size: var(--fs-11); background: var(--bg-subtle); padding: 1px 5px; border-radius: var(--r-xs); }
+</style>
+</head>
+<body class="ds">
+<div class="wallpaper">
+<div class="doc">
+
+  <nav class="doc__nav">
+    <a href="../index.html">设计规范总览</a>
+    <a href="01-main-window.html">主窗口</a>
+    <a href="02-menu-bar.html">菜单栏面板</a>
+    <a href="03-eject-flow.html">推出流程弹窗</a>
+    <a href="04-onboarding.html" aria-current="page">授权引导</a>
+    <a href="05-settings.html">设置面板</a>
+    <a href="06-states.html">状态矩阵</a>
+    <a href="07-dark.html">深色模式</a>
+  </nav>
+
+  <p class="doc__eyebrow">Screen 04 · Onboarding</p>
+  <h1 class="doc__title">完全磁盘访问引导</h1>
+  <p class="doc__lede">
+    这是本应用<strong>唯一一次主动打断用户</strong>，也只出现在首次启动且尚未授权时。
+    引导的成败决定核心功能是否可用，所以它必须回答两个问题：
+    <strong>为什么非给不可</strong>，以及<strong>给完之后要做什么</strong>。
+  </p>
+
+  <div class="artboard" style="gap:64px">
+
+    <!-- ============ 引导面板 ============ -->
+    <div class="frame">
+      <div class="frame__label">380 × 自适应 · 首次启动 · 未授权</div>
+
+      <div class="win win--popover" style="width:380px;border-radius:var(--r-lg)">
+        <div class="onboard">
+          <div class="onboard__icon"><i data-i="lock"></i></div>
+          <div class="onboard__title">需要「完全磁盘访问」</div>
+          <div class="onboard__desc">
+            要知道<strong>是哪个程序占着你的硬盘</strong>，DiskEjector 需要这项系统权限。<br>
+            macOS 不允许普通应用查看其他进程打开的文件——不给权限，就只剩一个空列表。
+          </div>
+
+          <div class="steps">
+            <div class="step">
+              <div class="step__rail">
+                <div class="step__dot">1</div>
+                <div class="step__line"></div>
+              </div>
+              <div class="step__text">
+                点下方按钮，直接打开对应面板
+                <small><span class="path">系统设置 › 隐私与安全性 › 完全磁盘访问</span></small>
+              </div>
+            </div>
+
+            <div class="step">
+              <div class="step__rail">
+                <div class="step__dot">2</div>
+                <div class="step__line"></div>
+              </div>
+              <div class="step__text">
+                在列表中找到 <b>DiskEjector</b>，打开右侧开关
+                <small>若不在列表中，点左下角 <span class="path">＋</span> 从「应用程序」添加</small>
+              </div>
+            </div>
+
+            <div class="step">
+              <div class="step__rail">
+                <div class="step__dot">3</div>
+              </div>
+              <div class="step__text" style="padding-bottom:0">
+                切回 DiskEjector 即可
+                <small>无需重启，占用情况会自动刷新</small>
+              </div>
+            </div>
+          </div>
+
+          <div class="callout callout--info" style="margin-top:20px">
+            <i data-i="shield"></i>
+            <span>这项权限只用于读取「哪个进程打开了磁盘上的文件」，DiskEjector 不会读取你的文件内容。</span>
+          </div>
+
+          <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:20px">
+            <button class="btn btn--outline">稍后</button>
+            <button class="btn btn--primary">打开系统设置</button>
+          </div>
+        </div>
+      </div>
+
+      <p class="spec-note">
+        <b>为什么写「不给权限就只剩一个空列表」。</b>用户对权限弹窗的默认反应是拒绝。
+        与其用「以提升体验」这类空话，不如直说后果——这句话解释了为什么之后
+        界面上会出现「占用情况未知」，让两者前后自洽。
+      </p>
+    </div>
+
+    <!-- ============ 授权后的横幅对照 ============ -->
+    <div class="frame">
+      <div class="frame__label">主窗口横幅 · 未授权 vs 已授权</div>
+
+      <div style="display:flex;flex-direction:column;gap:20px">
+        <div style="width:560px;border-radius:var(--r-md);overflow:hidden;box-shadow:var(--e2)">
+          <div class="banner" style="padding:10px 16px">
+            <span class="banner__icon"><i data-i="lock"></i></span>
+            <span class="banner__text">需要「完全磁盘访问」才能看到<strong>是谁占用了磁盘</strong></span>
+            <button class="btn btn--outline btn--sm">打开系统设置</button>
+          </div>
+        </div>
+
+        <div style="width:560px;border-radius:var(--r-md);overflow:hidden;box-shadow:var(--e2)">
+          <div style="display:flex;align-items:center;gap:10px;padding:10px 16px;background:var(--ok-soft);box-shadow:inset 0 0 0 0.5px var(--ok-line)">
+            <span style="color:var(--ok);display:inline-flex"><i data-i="checkCircle"></i></span>
+            <span style="flex:1;font-size:var(--fs-12);color:var(--text-1)">已获得完全磁盘访问，占用检测正常</span>
+          </div>
+        </div>
+        <p class="spec-note" style="margin-top:0">
+          <b>授权成功后给一次正反馈</b>（绿色条，约 3 秒后自动淡出）。
+          用户刚在系统设置里翻了一通，回到应用需要确认「我做对了」——
+          否则他会怀疑是不是还要再授权一次。
+        </p>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ===================== 说明 ===================== -->
+  <div class="doc__section">
+    <h2 class="doc__h2">设计说明 <em>Rationale</em></h2>
+    <div class="grid2">
+      <div class="panel">
+        <h3 class="doc__h3" style="margin-top:0">要点</h3>
+        <ul class="note-list">
+          <li><b>只弹一次。</b>用 <code>hasShownFDAOnboarding</code> 记住是否已展示；之后未授权只在主窗口留一条横幅，不再打断。</li>
+          <li><b>「稍后」是真的稍后。</b>拒绝不等于功能失效——磁盘仍可推出，只是看不到占用者。界面必须诚实反映这一点。</li>
+          <li><b>三步带编号与连接线。</b>权限引导是「跨应用的任务」，用户要离开本应用、在系统设置里操作、再回来。编号帮助他在中断后接上。</li>
+          <li><b>直达链接。</b><code>x-apple.systempreferences:…?Privacy_AllFiles</code>，不让用户自己找路径。</li>
+          <li><b>不承诺重启。</b>应用每 15 秒轮询一次，并在窗口重新激活时立即刷新——文案如实写「无需重启」。</li>
+        </ul>
+      </div>
+
+      <div class="panel">
+        <h3 class="doc__h3" style="margin-top:0">规格 Handoff</h3>
+        <ul class="note-list">
+          <li>面板宽 <code>380</code>，内容内边距 <code>24 / 20 / 20</code></li>
+          <li>顶部图标容器 <code>52 × 52</code>，圆角 <code>14</code>，图标 <code>26</code></li>
+          <li>标题 <code>17 / 600</code> 居中；说明 <code>13 / 400</code> 居中，行高 <code>1.6</code></li>
+          <li>步骤序号圆点 <code>22 × 22</code>；连接线 <code>1.5px</code>；步骤文字 <code>12</code>，注释 <code>11</code></li>
+          <li>路径用等宽字体 <code>11 mono</code> + 静默底</li>
+          <li>主按钮高 <code>30</code>；按钮组右对齐，间距 <code>8</code></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+</div>
+</div>
+<script src="../assets/ds.js"></script>
+</body>
+</html>

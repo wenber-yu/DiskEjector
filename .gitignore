@@ -4,6 +4,10 @@ dist/
 /Packages
 SPMPackages/
 
+# 覆盖率运行会把 profraw 落到「当前工作目录」（不是 .build/ 里）——
+# `swift test --enable-code-coverage` 之后直接跑一次二进制就会在仓库根留下它。
+default.profraw
+
 # ---- Xcode / SPM 本地状态 ----
 xcuserdata/
 DerivedData/
@@ -22,3 +26,5 @@ DiskEjector-UI-Design/runtime-*.json
 
 # ---- 本地工作记忆（本项目会话日志与长期笔记，不入库）----
 .workbuddy/
+# 新一代记忆目录（与 .workbuddy/ 并存，同样不入库）
+.workbuddy-ai/

@@ -20,6 +20,19 @@ struct IntegrationEjectTests {
 
         let dmg = "/tmp/DiskEjectorEjectTest.dmg"
         let vol = "/Volumes/DiskEjectorEjectTest"
+        var tail: Process?
+
+        // 清理必须**在任何可能失败的步骤之前**登记。
+        // 原先 defer 写在 `tail.run()` 之后，而上面第 27 行的写入也在它之前 ——
+        // 一旦写入抛错，defer 还没注册，挂载点与临时 dmg 就一起泄漏了。
+        // 2026-09-15 实际踩过：写入被沙箱拦截 → `/Volumes/DiskEjectorEjectTest`
+        // 一直挂着、`/tmp` 里留了 5 MB 映像，只能手工 hdiutil detach。
+        defer {
+            tail?.terminate()
+            try? shell("hdiutil detach \(vol) 2>/dev/null")
+            try? FileManager.default.removeItem(atPath: dmg)
+        }
+
         try? shell("hdiutil detach \(vol) 2>/dev/null")
         try? FileManager.default.removeItem(atPath: dmg)
         try shell("hdiutil create -size 5m -fs HFS+ -volname DiskEjectorEjectTest \(dmg)")
@@ -27,17 +40,12 @@ struct IntegrationEjectTests {
         try "hi".write(toFile: "\(vol)/x.txt", atomically: true, encoding: .utf8)
 
         // 制造一个真实占用进程（tail -f 持续打开文件）。
-        let tail = Process()
-        tail.executableURL = URL(fileURLWithPath: "/usr/bin/tail")
-        tail.arguments = ["-f", "\(vol)/x.txt"]
-        tail.standardOutput = FileHandle.nullDevice
-        try tail.run()
-
-        defer {
-            tail.terminate()
-            try? shell("hdiutil detach \(vol) 2>/dev/null")
-            try? FileManager.default.removeItem(atPath: dmg)
-        }
+        let tailProcess = Process()
+        tailProcess.executableURL = URL(fileURLWithPath: "/usr/bin/tail")
+        tailProcess.arguments = ["-f", "\(vol)/x.txt"]
+        tailProcess.standardOutput = FileHandle.nullDevice
+        try tailProcess.run()
+        tail = tailProcess
 
         guard let disk = DiskService.shared.fetchExternalDisks().first(where: { $0.mountPath == vol }) else {
             Issue.record("未找到测试盘 \(vol)")
@@ -64,8 +72,13 @@ struct IntegrationEjectTests {
         #expect(!stillThere, "推出后卷应已消失")
     }
 
-    /// 探测当前环境能否挂载磁盘映像：尝试挂载并立即卸载一个最小 dmg。
+    /// 探测当前环境能否挂载磁盘映像**并往卷里写文件**：尝试挂载、写入、再立即卸载一个最小 dmg。
     /// 成功返回 true（顺带清理），失败返回 false（测试将跳过）。
+    ///
+    /// **为什么探针必须连「可写」一起探**：受管 / 嵌套沙箱会**放行 `hdiutil attach`，却拦下
+    /// 对挂载点的写入**（`atomically: true` 要在同卷建临时目录，那一步被拒）。只探「能挂载」
+    /// 会把这类环境误判成可用，随后在真正写文件时抛错 —— 既误报成产品缺陷，又因为当时
+    /// `defer` 尚未注册而留下挂载残留。所以这里用与测试**完全相同**的写法探一次可写性。
     private static func canAttachDiskImage() -> Bool {
         let dmg = "/tmp/DiskEjectorCanary.dmg"
         let vol = "/Volumes/DiskEjectorCanary"
@@ -85,9 +98,12 @@ struct IntegrationEjectTests {
             _ = s("rm -f \(dmg)")
             return false
         }
+
+        let writable = (try? "probe".write(toFile: "\(vol)/.write-probe", atomically: true, encoding: .utf8)) != nil
+
         _ = s("hdiutil detach \(vol)")
         _ = s("rm -f \(dmg)")
-        return true
+        return writable
     }
 
     private func shell(_ command: String) throws {

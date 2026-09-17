@@ -12,7 +12,7 @@ enum VisualStyle: String, CaseIterable, Sendable {
 
     static let `default`: VisualStyle = .transparent
 
-    /// 设置面板下拉里的显示名（本地化）。
+    /// 设置面板里的**显示名（长）**，用于无障碍朗读与提示。
     ///
     /// 与 ``AccentColor/displayName`` 同源：显示名只在这里定义一次，
     /// 视图侧不许再各写一份 `switch` —— 否则新增风格时必然出现「枚举加了、下拉里没有」。
@@ -20,6 +20,21 @@ enum VisualStyle: String, CaseIterable, Sendable {
         switch self {
         case .transparent: return L10n.tr(.transparentMode)
         case .tinted: return L10n.tr(.tintedMode)
+        }
+    }
+
+    /// 分段控件上的**短标签**（设计稿 `05-settings.html` 规定为「透明」/「色调」）。
+    ///
+    /// **为什么必须与 `displayName` 分开**：分段控件的宽度**不可压缩** —— 标签换行会被
+    /// SwiftUI 拒绝，它只会按固有宽度撑开，把同一行里 `maxWidth: .infinity` 的弹性列
+    /// （也就是「视觉效果」标签列）挤到只剩一个字宽，渲染成竖排单字。
+    /// 实测：用长名时该行内容理想宽 745pt，而面板只有 440pt，溢出 305pt；
+    /// 改用短标签后降到面板之内。
+    /// 长名不删 —— 它是 VoiceOver 该念的完整表述，挂在这个控件的 accessibilityLabel 上。
+    var shortName: String {
+        switch self {
+        case .transparent: return L10n.tr(.transparentModeShort)
+        case .tinted: return L10n.tr(.tintedModeShort)
         }
     }
 }

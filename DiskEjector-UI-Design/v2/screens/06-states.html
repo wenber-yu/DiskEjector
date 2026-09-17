@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light" data-accent="blue">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>状态矩阵 · DiskEjector UI v2</title>
+<link rel="stylesheet" href="../assets/ds.css">
+<style>
+  .note-list { margin: 0; padding-left: 18px; font-size: var(--fs-12); color: var(--text-2); line-height: 1.7; }
+  .note-list li { margin-bottom: 6px; }
+  .note-list b { color: var(--text-1); }
+  .note-list code { font-family: var(--font-mono); font-size: var(--fs-11); background: var(--bg-subtle); padding: 1px 5px; border-radius: var(--r-xs); }
+  table.state-tbl { width: 100%; border-collapse: collapse; font-size: var(--fs-12); }
+  table.state-tbl th {
+    text-align: left; font-size: var(--fs-11); font-weight: 600; color: var(--text-3);
+    text-transform: uppercase; letter-spacing: 0.05em;
+    padding: 0 10px 8px; border-bottom: 0.5px solid var(--border);
+  }
+  table.state-tbl td { padding: 11px 10px; border-bottom: 0.5px solid var(--hairline); vertical-align: middle; }
+  table.state-tbl tr:last-child td { border-bottom: 0; }
+  table.state-tbl code { font-family: var(--font-mono); font-size: var(--fs-11); color: var(--text-2); }
+  .dot { width: 9px; height: 9px; border-radius: 999px; display: inline-block; flex: none; }
+</style>
+</head>
+<body class="ds">
+<div class="wallpaper">
+<div class="doc">
+
+  <nav class="doc__nav">
+    <a href="../index.html">设计规范总览</a>
+    <a href="01-main-window.html">主窗口</a>
+    <a href="02-menu-bar.html">菜单栏面板</a>
+    <a href="03-eject-flow.html">推出流程弹窗</a>
+    <a href="04-onboarding.html">授权引导</a>
+    <a href="05-settings.html">设置面板</a>
+    <a href="06-states.html" aria-current="page">状态矩阵</a>
+    <a href="07-dark.html">深色模式</a>
+  </nav>
+
+  <p class="doc__eyebrow">Screen 06 · States</p>
+  <h1 class="doc__title">状态矩阵</h1>
+  <p class="doc__lede">
+    一个界面是否经得起用，取决于它的<strong>边缘状态</strong>是否都被设计过。
+    这一页覆盖空、多、忙、未知四种情况，以及它们的视觉语言如何保持一致。
+  </p>
+
+  <!-- ===================== A. 空状态 ===================== -->
+  <div class="doc__section" style="margin-top:0">
+    <h2 class="doc__h2">A · 空状态 <em>Empty</em></h2>
+    <p class="doc__h2desc">
+      空状态不是「出错」，是<strong>还没开始</strong>。所以它不该用警告色，也不该只写「无数据」——
+      要告诉用户接下来会发生什么，并且不需要他做任何事。
+    </p>
+
+    <div class="frame">
+      <div class="frame__label">800 × 520 · 未插入任何外置磁盘</div>
+      <div class="win win--main">
+        <header class="titlebar">
+          <div class="traffic" aria-hidden="true"><i></i><i></i><i></i></div>
+          <span class="titlebar__title">外置磁盘</span>
+          <span class="titlebar__spacer"></span>
+          <div class="titlebar__tools">
+            <button class="iconbtn" title="刷新磁盘列表" aria-label="刷新磁盘列表"><i data-i="refresh"></i></button>
+            <button class="iconbtn" title="设置" aria-label="设置"><i data-i="gear"></i></button>
+          </div>
+        </header>
+
+        <div class="scrollarea">
+          <div class="empty">
+            <div class="empty__art"><i data-i="drive"></i></div>
+            <div class="empty__title">还没有可推出的磁盘</div>
+            <div class="empty__desc">
+              插入移动硬盘或 U 盘后，会自动出现在这里。<br>
+              系统盘与网络卷不会被列出。
+            </div>
+            <div class="empty__act">
+              <button class="btn btn--outline"><i data-i="refresh"></i>刷新</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <p class="spec-note">
+        <b>为什么写「系统盘与网络卷不会被列出」。</b>用户插了盘却没看到时，第一个疑问是
+        「是不是坏了」。这句话提前解释了筛选规则，把一次可能的困惑消灭在发生之前。
+      </p>
+    </div>
+  </div>
+
+  <!-- ===================== B. 高密度 ===================== -->
+  <div class="doc__section">
+    <h2 class="doc__h2">B · 多盘高密度 <em>Compact</em></h2>
+    <p class="doc__h2desc">
+      <strong>≥ 4 块磁盘时自动切换到单行布局。</strong>完整行的 112pt 高在 6 块盘时会把列表撑到
+      三屏，用户反而找不到目标。紧凑行压到 46pt，一屏 8 块，同时保留判定所需的全部信息：
+      名称、容量、占用状态、动作。
+    </p>
+
+    <div class="frame">
+      <div class="frame__label">800 × 520 · 6 块磁盘 · 紧凑行</div>
+      <div class="win win--main">
+        <header class="titlebar">
+          <div class="traffic" aria-hidden="true"><i></i><i></i><i></i></div>
+          <span class="titlebar__title">外置磁盘</span>
+          <span class="titlebar__sub">6 块</span>
+          <span class="titlebar__spacer"></span>
+          <div class="titlebar__tools">
+            <button class="iconbtn" title="刷新磁盘列表" aria-label="刷新磁盘列表"><i data-i="refresh"></i></button>
+            <button class="iconbtn" title="设置" aria-label="设置"><i data-i="gear"></i></button>
+          </div>
+        </header>
+
+        <div class="scrollarea">
+          <div class="disklist" style="gap:4px">
+
+            <div class="crow crow--busy">
+              <div class="crow__icon crow__icon--busy"><i data-i="drive"></i></div>
+              <span class="crow__name">Samsung T7</span>
+              <span class="crow__meta">1 TB · 已用 300 GB · 剩余 700 GB</span>
+              <span class="crow__grow"></span>
+              <span class="crow__status"><i data-i="warn"></i>2 个程序占用</span>
+              <button class="btn btn--danger btn--sm crow__btn">关闭并推出</button>
+            </div>
+
+            <div class="crow">
+              <div class="crow__icon"><i data-i="drive"></i></div>
+              <span class="crow__name">WD Blue</span>
+              <span class="crow__meta">500 GB · 已用 120 GB · 剩余 380 GB</span>
+              <span class="crow__grow"></span>
+              <span class="crow__status crow__status--safe"><i data-i="check"></i>可安全推出</span>
+              <button class="btn btn--primary btn--sm crow__btn">推出</button>
+            </div>
+
+            <div class="crow">
+              <div class="crow__icon"><i data-i="drive"></i></div>
+              <span class="crow__name">Backup SSD</span>
+              <span class="crow__meta">2 TB · 已用 1.4 TB · 剩余 600 GB</span>
+              <span class="crow__grow"></span>
+              <span class="crow__status crow__status--safe"><i data-i="check"></i>可安全推出</span>
+              <button class="btn btn--primary btn--sm crow__btn">推出</button>
+            </div>
+
+            <div class="crow crow--busy">
+              <div class="crow__icon crow__icon--busy"><i data-i="drive"></i></div>
+              <span class="crow__name">SanDisk Extreme</span>
+              <span class="crow__meta">1 TB · 已用 640 GB · 剩余 384 GB</span>
+              <span class="crow__grow"></span>
+              <span class="crow__status"><i data-i="warn"></i>1 个程序占用</span>
+              <button class="btn btn--danger btn--sm crow__btn">关闭并推出</button>
+            </div>
+
+            <div class="crow">
+              <div class="crow__icon"><i data-i="drive"></i></div>
+              <span class="crow__name">Untitled</span>
+              <span class="crow__meta">64 GB · 已用 12 GB · 剩余 52 GB</span>
+              <span class="crow__grow"></span>
+              <span class="crow__status crow__status--unknown">可安全推出</span>
+              <button class="btn btn--primary btn--sm crow__btn">推出</button>
+            </div>
+
+            <div class="crow">
+              <div class="crow__icon"><i data-i="drive"></i></div>
+              <span class="crow__name">Time Machine</span>
+              <span class="crow__meta">4 TB · 已用 3.1 TB · 剩余 900 GB</span>
+              <span class="crow__grow"></span>
+              <span class="crow__status crow__status--safe"><i data-i="check"></i>可安全推出</span>
+              <button class="btn btn--primary btn--sm crow__btn">推出</button>
+            </div>
+
+          </div>
+        </div>
+      </div>
+      <p class="spec-note">
+        <b>紧凑模式去掉容量条</b>——「已用 300 GB · 剩余 700 GB」已经完整表达同一信息，
+        再画一根条只是重复。有占用时仍保留左侧琥珀条与红色按钮，判定线索一条不少。
+      </p>
+    </div>
+  </div>
+
+  <!-- ===================== C. 进行中 ===================== -->
+  <div class="doc__section">
+    <h2 class="doc__h2">C · 进行中 <em>In progress</em></h2>
+    <p class="doc__h2desc">
+      所有进行中的状态都必须<strong>就地反馈</strong>，而不是弹一个「处理中…」的遮罩。
+      用户点哪一行，就在那一行看到反馈。
+    </p>
+
+    <div class="artboard" style="gap:48px">
+      <div class="frame">
+        <div class="frame__label">推出中 · 按钮就地变为 spinner</div>
+        <div class="win" style="width:520px;border-radius:var(--r-md)">
+          <div style="padding:12px">
+            <div class="row" style="padding:12px 10px">
+              <div class="row__icon"><div class="diskicon"><i data-i="drive"></i></div></div>
+              <div class="row__main">
+                <div class="row__head">
+                  <div class="row__id">
+                    <div class="row__nameline">
+                      <span class="row__name">WD Blue</span>
+                      <span class="row__fs">500 GB</span>
+                    </div>
+                    <div class="row__meta">已用 <b>120 GB</b> · 剩余 <b>380 GB</b></div>
+                  </div>
+                  <div class="row__act">
+                    <button class="btn btn--outline btn--sm" disabled style="opacity:.75;cursor:default">
+                      <span class="spin"><i data-i="spinner"></i></span>推出中
+                    </button>
+                  </div>
+                </div>
+                <div class="meter">
+                  <div class="meter__track"><div class="meter__fill" style="width:24%"></div></div>
+                  <span class="meter__pct">24%</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <p class="spec-note" style="max-width:520px">
+          推出中按钮<strong>保留原尺寸</strong>（换成 spinner 后不能塌陷），并禁用重复点击。
+          不显示进度百分比——系统推出接口不提供进度，编一个进度条是撒谎。
+        </p>
+      </div>
+
+      <div class="frame">
+        <div class="frame__label">首次加载 · 骨架屏（< 300ms 不显示）</div>
+        <div class="win" style="width:520px;border-radius:var(--r-md)">
+          <div style="padding:12px;display:flex;flex-direction:column;gap:10px">
+            <div style="display:flex;align-items:center;gap:10px">
+              <div class="skeleton" style="width:30px;height:30px;border-radius:8px"></div>
+              <div class="skeleton" style="width:110px;height:13px"></div>
+              <div class="skeleton" style="width:150px;height:11px"></div>
+            </div>
+            <div style="display:flex;align-items:center;gap:10px">
+              <div class="skeleton" style="width:30px;height:30px;border-radius:8px"></div>
+              <div class="skeleton" style="width:90px;height:13px"></div>
+              <div class="skeleton" style="width:170px;height:11px"></div>
+            </div>
+            <div style="display:flex;align-items:center;gap:10px">
+              <div class="skeleton" style="width:30px;height:30px;border-radius:8px"></div>
+              <div class="skeleton" style="width:130px;height:13px"></div>
+              <div class="skeleton" style="width:140px;height:11px"></div>
+            </div>
+          </div>
+        </div>
+        <p class="spec-note" style="max-width:520px">
+          磁盘枚举通常在 <code>50ms</code> 内完成，所以骨架屏只在<strong>超过 300ms</strong> 时出现，
+          避免一闪而过的闪烁。占用检测（<code>lsof</code>）较慢，走行内状态文字而不是骨架屏。
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== D. 视觉语言 ===================== -->
+  <div class="doc__section">
+    <h2 class="doc__h2">D · 视觉语言对照 <em>Semantics</em></h2>
+    <p class="doc__h2desc">
+      三种磁盘状态共用一套固定的编码规则：<strong>左侧色条 + 图标 + 文字结论 + 按钮形态</strong>。
+      任何状态都至少有两重编码，不依赖颜色单独传达信息。
+    </p>
+
+    <div class="panel">
+      <table class="state-tbl">
+        <thead>
+          <tr>
+            <th style="width:120px">状态</th>
+            <th style="width:100px">色条</th>
+            <th style="width:200px">行内结论</th>
+            <th style="width:170px">主按钮</th>
+            <th>触发条件</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><span style="display:inline-flex;align-items:center;gap:7px"><span class="dot" style="background:var(--warn)"></span><b>被占用</b></span></td>
+            <td><span style="display:inline-block;width:3px;height:18px;border-radius:2px;background:var(--warn)"></span> 琥珀</td>
+            <td><span style="color:var(--warn-text);font-weight:600">2 个程序正在占用</span></td>
+            <td><span class="btn btn--danger btn--sm" style="pointer-events:none">关闭并推出</span></td>
+            <td><code>lsof</code> 检出至少一个进程持有该卷的文件句柄</td>
+          </tr>
+          <tr>
+            <td><span style="display:inline-flex;align-items:center;gap:7px"><span class="dot" style="background:var(--ok)"></span><b>可安全推出</b></span></td>
+            <td>—</td>
+            <td><span style="color:var(--ok-text)">✓ 没有程序占用，可以安全推出</span></td>
+            <td><span class="btn btn--primary btn--sm" style="pointer-events:none">推出</span></td>
+            <td><code>lsof</code> 返回 0 行，且已获得 FDA 授权</td>
+          </tr>
+          <tr>
+            <td><span style="display:inline-flex;align-items:center;gap:7px"><span class="dot" style="background:var(--text-3)"></span><b>未知</b></span></td>
+            <td>—</td>
+            <td><span style="color:var(--text-2)">占用情况未知 · 授权后可检测</span></td>
+            <td><span class="btn btn--primary btn--sm" style="pointer-events:none">推出</span></td>
+            <td>未授权 FDA（直发版）或沙盒环境（MAS 版）</td>
+          </tr>
+          <tr>
+            <td><span style="display:inline-flex;align-items:center;gap:7px"><span class="dot" style="background:var(--accent)"></span><b>进行中</b></span></td>
+            <td>—</td>
+            <td><span style="color:var(--text-2)">按钮就地变为「推出中」+ spinner</span></td>
+            <td><span class="btn btn--outline btn--sm" style="pointer-events:none"><span class="spin"><i data-i="spinner"></i></span>推出中</span></td>
+            <td>已发起推出请求，等待系统返回</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="panel" style="margin-top:16px">
+      <h3 class="doc__h3" style="margin-top:0">两条硬规则</h3>
+      <div class="grid2">
+        <ul class="note-list">
+          <li><b>「未知」绝不渲染成「没有占用」。</b>未授权 FDA 时若显示「可安全推出」，用户会以为可以拔，
+            实际上 Spotlight 可能正抓着这块盘——这是本应用最不能犯的错误。</li>
+        </ul>
+        <ul class="note-list">
+          <li><b>琥珀只表示「被占用」，红色只表示「破坏性」。</b>磁盘快写满、容量告警等其他语义
+            一律不使用这两种颜色，避免同一颜色在同一界面里承担两种含义。</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+</div>
+</div>
+<script src="../assets/ds.js"></script>
+</body>
+</html>

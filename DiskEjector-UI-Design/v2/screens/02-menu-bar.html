@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light" data-accent="blue">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>菜单栏面板 · DiskEjector UI v2</title>
+<link rel="stylesheet" href="../assets/ds.css">
+<style>
+  .note-list { margin: 0; padding-left: 18px; font-size: var(--fs-12); color: var(--text-2); line-height: 1.7; }
+  .note-list li { margin-bottom: 6px; }
+  .note-list b { color: var(--text-1); }
+  .note-list code { font-family: var(--font-mono); font-size: var(--fs-11); background: var(--bg-subtle); padding: 1px 5px; border-radius: var(--r-xs); }
+  /* 菜单栏图标：模拟状态栏中的样子 */
+  .statusbar {
+    display: flex; align-items: center; justify-content: flex-end; gap: 14px;
+    height: 26px; padding: 0 12px; border-radius: 7px 7px 0 0;
+    background: rgba(255,255,255,0.42);
+    -webkit-backdrop-filter: blur(24px) saturate(180%); backdrop-filter: blur(24px) saturate(180%);
+    font-size: var(--fs-12); color: var(--text-2);
+  }
+  .statusbar__app { display: inline-flex; align-items: center; gap: 5px; color: var(--text-1); }
+  .statusbar__app svg { width: 15px; height: 15px; }
+  .statusbar__item { display: inline-flex; color: var(--text-2); }
+  .statusbar__item svg { width: 15px; height: 15px; }
+  .popstack { display: flex; flex-direction: column; align-items: flex-end; }
+</style>
+</head>
+<body class="ds">
+<div class="wallpaper">
+<div class="doc">
+
+  <nav class="doc__nav">
+    <a href="../index.html">设计规范总览</a>
+    <a href="01-main-window.html">主窗口</a>
+    <a href="02-menu-bar.html" aria-current="page">菜单栏面板</a>
+    <a href="03-eject-flow.html">推出流程弹窗</a>
+    <a href="04-onboarding.html">授权引导</a>
+    <a href="05-settings.html">设置面板</a>
+    <a href="06-states.html">状态矩阵</a>
+    <a href="07-dark.html">深色模式</a>
+  </nav>
+
+  <p class="doc__eyebrow">Screen 02 · Menu Bar Popover</p>
+  <h1 class="doc__title">菜单栏面板</h1>
+  <p class="doc__lede">
+    菜单栏承担「随手推一下」的职责，所以它<strong>不重复主窗口的诊断信息</strong>：一行一块盘、
+    一行一个动作，键盘可达，全程不需要移动视线。宽度固定 360pt —— 这是排版的上限，不是目标。
+  </p>
+
+  <div class="artboard" style="gap:64px">
+
+    <!-- ============ 有盘 ============ -->
+    <div class="frame">
+      <div class="frame__label">360 × 自适应 · 2 块磁盘（1 块被占用）</div>
+
+      <div class="popstack">
+        <div class="statusbar" aria-hidden="true">
+          <span class="statusbar__item"><i data-i="wifi"></i></span>
+          <span class="statusbar__item"><i data-i="battery"></i></span>
+          <span class="statusbar__item"><i data-i="search"></i></span>
+          <span class="statusbar__app"><i data-i="eject"></i>DiskEjector</span>
+          <span>12:02</span>
+        </div>
+
+        <div class="win win--popover" role="img" aria-label="菜单栏弹出面板，列出两块外置磁盘">
+          <div class="pop__header">
+            <span class="pop__appicon"><i data-i="eject"></i></span>
+            <span class="pop__appname">磁盘推出助手</span>
+            <span class="pop__count">2</span>
+            <span style="flex:1"></span>
+            <button class="iconbtn" title="刷新磁盘列表" aria-label="刷新磁盘列表"><i data-i="refresh"></i></button>
+          </div>
+
+          <div class="pop__body">
+
+            <!-- 被占用 -->
+            <div class="mrow mrow--busy">
+              <div class="mrow__icon mrow__icon--busy"><i data-i="drive"></i></div>
+              <div class="mrow__text">
+                <div class="mrow__name">Samsung T7<span>（1 TB）</span></div>
+                <div class="mrow__cap">已用 300 GB · 剩余 700 GB</div>
+                <div class="mrow__occ">占用程序：Finder、图像捕捉</div>
+              </div>
+              <button class="mbtn mbtn--busy" title="关闭并推出 Samsung T7"
+                      aria-label="关闭并推出 Samsung T7"><i data-i="eject"></i></button>
+            </div>
+
+            <!-- 可安全推出 -->
+            <div class="mrow">
+              <div class="mrow__icon"><i data-i="drive"></i></div>
+              <div class="mrow__text">
+                <div class="mrow__name">WD Blue<span>（500 GB）</span></div>
+                <div class="mrow__cap">已用 120 GB · 剩余 380 GB</div>
+                <div class="mrow__occ mrow__occ--safe">可安全推出</div>
+              </div>
+              <button class="mbtn" title="推出 WD Blue" aria-label="推出 WD Blue"><i data-i="eject"></i></button>
+            </div>
+
+          </div>
+
+          <div class="pop__sep"></div>
+
+          <div class="pop__body" style="padding-top:0">
+            <button class="actionrow"><i data-i="window"></i>打开主窗口<span class="actionrow__key">⌘O</span></button>
+            <button class="actionrow"><i data-i="refresh"></i>刷新磁盘列表<span class="actionrow__key">⌘R</span></button>
+            <button class="actionrow"><i data-i="gear"></i>设置<span class="actionrow__key">⌘,</span></button>
+            <button class="actionrow actionrow--danger"><i data-i="power"></i>退出 DiskEjector<span class="actionrow__key">⌘Q</span></button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ 空状态 ============ -->
+    <div class="frame">
+      <div class="frame__label">360 × 自适应 · 未插入磁盘</div>
+      <div class="win win--popover">
+        <div class="pop__header">
+          <span class="pop__appicon"><i data-i="eject"></i></span>
+          <span class="pop__appname">磁盘推出助手</span>
+          <span class="pop__count">0</span>
+          <span style="flex:1"></span>
+          <button class="iconbtn" title="刷新磁盘列表" aria-label="刷新磁盘列表"><i data-i="refresh"></i></button>
+        </div>
+
+        <div class="pop__body" style="padding:8px 12px 16px">
+          <div style="display:flex;flex-direction:column;align-items:center;text-align:center;gap:6px;padding:14px 8px 6px">
+            <div class="empty__art" style="width:56px;height:56px;margin-bottom:2px;border-radius:var(--r-lg)">
+              <i data-i="drive"></i>
+            </div>
+            <div style="font-size:var(--fs-13);font-weight:600">未检测到外置磁盘</div>
+            <div style="font-size:var(--fs-11);color:var(--text-2);line-height:1.55;max-width:250px">
+              插入移动硬盘或 U 盘后，会自动出现在这里
+            </div>
+          </div>
+        </div>
+
+        <div class="pop__sep"></div>
+
+        <div class="pop__body" style="padding-top:0">
+          <button class="actionrow"><i data-i="window"></i>打开主窗口<span class="actionrow__key">⌘O</span></button>
+          <button class="actionrow"><i data-i="refresh"></i>刷新磁盘列表<span class="actionrow__key">⌘R</span></button>
+          <button class="actionrow"><i data-i="gear"></i>设置<span class="actionrow__key">⌘,</span></button>
+          <button class="actionrow actionrow--danger"><i data-i="power"></i>退出 DiskEjector<span class="actionrow__key">⌘Q</span></button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ===================== 说明 ===================== -->
+  <div class="doc__section">
+    <h2 class="doc__h2">设计说明 <em>Rationale</em></h2>
+    <div class="grid2">
+      <div class="panel">
+        <h3 class="doc__h3" style="margin-top:0">两个形态的分工</h3>
+        <ul class="note-list">
+          <li><b>菜单栏 = 动作。</b>一行一块盘，只保留判定必需的三行文案：名称（总容量）、已用/剩余、占用者。<strong>不放容量进度条</strong>——360pt 里它只占地方，不改变决策。</li>
+          <li><b>主窗口 = 诊断。</b>容量条、证据区展开、芯片化的占用者、FDA 横幅，都归主窗口。</li>
+          <li><b>状态驱动按钮配色。</b>安全行是幽灵态图标按钮（安静），占用行常显红底（需要决策）。扫一眼就知道哪一行要停下来看。</li>
+          <li><b>行内不写 PID。</b>菜单栏是「随手推」的场景，PID 属于主窗口与确认弹窗的精度需求。</li>
+          <li><b>快捷键标注。</b>菜单栏面板是键盘用户的高频入口，⌘O / ⌘R / ⌘, / ⌘Q 直接印在行尾。</li>
+        </ul>
+      </div>
+
+      <div class="panel">
+        <h3 class="doc__h3" style="margin-top:0">规格 Handoff</h3>
+        <ul class="note-list">
+          <li>面板宽 <code>360pt</code>，圆角 <code>14</code>，材质 <code>blur(20) saturate(180)</code></li>
+          <li>头部高 <code>44</code>；应用图标 <code>22 × 22</code>，圆角 <code>6</code></li>
+          <li>磁盘行：图标容器 <code>32 × 32</code>（圆角 6），行内边距 <code>8</code>，行圆角 <code>10</code></li>
+          <li>三行文案字号 <code>13 / 11 / 11</code>；行间距 <code>1</code></li>
+          <li><b>占用行为空时整行不渲染</b>（<code>.needsFullDiskAccess</code> / <code>.unknown</code> 也返回空——它们是「不知道」，渲染成「无占用」会让用户误判）</li>
+          <li>行内推出按钮 <code>26 × 26</code>，图标 <code>14</code></li>
+          <li>动作行高 <code>30</code>，图标 <code>15</code>，文字 <code>13</code>，快捷键 <code>11 mono</code></li>
+          <li>分隔线 <code>0.5px</code>，左右缩进 <code>12</code></li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="panel" style="margin-top:16px">
+      <h3 class="doc__h3" style="margin-top:0">无障碍 Accessibility</h3>
+      <ul class="note-list">
+        <li><b>行内图标按钮必须带磁盘名的可访问性标签</b>——「推出 WD Blue」而不是「推出」。多块盘时，一串同名的「推出」对 VoiceOver 用户毫无区分度。</li>
+        <li><b>状态栏图标</b>：<code>setAccessibilityLabel("DiskEjector")</code> + role <code>.button</code>，并暴露当前磁盘数量，让用户不必打开面板就知道有没有盘。</li>
+        <li><b>三行文案不要合并成单一元素</b>——合并会把行内按钮一起吞进去，导致 VoiceOver「能读不能点」。</li>
+      </ul>
+    </div>
+  </div>
+
+</div>
+</div>
+<script src="../assets/ds.js"></script>
+</body>
+</html>

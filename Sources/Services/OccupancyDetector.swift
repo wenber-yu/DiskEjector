@@ -43,8 +43,11 @@ class OccupancyDetector: @unchecked Sendable {
 
     private static let logger = Logger(subsystem: "com.diskejector.app", category: "Occupancy")
 
-    /// lsof 单次调用的最长等待时间，超时即视为检测失败。
-    private static let lsofTimeoutNanoseconds: UInt64 = 5 * 1_000_000_000
+    /// lsof 单次调用的最长等待时间（秒），超时即视为检测失败。
+    ///
+    /// ⚠️ 这个数现在**真的会生效**（以前不会，见 ``SubprocessOutput`` 的说明）。
+    /// 本机 `lsof` 单个卷实测 0.15~0.26s（含根卷 1.7MB 输出），留了 20 倍余量。
+    static let lsofTimeout: TimeInterval = 5
 
     /// 当前进程是否运行在 App Sandbox 内。
     ///
@@ -161,76 +164,49 @@ class OccupancyDetector: @unchecked Sendable {
     }
 
     /// 同步执行 lsof 并读取全部输出（diagnostics 使用）。
+    ///
+    /// **为什么不直接 `readDataToEndOfFile()`**：那正是下面 ``SubprocessOutput`` 说明里
+    /// 那个会永久阻塞的写法。这里改成「启动后转 run loop 等收尾」——
+    /// 既不阻塞回调所在的队列（`readabilityHandler` 跑在哪条队列上由系统决定，
+    /// 拿信号量堵主线程有可能和它撞车），也仍然有硬超时兜底。
     private static func lsofOutputSync(mountPath: String) -> String? {
-        let task = Process()
-        let pipe = Pipe()
-        task.executableURL = URL(fileURLWithPath: "/usr/sbin/lsof")
-        task.arguments = ["-Fpcn0", mountPath]
-        task.standardOutput = pipe
-        task.standardError = FileHandle.nullDevice
-        do {
-            try task.run()
-        } catch {
-            logger.warning("lsof 启动失败: \(error.localizedDescription, privacy: .public)")
-            return nil
+        let run = SubprocessOutput(
+            executableURL: URL(fileURLWithPath: "/usr/sbin/lsof"),
+            arguments: ["-Fpcn0", mountPath],
+            timeout: lsofTimeout
+        ) { _ in }
+        run.start()
+
+        // 转 run loop 而不是 `semaphore.wait()`：主线程继续处理事件，
+        // 无论回调被派发到哪条队列都能被执行到。
+        let deadline = Date().addingTimeInterval(lsofTimeout + 3)
+        while !run.isFinished, Date() < deadline {
+            RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.05))
         }
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        task.waitUntilExit()
-        return String(data: data, encoding: .utf8)
+        return run.output
     }
 
     // MARK: - lsof
 
     /// 执行 lsof 并取回输出。
     ///
-    /// **两处必须的修正**（对比旧实现）：
-    /// 1. **先读后等**：旧实现先 `waitUntilExit()` 再 `readDataToEndOfFile()`。管道缓冲只有
-    ///    64KB，lsof 输出很容易超过（本机 `lsof /` 实测 4.7MB），此时子进程阻塞在写管道、
-    ///    父进程阻塞在等退出，形成永久死锁。必须先把管道读干再等退出。
-    /// 2. **stderr 不进管道**：旧实现把 stdout 与 stderr 接到同一个 Pipe，两者会互相抢占
-    ///    缓冲。这里直接丢弃 stderr，避免它填满缓冲后阻塞子进程。
+    /// - Returns: lsof 的原始输出；`nil` = 没拿到（启动失败或超时）。
     nonisolated private static func lsofOutput(mountPath: String) async -> String? {
-        let task = Process()
-        let pipe = Pipe()
-        // `-Fpcn0`：机器可读输出（p=PID、c=命令名、n=路径），记录以 NUL 分隔。
-        // 不用默认表格格式——它按空格切列，进程名含空格时会错位，见 ``parseLsof`` 的说明。
-        task.executableURL = URL(fileURLWithPath: "/usr/sbin/lsof")
-        task.arguments = ["-Fpcn0", mountPath]
-        task.standardOutput = pipe
-        task.standardError = FileHandle.nullDevice
-
-        do {
-            try task.run()
-        } catch {
-            logger.warning("lsof 启动失败: \(error.localizedDescription, privacy: .public)")
-            return nil
-        }
-
-        let reader = Task.detached(priority: .utility) { () -> String in
-            let data = pipe.fileHandleForReading.readDataToEndOfFile()
-            task.waitUntilExit()
-            return String(data: data, encoding: .utf8) ?? ""
-        }
-
-        let output: String? = await withTaskGroup(of: String?.self) { group in
-            group.addTask { await reader.value }
-            group.addTask {
-                try? await Task.sleep(nanoseconds: lsofTimeoutNanoseconds)
-                return nil
+        await withCheckedContinuation { (continuation: CheckedContinuation<String?, Never>) in
+            // `-Fpcn0`：机器可读输出（p=PID、c=命令名、n=路径），记录以 NUL 分隔。
+            // 不用默认表格格式——它按空格切列，进程名含空格时会错位，见 ``parseLsof`` 的说明。
+            //
+            // `run` 不需要调用方持有：``SubprocessOutput/start()`` 里的两个闭包
+            // （readabilityHandler 与超时块）都强引用 self，实例会活到收尾为止。
+            let run = SubprocessOutput(
+                executableURL: URL(fileURLWithPath: "/usr/sbin/lsof"),
+                arguments: ["-Fpcn0", mountPath],
+                timeout: lsofTimeout
+            ) { output in
+                continuation.resume(returning: output)
             }
-            // 取先完成的那个结果，然后取消另一个
-            guard let first = await group.next() else { return nil }
-            group.cancelAll()
-            return first
+            run.start()
         }
-
-        guard let output else {
-            // 超时：终止子进程，管道随之关闭，reader 会返回
-            task.terminate()
-            logger.error("lsof 超时（\(Self.lsofTimeoutNanoseconds / 1_000_000_000)s），已终止")
-            return nil
-        }
-        return output
     }
 
     /// 解析 `lsof -F` 的机器可读输出。
@@ -300,5 +276,139 @@ class OccupancyDetector: @unchecked Sendable {
         commit()  // 提交最后一条
 
         return byPid.values.sorted { $0.pid < $1.pid }
+    }
+}
+
+// MARK: - 子进程输出收集
+
+/// 跑一次子进程，把它 stdout 的**全部**输出收集回来，**并保证一定收尾**。
+///
+/// ## 为什么要有这个类型（它取代了「阻塞读管道 + 事后 terminate」的写法）
+///
+/// 旧写法长这样：
+///
+/// ```swift
+/// let reader = Task.detached { pipe.fileHandleForReading.readDataToEndOfFile() … }
+/// let output = await withTaskGroup(of: String?.self) { group in
+///     group.addTask { await reader.value }
+///     group.addTask { try? await Task.sleep(5s); return nil }
+///     guard let first = await group.next() else { return nil }
+///     group.cancelAll()
+///     return first
+/// }
+/// guard let output else { task.terminate(); return nil }   // ← 永远到不了
+/// ```
+///
+/// 它有两个叠加的致命缺陷。实测（2026-09-17，本机 100 次压测）：
+///
+/// 1. **超时是假的。** `withTaskGroup` 在闭包返回前会**等所有子任务结束**；
+///    而读管道的那个子任务在等 EOF。于是 `task.terminate()` 排在一个
+///    「只有 EOF 到了才会返回」的 `await` 之后 —— **一次都没被执行过**。
+///    那句「超时 5 秒」是个装饰。
+/// 2. **EOF 会不来。** 压测里大约第 10 次必现一次：子进程已经退出
+///    （`task.isRunning == false`），但 `readDataToEndOfFile()` 就是不返回 ——
+///    管道写端还被别的进程持有（fd 继承）。
+///
+/// 两个缺陷合起来正是用户报的「点一下刷新，一直转圈，像死循环」：
+/// ``ContentView/refreshDisks()`` 永远不返回，`defer { isRefreshing = false }`
+/// 永远不执行。因为它**偶发**（约 1/10），本地点两下未必能复现，极难定位。
+///
+/// ## 现在怎么写
+///
+/// - 输出走 `FileHandle.readabilityHandler`（**回调式，不阻塞任何线程**）；
+/// - 超时由 `DispatchQueue.asyncAfter` 负责 —— 它跑在自己的线程上，
+///   **既不依赖被测进程、也不依赖 Swift 并发线程池**，所以超时**真的会发生**；
+/// - 超时后 `terminate()` 杀掉子进程，并以 `nil` 收尾。
+///
+/// **压测对照**：同样 100 次（含 1.7MB 输出的根卷），本类型全部 ≤ 0.36s 返回；
+/// 旧写法在第 10 次左右必挂。
+final class SubprocessOutput: @unchecked Sendable {
+
+    private let lock = NSLock()
+    private let task = Process()
+    private let pipe = Pipe()
+    private let timeout: TimeInterval
+    private let completion: (String?) -> Void
+    private var buffer = Data()
+    private var finished = false
+
+    /// 结束后可读到输出；`nil` = 没拿到（启动失败或超时）。
+    private(set) var output: String?
+
+    /// 是否已经收尾（同步路径靠它轮询）。
+    var isFinished: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return finished
+    }
+
+    init(
+        executableURL: URL,
+        arguments: [String],
+        timeout: TimeInterval,
+        completion: @escaping @Sendable (String?) -> Void
+    ) {
+        self.timeout = timeout
+        self.completion = completion
+        task.executableURL = executableURL
+        task.arguments = arguments
+        task.standardOutput = pipe
+        // **stderr 不进管道**：它会和 stdout 抢那 64KB 缓冲，
+        // 填满之后子进程阻塞在写、父进程阻塞在读，又是一处死锁。直接丢弃。
+        task.standardError = FileHandle.nullDevice
+    }
+
+    /// 启动。**一定**会通过 `completion` 回调恰好一次（正常结束或超时）。
+    ///
+    /// 调用方**不需要**持有本实例：`start()` 里的两个闭包都强引用 self，
+    /// 实例会一直活到收尾；收尾时 `readabilityHandler` 置 nil，循环引用随之断开。
+    func start() {
+        do {
+            try task.run()
+        } catch {
+            complete(nil)
+            return
+        }
+
+        pipe.fileHandleForReading.readabilityHandler = { [self] handle in
+            let chunk = handle.availableData
+            if chunk.isEmpty {
+                // EOF：写端全部关闭，输出收齐了
+                completeFromBuffer()
+                return
+            }
+            lock.lock()
+            buffer.append(chunk)
+            lock.unlock()
+        }
+
+        DispatchQueue.global().asyncAfter(deadline: .now() + timeout) { [self] in
+            if task.isRunning {
+                task.terminate()
+            }
+            // 走到这里说明 EOF 没来（或来得太晚）—— 按「没拿到」收尾，
+            // 上层会按授权状态兜底，绝不让调用方永远等下去。
+            complete(nil)
+        }
+    }
+
+    private func completeFromBuffer() {
+        lock.lock()
+        let text = String(data: buffer, encoding: .utf8)
+        lock.unlock()
+        complete(text)
+    }
+
+    private func complete(_ value: String?) {
+        lock.lock()
+        guard !finished else {
+            lock.unlock()
+            return
+        }
+        finished = true
+        output = value
+        lock.unlock()
+        pipe.fileHandleForReading.readabilityHandler = nil
+        completion(value)
     }
 }

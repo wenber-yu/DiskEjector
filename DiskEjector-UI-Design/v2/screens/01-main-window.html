@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light" data-accent="blue">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>主窗口 · DiskEjector UI v2</title>
+<link rel="stylesheet" href="../assets/ds.css">
+<style>
+  .note-list { margin: 0; padding-left: 18px; font-size: var(--fs-12); color: var(--text-2); line-height: 1.7; }
+  .note-list li { margin-bottom: 6px; }
+  .note-list b { color: var(--text-1); }
+  .note-list code { font-family: var(--font-mono); font-size: var(--fs-11); background: var(--bg-subtle); padding: 1px 5px; border-radius: var(--r-xs); }
+  .kbd {
+    font-family: var(--font-mono); font-size: 10px; color: var(--text-3);
+    background: var(--bg-subtle); border-radius: var(--r-xs); padding: 1px 4px;
+    box-shadow: inset 0 0 0 0.5px var(--border-strong);
+  }
+  .zoomwrap { transform-origin: top left; }
+</style>
+</head>
+<body class="ds">
+<div class="wallpaper">
+<div class="doc">
+
+  <nav class="doc__nav">
+    <a href="../index.html">设计规范总览</a>
+    <a href="01-main-window.html" aria-current="page">主窗口</a>
+    <a href="02-menu-bar.html">菜单栏面板</a>
+    <a href="03-eject-flow.html">推出流程弹窗</a>
+    <a href="04-onboarding.html">授权引导</a>
+    <a href="05-settings.html">设置面板</a>
+    <a href="06-states.html">状态矩阵</a>
+    <a href="07-dark.html">深色模式</a>
+  </nav>
+
+  <p class="doc__eyebrow">Screen 01 · Main Window</p>
+  <h1 class="doc__title">主窗口</h1>
+  <p class="doc__lede">
+    主窗口承担「搞明白发生了什么」的职责。三块盘、两种状态并列，用户无需读完整行文字，
+    靠<strong>左侧琥珀条 + 状态结论 + 按钮形态</strong>三重线索即可在扫视中完成判定。
+  </p>
+
+  <!-- ===================== 默认态（已授权） ===================== -->
+  <div class="frame">
+    <div class="frame__label">800 × 520 · 完全磁盘访问已授权 · 3 块外置磁盘</div>
+
+    <div class="win win--main" role="img" aria-label="DiskEjector 主窗口，列出三块外置磁盘">
+
+      <!-- 标题栏 -->
+      <header class="titlebar">
+        <div class="traffic" aria-hidden="true"><i></i><i></i><i></i></div>
+        <span class="titlebar__title">外置磁盘</span>
+        <span class="titlebar__sub">3 块</span>
+        <span class="titlebar__spacer"></span>
+        <div class="titlebar__tools">
+          <button class="iconbtn" title="刷新磁盘列表" aria-label="刷新磁盘列表"><i data-i="refresh"></i></button>
+          <button class="iconbtn" title="设置" aria-label="设置"><i data-i="gear"></i></button>
+        </div>
+      </header>
+
+      <!-- 磁盘列表 -->
+      <div class="scrollarea">
+        <div class="disklist">
+
+          <!-- ① 有占用 -->
+          <div class="row row--busy" data-expandable>
+            <div class="row__icon">
+              <div class="diskicon diskicon--busy"><i data-i="drive"></i></div>
+            </div>
+            <div class="row__main">
+              <div class="row__head">
+                <div class="row__id">
+                  <div class="row__nameline">
+                    <span class="row__name">Samsung T7</span>
+                    <span class="row__fs">1 TB</span>
+                  </div>
+                  <div class="row__meta">已用 <b>300 GB</b> · 剩余 <b>700 GB</b></div>
+                </div>
+                <div class="row__act">
+                  <button class="btn btn--danger btn--sm">
+                    <i data-i="eject"></i>关闭并推出
+                  </button>
+                </div>
+              </div>
+              <div class="meter">
+                <div class="meter__track"><div class="meter__fill" style="width:30%"></div></div>
+                <span class="meter__pct">30%</span>
+              </div>
+              <div class="row__evid">
+                <div class="evid evid--busy">
+                  <div class="evid__head">
+                    <i data-i="warn"></i>
+                    <span><span class="evid__count">2</span> 个程序正在占用</span>
+                    <button class="evid__hint" data-toggle-evid aria-expanded="true"
+                            style="border:0;background:transparent;font:inherit;color:var(--text-2);cursor:pointer;display:inline-flex;align-items:center;gap:3px;">
+                      收起清单 <i data-i="chevronDown"></i>
+                    </button>
+                  </div>
+                  <div class="evid__chips">
+                    <span class="chip"><span class="appicon appicon--finder"><i data-i="folder"></i></span><span class="chip__name">Finder</span></span>
+                    <span class="chip"><span class="appicon appicon--photo"><i data-i="photo"></i></span><span class="chip__name">图像捕捉</span></span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ② 可安全推出 -->
+          <div class="row">
+            <div class="row__icon">
+              <div class="diskicon"><i data-i="drive"></i></div>
+            </div>
+            <div class="row__main">
+              <div class="row__head">
+                <div class="row__id">
+                  <div class="row__nameline">
+                    <span class="row__name">WD Blue</span>
+                    <span class="row__fs">500 GB</span>
+                  </div>
+                  <div class="row__meta">已用 <b>120 GB</b> · 剩余 <b>380 GB</b></div>
+                </div>
+                <div class="row__act">
+                  <button class="btn btn--primary btn--sm"><i data-i="eject"></i>推出</button>
+                </div>
+              </div>
+              <div class="meter">
+                <div class="meter__track"><div class="meter__fill" style="width:24%"></div></div>
+                <span class="meter__pct">24%</span>
+              </div>
+              <div class="row__evid">
+                <div class="evid evid--safe">
+                  <span class="statusline"><i data-i="check"></i>没有程序占用，可以安全推出</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ③ 可安全推出 -->
+          <div class="row">
+            <div class="row__icon">
+              <div class="diskicon"><i data-i="drive"></i></div>
+            </div>
+            <div class="row__main">
+              <div class="row__head">
+                <div class="row__id">
+                  <div class="row__nameline">
+                    <span class="row__name">Backup SSD</span>
+                    <span class="row__fs">2 TB</span>
+                  </div>
+                  <div class="row__meta">已用 <b>1.4 TB</b> · 剩余 <b>600 GB</b></div>
+                </div>
+                <div class="row__act">
+                  <button class="btn btn--primary btn--sm"><i data-i="eject"></i>推出</button>
+                </div>
+              </div>
+              <div class="meter">
+                <div class="meter__track"><div class="meter__fill" style="width:70%"></div></div>
+                <span class="meter__pct">70%</span>
+              </div>
+              <div class="row__evid">
+                <div class="evid evid--safe">
+                  <span class="statusline"><i data-i="check"></i>没有程序占用，可以安全推出</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== 未授权态 ===================== -->
+  <div class="doc__section">
+    <h2 class="doc__h2">未授权态 <em>FDA Banner</em></h2>
+    <p class="doc__h2desc">
+      未授予「完全磁盘访问」时，应用<strong>不能假装「没有占用」</strong>——必须明确说出「我不知道」。
+      横幅同时承担三个职责：解释为什么需要、给出唯一动作入口、授权后自动消失。
+    </p>
+
+    <div class="frame">
+      <div class="frame__label">800 × 520 · 未授权（横幅出现，占用检测降级为「未知」）</div>
+      <div class="win win--main">
+        <header class="titlebar">
+          <div class="traffic" aria-hidden="true"><i></i><i></i><i></i></div>
+          <span class="titlebar__title">外置磁盘</span>
+          <span class="titlebar__sub">2 块</span>
+          <span class="titlebar__spacer"></span>
+          <div class="titlebar__tools">
+            <button class="iconbtn" title="刷新磁盘列表" aria-label="刷新磁盘列表"><i data-i="refresh"></i></button>
+            <button class="iconbtn" title="设置" aria-label="设置"><i data-i="gear"></i></button>
+          </div>
+        </header>
+
+        <div class="banner">
+          <span class="banner__icon"><i data-i="lock"></i></span>
+          <span class="banner__text">
+            需要「完全磁盘访问」才能看到<strong>是谁占用了磁盘</strong>
+          </span>
+          <button class="btn btn--outline btn--sm">打开系统设置</button>
+        </div>
+
+        <div class="scrollarea">
+          <div class="disklist">
+            <div class="row">
+              <div class="row__icon"><div class="diskicon"><i data-i="drive"></i></div></div>
+              <div class="row__main">
+                <div class="row__head">
+                  <div class="row__id">
+                    <div class="row__nameline">
+                      <span class="row__name">Samsung T7</span>
+                      <span class="row__fs">1 TB</span>
+                    </div>
+                    <div class="row__meta">已用 <b>300 GB</b> · 剩余 <b>700 GB</b></div>
+                  </div>
+                  <div class="row__act">
+                    <button class="btn btn--primary btn--sm"><i data-i="eject"></i>推出</button>
+                  </div>
+                </div>
+                <div class="meter">
+                  <div class="meter__track"><div class="meter__fill" style="width:30%"></div></div>
+                  <span class="meter__pct">30%</span>
+                </div>
+                <div class="row__evid">
+                  <div class="evid evid--unknown">
+                    <div class="evid__head">
+                      <i data-i="info"></i>
+                      <span>占用情况未知</span>
+                      <span class="evid__hint">授权后可检测</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="row">
+              <div class="row__icon"><div class="diskicon"><i data-i="drive"></i></div></div>
+              <div class="row__main">
+                <div class="row__head">
+                  <div class="row__id">
+                    <div class="row__nameline">
+                      <span class="row__name">WD Blue</span>
+                      <span class="row__fs">500 GB</span>
+                    </div>
+                    <div class="row__meta">已用 <b>120 GB</b> · 剩余 <b>380 GB</b></div>
+                  </div>
+                  <div class="row__act">
+                    <button class="btn btn--primary btn--sm"><i data-i="eject"></i>推出</button>
+                  </div>
+                </div>
+                <div class="meter">
+                  <div class="meter__track"><div class="meter__fill" style="width:24%"></div></div>
+                  <span class="meter__pct">24%</span>
+                </div>
+                <div class="row__evid">
+                  <div class="evid evid--unknown">
+                    <div class="evid__head">
+                      <i data-i="info"></i>
+                      <span>占用情况未知</span>
+                      <span class="evid__hint">授权后可检测</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== 设计说明 ===================== -->
+  <div class="doc__section">
+    <h2 class="doc__h2">设计说明 <em>Rationale</em></h2>
+    <div class="grid2">
+      <div class="panel">
+        <h3 class="doc__h3" style="margin-top:0">这一版改了什么</h3>
+        <ul class="note-list">
+          <li><b>主按钮随状态变形。</b>无占用 = 强调色「推出」；有占用 = 红色「关闭并推出」。破坏性在<strong>按钮本身</strong>就可见，而不是点完才知道。</li>
+          <li><b>占用者前置。</b>把「是谁占着」从卡片底部的小标签提到磁盘名下方的证据区，并用琥珀底色承载——这正是用户打开这个 App 的原因。</li>
+          <li><b>左侧 3pt 琥珀条。</b>三块盘并列时，不读任何文字也能定位到「哪块有问题」。</li>
+          <li><b>容量改为「已用 / 剩余」+ 百分比。</b>总容量移到名称右侧做徽标，不再和数字挤在一行里比大小。</li>
+          <li><b>标题栏承载上下文。</b>「外置磁盘 · 3 块」比重复应用名有用——Dock 与菜单栏图标已经回答了「这是谁」。</li>
+          <li><b>权限横幅只解释一次。</b>文案从「需要完全磁盘访问权限才能检测占用进程」改为直指用户收益的「才能看到是谁占用了磁盘」。</li>
+        </ul>
+      </div>
+
+      <div class="panel">
+        <h3 class="doc__h3" style="margin-top:0">规格 Handoff</h3>
+        <ul class="note-list">
+          <li>窗口 <code>800 × 520</code>，外框圆角 <code>12</code>，材质 <code>ultraThinMaterial</code>（macOS 14 回落 <code>regularMaterial</code>）</li>
+          <li>标题栏 <code>52pt</code>；工具按钮 <code>28 × 28</code>，圆角 <code>6</code></li>
+          <li>列表内边距 <code>上 12 / 左右 16 / 下 16</code>；行间距 <code>8</code></li>
+          <li>行内边距 <code>12</code>，圆角 <code>10</code>；图标容器 <code>40 × 40</code>，圆角 <code>10</code></li>
+          <li>磁盘名 <code>15 / 600</code>；容量 <code>12 / 400</code>，等宽数字 <code>tabular-nums</code></li>
+          <li>容量条高 <code>5</code>，全圆角；百分比宽 <code>34</code> 右对齐</li>
+          <li>证据区圆角 <code>10</code>，内边距 <code>8 / 12 / 12</code>；芯片高 <code>26</code>，全圆角</li>
+          <li>芯片内应用图标 <code>20 × 20</code>，圆角 <code>5</code>；名称 <code>12 / 500</code></li>
+          <li>主按钮高 <code>26</code>（sm），圆角 <code>6</code>；图标 <code>13</code></li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="panel" style="margin-top:16px">
+      <h3 class="doc__h3" style="margin-top:0">无障碍 Accessibility</h3>
+      <div class="grid2">
+        <ul class="note-list">
+          <li><b>不靠颜色单独传达信息。</b>「有占用」= 琥珀条 + 图标 + 文字结论 + 按钮变红，四重冗余；色觉障碍用户同样可判定。</li>
+          <li><b>对比度全部 ≥ 4.5:1。</b>琥珀文字 <code>#B25000</code> / 成功文字 <code>#1E7A38</code> / 危险文字 <code>#C1190F</code>，均在各自底色上实测达标。</li>
+        </ul>
+        <ul class="note-list">
+          <li><b>磁盘行可访问性标签。</b>整行合并读作「Samsung T7，1 TB，已用 30%，2 个程序正在占用」；<strong>推出按钮必须是独立元素</strong>，不能被合并进行元素（否则 VoiceOver 能读不能点）。</li>
+          <li><b>按钮标签带磁盘名。</b>「推出 Samsung T7」「关闭并推出 Samsung T7」——多个按钮都叫「推出」时无法区分。</li>
+          <li><b>点击目标 ≥ 26 × 26。</b>工具按钮实际热区 <code>28 × 28</code>，行整体可点。</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+</div>
+</div>
+<script src="../assets/ds.js"></script>
+</body>
+</html>

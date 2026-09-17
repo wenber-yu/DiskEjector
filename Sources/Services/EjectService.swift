@@ -60,13 +60,39 @@ enum EjectFailure: Error, Sendable, Equatable {
     func reasonText(diskName: String) -> String {
         switch self {
         case .inUse:
-            return String(format: L10n.tr(.ejectFailedInUseReason), diskName)
+            // 设计稿原文，**不带磁盘名**：标题已经写了盘名，正文再重复一遍是冗余 ——
+            // 设计稿文案原则是「标题带磁盘名」，正文那一行留给「怎么解决」。
+            return L10n.tr(.ejectFailedInUseReason)
         case .notPermitted:
             return String(format: L10n.tr(.ejectFailedNotPermittedReason), diskName)
         case .notFound:
             return String(format: L10n.tr(.ejectFailedNotFoundReason), diskName)
         case .other(let detail):
             return String(format: L10n.tr(.ejectFailedOtherReason), diskName, detail)
+        }
+    }
+
+    /// 失败弹窗里「可能的原因」清单（设计稿 `03-eject-flow.html` B 变体）。
+    ///
+    /// **为什么挂在失败分类上而不是 UI 里**：清单内容只由**原因分类**决定，与「谁来渲染」
+    /// 无关。放在这里，将来多一个入口（通知、CLI、快捷键）也能复用同一份清单，
+    /// 不会两个地方各写一遍然后慢慢分叉。
+    ///
+    /// **为什么有些分类没有清单**：`.notFound` 与 `.other` 的原因句本身已经把话说完了
+    /// （「设备已不在，可能已被拔除或已卸载」／「无法推出：<系统原话>」），再列一份清单
+    /// 只是换个说法重复一遍。设计稿的文案原则是「给出可执行的下一步」——没话可说时
+    /// 就不该硬凑一屏；空数组表示「这一档没有清单可给」，UI 只显示原因句与日志提示。
+    var possibleCauses: [String] {
+        switch self {
+        case .inUse:
+            // 两条都来自设计稿原文：一条指向「关掉谁」，一条指向「等一等」。
+            return [L10n.tr(.ejectFailedCauseFileOpen), L10n.tr(.ejectFailedCauseSpotlight)]
+        case .notPermitted:
+            // 设计稿没写这一档，但「系统不允许」是最让人困惑的一类失败：用户会反复重试。
+            // 这两条覆盖了实际会撞上的两种情形（选了不可推出的卷 / 系统自己持有）。
+            return [L10n.tr(.ejectFailedCauseNotRemovable), L10n.tr(.ejectFailedCauseSystemHold)]
+        case .notFound, .other:
+            return []
         }
     }
 

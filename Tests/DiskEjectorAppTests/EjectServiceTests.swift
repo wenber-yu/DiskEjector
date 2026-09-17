@@ -54,10 +54,24 @@ struct EjectFailureTests {
         #expect(EjectFailure.classify(error) == .inUse)
     }
 
+    /// 磁盘名出现在**能给出可执行下一步**的那几档正文里（设备已消失 / 系统不允许 /
+    /// 未归类），用户据此确认「说的就是这块盘」。
+    ///
+    /// **`.inUse` 是例外，且是有意的**：它走设计稿原文，正文只讲「怎么解决」，
+    /// 盘名交给弹窗标题（设计稿文案原则：「标题带磁盘名」）。早前正文与标题重复报同一个
+    /// 盘名，正文那行被浪费掉了。
     @Test func 失败原因含磁盘名() {
         let disk = makeDisk(name: "测试盘")
-        let text = EjectFailure.inUse.reasonText(diskName: disk.displayName)
-        #expect(text.contains("测试盘"))
+        for failure in [EjectFailure.notFound, .notPermitted, .other("boom")] {
+            let text = failure.reasonText(diskName: disk.displayName)
+            #expect(text.contains("测试盘"), "\(failure.logText) 的正文应带磁盘名，实际：\(text)")
+        }
+    }
+
+    /// `.inUse` 的正文不重复磁盘名（盘名归标题）。
+    @Test func 被占用的正文不含磁盘名() {
+        let text = EjectFailure.inUse.reasonText(diskName: "测试盘")
+        #expect(!text.contains("测试盘"), "实际：\(text)")
     }
 }
 

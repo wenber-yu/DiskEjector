@@ -25,6 +25,28 @@ final class DiskListStore: ObservableObject {
         disks = DiskService.shared.fetchExternalDisks()
     }
 
+    #if DEBUG
+        /// **测试专用**：造一个不挂系统监听、磁盘列表可手动灌入的实例。
+        ///
+        /// **为什么需要这个口子**：`disks` 是 `private(set)`，唯一写入路径 `refresh()`
+        /// 会真的去枚举本机磁盘 —— 单测既没法用它构造「刚插上一块盘」，
+        /// 也会因为测试机上真实的插拔而随机变红。
+        /// 生产构建里不存在这个初始化器（`#if DEBUG`），`shared` 也不受影响。
+        init(monitoring: Bool) {
+            if monitoring { setupMonitoring() }
+            disks = []
+        }
+
+        /// **测试专用**：替换磁盘列表并像 `refresh()` 那样发布一次。
+        ///
+        /// 刻意**不做去重**：`@Published` 每次赋值都会投递，这正是
+        /// ``OccupancyStore`` 用 `sink` 而不是视图里 `.onChange(of:)` 的原因 ——
+        /// 后者在「新数组内容相等」时静默不触发，导致「刷新」按钮刷不动占用结论。
+        func replaceDisksForTesting(_ newDisks: [DiskInfo]) {
+            disks = newDisks
+        }
+    #endif
+
     /// 重新枚举外置卷。涉及磁盘 I/O，放到后台线程执行后回到主线程更新。
     func refresh() async {
         let fetched = await Task.detached(priority: .userInitiated) {

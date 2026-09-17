@@ -34,13 +34,26 @@ final class EjectFlowController {
     private let ejectService: EjectService
     private let occupancyDetector: OccupancyDetector
 
+    /// 写「用户可见日志」的入口。生产默认落 ``LogService``（`~/Library/Logs/DiskEjector/error.log`）。
+    ///
+    /// **为什么做成可注入的闭包**：失败弹窗向用户承诺「已记入日志」，
+    /// 这条承诺必须有测试兜住 —— 否则将来有人把 ``recordFailure(disk:failure:)`` 改回直接
+    /// `return .failed(...)`，界面照旧显示「已记入日志」，而日志里其实什么都没有，
+    /// 且没有任何测试会红。测试注入一个记录型替身即可断言「失败确实留痕」，
+    /// 同时避免把测试造的假失败写进用户真实的日志文件。
+    private let log: (String?, String) -> Void
+
     /// 可注入初始化（生产一律用 `shared`；测试传入 mock 子类）。
     init(
         ejectService: EjectService = .shared,
-        occupancyDetector: OccupancyDetector = .shared
+        occupancyDetector: OccupancyDetector = .shared,
+        log: @escaping (String?, String) -> Void = { disk, message in
+            LogService.shared.log(disk: disk, message: message)
+        }
     ) {
         self.ejectService = ejectService
         self.occupancyDetector = occupancyDetector
+        self.log = log
     }
 
     /// 检测访问该卷的进程。
@@ -65,15 +78,14 @@ final class EjectFlowController {
         let processes = occupancy.processes
 
         let result = await ejectService.eject(disk: disk)
-        switch result {
-        case .success:
-            return .ejected
-        case .failure(.inUse):
+        let outcome: EjectOutcome =
+            switch result {
+            case .success: .ejected
             // 系统判定忙：把检测到的进程（可能为空）交给弹窗呈现。
-            return .busy(occupying: processes)
-        case .failure(let failure):
-            return .failed(reason: failure)
-        }
+            case .failure(.inUse): .busy(occupying: processes)
+            case .failure(let failure): .failed(reason: failure)
+            }
+        return record(outcome, disk: disk)
     }
 
     /// 关闭占用进程并重新尝试推出。
@@ -104,19 +116,52 @@ final class EjectFlowController {
 
         // 第 3 步：普通推出重试（非强制）。
         let result = await ejectService.eject(disk: disk)
+        let outcome: EjectOutcome
         switch result {
         case .success:
-            return .ejected
+            outcome = .ejected
         case .failure(.inUse):
             // 仍忙：把当前仍持锁的进程交回 UI（优先用复检结果，失败则退回无法终止的列表）。
             let finalCheck = await occupancyDetector.detect(mountPath: disk.mountPath)
             if case .occupied(let procs) = finalCheck, !procs.isEmpty {
-                return .busy(occupying: procs)
+                outcome = .busy(occupying: procs)
+            } else {
+                outcome = .busy(occupying: remaining)
             }
-            return .busy(occupying: remaining)
         case .failure(let failure):
-            return .failed(reason: failure)
+            outcome = .failed(reason: failure)
         }
+        return record(outcome, disk: disk)
+    }
+
+    /// 记录一次「没能推出」，并原样返回结果供 UI 使用。
+    ///
+    /// **为什么必须真的落盘**：失败弹窗会告诉用户「已记入日志，可在『设置 › 诊断』中查看」
+    /// （设计稿 `03-eject-flow.html`），设置面板的诊断分组也写着
+    /// 「记录每次推出失败的时间、磁盘与原因」。这两句话只有在日志确实写入时才成立 ——
+    /// ``LogService`` 早就实现了、``EjectFailure/logText`` 也早就备好了，
+    /// 但两边从未接上，用户可见的 `error.log` 里一条推出失败都没有。
+    /// 若照抄设计稿文案却不接线，就是在骗用户。
+    ///
+    /// **为什么 `.busy` 也要记**：诊断文案承诺的是「每次」推出失败，而「被占用」
+    /// 恰恰是最常见的推出失败 —— 用户报「磁盘推不出来」时，日志必须能回答
+    /// 「当时是谁占着」。只记 `.failed` 会让最常见的那种情况在日志里查无此事。
+    /// 写入量由用户操作次数决定，不会失控。
+    ///
+    /// **为什么记在这里而不是 UI 层**：菜单栏与主窗口共用本类，记一次就够；
+    /// 将来多一个入口（快捷键、URL scheme）也不会漏记。
+    private func record(_ outcome: EjectOutcome, disk: DiskInfo) -> EjectOutcome {
+        switch outcome {
+        case .ejected:
+            break
+        case .busy(let occupying):
+            // 用应用显示名（`Bunny`）而不是进程可执行名（`IMVIDEO`），否则日志对用户无意义。
+            let names = occupying.map(\.displayName).joined(separator: ", ")
+            log(disk.displayName, names.isEmpty ? "推出被占用: 未能列出占用进程" : "推出被占用: \(names)")
+        case .failed(let failure):
+            log(disk.displayName, "推出失败: \(failure.logText)")
+        }
+        return outcome
     }
 
     /// 向给定进程发送信号，返回「无法终止」的进程（非 EPERM 之外的成功/已消失不计入）。

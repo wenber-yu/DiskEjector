@@ -12,6 +12,9 @@
 #   OUTPUT_DIR=/tmp ./build_app.sh              # 指定输出目录（默认 dist/）
 #   STRICT_CI=1 ./build_app.sh                  # 打包前先过 CI 的两道严格门槛
 #                                               #   （-warnings-as-errors + swift-format --strict）
+#   DISABLE_SANDBOX=1 ./build_app.sh            # 让 swift build 跳过 SwiftPM 自带的 sandbox-exec
+#                                               #   （仅供本机执行环境已自带沙箱、导致
+#                                               #    "sandbox_apply: Operation not permitted" 时使用）
 # 产物：dist/DiskEjector.app（可拖入 /Applications 或双击运行）
 #       dist/DiskEjector.dmg + dist/DiskEjector.zip（仅 PACKAGE=1 / NOTARIZE=1 时生成）
 # 图标：复制预先生成的 Resources/AppIcon.icns（打包时不生成图标）；
@@ -61,6 +64,12 @@ EXECUTABLE="DiskEjectorApp"                 # SPM 可执行 target 名
 #   BUILD_NUMBER ← 提交总数，天然单调递增，不会像硬编码那样忘记改
 #
 # 仍保留显式覆盖能力，因为「从 tag 派生」在 hotfix 分支上可能取到不想要的 tag。
+#
+# ⚠️ **tag 与提交数都只反映「已提交」的代码**（2026-09-17 用户发现）：
+#    版本号停在 tag 那次提交，而工作区可能有一堆未提交改动 —— 两者一起给出
+#    `2026.09.13.1 / 44`，看起来像 9/13 那个正式构建，实际跑的却是今天的工作区。
+#    所以额外把 **commit 短哈希**与**未提交改动数**写进 Info.plist，
+#    设置窗口据此标出「这不是 tag 对应的那个构建」。
 # ---------------------------------------------------------------
 git_tag_version() {
     git describe --tags --abbrev=0 2>/dev/null | sed 's/^v//' || true
@@ -68,12 +77,31 @@ git_tag_version() {
 git_commit_count() {
     git rev-list --count HEAD 2>/dev/null || true
 }
+git_commit_short() {
+    git rev-parse --short HEAD 2>/dev/null || true
+}
+# 未提交改动数（含未跟踪文件）。非 git 环境返回空。
+git_dirty_count() {
+    git status --porcelain 2>/dev/null | wc -l | tr -d ' ' || true
+}
 
 DERIVED_VERSION="$(git_tag_version)"
 DERIVED_BUILD="$(git_commit_count)"
+GIT_COMMIT="$(git_commit_short)"
+GIT_DIRTY="$(git_dirty_count)"
 
 VERSION="${VERSION:-${DERIVED_VERSION:-1.0.0}}"
 BUILD_NUMBER="${BUILD_NUMBER:-${DERIVED_BUILD:-1}}"
+# 写进 Info.plist 的构建元信息（可空；读取方要容忍缺失）。
+BUILD_COMMIT="${GIT_COMMIT:-unknown}"
+BUILD_DIRTY="${GIT_DIRTY:-0}"
+
+# 工作区不干净时**明确告警**：版本号指向的是 tag 那次提交，不是本次构建的代码。
+if [ "${BUILD_DIRTY}" != "0" ] && [ -n "${BUILD_DIRTY}" ]; then
+    echo "⚠️  工作区有 ${BUILD_DIRTY} 处未提交改动"
+    echo "    版本号 ${VERSION} 取自 tag「${DERIVED_VERSION:-无}」，指向的是提交 ${BUILD_COMMIT}"
+    echo "    它**不代表本次构建的实际代码**；设置窗口会标出这一点。"
+fi
 OUTPUT_DIR="${OUTPUT_DIR:-$SCRIPT_DIR/dist}"
 APP_BUNDLE="$OUTPUT_DIR/$APP_NAME.app"
 ICON_SOURCE="$PACKAGE_DIR/Resources/AppIcon.icns"
@@ -158,6 +186,26 @@ if [ -z "${SIGN_IDENTITY:-}" ]; then
     fi
 fi
 
+# ---------------------------------------------------------------
+# DISABLE_SANDBOX=1：让 swift build 跳过 SwiftPM 自带的 sandbox-exec
+#
+# **为什么需要这个开关**：SwiftPM 默认用 sandbox-exec 隔离构建过程。但部分托管 / 受管
+# 执行环境**本身就跑在一层沙箱里**，此时再嵌套 sandbox-exec 会直接失败：
+#     sandbox-exec: sandbox_apply: Operation not permitted
+# 表现为「Invalid manifest」+ 构建中止，与代码无关。
+# 该开关只影响构建期隔离，**不改变产物**（签名、Info.plist、渠道均不受影响），
+# 也不会被 CI 默认启用 —— CI 环境有正常的沙盒权限，应保持默认的隔离。
+#     DISABLE_SANDBOX=1 ./build_app.sh
+# ---------------------------------------------------------------
+SWIFT_BUILD_FLAGS=()
+if [ "${DISABLE_SANDBOX:-0}" = "1" ]; then
+    echo "ⓘ DISABLE_SANDBOX=1：swift build 将跳过 SwiftPM 沙盒（仅供受管环境使用）"
+    SWIFT_BUILD_FLAGS+=(--disable-sandbox)
+fi
+
+# macOS 自带 bash 3.2：在 `set -u` 下，空数组的 "${arr[@]}" 会报 unbound variable。
+# 下方调用点一律用 `${arr[@]+"${arr[@]}"}` 这一空安全展开写法（bash 3.2 / 4+ 通吃）。
+
 if [ ! -f "$PACKAGE_DIR/Package.swift" ]; then
     echo "错误：找不到 $PACKAGE_DIR/Package.swift" >&2
     exit 1
@@ -182,8 +230,10 @@ fi
 # 报「未绑定变量」。改用 `env -C` 仅对 swift 构建命令临时切换工作目录（走 chdir 系统调用，
 # 不被上述 broker 拦截），其余步骤一律使用绝对路径（$APP_BUNDLE 等），彻底规避该问题。
 echo "▶ [1/4] Release 构建（渠道=${BUILD_CHANNEL}）..."
-env -C "$PACKAGE_DIR" swift build -c release --product "$EXECUTABLE"
-BIN_PATH="$(env -C "$PACKAGE_DIR" swift build -c release --show-bin-path)/$EXECUTABLE"
+env -C "$PACKAGE_DIR" swift build -c release --product "$EXECUTABLE" \
+    ${SWIFT_BUILD_FLAGS[@]+"${SWIFT_BUILD_FLAGS[@]}"}
+BIN_PATH="$(env -C "$PACKAGE_DIR" swift build -c release --show-bin-path \
+    ${SWIFT_BUILD_FLAGS[@]+"${SWIFT_BUILD_FLAGS[@]}"})/$EXECUTABLE"
 
 echo "▶ [2/4] 组装 $APP_NAME.app ..."
 rm -rf "$APP_BUNDLE"
@@ -227,6 +277,15 @@ cat > "$APP_BUNDLE/Contents/Info.plist" <<PLIST
     <string>$VERSION</string>
 	<key>CFBundleVersion</key>
 	<string>$BUILD_NUMBER</string>
+	<!-- 构建元信息（自定义键，前缀 DE 避开 Apple 保留命名空间）。
+	     ⚠️ 这两个键的意义是「让版本号说得清自己代表什么代码」：
+	     CFBundleShortVersionString 取自最近的 tag，而 tag 与提交数**都只反映已提交的代码**；
+	     工作区有未提交改动时，光看版本号会以为是 tag 那次正式构建。
+	     设置窗口读到 DEBuildDirtyCount > 0 就会把这一点标出来。 -->
+	<key>DEBuildCommit</key>
+	<string>$BUILD_COMMIT</string>
+	<key>DEBuildDirtyCount</key>
+	<string>$BUILD_DIRTY</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>13.0</string>
 	<key>NSHighResolutionCapable</key>

@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import OSLog
 
@@ -8,8 +9,11 @@ import OSLog
 /// - ``LogService``：SPEC F7 要求的错误日志，写入 `~/Library/Logs/DiskEjector/error.log`，
 ///   供用户排查或反馈问题时提供。
 ///
-/// 此前 ``LogService`` 已实现但从未被调用——SPEC 的 F7 实际未落地。现在由
-/// ``EjectFlowController`` 在推出失败时调用。
+/// 此前 ``LogService`` 已实现、``EjectFailure/logText`` 也已备好，但两边从未接上
+/// —— 用户可见的 `error.log` 里一条推出失败都没有，SPEC 的 F7 实际未落地。
+/// 现在有两个生产调用点：
+/// - ``EjectFlowController`` 在推出失败时记录（对应失败弹窗里「已记入日志」的承诺）；
+/// - ``SettingsView`` 在登录项设置失败时记录。
 final class LogService: @unchecked Sendable {
 
     static let shared = LogService()
@@ -50,6 +54,20 @@ final class LogService: @unchecked Sendable {
 
     /// 日志文件路径，便于设置面板展示或用户手动取用。
     var fileURL: URL { logURL }
+
+    /// 在访达中定位日志文件（设置面板「诊断」分组的入口）。
+    ///
+    /// **为什么要有这个入口**：用户报「推出失败」时，日志里已经记下了时间、磁盘与原因，
+    /// 但此前没有任何 UI 能让用户找到它 —— 只能靠口口相传「去 ~/Library/Logs/DiskEjector」。
+    /// 日志文件可能还不存在（从未失败过），此时退回打开所在目录，避免访达报「找不到文件」。
+    func revealLogInFinder() {
+        let fileManager = FileManager.default
+        if fileManager.fileExists(atPath: logURL.path) {
+            NSWorkspace.shared.activateFileViewerSelecting([logURL])
+        } else {
+            NSWorkspace.shared.open(logURL.deletingLastPathComponent())
+        }
+    }
 
     /// 写入一条错误日志。线程安全，可从任意线程调用。
     ///

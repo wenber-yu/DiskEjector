@@ -76,6 +76,39 @@ struct ProcessAppResolverTests {
             // 不关心它具体在干什么。
             try fm.copyItem(atPath: "/bin/sleep", toPath: executablePath)
             try fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: executablePath)
+            Self.adhocSign(bundlePath)
+        }
+
+        /// 给夹具打 **ad-hoc 签名**：未签名的 `.app` 会让 Gatekeeper 弹「已损坏，无法打开」。
+        ///
+        /// **为什么必须有这一步**：`ProcessAppResolver.icon(for:)` 走的是
+        /// `NSWorkspace.shared.icon(forFile:)`，它会让 **LaunchServices 登记并校验这个 bundle**。
+        /// 夹具原本完全未签名（可执行体是 `/bin/sleep` 的副本）→ 校验失败 →
+        /// macOS 弹「"Bunny Fixture.app"已损坏，无法打开」。
+        /// 每跑一次这套测试就弹一次，跑得多就成了「频繁弹窗」（2026-09-17 用户反馈）。
+        ///
+        /// ad-hoc 签名（`-s -`）只表示「本地有效的自有签名」，不影响被测的任何逻辑 ——
+        /// 我们测的是「可执行路径 → bundle → 本地化显示名 → 图标」，与签名身份无关。
+        ///
+        /// ⚠️ **签名失败不要因此让测试红**：签名只是消除系统弹窗的副作用，
+        /// 不是被测行为。用 `try?` + 打印，别把它变成一条会误报的断言。
+        private static func adhocSign(_ path: String) {
+            let task = Process()
+            task.executableURL = URL(fileURLWithPath: "/usr/bin/codesign")
+            task.arguments = ["--force", "--deep", "-s", "-", path]
+            task.standardOutput = nil
+            task.standardError = nil
+            do {
+                try task.run()
+                task.waitUntilExit()
+                if task.terminationStatus != 0 {
+                    print(
+                        "  [夹具] ad-hoc 签名失败（\(task.terminationStatus)）——"
+                            + "不影响被测逻辑，但 macOS 可能仍会弹「已损坏」")
+                }
+            } catch {
+                print("  [夹具] 无法调用 codesign：\(error) —— 不影响被测逻辑")
+            }
         }
 
         /// 启动夹具进程（跑 30s，测试结束前会被 terminate）。

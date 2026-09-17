@@ -22,22 +22,48 @@ struct SettingsLayoutTests {
     private let panelWidth = DesignTokens.Size.settingsPanel.width
 
     /// 在给定宽度下渲染并返回**真实渲染尺寸**（走 SwiftUI 布局，不是读常量）。
+    ///
+    /// ⚠️ **必须用 `sizeThatFits(in:)`，不能用 `setFrameSize + fittingSize`**（2026-09-15 修正）。
+    /// `NSHostingView.fittingSize` 返回的是**无宽度约束的理想尺寸** —— 宽度根本没生效。
+    /// 实测同一份内容：`fittingSize` 报 `497×470`（宽度 497 ≠ 传入的 440），
+    /// `sizeThatFits(in: 440×∞)` 报 `440×484`。
+    ///
+    /// 这个差别**恰好掩盖了一整类缺陷**：内容横向放不下时，弹性列（设置行的标签列）
+    /// 会被压窄、文字改竖排，高度随之暴涨 —— 但理想尺寸里没有这回事，高度看着一直正常。
+    /// 旧写法因此让「视觉效果」那行被压成竖排单字、内容真实高度 910pt 而面板只有 498pt
+    /// 可用（45% 内容被卷走）长达一整个版本没被发现。
+    ///
+    /// 手法可靠性用**已知高度的磁盘行**做过对照（真值 158pt）：
+    /// `sizeThatFits` → 158 ✓ ／ `fittingSize` → 158（高度对但宽度错）／ 位图扫描 → 369 ✗
+    /// （`bitmapImageRepForCachingDisplay` 的缓冲区不保证清零，会扫到未初始化内存）。
     private func renderedSize(_ view: some View, width: CGFloat) -> CGSize {
         _ = NSApplication.shared
         let hosting = NSHostingController(rootView: view)
-        hosting.view.setFrameSize(NSSize(width: width, height: 0))
-        hosting.view.layoutSubtreeIfNeeded()
-        return hosting.view.fittingSize
+        return hosting.sizeThatFits(in: CGSize(width: width, height: .greatestFiniteMagnitude))
     }
 
-    /// 渲染成位图后，统计「整行几乎都被绘制到」的行段数 —— 也就是横向分隔线的条数。
+    /// 渲染成位图后，统计**卡片内部的行间分隔线**条数。
+    ///
+    /// **为什么不能用「整行都有 alpha」来判定**：v2 的设置项放在 `.scard` 里
+    /// （`bg-raised` 实心填充），卡片内**每一行**都是不透明的 —— 按老办法会把
+    /// 卡片的每一行都数成分隔线（实测 298 条）。
+    ///
+    /// 现在的判据是「**相对上下都变暗、且横向均匀**」：
+    /// - 分隔线是 8% 黑叠在白色卡片上 → 比上下都暗一点点，且横向亮度方差接近 0；
+    /// - 卡片填充行 → 与上下同色，不构成凹陷；
+    /// - 文字行 → 横向亮度方差很大（黑字 + 白底），被方差条件排除；
+    /// - 卡片自身的圆角描边行 → 上下相邻行里有一行落在卡片外（覆盖率不足），被邻居条件排除。
     private func horizontalDividerCount(_ view: some View, width: CGFloat) -> Int {
         _ = NSApplication.shared
+        // 高度取 `sizeThatFits` 的**真实**高度（理由见 `renderedSize` 注释）：
+        // 用 `fittingSize` 会拿到偏小的理想高度，把内容底部裁掉，
+        // 万一分隔线正好落在被裁区域就会漏数。
+        let realHeight = renderedSize(view, width: width).height
         let hosting = NSHostingView(rootView: view)
         hosting.appearance = NSAppearance(named: .aqua)
         hosting.frame = CGRect(x: 0, y: 0, width: width, height: 10)
         hosting.layoutSubtreeIfNeeded()
-        hosting.frame = CGRect(x: 0, y: 0, width: width, height: hosting.fittingSize.height)
+        hosting.frame = CGRect(x: 0, y: 0, width: width, height: max(realHeight, 10))
         hosting.layoutSubtreeIfNeeded()
         guard let rep = hosting.bitmapImageRepForCachingDisplay(in: hosting.bounds),
             let data = rep.bitmapData
@@ -48,32 +74,137 @@ struct SettingsLayoutTests {
         let h = rep.pixelsHigh
         let bpr = rep.bytesPerRow
         let spp = rep.samplesPerPixel
-        var dividerRows: [Int] = []
-        for y in 0..<h {
+
+        /// 逐行统计：覆盖率（alpha > 8 的像素占比）与不透明像素的亮度均值/标准差。
+        func rowStats(_ y: Int) -> (coverage: Double, luma: Double, std: Double) {
+            var opaque = 0
             var covered = 0
-            for x in 0..<w where data[y * bpr + x * spp + 3] > 8 {
-                covered += 1
+            var sum = 0.0
+            var sumSq = 0.0
+            for x in 0..<w {
+                let p = y * bpr + x * spp
+                let a = data[p + 3]
+                if a > 8 { covered += 1 }
+                guard a > 200 else { continue }
+                let luma =
+                    0.2126 * Double(data[p]) + 0.7152 * Double(data[p + 1])
+                    + 0.0722 * Double(data[p + 2])
+                opaque += 1
+                sum += luma
+                sumSq += luma * luma
             }
-            // 分隔线是 `Color.primary.opacity(0.08)`：整行都有很低但不为零的 alpha。
-            if Double(covered) / Double(w) > 0.9 { dividerRows.append(y) }
+            guard opaque > 0 else { return (Double(covered) / Double(w), 0, 0) }
+            let mean = sum / Double(opaque)
+            let variance = max(0, sumSq / Double(opaque) - mean * mean)
+            return (Double(covered) / Double(w), mean, variance.squareRoot())
+        }
+
+        let stats = (0..<h).map(rowStats)
+        let gap = 4
+        var dividerRows: [Int] = []
+        for y in gap..<(h - gap) {
+            guard stats[y].coverage > 0.85,
+                stats[y - gap].coverage > 0.85,
+                stats[y + gap].coverage > 0.85
+            else { continue }
+            // 横向必须均匀（排除文字行），且比上下都暗（排除填充行）。
+            guard stats[y].std < 2.5,
+                stats[y].luma < stats[y - gap].luma - 1,
+                stats[y].luma < stats[y + gap].luma - 1
+            else { continue }
+            dividerRows.append(y)
         }
         // 相邻像素行合并成一条线。
+        //
+        // ⚠️ **不能用 `y != previous + 1` 这种「严格相邻」判据**（2026-09-15 修正）。
+        // 一条 0.5pt 的分隔线在 scale=2 的位图里是 1 个像素，但**抗锯齿会把它的
+        // 上下各染一个半透明像素**，实测三行的亮度是 `250.95 / 238.95 / 250.95`
+        // （上下两行只比卡片底色 254.95 暗 4）。这三行**全都**满足「比上下都暗」
+        // 的判据，于是进入 `dividerRows`。旧写法只在计数时推进 `previous`，
+        // 遇到 `[246, 247, 248]` 会数成 2 条（246 计一次、247 被吞、248 又计一次）——
+        // 两根真实分隔线被数成 4 条，测试报「多画了线」而产品其实完全正确。
+        //
+        // 正确判据是「**与上一条线的距离超过一根线的像素跨度**」：
+        // 同一根线内部的行间隔 ≤ 2 个像素，而真实两根线至少隔着一个行高（≈44pt ≈ 88px）。
+        // 阈值取 `4 × scale`（2pt）—— 远大于抗锯齿跨度、远小于行高，中间有两个数量级的余量。
+        let scale = max(1, w / max(1, Int(width)))
+        let mergeGap = 4 * scale
         var count = 0
-        var previous = -10
-        for y in dividerRows where y != previous + 1 {
-            count += 1
+        var previous = -1_000
+        for y in dividerRows {
+            if y - previous > mergeGap { count += 1 }
             previous = y
         }
         return count
     }
 
-    @Test func 面板高度放得下头部与全部六段() {
+    /// 离屏渲染，返回**首列有墨迹的 x（pt）**与**末列有墨迹的 x（pt）**。
+    ///
+    /// **为什么非要量像素**：SwiftUI 的 `Text` 在 AppKit 视图树里**没有任何对应视图** ——
+    /// 实测 `NSHostingView` 的 `subviews` 是空的、整棵树里找不到 `NSTextField`，
+    /// 无障碍子树也是懒建的（`accessibilityChildren` 返回 nil）。
+    /// 所以「标题从第几列开始」问不到 AppKit，只能看**渲染结果**。
+    ///
+    /// **判据是「相对白底变暗」而不是看 alpha**：先给视图垫一层 `Color.white`，
+    /// 每个像素都是不透明的，`colorAt` 拿到的就是真实渲染色。
+    /// （`bitmapImageRepForCachingDisplay` 的缓冲区**不保证清零**，所以这里显式
+    /// `NSBitmapImageRep(bitmapDataPlanes: nil, …)` 让系统分配一块干净的，
+    /// 并用 `colorAt` 而不是直接读 `bitmapData` —— 后者会扫到未初始化内存。）
+    ///
+    /// **扫描带取 y ∈ [8, 44]**（52pt 头部的中段）：**必须避开底部那条 `Hairline`** ——
+    /// 它横跨整宽，会把 x=0 也算成墨迹。
+    ///
+    /// - Returns: `(first, last)`；没扫到任何墨迹时返回 `nil`。
+    private func inkColumnRange(
+        _ view: some View, width: CGFloat, height: CGFloat
+    ) -> (first: CGFloat, last: CGFloat)? {
+        _ = NSApplication.shared
+        let scale: CGFloat = 2
+        let hosting = NSHostingView(rootView: view.background(Color.white))
+        hosting.appearance = NSAppearance(named: .aqua)
+        hosting.frame = CGRect(x: 0, y: 0, width: width, height: height)
+        hosting.layoutSubtreeIfNeeded()
+
+        guard
+            let rep = NSBitmapImageRep(
+                bitmapDataPlanes: nil,
+                pixelsWide: Int(width * scale),
+                pixelsHigh: Int(height * scale),
+                bitsPerSample: 8,
+                samplesPerPixel: 4,
+                hasAlpha: true,
+                isPlanar: false,
+                colorSpaceName: .deviceRGB,
+                bytesPerRow: 0,
+                bitsPerPixel: 0)
+        else { return nil }
+        rep.size = CGSize(width: width, height: height)
+        hosting.cacheDisplay(in: hosting.bounds, to: rep)
+
+        let rows = Int(8 * scale)..<Int(44 * scale)
+        var first: Int?
+        var last: Int?
+        for x in 0..<rep.pixelsWide {
+            let hasInk = rows.contains { y in
+                guard let c = rep.colorAt(x: x, y: y) else { return false }
+                return c.redComponent < 0.75 || c.greenComponent < 0.75 || c.blueComponent < 0.75
+            }
+            if hasInk {
+                if first == nil { first = x }
+                last = x
+            }
+        }
+        guard let first, let last else { return nil }
+        return (CGFloat(first) / scale, CGFloat(last) / scale)
+    }
+
+    @Test func 面板高度放得下头部与全部四组() {
         let header = renderedSize(SettingsHeaderBar(onDone: {}), width: panelWidth)
         let sections = renderedSize(SettingsSectionsColumn { _ in }, width: panelWidth)
         let need = header.height + sections.height + SettingsMetrics.bottomInset
         #expect(
             need <= DesignTokens.Size.settingsPanel.height,
-            "头部 \(header.height) + 内容 \(sections.height) + 底留白 \(SettingsMetrics.bottomInset) = \(need)pt，超过面板 \(DesignTokens.Size.settingsPanel.height)pt——多出来的部分会被折叠线藏在滚动区外（「关于 / 更新」曾因此整个看不见）"
+            "头部 \(header.height) + 内容 \(sections.height) + 底留白 \(SettingsMetrics.bottomInset) = \(need)pt，超过面板 \(DesignTokens.Size.settingsPanel.height)pt——多出来的部分会被折叠线藏在滚动区外（「关于」曾因此整个看不见）"
         )
     }
 
@@ -88,13 +219,86 @@ struct SettingsLayoutTests {
         )
     }
 
-    @Test func 分隔线只画在段与段之间() {
-        // 六段 → 段间分隔线 5 条。第一段上方那条要是画出来，头部下面会顶着一条横线
-        // （头部本身不含分隔线，设计稿的规则是 `.disk-section + .disk-section`）。
+    @Test func 分段控件不许吃掉标签列的宽度() {
+        _ = NSApplication.shared
+        let control = SettingsSegmentedControl(
+            options: VisualStyle.allCases.map { ($0.rawValue, $0.shortName, $0.displayName) },
+            selection: .constant(VisualStyle.default.rawValue),
+            accent: .default
+        )
+        // 量**固有宽度**：提案给无穷大，控件才会报出自己真正想要的宽度。
+        // （若按面板宽 440 去提案，`.fixedSize()` 会被裁到 440，量不出溢出。）
+        let hosting = NSHostingController(rootView: control)
+        let ideal = hosting.sizeThatFits(
+            in: CGSize(
+                width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude))
+
+        // 行内可用宽 ≈ 面板宽 − 卡片与行的左右内边距；留一半以上给标签列。
+        let budget = panelWidth * 0.45
+        #expect(
+            ideal.width <= budget,
+            """
+            分段控件固有宽 \(Int(ideal.width))pt，超过预算 \(Int(budget))pt（面板的 45%）。\
+            它末尾带 `.fixedSize()`，**不可压缩**——同行的标签列是 `maxWidth: .infinity` 的弹性列，\
+            会独吞这个差额并被压成竖排单字（2026-09-15 实测：长标签让该行理想宽 745pt vs 面板 440pt，\
+            内容真实高度 910pt vs 可用 498pt）。可见标签必须用 `VisualStyle.shortName`（「透明」/「色调」）。
+            """
+        )
+    }
+
+    @Test func 分隔线只画在卡片内的行与行之间() {
+        // 外观卡 2 行 → 1 条；通用卡 2 行 → 1 条；诊断卡 1 行 → 0 条。合计 2 条。
+        // 首行上方那条要是画出来，卡片会被一条横线从顶部切开；
+        // 卡片自身的圆角描边不算行间分隔线（检测器已按「上下都变暗」排除）。
         let count = horizontalDividerCount(SettingsSectionsColumn { _ in }, width: panelWidth)
         #expect(
-            count == 5,
-            "测到 \(count) 条横向分隔线，期望 5 条（6 段之间各一条）；多出来的那条说明第一段上方也画了线"
+            count == 2,
+            "测到 \(count) 条卡片内行间分隔线，期望 2 条（外观卡 1 条 + 通用卡 1 条；诊断卡只有一行，不画线）。多出来的那条说明某张卡的首行上方也画了线"
+        )
+    }
+
+    // MARK: 头部与设计稿内边距
+
+    /// 头部标题的**渲染起点**必须等于设计稿的内边距（`.shead { padding: 0 16px }`）。
+    ///
+    /// **必须量渲染结果**：拿 `SettingsMetrics` 里的常量跟自己比是**没牙的**。
+    /// 本项目踩过 —— 这条测试原先判的是「红绿灯有没有压住标题」，用的常量
+    /// `headerTitleMinX` 本身就是从让位宽度算出来的，于是**删掉视图里那句让位它照样是绿的**。
+    /// 后来改成量墨迹；2026-09-16 让位连同红绿灯一起删掉（`DESIGN-SPEC.md` §8.17），
+    /// 期望值也跟着变成**前导内边距本身**。
+    ///
+    /// 实测（离屏，scale 2）：前导 16 → 首列墨迹 **16.0pt**（2026-09-16 本轮实测，最右 412.5）；
+    /// 让位还在时（前导 20 + 让位 52 + 间距 8）→ **80.0pt**。
+    /// 上界 +6 是给字形侧边距留的：中文「设」几乎贴边，英文 "Settings" 的 `S` 会再右偏一点。
+    /// 下界 −1 是抗锯齿。
+    @Test func 头部标题渲染起点等于设计稿内边距() {
+        let range = inkColumnRange(
+            SettingsHeaderBar(onDone: {}),
+            width: panelWidth,
+            height: SettingsMetrics.headerHeight)
+        guard let range else {
+            Issue.record("头部离屏渲染后没扫到任何墨迹 —— 渲染本身没成功，这条断言不能算通过")
+            return
+        }
+
+        // 自证：右半侧也该有墨迹（「完成」按钮）。两侧都扫到，才说明渲出的是一整个头部，
+        // 而不是某个只画了一半的半成品（量到半成品会得出错误基准值）。
+        #expect(
+            range.last > panelWidth / 2,
+            "最右侧墨迹只到 \(range.last)pt（面板宽 \(panelWidth)）—— 渲染不完整，下面的断言无意义"
+        )
+
+        let expected = SettingsMetrics.headerPaddingLeading
+        // 把量到的数打出来 —— 像素量测最容易的失败方式是「量错了东西」，
+        // 有这两个数才能当场分辨「对齐坏了」和「扫描带落在空白上」。
+        print("  [设置面板头部] 首列墨迹 \(range.first)pt、最右 \(range.last)pt（期望首列 ≈ \(expected)）")
+        #expect(
+            range.first >= expected - 1 && range.first <= expected + 6,
+            """
+            标题首列墨迹在 \(range.first)pt，设计稿内边距 \(expected)pt。\
+            偏大（≈20.0）说明前导内边距被改回了 20；再大（≈80.0）说明红绿灯让位块又回来了 —— \
+            设计稿的 `.shead` 里没有 traffic；偏小则说明内边距被改小。
+            """
         )
     }
 }

@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light" data-accent="blue">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>推出流程弹窗 · DiskEjector UI v2</title>
+<link rel="stylesheet" href="../assets/ds.css">
+<style>
+  .note-list { margin: 0; padding-left: 18px; font-size: var(--fs-12); color: var(--text-2); line-height: 1.7; }
+  .note-list li { margin-bottom: 6px; }
+  .note-list b { color: var(--text-1); }
+  .note-list code { font-family: var(--font-mono); font-size: var(--fs-11); background: var(--bg-subtle); padding: 1px 5px; border-radius: var(--r-xs); }
+  .dim {
+    position: relative; padding: 44px; border-radius: var(--r-lg);
+    background: rgba(20, 22, 28, 0.30);
+    -webkit-backdrop-filter: blur(2px); backdrop-filter: blur(2px);
+    display: flex; align-items: center; justify-content: center;
+  }
+</style>
+</head>
+<body class="ds">
+<div class="wallpaper">
+<div class="doc">
+
+  <nav class="doc__nav">
+    <a href="../index.html">设计规范总览</a>
+    <a href="01-main-window.html">主窗口</a>
+    <a href="02-menu-bar.html">菜单栏面板</a>
+    <a href="03-eject-flow.html" aria-current="page">推出流程弹窗</a>
+    <a href="04-onboarding.html">授权引导</a>
+    <a href="05-settings.html">设置面板</a>
+    <a href="06-states.html">状态矩阵</a>
+    <a href="07-dark.html">深色模式</a>
+  </nav>
+
+  <p class="doc__eyebrow">Screen 03 · Eject Flow</p>
+  <h1 class="doc__title">推出流程弹窗</h1>
+  <p class="doc__lede">
+    弹窗只出现在<strong>需要用户做决定</strong>的时候。磁盘空闲时点一下就直接推出——不弹窗、
+    不打断。只有「关闭并推出」这一条会丢数据的路径才需要确认，而确认框必须把
+    <strong>代价写清楚</strong>，而不是只说「确定吗？」。
+  </p>
+
+  <div class="artboard" style="gap:64px">
+
+    <!-- ============ A. 占用确认（破坏性） ============ -->
+    <div class="frame">
+      <div class="frame__label">A · 被占用时的确认 · 400 × 自适应 · 破坏性按钮标红</div>
+      <div class="dim">
+        <div class="alert" role="alertdialog" aria-label="即将推出 Samsung T7">
+          <div class="alert__body">
+            <div class="alert__head">
+              <div class="alert__icon alert__icon--warn"><i data-i="warn"></i></div>
+              <div style="min-width:0">
+                <div class="alert__title">即将推出「Samsung T7」</div>
+                <div class="alert__sub">以下程序正在读写这块磁盘。它们挡着推出的路，需要先结束才能推出。</div>
+              </div>
+            </div>
+
+            <div class="alert__section">
+              <div class="alert__label">正在占用 · 2 个</div>
+              <div class="alert__list">
+                <div class="alert__item">
+                  <span class="appicon appicon--finder"><i data-i="folder"></i></span>
+                  <span class="alert__item-name">Finder</span>
+                  <span class="alert__item-pid">PID 1234</span>
+                </div>
+                <div class="alert__item">
+                  <span class="appicon appicon--photo"><i data-i="photo"></i></span>
+                  <span class="alert__item-name">图像捕捉</span>
+                  <span class="alert__item-pid">PID 5678</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="callout">
+              <i data-i="warn"></i>
+              <span>关闭它们会丢失未保存的内容。DiskEjector 会先请求正常退出，几秒后仍未退出的将被强制结束，然后重新尝试推出。</span>
+            </div>
+          </div>
+
+          <div class="alert__foot">
+            <span class="alert__foot-note">此操作不可撤销</span>
+            <button class="btn btn--outline">取消</button>
+            <button class="btn btn--danger">关闭并推出</button>
+          </div>
+        </div>
+      </div>
+      <p class="spec-note">
+        <b>默认按钮是「关闭并推出」</b>（回车即触发），因为用户点进来的意图已经明确；
+        「取消」保留为逃生口。警示文案紧跟在进程清单下方——先看见是谁，再看见代价。
+      </p>
+    </div>
+
+    <!-- ============ B. 推出失败 ============ -->
+    <div class="frame">
+      <div class="frame__label">B · 推出失败 · 400 × 自适应 · 必须留痕</div>
+      <div class="dim">
+        <div class="alert" role="alertdialog" aria-label="无法推出 Samsung T7">
+          <div class="alert__body">
+            <div class="alert__head">
+              <div class="alert__icon alert__icon--danger"><i data-i="x"></i></div>
+              <div style="min-width:0">
+                <div class="alert__title">无法推出「Samsung T7」</div>
+                <div class="alert__sub">磁盘仍然被占用。有一个程序在这块盘上打开了文件，请关闭它后重试。</div>
+              </div>
+            </div>
+
+            <div class="alert__section">
+              <div class="alert__label">可能的原因</div>
+              <div style="display:flex;flex-direction:column;gap:6px;font-size:var(--fs-12);color:var(--text-2);line-height:1.55">
+                <div style="display:flex;gap:8px"><span>·</span><span>有程序仍在这块盘上打开了文件（常见于播放器、编辑器、备份工具）</span></div>
+                <div style="display:flex;gap:8px"><span>·</span><span>Spotlight 正在为这块盘建立索引，稍等片刻后重试</span></div>
+              </div>
+            </div>
+
+            <div class="callout callout--info">
+              <i data-i="doc"></i>
+              <span>这次失败已记入日志（时间、磁盘名、错误原因），可在设置中查看。</span>
+            </div>
+          </div>
+
+          <div class="alert__foot">
+            <button class="btn btn--outline">查看日志</button>
+            <button class="btn btn--primary">好</button>
+          </div>
+        </div>
+      </div>
+      <p class="spec-note">
+        <b>不做静默重试。</b>「磁盘忙」类错误重试没有意义，只会让用户以为程序卡住了。
+        失败时给出可执行的下一步（关掉谁 / 等一等 / 去哪看日志），而不是一句「操作失败」。
+      </p>
+    </div>
+
+  </div>
+
+  <!-- ===================== 流程 ===================== -->
+  <div class="doc__section">
+    <h2 class="doc__h2">状态流转 <em>Flow</em></h2>
+    <p class="doc__h2desc">
+      两条路径的分叉点在「磁盘有没有被占用」。空闲路径刻意保持<strong>零弹窗</strong>——这是本应用最常被走的路径。
+    </p>
+
+    <div class="panel">
+      <div class="grid3">
+        <div>
+          <div class="alert__label">空闲路径 · 一次点击</div>
+          <div style="font-size:var(--fs-12);color:var(--text-2);line-height:1.9">
+            点「推出」<br>
+            → 调用系统推出接口<br>
+            → 成功：列表刷新，该行消失<br>
+            <b style="color:var(--text-1)">全程无弹窗</b>
+          </div>
+        </div>
+        <div>
+          <div class="alert__label">占用路径 · 两次点击</div>
+          <div style="font-size:var(--fs-12);color:var(--text-2);line-height:1.9">
+            点「关闭并推出」<br>
+            → 弹窗 A（列出占用者 + 代价）<br>
+            → 确认：先请退、再强杀、重试推出<br>
+            → 仍失败：弹窗 B
+          </div>
+        </div>
+        <div>
+          <div class="alert__label">绝不发生</div>
+          <div style="font-size:var(--fs-12);color:var(--text-2);line-height:1.9">
+            <b style="color:var(--danger-text)">不使用强制卸载。</b><br>
+            <code>diskutil unmount force</code> 会绕过「有进程占用就失败」这层系统保护，
+            把「磁盘忙」换成「数据损坏」。界面上不提供这个入口。
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid2" style="margin-top:16px">
+      <div class="panel">
+        <h3 class="doc__h3" style="margin-top:0">规格 Handoff</h3>
+        <ul class="note-list">
+          <li>弹窗宽 <code>400</code>（最大 <code>420</code>），圆角 <code>14</code>，材质 <code>blur(34) saturate(180)</code></li>
+          <li>内容内边距 <code>20 / 20 / 16</code>；底部操作区 <code>12 / 20</code>，背景下沉</li>
+          <li>图标容器 <code>38 × 38</code>，圆角 <code>10</code>，图标 <code>20</code></li>
+          <li>标题 <code>15 / 600</code>；说明 <code>12 / 400</code>，行高 <code>1.5</code></li>
+          <li>进程行高 <code>28</code>，应用图标 <code>18 × 18</code>，PID <code>11 mono</code> 右对齐</li>
+          <li>警示块圆角 <code>6</code>，内边距 <code>9 / 11</code>，文字 <code>12</code></li>
+          <li>按钮高 <code>30</code>，间距 <code>8</code></li>
+        </ul>
+      </div>
+
+      <div class="panel">
+        <h3 class="doc__h3" style="margin-top:0">文案原则</h3>
+        <ul class="note-list">
+          <li><b>标题带磁盘名。</b>「即将推出『Samsung T7』」——多块盘时，用户必须确认操作对象没选错。</li>
+          <li><b>说清代价，不吓唬人。</b>「会丢失未保存的内容」比「可能导致数据丢失」具体，也比「危险操作」可执行。</li>
+          <li><b>写清动作序列。</b>「先请求正常退出 → 几秒后强制结束 → 重试推出」——用户知道点下去会发生什么。</li>
+          <li><b>破坏性按钮用动词。</b>「关闭并推出」而不是「确定」。按钮文字应当能单独读懂。</li>
+          <li><b>失败要留痕。</b>告诉用户日志在哪，把「不知道哪出了问题」变成「可以查」。</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+</div>
+</div>
+<script src="../assets/ds.js"></script>
+</body>
+</html>

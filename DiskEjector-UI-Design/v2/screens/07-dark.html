@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark" data-accent="blue" data-page-node-id="XVVFXSbHyQqfceZrzxvKNS">
+<head data-page-node-id="rMhFtIZNqM9n8s4eXeLlRe">
+<meta charset="UTF-8" data-page-node-id="ZLPp6QHGAZeEmUp6y31jgu">
+<meta name="viewport" content="width=device-width, initial-scale=1.0" data-page-node-id="OEeq3VID3qAF62xjCX5rT5">
+<title>深色模式 · DiskEjector UI v2</title>
+<link rel="stylesheet" href="../assets/ds.css" data-page-node-id="eMuVGvcalTOx7XgCmGoedF">
+<style>
+  .note-list { margin: 0; padding-left: 18px; font-size: var(--fs-12); color: var(--text-2); line-height: 1.7; }
+  .note-list li { margin-bottom: 6px; }
+  .note-list b { color: var(--text-1); }
+  .note-list code { font-family: var(--font-mono); font-size: var(--fs-11); background: var(--bg-subtle); padding: 1px 5px; border-radius: var(--r-xs); }
+  .dim {
+    padding: 36px; border-radius: var(--r-lg);
+    background: rgba(0, 0, 0, 0.34);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .swatchgrid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 10px; }
+  .swatchcard {
+    padding: 12px 14px; border-radius: var(--r-md);
+    background: var(--bg-raised); box-shadow: inset 0 0 0 0.5px var(--border);
+  }
+  .swatchcard__chip { height: 34px; border-radius: var(--r-sm); margin-bottom: 9px; }
+  .swatchcard__name { font-size: var(--fs-12); font-weight: 600; }
+  .swatchcard__hex { font-family: var(--font-mono); font-size: var(--fs-11); color: var(--text-3); margin-top: 2px; }
+  .togglebar { display: flex; gap: 8px; margin-bottom: 24px; }
+</style>
+</head>
+<body class="ds" data-page-node-id="ODHT6P9yCNuY4IXSfG6CuI">
+<div class="wallpaper" data-page-node-id="ebZG3zTI0ChYdPP55EFsk8">
+<div class="doc" data-page-node-id="iEz42j8txShzMMkFi5Oooi">
+
+  <nav class="doc__nav" data-page-node-id="TiIDByFIdMgsUrzaYs5ofZ">
+    <a href="../index.html" data-page-node-id="yf5slY5hglPgNvGGXsXT5D">设计规范总览</a>
+    <a href="01-main-window.html" data-page-node-id="0dCDEmpCiagKseQzpGWEuo">主窗口</a>
+    <a href="02-menu-bar.html" data-page-node-id="IKWiCDBb1KRzdHLEritlrQ">菜单栏面板</a>
+    <a href="03-eject-flow.html" data-page-node-id="B0QYKX8qLEJWRRMfltoLal">推出流程弹窗</a>
+    <a href="04-onboarding.html" data-page-node-id="j9C30mHM5ljjr1uWzFnjOf">授权引导</a>
+    <a href="05-settings.html" data-page-node-id="2f7kmUvua3LkHzAgdNCQJG">设置面板</a>
+    <a href="06-states.html" data-page-node-id="PkERfR9SA4SqLbZNnXf4WK">状态矩阵</a>
+    <a href="07-dark.html" aria-current="page" data-page-node-id="DWurJZPm8gUqgyOSdP0XWg">深色模式</a>
+  </nav>
+
+  <p class="doc__eyebrow" data-page-node-id="p4RGmIuFAk526OYRw2OB3P">Screen 07 · Dark Mode</p>
+  <h1 class="doc__title" data-page-node-id="1LwerriV3Q3JY831BEFnfI">深色模式</h1>
+  <p class="doc__lede" data-page-node-id="nCErYIKFkCDmQzQM2kwn7A">
+    深色不是浅色的反相。毛玻璃在深色下透出的是暗色桌面，<strong data-page-node-id="GYPKnlW2lBHrLeJ9BYMdw9">层级必须靠亮度差重新建立</strong>；
+    同时系统色板整体上移一档，才能在同层级上保持可读性。
+    下面的对照可以实时切换，请逐个切换查看。
+  </p>
+
+  <div class="togglebar" data-page-node-id="ir5F6u8nzjfCI4cY5H7Sk0">
+    <button class="btn btn--outline btn--sm" data-theme-btn="light" data-page-node-id="icsX3VKLR9SGv9Cxm5S32x">浅色</button>
+    <button class="btn btn--outline btn--sm" data-theme-btn="dark" aria-pressed="true" data-page-node-id="PhRkOyjpaVofaFgPO4VTgu">深色</button>
+  </div>
+
+  <div class="artboard" style="gap:48px" data-page-node-id="ipeQ3sihhEPWNfwSzsYvXx">
+
+    <!-- 主窗口 -->
+    <div class="frame" data-page-node-id="vnkdAqjasiBcIHTMVtU4O7">
+      <div class="frame__label" data-page-node-id="sA1Q061bSb5NK2d1D3wdhQ">主窗口 · 深色 · 材质透明度 0.68</div>
+      <div class="win win--main" data-page-node-id="5mUXIz3s50nPTTjSSWN3GY">
+        <header class="titlebar" data-page-node-id="MgxkjRhMl0HMaE283q9thu">
+          <div class="traffic" aria-hidden="true" data-page-node-id="s3gFq1Fph810FO9CajrLaV"><i data-page-node-id="c0gdYdAVF3DJorQKwGgHei"></i><i data-page-node-id="oGbeL8nDTdmDqn7PAlm7vI"></i><i data-page-node-id="x8cSHaVUUDvWg2pbhBAGdW"></i></div>
+          <span class="titlebar__title" data-page-node-id="m2yGI0tLg6UGFFpLYiwn4j">外置磁盘</span>
+          <span class="titlebar__sub" data-page-node-id="sRq8VHT9RNIT6h8WlXHhCi">2 块</span>
+          <span class="titlebar__spacer" data-page-node-id="PG1xsHCj5zlkGxEI6YG29D"></span>
+          <div class="titlebar__tools" data-page-node-id="KvmCuYQNMDsKBzktXxtE31">
+            <button class="iconbtn" title="刷新磁盘列表" aria-label="刷新磁盘列表" data-page-node-id="QOSWQ6X2OkmsE7pA9SzMhv"><i data-i="refresh" data-page-node-id="jZg2dCbQauoDYltnNlRHd4"></i></button>
+            <button class="iconbtn" title="设置" aria-label="设置" data-page-node-id="l9v2S70UjWZ7f4PVQsJHFh"><i data-i="gear" data-page-node-id="74JfQnW2qy6TdWjFCkNhyG"></i></button>
+          </div>
+        </header>
+
+        <div class="scrollarea" data-page-node-id="ImrCvfKLRhtEtTw3rAm0fX">
+          <div class="disklist" data-page-node-id="N962NCXszOUT1F2Gept7BX">
+            <div class="row row--busy" data-page-node-id="TnGELXn6yhCSFvvjD2DnUa">
+              <div class="row__icon" data-page-node-id="FwfXd00CECETHrDz2a1291"><div class="diskicon diskicon--busy" data-page-node-id="DMmaSb0QOSLFzH7A2cIvXf"><i data-i="drive" data-page-node-id="jiYowChhEYmWsOGAFxnixv"></i></div></div>
+              <div class="row__main" data-page-node-id="mASbKi0vKDVfAipPTw4esI">
+                <div class="row__head" data-page-node-id="XwFFP7eckFMR1d6KC4XveM">
+                  <div class="row__id" data-page-node-id="zqAlocRGJLtovjd6SnxsU5">
+                    <div class="row__nameline" data-page-node-id="WZYteEyDYdbb6oq299Hg32">
+                      <span class="row__name" data-page-node-id="9mVGrCLNLcFpfbD4op8NLb">Samsung T7</span>
+                      <span class="row__fs" data-page-node-id="HBV61SqW7kS7ekP9IweFAG">1 TB</span>
+                    </div>
+                    <div class="row__meta" data-page-node-id="ETLwJKrCD49z7Dxciyvvfv">已用 <b data-page-node-id="DLzz7v4Yd11QLyDA58VRyU">300 GB</b> · 剩余 <b data-page-node-id="xqFt6ebFJPQQKv4xaXy2XV">700 GB</b></div>
+                  </div>
+                  <div class="row__act" data-page-node-id="tE2XC1JILNxET3vHBMfC7S">
+                    <button class="btn btn--danger btn--sm" data-page-node-id="7eJNz5pdcqsW2fBNfT0azI"><i data-i="eject" data-page-node-id="e22iDIUMpl2IyEBhBdPx7C"></i>关闭并推出</button>
+                  </div>
+                </div>
+                <div class="meter" data-page-node-id="XlfvMpCs4dWnlfFAele6c0">
+                  <div class="meter__track" data-page-node-id="I8y2xm6EnMkSKGRU4oCzGt"><div class="meter__fill" style="width:30%" data-page-node-id="qjqeRyGnrsPtjbj3Q53V6u"></div></div>
+                  <span class="meter__pct" data-page-node-id="IK2l23AXpmfDtjjhPs62It">30%</span>
+                </div>
+                <div class="row__evid" data-page-node-id="A3gXaGyvkcKyAyBlZcisiA">
+                  <div class="evid evid--busy" data-page-node-id="p4Bn3Xu6ln1TTF5CZMi8eB">
+                    <div class="evid__head" data-page-node-id="0suGajYzrRZn2PV0GBjVfH">
+                      <i data-i="warn" data-page-node-id="7Vj75TNhWMn5thTDOgnvDl"></i>
+                      <span data-page-node-id="GfdVbNAjYBuOKBIRAScUTW"><span class="evid__count" data-page-node-id="yBsXccAW7rvgMk5gbWt7w0">2</span> 个程序正在占用</span>
+                    </div>
+                    <div class="evid__chips" data-page-node-id="L8S7ljmF0p28J2Eqw1zDDz">
+                      <span class="chip" data-page-node-id="5HlTL11vh5gTXy3qTMCbNh"><span class="appicon appicon--finder" data-page-node-id="99xRvmmpiadUaOqy4wH9dA"><i data-i="folder" data-page-node-id="LC8gcww5zCV3p0QR9MvG4L"></i></span><span class="chip__name" data-page-node-id="URmIlAAdAHWtUkXfuLpb3B">Finder</span></span>
+                      <span class="chip" data-page-node-id="YTVaFnFQQ7EwhS5Zum62wq"><span class="appicon appicon--photo" data-page-node-id="YOCOInQKjUOPyehiS59ebC"><i data-i="photo" data-page-node-id="hr3AV2x8R3D7koFgkxpdI5"></i></span><span class="chip__name" data-page-node-id="cwp21ulb1qroO71BIPUxbC">图像捕捉</span></span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="row" data-page-node-id="EIbKRIPdlAvwIhnbECByMQ">
+              <div class="row__icon" data-page-node-id="Akq1dE2mza4gYE6nLpED29"><div class="diskicon" data-page-node-id="1ifNBVVCNsAsf1yAWI3kiH"><i data-i="drive" data-page-node-id="hFGEoEnGTtHU9yZMjNwO8Y"></i></div></div>
+              <div class="row__main" data-page-node-id="I6Z3dHREAuj6WLZmftZ8WF">
+                <div class="row__head" data-page-node-id="JvI9hotZARmYrwhYbut4VL">
+                  <div class="row__id" data-page-node-id="o8V5p6svfYhEme9odFhvZt">
+                    <div class="row__nameline" data-page-node-id="o89Y2PY2kDu2B0a6w1mcAy">
+                      <span class="row__name" data-page-node-id="VhUKWDc74ARjAuzBUDN4Kq">WD Blue</span>
+                      <span class="row__fs" data-page-node-id="P23UK2NbnYyE0jgya0Mjb3">500 GB</span>
+                    </div>
+                    <div class="row__meta" data-page-node-id="ESYsTUrrxUCDCxVvBPXpAB">已用 <b data-page-node-id="VgQHhSNhDiTasyZGvOpEYM">120 GB</b> · 剩余 <b data-page-node-id="dz8wUUznIEoAa8Uf1V2wt6">380 GB</b></div>
+                  </div>
+                  <div class="row__act" data-page-node-id="p20aSTTweOooU6bJVFgqA7">
+                    <button class="btn btn--primary btn--sm" data-page-node-id="DaDIEqyPiYCYzWWHQMhjt2"><i data-i="eject" data-page-node-id="k1tNiYnQ5xXdpGEbPLsQaB"></i>推出</button>
+                  </div>
+                </div>
+                <div class="meter" data-page-node-id="LB5DWXTlgNteKoDuQA6tKD">
+                  <div class="meter__track" data-page-node-id="r0UMfsO8EDiHR8P51jHaeX"><div class="meter__fill" style="width:24%" data-page-node-id="FwY6eTewipbiKfs6IEmG3T"></div></div>
+                  <span class="meter__pct" data-page-node-id="b9AQ0yrkxRwE2DzbDxE5cy">24%</span>
+                </div>
+                <div class="row__evid" data-page-node-id="RdBqq4JuqvBPGTuyZztBM5">
+                  <div class="evid evid--safe" data-page-node-id="Uwglq64MB5Ijb4pNsGLCIM">
+                    <span class="statusline" data-page-node-id="4OIOY7gpYBFSahCaKvbbLo"><i data-i="check" data-page-node-id="tVmOGLEQPqUxreqPGD9vhe"></i>没有程序占用，可以安全推出</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 弹窗 -->
+    <div class="frame" data-page-node-id="aKKXkoBQolRpXOL1cBwtD1">
+      <div class="frame__label" data-page-node-id="YTGjzzCZiZEFBiqLxLRVfK">推出确认 · 深色 · 材质透明度 0.84</div>
+      <div class="dim" data-page-node-id="Q7mvWmoSiolIuwBQRFBZOy">
+        <div class="alert" style="width:380px" data-page-node-id="CcRtRgnEF3AAfll7rlRIO9">
+          <div class="alert__body" data-page-node-id="YbXJZjW1r0tO1wHZvQtB7O">
+            <div class="alert__head" data-page-node-id="JjSCaZCzTYYX7GvmZxnNlW">
+              <div class="alert__icon alert__icon--warn" data-page-node-id="uKIUvbr1hFyqPuZRi6kbXC"><i data-i="warn" data-page-node-id="LNkX1NHTtyo5KH5ECrzMb2"></i></div>
+              <div style="min-width:0" data-page-node-id="QHAhMRfQRjtyILkmuBK6Qx">
+                <div class="alert__title" data-page-node-id="A0Z3GeB72rIoRbt3C8Z0Eo">即将推出「Samsung T7」</div>
+                <div class="alert__sub" data-page-node-id="jXlOa4EEtwEG326FiL1r18">以下程序正在读写这块磁盘。</div>
+              </div>
+            </div>
+            <div class="alert__section" data-page-node-id="hiFuU9sczSHXxjv0LV4fe6">
+              <div class="alert__label" data-page-node-id="WqBB4IkFtAc0WVITIjDHBS">正在占用 · 2 个</div>
+              <div class="alert__list" data-page-node-id="0PMSDVSoDly8ZmBnuIVoQ2">
+                <div class="alert__item" data-page-node-id="Ba6pOWf6zBAJJKFyvCNn8W">
+                  <span class="appicon appicon--finder" data-page-node-id="XDEaaXprAkz4KsOMFDCwRX"><i data-i="folder" data-page-node-id="AH12jVSzHv8vpwjx9fygCq"></i></span>
+                  <span class="alert__item-name" data-page-node-id="55jMOUFrqre2mTMnHvf8fs">Finder</span>
+                  <span class="alert__item-pid" data-page-node-id="nY3xWRTomfc0P1P3WwyZRG">PID 1234</span>
+                </div>
+                <div class="alert__item" data-page-node-id="3iIguTz4rnH3XCjms0XSkz">
+                  <span class="appicon appicon--photo" data-page-node-id="fgGIGJ5xQf3iHDuvxMnWCw"><i data-i="photo" data-page-node-id="YkAa7oFNrJsImtWBTYtqiE"></i></span>
+                  <span class="alert__item-name" data-page-node-id="3vPbh1lla8EQJUYrUTpaVO">图像捕捉</span>
+                  <span class="alert__item-pid" data-page-node-id="Ef0LPGvLmtPeqmqbw0tRN0">PID 5678</span>
+                </div>
+              </div>
+            </div>
+            <div class="callout" data-page-node-id="cgxp2S2Sa4viQWQFhFvsDd">
+              <i data-i="warn" data-page-node-id="gHDgsMHtSGJIZnUB2PECiF"></i>
+              <span data-page-node-id="ik28u9iZTJkF9gJp2QNL80">关闭它们会丢失未保存的内容。</span>
+            </div>
+          </div>
+          <div class="alert__foot" data-page-node-id="txmR7rlVI9JVjJMKMJBEAn">
+            <button class="btn btn--outline" data-page-node-id="WWKu04VuCIsoGBXQ41zZ0p">取消</button>
+            <button class="btn btn--danger" data-page-node-id="7sipBADvWHYRn50XiVhX2A">关闭并推出</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 菜单栏 -->
+    <div class="frame" data-page-node-id="h51vTHHD6h7NeP60sdL5fj">
+      <div class="frame__label" data-page-node-id="382bi4cuXRO9CJqgmLOVCA">菜单栏面板 · 深色</div>
+      <div class="win win--popover" data-page-node-id="7F77Lza3YtMecrSeHP36Md">
+        <div class="pop__header" data-page-node-id="ytBIMRD9H96d22hEB1H8Nd">
+          <span class="pop__appicon" data-page-node-id="SGs5NCo4DjUmvGIXsKyI6c"><i data-i="eject" data-page-node-id="Gcmm5JdaQ0gUU71dpS4z3C"></i></span>
+          <span class="pop__appname" data-page-node-id="A1pUvs80sjPflkAFahmLWz">磁盘推出助手</span>
+          <span class="pop__count" data-page-node-id="RRxCFTULoeLzOSnqzG8kfZ">2</span>
+          <span style="flex:1" data-page-node-id="hACCYFBEajgiqDRmswOptn"></span>
+          <button class="iconbtn" title="刷新" aria-label="刷新" data-page-node-id="DwERuPoUjvsNjZLQHT0n7R"><i data-i="refresh" data-page-node-id="OuiYPi3EJSg1zSDtmtcobg"></i></button>
+        </div>
+        <div class="pop__body" data-page-node-id="snTTVUFKojxPeOYOLmH1x9">
+          <div class="mrow mrow--busy" data-page-node-id="NpmhxQW4bN7v3AXBowLEeq">
+            <div class="mrow__icon mrow__icon--busy" data-page-node-id="7ftYPS04YnwCtJ752A3MjE"><i data-i="drive" data-page-node-id="gkACrdSHBvGljMDy5fMKCN"></i></div>
+            <div class="mrow__text" data-page-node-id="gtaRAWxSnfnCKOVjjoCot5">
+              <div class="mrow__name" data-page-node-id="3rSIh62zOEG9VZsnQC7P1g">Samsung T7 <span data-page-node-id="9OKYWG9YmY0ozFgjfZq1R9">（1 TB）</span></div>
+              <div class="mrow__cap" data-page-node-id="YlpNE09Yar2QGq2ekgZyVV">已用 300 GB · 剩余 700 GB</div>
+              <div class="mrow__occ" data-page-node-id="V24uumVJ4f86111SAe4q2H">占用程序：Finder、图像捕捉</div>
+            </div>
+            <button class="mbtn mbtn--busy" style="width:26px;height:26px;flex:none;padding:0;display:inline-flex;align-items:center;justify-content:center;border:0;border-radius:6px;background:var(--danger-soft);color:var(--danger)" aria-label="关闭并推出 Samsung T7" data-page-node-id="u6nsDo3VzRenwNlHX5EVqO"><i data-i="eject" data-page-node-id="J39wqNH2E5lPInC9VE73S3"></i></button>
+          </div>
+          <div class="mrow" data-page-node-id="VulknUuEKX7D8bQL2FCFwC">
+            <div class="mrow__icon" data-page-node-id="VZhjUfx5PNr3IRpJA9WnEN"><i data-i="drive" data-page-node-id="HaWHitGvJLVeJ1vo9YVkWP"></i></div>
+            <div class="mrow__text" data-page-node-id="dN9d3kUPtklusPUtMM0S0V">
+              <div class="mrow__name" data-page-node-id="xWH50VWzvA9fdFNtg93UbB">WD Blue <span data-page-node-id="VD0AaSzQ10pC5GIhplvSB0">（500 GB）</span></div>
+              <div class="mrow__cap" data-page-node-id="T8oDFJRlOvVxaXitYu32jD">已用 120 GB · 剩余 380 GB</div>
+              <div class="mrow__occ mrow__occ--safe" data-page-node-id="cd2wLr9nsFQ5CFywg3iFuf">可安全推出</div>
+            </div>
+            <button class="mbtn" style="width:26px;height:26px;flex:none;padding:0;display:inline-flex;align-items:center;justify-content:center;border:0;border-radius:6px;background:transparent;color:var(--text-3)" aria-label="推出 WD Blue" data-page-node-id="dJAneHHvrahbmNFOfLkVqY"><i data-i="eject" data-page-node-id="22XmwRit1NibaS9tuNh1DA"></i></button>
+          </div>
+        </div>
+        <div class="pop__sep" data-page-node-id="p1NztvTziugwhi0P6S675X"></div>
+        <div class="pop__body" style="padding-top:0" data-page-node-id="T9dcl9bG0rbhInSHeltoGl">
+          <button class="actionrow" data-page-node-id="lA8IueWEMzMZLYcA8QTm2C"><i data-i="window" data-page-node-id="5AY8eIiiMwZB26fPEHM5Lr"></i>打开主窗口<span class="actionrow__key" data-page-node-id="1l9x9XH6gN7n6Snn5urlCC">⌘O</span></button>
+          <button class="actionrow" data-page-node-id="OjOQ7NMEfr7Pq1pF3OmpNs"><i data-i="gear" data-page-node-id="3cuIDSKCFDglpwjyGEnJdb"></i>设置<span class="actionrow__key" data-page-node-id="ZBOW9Els7WvtKXelZFhZmE">⌘,</span></button>
+          <button class="actionrow actionrow--danger" data-page-node-id="H3lmsRdWXZcTSH2Rm41pQB"><i data-i="power" data-page-node-id="pNQ6zfLUP3ldR5fTCBHV55"></i>退出 DiskEjector<span class="actionrow__key" data-page-node-id="MiCyeknZYo2YKS8IigNLnW">⌘Q</span></button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ===================== 色板 ===================== -->
+  <div class="doc__section" data-page-node-id="ggbjDd3x99fBwIAWLbGh6v">
+    <h2 class="doc__h2" data-page-node-id="vGSLGOplH860A9Xt4FhUJn">深色色板 <em data-page-node-id="N4KsqV1u2nivWsTAk3tCOP">Dark Palette</em></h2>
+    <p class="doc__h2desc" data-page-node-id="vdT2h8YDkDZcQawl5C9BFZ">
+      深色下所有语义色都<strong data-page-node-id="RWcnjRhC5DBbS52mODrAR8">提高明度、降低饱和度</strong>，因为暗背景上的高饱和色会「发光」刺眼；
+      同时文字色全部改为浅色，保证对比度不退化。
+    </p>
+
+    <div class="panel" data-page-node-id="irPMSEBQYHKV3F725AClCa">
+      <div class="grid3" data-page-node-id="IQhODF0x1HKMMAKxVZKWLR">
+        <div data-page-node-id="ojdGNaJpvTaIi92VGbXvNQ">
+          <div class="alert__label" data-page-node-id="MvE6l312ae0CdpHjgyQPNl">表面 Surfaces</div>
+          <div class="swatchgrid" style="grid-template-columns:1fr" data-page-node-id="xmp4kE45mqKNopqTQvYoxk">
+            <div class="swatchcard" data-page-node-id="TCP0AAfe5J4d0G7mETRLbI"><div class="swatchcard__chip" style="background:#1c1c1e" data-page-node-id="24MP3wQF84qNbTPbpbMNLp"></div><div class="swatchcard__name" data-page-node-id="KNEgAT3O5BDeM8iEDLoOGf">窗口实体面</div><div class="swatchcard__hex" data-page-node-id="iQ6GFCtb3DG360TahIjv3u">#1C1C1E</div></div>
+            <div class="swatchcard" data-page-node-id="ZSdobUVRHTZuxGjVHFkLvq"><div class="swatchcard__chip" style="background:rgba(28,28,30,0.68);box-shadow:inset 0 0 0 1px rgba(255,255,255,.10)" data-page-node-id="avXWLeayi6rf3AH8HWVjc2"></div><div class="swatchcard__name" data-page-node-id="xUWYnK5erThAqRXsGaGDMq">毛玻璃面</div><div class="swatchcard__hex" data-page-node-id="lvnlzCdCUqSKGgJIKDefGX">rgba(28,28,30,.68)</div></div>
+            <div class="swatchcard" data-page-node-id="tIMoaHC6rUByRqVI1p0hzH"><div class="swatchcard__chip" style="background:#2c2c2e" data-page-node-id="CX6lpM8jPgaCQTJpyt4qXe"></div><div class="swatchcard__name" data-page-node-id="amfEboecGYkoGZFSBiVGTi">浮层 / 卡片</div><div class="swatchcard__hex" data-page-node-id="YMHUGF1jv5w2nGKALTuBQ3">#2C2C2E</div></div>
+            <div class="swatchcard" data-page-node-id="t5A68ucu5I7XSCMiHDHCSs"><div class="swatchcard__chip" style="background:rgba(255,255,255,0.08)" data-page-node-id="XMiKhPrw2bLFXC6AraDhFF"></div><div class="swatchcard__name" data-page-node-id="ApTHNRJII9qVC4h09oFTLa">静默填充</div><div class="swatchcard__hex" data-page-node-id="VuBBw9if6ACHOntMmviGhg">rgba(255,255,255,.08)</div></div>
+          </div>
+        </div>
+
+        <div data-page-node-id="LGFuNrQjWJIa0GF4knV4TK">
+          <div class="alert__label" data-page-node-id="RPlrtnIZL8mkFdJHMtdLLp">语义色 Semantic</div>
+          <div class="swatchgrid" style="grid-template-columns:1fr" data-page-node-id="7RIEztkHZFONxR0lmSu96q">
+            <div class="swatchcard" data-page-node-id="BRkOGxHZGj4AyAeumcVl87"><div class="swatchcard__chip" style="background:#409cff" data-page-node-id="NNa1MBjDpyya1EPUswAWiS"></div><div class="swatchcard__name" data-page-node-id="kA8sWIbBWS0zWHqXBR6IPg">强调（蓝）</div><div class="swatchcard__hex" data-page-node-id="NNMOEuCN5OME7lp9lLsC9O">#409CFF · 浅色为 #0A84FF</div></div>
+            <div class="swatchcard" data-page-node-id="zpAOBYSC5raM8AsYU2EFUI"><div class="swatchcard__chip" style="background:#ff9f0a" data-page-node-id="Cj1C8aJCYCdAJplt3Dranj"></div><div class="swatchcard__name" data-page-node-id="xUnFtrtUqaXGBeWxbo5kf8">占用 / 警告</div><div class="swatchcard__hex" data-page-node-id="pjkF2lgiZwAuHdSttDPjbG">#FF9F0A · 文字 #FFB340</div></div>
+            <div class="swatchcard" data-page-node-id="3YW9bjK41sk95DHBoB9ru5"><div class="swatchcard__chip" style="background:#ff453a" data-page-node-id="aHcBscWsF4Gy6eVecKqfD8"></div><div class="swatchcard__name" data-page-node-id="51bGEdoO4ooTxxu41yWNzH">破坏性</div><div class="swatchcard__hex" data-page-node-id="apAw7bQKslVNoWC0ai4FnQ">#FF453A · 文字 #FF8078</div></div>
+            <div class="swatchcard" data-page-node-id="FNvv2aYbjKW5OSS76tvhib"><div class="swatchcard__chip" style="background:#30d158" data-page-node-id="lzUGqiNDYtTuakUEULAuCt"></div><div class="swatchcard__name" data-page-node-id="CkLLvOfTfZsWeGBE7A3w3d">安全</div><div class="swatchcard__hex" data-page-node-id="TQKjByF8gDNTfSArzctSvC">#30D158 · 文字 #5CDB7C</div></div>
+          </div>
+        </div>
+
+        <div data-page-node-id="7qqowKZFbhRNFy6SncSaXl">
+          <div class="alert__label" data-page-node-id="GX2mom9uRxE97l713SlfOw">文字 Text</div>
+          <div class="swatchgrid" style="grid-template-columns:1fr" data-page-node-id="YB393C63VR5JXdnDpZ41zk">
+            <div class="swatchcard" data-page-node-id="0MkP13T1tqNVMRBPjt6o7P"><div class="swatchcard__chip" style="background:#f5f5f7" data-page-node-id="8mnwoxL0D30AxwOBW2fxxQ"></div><div class="swatchcard__name" data-page-node-id="Qi1wfUQfjHAIAwcI6DbUYn">主文字</div><div class="swatchcard__hex" data-page-node-id="z4adLGV3r95HRWfwj5D1Ih">#F5F5F7 · 对比度 15.8:1</div></div>
+            <div class="swatchcard" data-page-node-id="6ALgxxaWy7Oe7FZkHawcUR"><div class="swatchcard__chip" style="background:rgba(235,235,245,0.62)" data-page-node-id="TH6sZWBG3iQdFKdUPImfaC"></div><div class="swatchcard__name" data-page-node-id="bt6h7mvjsmR6YtJlTHUZb4">次文字</div><div class="swatchcard__hex" data-page-node-id="Kk2pWka5Re5nfRBv6aAYld">rgba(235,235,245,.62) · 7.4:1</div></div>
+            <div class="swatchcard" data-page-node-id="hmoXF7cNBXsUnUtxOLiN0h"><div class="swatchcard__chip" style="background:rgba(235,235,245,0.36)" data-page-node-id="zaQqEhMAtnr7bhSswlXFeT"></div><div class="swatchcard__name" data-page-node-id="KokaNBN8R0cXSGL3KTbXB7">三级文字</div><div class="swatchcard__hex" data-page-node-id="spWB3y63J7LaxkweKMw36J">rgba(235,235,245,.36) · 3.6:1（仅大字/装饰）</div></div>
+            <div class="swatchcard" data-page-node-id="ICtjkCIyTP3g2W1GmUl3PO"><div class="swatchcard__chip" style="background:rgba(255,255,255,0.10)" data-page-node-id="NU9scolCDdS6VTVIVVSjfW"></div><div class="swatchcard__name" data-page-node-id="2bYfhAfZACXM3rGRea6Lhe">描边</div><div class="swatchcard__hex" data-page-node-id="M4QwZStqhV8ChbOqkXvfRm">rgba(255,255,255,.10)</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid2" style="margin-top:16px" data-page-node-id="yrvGhVE26gMHA5GtlGtqKM">
+      <div class="panel" data-page-node-id="3SugNIuwysT6l6gh5lRWOX">
+        <h3 class="doc__h3" style="margin-top:0" data-page-node-id="tMkIo2VapKYHz0SxMl61Ua">深色模式的三个坑</h3>
+        <ul class="note-list" data-page-node-id="E2ROyPxSjyetBviCA6copH">
+          <li data-page-node-id="VFehFLhoXeomEz3vlRuqWe"><b data-page-node-id="6bu6q0uDdRVrnqAWUbOGKw">不要直接反相。</b>浅色的 <code data-page-node-id="SInzlA6ADaaSqSn3WXZsXY">#0A84FF</code> 放在暗底上会显得发闷，深色需换成 <code data-page-node-id="rhHghmEJEBZTx5EdubgH9y">#409CFF</code>——同一个「蓝色」在两个模式里是两个值。</li>
+          <li data-page-node-id="NHM9OhkFOS0ilGsYclQsY4"><b data-page-node-id="BZg7lEFEf45jt6nWmnoAai">阴影在暗色里几乎无效。</b>层级必须靠<strong data-page-node-id="Wo96Y3WrlBiZCBQNmCf4bC">表面亮度差</strong>建立（<code data-page-node-id="VfBthEZw8BTevdmheHGhgq">#1C1C1E</code> → <code data-page-node-id="Gp6Ct3CTOJ1UAZle8W5usc">#2C2C2E</code>）与 <code data-page-node-id="jqmCBCQttCsP24UaRkcE60">0.5px</code> 白色描边，而不是加重投影。</li>
+          <li data-page-node-id="vRvtqhUNO6x9HNcbiNfawq"><b data-page-node-id="oop5CiUXuEioiLCC1HXL19">毛玻璃要更实。</b>浅色 <code data-page-node-id="9iThUqkNBiDzYJlZofJ3Qr">0.72</code> → 深色 <code data-page-node-id="XLsX6t1awKlAzNwyzDgcS8">0.68</code>；弹窗 <code data-page-node-id="FRWsrgHnXQFjnbVvhD57F6">0.86</code> → <code data-page-node-id="WUGugzHlO1GPzKFVxRTexf">0.84</code>。暗色桌面透上来会让文字发灰，需要更高不透明度兜底。</li>
+        </ul>
+      </div>
+
+      <div class="panel" data-page-node-id="4Q1uRes5esGX8tchNH0WMH">
+        <h3 class="doc__h3" style="margin-top:0" data-page-node-id="8ljMGztVFZ7L3IiEjXMxXH">实现约定</h3>
+        <ul class="note-list" data-page-node-id="DfFqb0Ll3rTKMH4JNhxAEv">
+          <li data-page-node-id="iJY30BXRCWNKnmW9TF1raz"><b data-page-node-id="GDe22985TcNphmE7eEKGcy">跟随系统，不单独设置。</b>不做「深色模式」开关，完全由 <code data-page-node-id="MsfSOwci870qrPifpoSye5">ColorScheme</code> 驱动——macOS 用户已经习惯在系统层面统一控制。</li>
+          <li data-page-node-id="u5H9BwPEEnqRVFXPjEYonV"><b data-page-node-id="779JvFkmjIEX3HkkqytwGj">令牌层切换，组件层不动。</b>所有组件只引用语义令牌（<code data-page-node-id="t6nsOm3HjpSRRhOmGRkobb">--text-1</code>、<code data-page-node-id="nG9wgsvQggN9vIyEPs6tDu">--border</code>…），明暗差异全部收敛在令牌定义里。</li>
+          <li data-page-node-id="3KZKSjnwRO99kv6ky8ccf9"><b data-page-node-id="H9zsEmzxSZoSnpusH4cpQ8">系统色优先。</b>文字、描边、卡片底色尽量用 <code data-page-node-id="pPDP2hh3MEywzqaq530c7o">.primary</code> / <code data-page-node-id="Tz1VyYFLwGnp1ueqh2Vl9A">.secondary</code> / Material，让系统在版本升级时自动带我们对齐。</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+</div>
+</div>
+<script src="../assets/ds.js"></script>
+</body>
+</html>

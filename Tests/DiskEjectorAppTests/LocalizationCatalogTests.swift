@@ -13,6 +13,7 @@ import Testing
 /// 实测撞上过：`updateDownloadPageHint` 有两份互相矛盾的中文文案
 /// （「打开下载页查看是否有新版本。」 vs 「Developer ID 直发版：前往 Releases 页面…」），
 /// 手改下面那份完全不生效，而肉眼看文件也发现不了 —— 只有把「不许重复键」钉成测试才行。
+/// （该键后来随「更新」分组被并进「关于」行而删除，这条记录保留作为踩坑依据。）
 @Suite("本地化表")
 struct LocalizationCatalogTests {
 
