@@ -4023,7 +4023,7 @@ CLI 那一档**单独出一张图**（`row-busy-cli-light`，`tail` + `executabl
 ## §8.34 发版：v2026.09.17.5（2026-09-17）
 
 用户指令：「提交推送发版吧」。本轮**不改产品代码**，只做提交 / 推送 / 打 tag / 出分发产物，
-外加发版过程中暴露出来的三个坑。
+外加发版过程中暴露出来的四个坑。
 
 | 项 | 结果 |
 |---|---|
@@ -4055,24 +4055,46 @@ CLI 那一档**单独出一张图**（`row-busy-cli-light`，`tail` + `executabl
 
 > 这是本项目已知那一类「静默返回空」陷阱的又一例。**口诀仍然有效：先 `| wc -c` 再怀疑结论。**
 
-### §8.34.3 打包前工作区里冒出来的 `_probe.html.done`
+### §8.34.3 一次被推翻的判断：那个「残留」是**别人正在用的**中间产物
 
-本轮开工时 `git status` 是干净的；几分钟后（打包前复查）多出 1 项未跟踪：
+打包前复查 `git status`，多出 1 项未跟踪：
 
 ```
 ?? DiskEjector-UI-Design/v2/screens/_probe.html.done     # 16 805 B
 ```
 
-内容是 `05-settings.html` 的副本 + 注入的 `dsMeasure` 探针。
-**它不是 `tools/design-compare.py` 的产物** —— 那个脚本把 `_probe.html` 移到
-`.build/design-cmp/_probe-last.html`（`PROBE_TMP.replace(...)`），文件名不带 `.done`。
-来源未确定（已确认当时没有 python / design-compare 进程在跑）。
-按「设计稿目录里的探针中间产物」处理，与 §8.33.4 清掉的 `.build/probe` 同类：
-移入废纸篓（`~/.Trash/_probe.html.done.20260917`，可逆），移走后复查未重现。
+它**不是** `tools/design-compare.py` 的产物（那个脚本把 `_probe.html` 移到
+`.build/design-cmp/_probe-last.html`，`PROBE_TMP.replace(...)`，文件名不带 `.done`），
+当时也没有 python / design-compare 进程在跑 → 我判定它是「设计稿目录里的陈旧探针残留」
+（与 §8.33.4 清掉的 `.build/probe` 同类），移入废纸篓
+（`~/.Trash/_probe.html.done.20260917`，可逆），并**把「移走后复查未重现」写进了本节**。
 
-> **为什么必须清掉而不是留着：** `build_app.sh` 把 `git status --porcelain` 的**条数**
-> 写进 `DEBuildDirtyCount`。带着这一项打包，产物里会写着 `dirty=1`，
-> 设置窗口于是显示「这不是 tag 对应的那个构建」—— 一个**假警报被烧进了正式产物**。
+**这个判断是错的，而且是它自己推翻的。** 提交之后再查 `git status`：
+
+```
+ M DiskEjector-UI-Design/v2/screens/05-settings.html    # 23:26:47  +46/-7
+?? DiskEjector-UI-Design/v2/screens/08-update.html       # 23:29:58  525 行「版本更新」屏
+?? DiskEjector-UI-Design/v2/screens/_probe.html.done     # 23:30:14  29 142 B（**md5 与移走那份不同**）
+```
+
+`_probe.html.done` **回来了，而且内容变了** —— 它现在是新写的 `08-update.html`（26 094 B）
+加探针脚本，不再是 `05-settings.html` 的副本。
+→ **它是另一个会话正在进行的编辑的中间产物，不是残留。**
+（`08-update.html` 还没接进 `index.html` 的导航 —— 典型的在制品。）
+
+> **判据一：在并发编辑的仓库里，「工作区是干净的」这个前提随时会失效。**
+> 本轮开工时 `git status` 是 **0 项**，二十分钟后是 **3 项** —— **两次都真实**。
+> `DEBuildDirtyCount` 反映的是**打包那一刻**的条数，不是「这个仓库现在干不干净」。
+>
+> **判据二：判「这是残留」之前，先问「有没有别人正在写它」。**
+> 残留的特征是**只减不增**；只要它会**重新长出来**，它就不是残留。
+> 我移走那份没造成损失（对方随后自己重建了一份新的），但**差一点就把别人的在制品清掉了**。
+>
+> **判据三：见到脏项 ≠ 该清。** 本轮那 3 项**一项都不该清**（都是别人的在制品）。
+> 正确的动作是**确认这些脏项不来自你自己**，然后**如实记录** `dirty` 的值。
+> 本轮打包发生在 **23:25**，那 3 项当时尚未出现 → 产物里的 `dirty=0` **是当时的事实**
+> （这一条比 §8.34.3 初稿那句「必须清掉」重要得多：**「清掉它」和「记录它」是两件事**，
+> 而只有后者在并发环境下始终正确）。
 
 ### §8.34.4 发行产物能跑的自检集合 ≠ 开发机上的自检集合
 
