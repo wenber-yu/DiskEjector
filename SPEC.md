@@ -281,6 +281,14 @@ helper 的登录项方案。（「符合 MAS 要求」这条理由随不上架�
 > 比对「enclosure 末段」与「待上传文件名」是否逐字相同 —— 这条守卫是补的，
 > 因为此前脚本的指引写的是 `DiskEjector.dmg`，与 enclosure 不一致。
 
+**发布说明（新版本弹窗的「本次更新」清单）**：由 `release-notes/<版本>.html`
+（只含 `<ul><li>…</li></ul>`）在生成时经 `RELEASE_NOTES_FILE=…` 传入，
+被 `generate_appcast` **内嵌**进 appcast 的 `<description>` —— 界面只读内嵌的那份
+（`UpdateUserDriver.showUpdateReleaseNotes` 是空实现，外链的 `sparkle:releaseNotesLink` 它不看）。
+不传就没有 `<description>`，弹窗里那一块**不会被画出来**。
+⚠️ 说明文件里**不能有 HTML 注释**：解析器 `UpdateReleaseNotes.stripTags` 只剥 `<…>` 尖括号对，
+不认注释，注释正文会原样进到弹窗。格式要求见 `release-notes/README.md`。
+
 打包时 `build_app.sh` 必须做三件事，少一件就是「构建成功、双击打不开」：
 ① 把 `Sparkle.framework` 拷进 `Contents/Frameworks`；② 给可执行文件补
 `@executable_path/../Frameworks` 这条 rpath；③ entitlements 开

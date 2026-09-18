@@ -69,13 +69,39 @@ ARCHIVE_EXT="$(basename "$ARCHIVE" | awk -F. '{print $NF}')"
 UPLOAD_ASSET="$UPDATES_DIR/$APP_NAME-$VERSION.$ARCHIVE_EXT"
 cp "$ARCHIVE" "$UPLOAD_ASSET"
 
-# 发布说明：同名（扩展名不同）的 .md / .html 会被 generate_appcast 自动捡走
-if [ -n "${RELEASE_NOTES_FILE:-}" ] && [ -f "$RELEASE_NOTES_FILE" ]; then
-    cp "$RELEASE_NOTES_FILE" "$UPDATES_DIR/$APP_NAME-$VERSION.md"
+# 发布说明：文件**必须与归档同名**（只换扩展名），否则 generate_appcast 不会捡。
+# ⚠️ 扩展名要**保留**（`.html` / `.md` / `.txt` 三种都支持）—— 早期版本把它写死成 `.md`，
+# 于是传进来的 HTML 会被当成 markdown 处理，条目边界 `<li>` 可能被包进 `<pre>`，
+# 解析器（`UpdateReleaseNotes.lines`）就只剩一行。
+# HTML **不含 DOCTYPE / body** 时会被内嵌成 `<description>`（配合 --embed-release-notes）。
+NOTES_PROVIDED=0
+if [ -n "${RELEASE_NOTES_FILE:-}" ]; then
+    if [ ! -f "$RELEASE_NOTES_FILE" ]; then
+        echo "❌ RELEASE_NOTES_FILE 指向的文件不存在：$RELEASE_NOTES_FILE" >&2
+        exit 1
+    fi
+    # ⚠️ HTML 注释在解析器眼里**不是注释**：`UpdateReleaseNotes.stripTags` 只剥
+    # `<…>` 尖括号对 —— `<!-- 说明 -->` 剥掉 `<!--` 之后，**注释正文会原样进到弹窗里**。
+    # 2026-09-18 实测踩到过（第一版把格式说明写在注释里，全进了 <description>）。
+    # 所以在这里直接拦，别等生成完再靠肉眼发现。
+    if [ -n "$(sed -n '/<!--/p' "$RELEASE_NOTES_FILE" | head -1)" ]; then
+        echo "❌ 说明文件里有 HTML 注释（<!--）" >&2
+        echo "   解析器不认注释，注释正文会原样出现在弹窗里。" >&2
+        echo "   把说明文字挪到 release-notes/README.md，文件里只留 <ul><li>…</li></ul>。" >&2
+        exit 1
+    fi
+    NOTES_EXT="$(basename "$RELEASE_NOTES_FILE" | awk -F. '{print $NF}')"
+    cp "$RELEASE_NOTES_FILE" "$UPDATES_DIR/$APP_NAME-$VERSION.$NOTES_EXT"
+    NOTES_PROVIDED=1
+    echo "   发布说明：$(basename "$RELEASE_NOTES_FILE") → $APP_NAME-$VERSION.$NOTES_EXT"
 fi
 
 echo "▶ 生成 appcast（版本 $VERSION，归档 $(basename "$ARCHIVE")）..."
 GEN_ARGS=(--link "$REPO_URL")
+# 把说明文件**内嵌**进 `<description>`。不带 DOCTYPE/body 的 HTML 本来就会内嵌，
+# 显式加上是为了不依赖那个隐含规则 —— user driver 只读**内嵌**的 `<description>`
+# （`showUpdateReleaseNotes` 是空实现，外链的 `sparkle:releaseNotesLink` 它不看）。
+GEN_ARGS+=(--embed-release-notes)
 # GitHub Release 的资产地址：https://github.com/OWNER/REPO/releases/download/TAG/FILE
 #
 # ⚠️ 结尾的斜杠**不能省**（实测 2026-09-18）：不带斜杠时 generate_appcast 会把前缀最后一段
@@ -124,6 +150,29 @@ if [ "$(basename "$ENCLOSURE_URL")" != "$(basename "$UPLOAD_ASSET")" ]; then
 fi
 echo "   待上传：$UPLOAD_ASSET"
 echo "   （文件名必须与上面 enclosure 的末段逐字相同，改名即 404）"
+
+# ---------------------------------------------------------------
+# 回读：发布说明有没有真的进到 <description>
+#
+# 界面上的「本次更新」清单来自**内嵌的** `<description>`（`UpdateReleaseNotes.lines`）。
+# 空输入返回空数组 → **调用方不画那个区块** —— 于是「没传说明」与「传了但没生效」
+# 在界面上长得一模一样（都是「没有这一块」）。这条回读把它们区分开。
+# ---------------------------------------------------------------
+NOTES_TEXT="$(tr -d '\n' < "$APPCAST" \
+    | sed -n 's/.*<description>\(.*\)<\/description>.*/\1/p' \
+    | sed 's/<[^>]*>//g' | tr -d '[:space:]')"
+if [ "$NOTES_PROVIDED" = "1" ]; then
+    if [ -z "$NOTES_TEXT" ]; then
+        echo "❌ 传了 RELEASE_NOTES_FILE，但 appcast 里没有可用的 <description>" >&2
+        echo "   （要么没被内嵌，要么剥掉标签后是空的）—— 弹窗里一行都不会出现。" >&2
+        exit 1
+    fi
+    echo "   <description> 已内嵌（剥标签后 $(printf '%s' "$NOTES_TEXT" | wc -c | tr -d ' ') 个非空白字符）"
+else
+    echo "⚠️  没传 RELEASE_NOTES_FILE → appcast 里没有 <description>：" >&2
+    echo "    新版本弹窗的「本次更新」区块**不会画出来**（设计如此，不是崩溃）。" >&2
+    echo "    要显示条目：RELEASE_NOTES_FILE=release-notes/<版本>.html ./scripts/make_appcast.sh" >&2
+fi
 if printf '%s' "$ENCLOSURE_URL" | grep -q 'download//'; then
     echo "⚠️  enclosure 里出现了 download//（重复斜杠），请人工核对" >&2
 fi

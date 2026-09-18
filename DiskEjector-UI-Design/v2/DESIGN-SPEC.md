@@ -4990,8 +4990,10 @@ Sparkle 会不会装上这次更新 —— 依据是 `showUpdateFound` 的文档
 
 ### §8.41.6 appcast 的 HTML → 条目：三处容易错
 
-`generate_appcast` 把 git commit 正文塞进 `<description>`，所以「本次更新」清单要先解析 HTML。
-三处都是**做错了也看不出**的：
+`<description>` 由**与归档同名的说明文件**（`.html` / `.md` / `.txt`，只换扩展名）经
+`generate_appcast` 内嵌而来。⚠️ **它不是自动抓 git commit 正文** —— 2026-09-18 实测：
+不传说明文件时 appcast 里**根本没有 `<description>`**（见 §8.46.3）。
+所以「本次更新」清单要先解析 HTML。三处都是**做错了也看不出**的：
 
 1. **必须先把条目边界（`<li>` / `<br>` / `</p>`）变成换行，再剥标签。**
    顺序反了的话所有条目会粘成一行 —— 而粘出来的文本读起来完全正常，
@@ -5081,12 +5083,13 @@ Sparkle 会不会装上这次更新 —— 依据是 `showUpdateFound` 的文档
 | 4 | ~~设置行七态的走查图~~（下载中 / 已就绪 / 失败…） | 已关闭 | §8.44 / §8.45 | ✅ 七态 + 三态共 11 张图，各配一条机器无关守卫 |
 | 5 | ~~48 项改动未提交~~（见 §8.42.3） | 已关闭 | §8.42.3 | ✅ 分三个提交推上去，tag `v2026.09.18.1/.2/.3` |
 | 6 | **`v2026.09.18.3` 的 GitHub Release 还没建** → enclosure 现在 404 | **你本人**（本机无 `gh`，要在网页上传） | §8.46.3 | ⬜ **仍开着** |
-| 7 | appcast 里**没有 `<description>`** → 新版本弹窗的「本次更新」是空的 | 我（传 `RELEASE_NOTES_FILE` 即可） | §8.46.3 | ⬜ **仍开着** |
+| 7 | ~~appcast 里没有 `<description>`~~（→ 新版本弹窗的「本次更新」是空的） | 已关闭 | §8.46.4 | ✅ 传了 `RELEASE_NOTES_FILE`，实测解析出 **4 条**；并补 3 条守卫 |
 
 > **判据：这张「仍开着」的表本身也是承诺型的话。** 17:55 回头核对时，第 4、5 行**早已关掉
 > 而表还写着「仍开着」** —— 和 §8.33 清掉的那 6 条是同一个病：**还了账没人回来划掉**。
 > 所以它现在多了一列「现状」和一个**核对时刻**：下次谁来读，先看时刻再看结论。
-> 表上 1、3、6 **不在我这边**（要你跑 `generate_keys` / 真发一版 / 在网页建 Release）；7 我能做。
+> 表上 1、3、6 **不在我这边**（要你跑 `generate_keys` / 真发一版 / 在网页建 Release）；
+> 7 已在 18:15 之后的这一轮关掉。
 
 ### §8.42.3 实扫顺带查出来的一件大事：48 项未提交
 
@@ -5340,6 +5343,43 @@ appcast 里三个值都对得上产物：`sparkle:version=66` = `CFBundleVersion
 ⚠️ 另一条已知限制：appcast 里**没有 `<description>`**（没传 `RELEASE_NOTES_FILE`），
 所以新版本弹窗的「本次更新」那一块是**空的**。要显示条目得给 `make_appcast.sh` 传
 `RELEASE_NOTES_FILE=…`（同名 `.md` / `.html` 会被 `generate_appcast` 捡走）。
+
+### §8.46.4 发布说明：`<description>` 从「没有」到「有 4 条」
+
+第一版 appcast 里**根本没有 `<description>`**，于是新版本弹窗的「本次更新」区块
+**不会被画出来**（`UpdateReleaseNotes.lines` 空输入返回空数组 → 调用方不画；
+设计如此，不是崩溃）。后果是：用户看到「有新版本」，却**不知道更新了什么**。
+
+补法：`release-notes/<版本>.html`（只含 `<ul><li>…</li></ul>`）+ 生成时传
+`RELEASE_NOTES_FILE=…`。三条实测到的坑：
+
+1. **`generate_appcast` 不会自动抓 git commit 正文** —— 这条以前记错了（§8.41.6 已改）。
+   不传说明文件就**真的没有** `<description>`。
+2. **说明文件里不能有 HTML 注释。** `UpdateReleaseNotes.stripTags` 只剥 `<…>` 尖括号对，
+   **不认注释** —— 第一版把格式说明写在 `<!-- -->` 里，生成出来整段注释正文都进了
+   `<description>`，会**原样出现在弹窗里**。现在 `make_appcast.sh` 有一条守卫直接拦下含
+   `<!--` 的说明文件，格式要求记在 `release-notes/README.md`。
+3. **脚本此前把说明文件扩展名写死成 `.md`** → 传进来的 HTML 会被当 markdown 处理，
+   `<li>` 边界可能被包进 `<pre>`，解析器就只剩一行。现在**保留原扩展名**，
+   并加 `--embed-release-notes` 显式要求内嵌（不带 DOCTYPE/body 的 HTML 本来就会内嵌，
+   显式写是为了不依赖那个隐含规则）。
+
+### §8.46.5 这一轮加的三条守卫（`UpdateFeedTests`，3 → 6 条）
+
+| 守卫 | 钉住什么 | 实测有牙 |
+|---|---|---|
+| `仓库里的appcast必须能解析出更新条目` | 交付物里的 `<description>` 必须真能解析出条目 | 删掉 `<description>` → 红 |
+| `appcast的下载文件名必须与待上传资产同名` | enclosure 末段 = `DiskEjector-<版本>.dmg`，且含 `/releases/download/v<版本>/` | 改成 `DiskEjector.dmg` → 红；去掉前缀斜杠 → 红 |
+| `发布说明文件里不能有HTML注释` | `release-notes/*.html` 里不能有 `<!--` | （脚本侧守卫已实测拦下） |
+
+⚠️ 写第一条时踩到一个**会让守卫永远绿**的坑：`<description>` 是 **CDATA**，
+`XMLParser` 通过 `parser(_:foundCDATA:)` 回调、**不是** `foundCharacters`。
+漏了 `foundCDATA` 的话 `descriptionHTML` 永远是 `nil` → `lines` 返回空数组 ——
+而「空数组」正是「没有说明」时的合法值 → **失败与通过长得一模一样**。
+测试里的注释写明了这一点。
+
+> **判据：读 CDATA 要用 XML 解析器，不要用正则。** 正则取到的是带着 `]]>` 结束符的原文，
+> 与 Sparkle 交给 `UpdateUserDriver` 的纯文本**不是同一个东西** —— 等于测了个和线上不同的值。
 
 ---
 

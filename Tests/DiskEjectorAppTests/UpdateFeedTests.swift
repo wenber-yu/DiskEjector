@@ -100,4 +100,129 @@ struct UpdateFeedTests {
             "下载前缀必须以斜杠结尾，否则 generate_appcast 会吃掉最后一段（tag）而不报错：\(line)"
         )
     }
+
+    // MARK: - 仓库里那份 appcast.xml（真实交付物）
+
+    /// 把 appcast 的 XML 解出来。**用 XMLParser，不用正则** ——
+    /// `<description>` 是 CDATA，正则取到的是原文（会连 `]]>` 一起带上），
+    /// 而 Sparkle 交给 `UpdateUserDriver` 的是**解完 CDATA 的纯文本**。
+    /// 用正则测等于测了个和线上不同的东西。
+    private final class AppcastParser: NSObject, XMLParserDelegate {
+        var shortVersion: String?
+        var enclosureURL: String?
+        var descriptionHTML: String?
+
+        private var current = ""
+
+        static func parse(_ xml: String) -> AppcastParser? {
+            let parser = AppcastParser()
+            let xmlParser = XMLParser(data: Data(xml.utf8))
+            xmlParser.delegate = parser
+            guard xmlParser.parse() else { return nil }
+            return parser
+        }
+
+        func parser(
+            _ parser: XMLParser, didStartElement elementName: String,
+            namespaceURI: String?, qualifiedName: String?,
+            attributes: [String: String] = [:]
+        ) {
+            current = ""
+            if elementName == "enclosure" { enclosureURL = attributes["url"] }
+        }
+
+        func parser(_ parser: XMLParser, foundCharacters string: String) {
+            current += string
+        }
+
+        /// ⚠️ CDATA 走的是**这个方法**，不是 `foundCharacters` —— 少了它
+        /// `<description>` 会永远读成空串，测试于是「通过」（空输入返回空数组）。
+        func parser(_ parser: XMLParser, foundCDATA CDATABlock: Data) {
+            current += String(data: CDATABlock, encoding: .utf8) ?? ""
+        }
+
+        func parser(
+            _ parser: XMLParser, didEndElement elementName: String,
+            namespaceURI: String?, qualifiedName: String?
+        ) {
+            let text = current.trimmingCharacters(in: .whitespacesAndNewlines)
+            switch elementName {
+            case "description": descriptionHTML = text
+            case "sparkle:shortVersionString", "shortVersionString": shortVersion = text
+            default: break
+            }
+            current = ""
+        }
+    }
+
+    /// 仓库里那份 appcast 必须能让弹窗**真的显示出更新条目**。
+    ///
+    /// 空 `<description>` 不会崩、不会报错 —— `UpdateReleaseNotes.lines` 空输入返回空数组，
+    /// 调用方据此**不画**「本次更新」区块。于是「没写说明」与「写了但没生效」
+    /// 在界面上长得一模一样（都是「没有这一块」）。这条守卫把它们区分开。
+    @Test func 仓库里的appcast必须能解析出更新条目() throws {
+        let appcast = try contents("appcast.xml")
+        let parsed = try #require(AppcastParser.parse(appcast), "appcast.xml 不是合法 XML")
+
+        let lines = UpdateReleaseNotes.lines(fromHTML: parsed.descriptionHTML)
+        #expect(
+            !lines.isEmpty,
+            """
+            appcast.xml 的 <description> 解析不出任何条目 → 新版本弹窗的「本次更新」是空的。
+            要么补 release-notes/<版本>.html 后用 RELEASE_NOTES_FILE=… ./scripts/make_appcast.sh 重新生成，
+            要么明确接受「这一块不显示」。
+            """
+        )
+
+        // 残留的标记：说明文件里写了 HTML 注释时最容易中招 ——
+        // `stripTags` 只剥 `<…>` 尖括号对，**不认注释**，注释正文会原样进到弹窗里。
+        for line in lines {
+            #expect(!line.contains("<!--") && !line.contains("-->"), "条目里残留了注释标记：\(line)")
+            #expect(!line.contains("]]>"), "条目里残留了 CDATA 结束符（说明取的是正则原文而非 XML 解析结果）：\(line)")
+        }
+    }
+
+    /// `enclosure` 的文件名必须与脚本让你上传的那个资产**同名**。
+    ///
+    /// 实测（2026-09-18）：`make_appcast.sh` 的「下一步」原本让用户上传
+    /// `DiskEjector.dmg`，而 enclosure 里写的是 `DiskEjector-<版本>.dmg` ——
+    /// 照指引做，用户点「安装更新」时**必 404**，而 appcast 本身不报任何错。
+    /// 同一个事实被写在两个地方（指引一次、工具生成一次），所以得有一条守卫来比对。
+    @Test func appcast的下载文件名必须与待上传资产同名() throws {
+        let appcast = try contents("appcast.xml")
+        let parsed = try #require(AppcastParser.parse(appcast), "appcast.xml 不是合法 XML")
+
+        let version = try #require(parsed.shortVersion, "appcast 里没有 sparkle:shortVersionString")
+        let enclosure = try #require(parsed.enclosureURL, "appcast 里没有 enclosure，更新无法下载")
+
+        #expect(
+            enclosure.contains("/releases/download/v\(version)/"),
+            "enclosure 里没有 releases/download/v\(version)/ 这一段（前缀少了斜杠就会这样，而且不报错）：\(enclosure)"
+        )
+        #expect(
+            URL(string: enclosure)?.lastPathComponent == "DiskEjector-\(version).dmg",
+            "enclosure 的文件名必须与脚本让你上传的那个文件名逐字相同，改名即 404：\(enclosure)"
+        )
+    }
+
+    /// 发布说明文件里**不能有 HTML 注释**。
+    ///
+    /// `UpdateReleaseNotes.stripTags` 只剥 `<…>` 尖括号对 —— `<!-- 说明 -->`
+    /// 剥掉 `<!--` 之后，**注释正文会原样出现在新版本弹窗里**（2026-09-18 实测踩到）。
+    /// 脚本里已有一条守卫直接拦下，这里再对**仓库里真实存在的说明文件**兜一层。
+    @Test func 发布说明文件里不能有HTML注释() throws {
+        let dir = repoRoot.appendingPathComponent("release-notes")
+        guard FileManager.default.fileExists(atPath: dir.path) else { return }
+
+        let files = try FileManager.default.contentsOfDirectory(atPath: dir.path)
+            // 只看**说明文件**：`README.md` 是格式文档，里面正当地举了 `<!-- 说明 -->` 这个反例。
+            .filter { $0.hasSuffix(".html") }
+        for file in files {
+            let body = try String(contentsOf: dir.appendingPathComponent(file), encoding: .utf8)
+            #expect(
+                !body.contains("<!--"),
+                "release-notes/\(file) 里有 HTML 注释 —— 解析器不认注释，注释正文会原样出现在弹窗里"
+            )
+        }
+    }
 }
