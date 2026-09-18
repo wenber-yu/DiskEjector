@@ -413,6 +413,41 @@ struct SettingsLayoutTests {
         }
     }
 
+    /// 「自动更新」行**三种形态渲染出来必须一样高**。
+    ///
+    /// 与上面那条同一个理由：面板是固定高度。而这一行的说明是**整句替换**的
+    /// （`autoUpdateHint` ↔ `autoUpdateUnavailableHint`）—— 换长了就可能多折一行，
+    /// 把最后一行挤出折叠线。这三态在真机上都会出现（未签名构建恒为「不允许」）。
+    @Test func 自动更新行三态渲染出来必须一样高() {
+        let states: [(String, AutoUpdateRowState)] = [
+            ("开 · 允许", AutoUpdateRowState(isOn: true, isAllowed: true)),
+            ("关 · 允许", AutoUpdateRowState(isOn: false, isAllowed: true)),
+            ("关 · 不允许", AutoUpdateRowState(isOn: false, isAllowed: false)),
+        ]
+
+        var heights: [(String, CGFloat)] = []
+        for (name, state) in states {
+            let h = renderedSize(
+                SettingsSectionsColumn(autoUpdateRowOverride: state), width: panelWidth
+            ).height
+            heights.append((name, h))
+        }
+        let printed = heights.map { "\($0.0) \($0.1)" }.joined(separator: " ｜ ")
+        print("  [自动更新行三态] \(printed)")
+
+        let first = heights[0].1
+        for (name, h) in heights.dropFirst() {
+            #expect(
+                abs(h - first) <= 0.5,
+                """
+                「\(name)」渲染出来 \(h)pt，而「\(heights[0].0)」是 \(first)pt —— 三态必须一样高。
+                说明文案是整句替换的，长了就会多折一行、把最后一行挤出折叠线。
+                全部三态：\(printed)
+                """
+            )
+        }
+    }
+
     @Test func 分段控件不许吃掉标签列的宽度() {
         _ = NSApplication.shared
         let control = SettingsSegmentedControl(

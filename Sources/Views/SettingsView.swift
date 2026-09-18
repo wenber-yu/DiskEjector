@@ -54,6 +54,9 @@ struct SettingsView: View {
     /// 真实入口（`AppDelegate.makeSettingsWindow()`）不传 → 走真实状态。
     var updateStateOverride: UpdateController.CheckRowState?
 
+    /// ⚠️ **仅供离屏出图**：见 ``SettingsSectionsColumn/autoUpdateRowOverride``。
+    var autoUpdateRowOverride: AutoUpdateRowState?
+
     @Environment(\.dismiss) private var dismiss
     @State private var launchAtLoginPrompt: LaunchAtLoginPrompt?
 
@@ -79,7 +82,8 @@ struct SettingsView: View {
                     onLaunchAtLoginError: { error in
                         launchAtLoginPrompt = prompt(for: error)
                     },
-                    updateStateOverride: updateStateOverride
+                    updateStateOverride: updateStateOverride,
+                    autoUpdateRowOverride: autoUpdateRowOverride
                 )
                 .padding(.bottom, SettingsMetrics.bottomInset)
             }
@@ -252,6 +256,27 @@ struct SettingsHeaderBar: View {
 
 // MARK: - 四组内容
 
+/// 「自动更新」那一行的展示状态 —— **仅供离屏出图 / 预览**。
+///
+/// **为什么需要它**：这一行有两个输入是**跑出图那个进程的环境**决定的 ——
+/// 开关值来自 Sparkle 的 `SPUUpdaterSettings`，而「宿主是否允许自动更新」
+/// 由**构建有没有正确签名**决定。走查图跑在 xctest 进程里（未签名）→
+/// `allowsAutomaticUpdates == false` → 这一行**永远画成禁用态**，
+/// 与设计稿 `08-update.html` 里开关打开的画法对不上（§8.44.4）。
+///
+/// 出图时按**设计稿假设的环境**（允许 + 开）渲染，这一行才能与设计稿并排比；
+/// 「不允许」那一态另有单独一张图，不会被丢掉。
+///
+/// ⚠️ 与 ``SettingsSectionsColumn/autoUpdateOverride`` **不是一回事**：
+/// 那个是「用户本次拨动后的覆盖值」（运行时会变，生产路径在用），
+/// 这个是**只在出图时**注入的静态值。别把两者合并。
+struct AutoUpdateRowState: Equatable {
+    /// 开关是不是开着的。
+    var isOn: Bool
+    /// 宿主是否允许自动更新（真实环境下由签名状态决定）。
+    var isAllowed: Bool
+}
+
 /// 设置面板的四组内容（不含头部与滚动容器）。
 ///
 /// **自己读偏好、不接收绑定**：这样契约测试可以直接 `SettingsSectionsColumn { _ in }`
@@ -278,6 +303,10 @@ struct SettingsSectionsColumn: View {
     /// ⚠️ **不要**改成「给 `UpdateController.shared` 塞一个假 phase」——
     /// 那会连带编出假的进度、假的「可以取消」，与 §8.30 记的「夹具保真度」是同一个坑。
     var updateStateOverride: UpdateController.CheckRowState?
+
+    /// ⚠️ **仅供离屏出图 / 预览**：`nil` 时走真实值（Sparkle + 宿主签名状态）。
+    /// 理由见 ``AutoUpdateRowState``。
+    var autoUpdateRowOverride: AutoUpdateRowState?
 
     @AppStorage(AppSettings.Key.visualStyle) private var visualStyleRaw = VisualStyle.default.rawValue
     @AppStorage(AppSettings.Key.accentColor) private var accentColorRaw = AccentColor.default.rawValue
@@ -418,11 +447,14 @@ struct SettingsSectionsColumn: View {
     /// **真值在 Sparkle 那边**（`SPUUpdaterSettings`，写进同一份 UserDefaults），
     /// 这里不另存偏好 —— 见 ``AppSettings`` 顶部那段说明。
     private var autoUpdateOn: Bool {
-        autoUpdateOverride ?? UpdateController.shared.automaticallyChecksForUpdates
+        autoUpdateRowOverride?.isOn ?? autoUpdateOverride
+            ?? UpdateController.shared.automaticallyChecksForUpdates
     }
 
     /// 宿主是否允许自动更新（未正确签名时为假）。
-    private var canAutoUpdate: Bool { UpdateController.shared.allowsAutomaticUpdates }
+    private var canAutoUpdate: Bool {
+        autoUpdateRowOverride?.isAllowed ?? UpdateController.shared.allowsAutomaticUpdates
+    }
 
     /// 「自动更新」行的说明。不允许自动更新时**必须说明原因** ——
     /// 否则用户看到的是一个拨不动的开关，却不知道为什么。
