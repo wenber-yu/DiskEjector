@@ -37,6 +37,16 @@ import Testing
 /// 报出 `build_icon.sh` / `coverage.sh` / `make_appcast.sh` —— 它们是**别的脚本**，
 /// 从来没自称过「门槛」。⇒ 收集范围必须是「**自称门槛的那些行**」，不是「全文」。
 /// 与 §8.59 那条正好互补：那边是「来源比想的多」（假绿），这边是「范围比该管的宽」（假红）。
+///
+/// ## 第二族：CI 声明的环境变量 ↔ 脚本真的读它（§8.61）
+///
+/// `ci.yml` 顶层 `env` 是**声明**，脚本里的 `${VAR:-默认}` 是**消费**。
+/// 两边断开时**谁都不报错** —— 只是 CI 失败时日志被截成 30 行，断言消息看不全
+/// （本仓库踩过：19 个 issue 只露出 12 个，只能反复推 CI 靠猜）。
+///
+/// ⚠️ 这一族的关键是**扫描不够**：扫描只能发现「声明了没人读」，
+/// 发现不了「**该声明的没声明**」（把 `env` 那行删掉，扫描器眼里世界依然一致）。
+/// ⇒ 必须配一张**显式契约表**，两个方向各守一次。
 struct GateParityTests {
 
     // MARK: 路径
@@ -161,12 +171,202 @@ struct GateParityTests {
     /// 因此不进收集范围 —— 它没在**承诺**什么，只是列目录。
     private static let gateClaimKeywords = ["本地门槛", "代码门槛", "同一文件"]
 
+    // MARK: 第二族：环境变量契约（§8.61）
+
+    /// CI ↔ 门槛脚本的**显式契约表**：变量 → CI 必须设的值。
+    ///
+    /// ⚠️ 这张表**不能靠扫描替代**：扫描只看得见「现在写着什么」，
+    /// 看不见「**该写的没写**」—— 把 `PREFLIGHT_FAIL_TAIL` 那行删掉，
+    /// 「ci.yml 声明的变量都被读了」依然成立（没声明就不查），守卫全绿而契约已死。
+    private static let envContracts: [String: String] = ["PREFLIGHT_FAIL_TAIL": "0"]
+
+    /// runner 级变量：设给 **runner 进程本身**，不由脚本读（`LC_ALL` 修的是 runner 的 locale）。
+    /// 判它「没人读」是假红 —— 它的消费者是 CI  runner，不在本仓库里。
+    private static let runnerLevelEnv: Set<String> = ["LC_ALL"]
+
+    /// 契约中的变量，ci.yml **必须**声明且值**逐字**相等（防删、防改值）。
+    @Test func CI必须按契约声明门槛变量() throws {
+        let env = try loadEnv()
+
+        // 负向锚：两边解析为空 = 口径失效，不是「都一致」
+        #expect(!Self.envContracts.isEmpty, "契约表是空的 —— 守卫自己被清空了（假绿）")
+        #expect(!env.declared.isEmpty, "ci.yml 顶层 env 块解析为空 —— 口径失效（假绿）")
+
+        for (name, value) in Self.envContracts {
+            #expect(
+                env.declared[name] == value,
+                """
+                ci.yml 顶层 env 里没有 `\(name): "\(value)"`（实际 \(env.declared[name].map { "\"\($0)\"" } ?? "无")）。
+                「门槛失败时全量回显日志」这条由此变量保证；删掉或改值**不会有任何报错** ——
+                只会让 CI 失败时日志被截成 30 行，断言消息看不全（踩过：19 个 issue 只露出 12 个）。
+                """)
+        }
+    }
+
+    /// 契约里的变量，脚本必须**真的读**它（防改名 ⇒ 静默失效）。
+    @Test func 契约变量必须被脚本真的读() throws {
+        let env = try loadEnv()
+        for name in Self.envContracts.keys {
+            let readers = env.readers(of: name)
+            #expect(
+                !readers.isEmpty,
+                """
+                没有任何脚本读 `\(name)` ——
+                ci.yml 设了它，但没有脚本取用，**声明与消费断开而双方都不报错**。
+                （改了脚本里的变量名却忘了改 ci.yml，症状一模一样：CI 悄悄退回默认值。）
+                """)
+        }
+    }
+
+    /// 脚本必须**认**契约里那个值 —— 光读到还不够。
+    ///
+    /// 少了这一条，`PREFLIGHT_FAIL_TAIL=0` 会被 `tail -n 0` 执行成「**一行都不回显**」：
+    /// 变量读了、值也对，语义却是反的。
+    ///
+    /// ⚠️ 第二版这里只查「正文里有 `= "值"`」⇒ **变异把那一处改掉后仍然绿**：
+    /// `preflight.sh` 里 `= "0"` 共 4 处，`FAILED` / `WITH_TESTS` 的比较把它顶住了。
+    /// ⇒ **字面量必须绑定角色**：同一行里要同时出现「承接这个变量的那个名字」和这个值。
+    /// （与文件头「唯一是相对于角色」同一条，方向相反：那次是集合范围宽，这次是模式宽。）
+    @Test func 脚本必须认契约里那个值() throws {
+        let env = try loadEnv()
+        for (name, value) in Self.envContracts {
+            let readers = env.readers(of: name)
+            guard !readers.isEmpty else { continue }
+            // ⚠️ `readers` 返回的是**脚本路径**，不是正文 —— 拿路径去搜字面量永远搜不到
+            // （第一版就是这么写的：红得很冤，但至少不是假绿）。
+            let handled = readers.contains { path in
+                guard let body = env.scriptBodies[path] else { return false }
+                // 承接它的名字（`FAIL_TAIL="${PREFLIGHT_FAIL_TAIL:-30}"` ⇒ `FAIL_TAIL`），
+                // 加上变量本身 —— 脚本也可能直接拿原名比较。
+                let names = Set([name] + Self.assignedNames(of: name, in: body))
+                return body.split(separator: "\n", omittingEmptySubsequences: false).contains { line in
+                    let l = String(line)
+                    guard l.contains("= \"\(value)\"") || l.contains("=\"\(value)\"") else { return false }
+                    return names.contains { l.contains($0) }
+                }
+            }
+            #expect(
+                handled,
+                """
+                读 `\(name)` 的脚本（\(readers.joined(separator: " / "))）里，
+                找不到针对值 `\(value)` 的分支（形如 `= "\(value)"`）。
+                变量读了、值也对，但若脚本没有这一支，`\(value)` 会落进别的语义 ——
+                例如 `tail -n 0` 会把日志**整个抹掉**，比不设还糟。
+                """)
+        }
+    }
+
+    /// 反向（通用补充）：ci.yml 声明的变量必须被脚本读，除 runner 级白名单。
+    ///
+    /// 这一条守的是「**以后新增 env 时忘了接线**」—— 契约表只覆盖已知的那几个。
+    @Test func CI声明的变量必须被脚本读() throws {
+        let env = try loadEnv()
+        for (name, _) in env.declared where !Self.runnerLevelEnv.contains(name) {
+            #expect(
+                !env.readers(of: name).isEmpty,
+                """
+                ci.yml 声明了 `\(name)`，但没有脚本读它 —— **设了没生效**，
+                而两边都不会报错。要么接上消费方，要么把它放进 `runnerLevelEnv`
+                （若它的消费者是 CI runner 本身，如 `LC_ALL`）。
+                """)
+        }
+    }
+
+    /// 白名单是**账本**，两个方向都要查（§8.50.2）：
+    /// 放进白名单的理由是「没人读它」—— 哪天有人读了，它就得**移出**白名单。
+    @Test func runner级白名单要双向查() throws {
+        let env = try loadEnv()
+        for name in Self.runnerLevelEnv {
+            #expect(
+                env.readers(of: name).isEmpty,
+                """
+                `\(name)` 在白名单里（理由是「它的消费者是 CI runner，不由脚本读」），
+                但现在有脚本读它了 —— 它已经是**普通契约变量**，
+                该从 `runnerLevelEnv` 移出，否则以后它断开了没人拦（假绿）。
+                """)
+        }
+    }
+
     // MARK: 扫描
 
     private struct Scan {
         var ciScripts: Set<String> = []  // ci.yml 非注释行里调用的脚本（已归一化）
         var runScript: String?  // run.sh check 分支 exec 的脚本
         var bypass: [String] = []  // ci.yml 里直接跑的门槛命令
+    }
+
+    /// ci.yml 的 **env 声明** 与脚本正文的**消费**。
+    private struct EnvScan {
+        var declared: [String: String] = [:]  // 变量 → 值（已剥引号）
+        var scriptBodies: [String: String] = [:]  // 脚本路径 → 非注释正文
+
+        /// 哪些脚本**真的取用**了这个变量（`$VAR` / `${VAR`）。
+        func readers(of name: String) -> [String] {
+            let pattern = #"\$\{?"# + NSRegularExpression.escapedPattern(for: name) + #"\b"#
+            guard let re = try? NSRegularExpression(pattern: pattern) else { return [] }
+            return scriptBodies.filter { _, body in
+                re.firstMatch(in: body, range: NSRange(body.startIndex..<body.endIndex, in: body)) != nil
+            }.keys.sorted()
+        }
+    }
+
+    private func loadEnv() throws -> EnvScan {
+        var scan = EnvScan()
+        scan.declared = Self.parseEnvBlock(try read(".github/workflows/ci.yml"))
+
+        let fm = FileManager.default
+        var files: [String] = []
+        let scriptsDir = repoRoot.appendingPathComponent("scripts")
+        files += ((try? fm.contentsOfDirectory(atPath: scriptsDir.path)) ?? [])
+            .filter { $0.hasSuffix(".sh") }.sorted().map { "scripts/\($0)" }
+        files += ((try? fm.contentsOfDirectory(atPath: repoRoot.path)) ?? [])
+            .filter { $0.hasSuffix(".sh") }.sorted()
+
+        for f in files {
+            // 读不到就抛 —— 静默跳过会让「没有脚本读它」变成一句空话（假绿）。
+            scan.scriptBodies[f] = Self.stripComments(try read(f))
+        }
+        return scan
+    }
+
+    /// 承接某个环境变量的**局部变量名**：`FAIL_TAIL="${PREFLIGHT_FAIL_TAIL:-30}"` ⇒ `FAIL_TAIL`。
+    ///
+    /// ⚠️ 派生而不是手填 —— 手填一张「变量 → 局部变量」表，改脚本时又会不同步
+    /// （记忆里的原则：**能派生就别用「手动开关」**）。
+    private static func assignedNames(of name: String, in body: String) -> [String] {
+        let pattern = #"^\s*([A-Za-z_][A-Za-z0-9_]*)="?\$\{?"# + NSRegularExpression.escapedPattern(for: name) + #"\b"#
+        guard let re = try? NSRegularExpression(pattern: pattern, options: .anchorsMatchLines) else { return [] }
+        let r = NSRange(body.startIndex..<body.endIndex, in: body)
+        return re.matches(in: body, range: r).compactMap { m in
+            Range(m.range(at: 1), in: body).map { String(body[$0]) }
+        }
+    }
+
+    /// 解析 ci.yml **顶层** `env:` 块（缩进 2 起的 `KEY: 值`）。
+    private static func parseEnvBlock(_ yml: String) -> [String: String] {
+        let lines = yml.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+        var out: [String: String] = [:]
+        var inEnv = false
+        for l in lines {
+            let trimmed = l.trimmingCharacters(in: .whitespaces)
+            if trimmed == "env:" {
+                inEnv = true
+                continue
+            }
+            guard inEnv else { continue }
+            if !l.hasPrefix(" ") && !l.hasPrefix("\t") {
+                if trimmed.isEmpty { continue }
+                break  // 回到顶层键 ⇒ env 块结束
+            }
+            guard
+                let re = try? NSRegularExpression(
+                    pattern: #"^\s+([A-Za-z_][A-Za-z0-9_]*):\s*"?(.*?)"?\s*$"#),
+                let m = re.firstMatch(in: l, range: NSRange(l.startIndex..<l.endIndex, in: l)),
+                let kr = Range(m.range(at: 1), in: l), let vr = Range(m.range(at: 2), in: l)
+            else { continue }
+            out[String(l[kr])] = String(l[vr])
+        }
+        return out
     }
 
     private func load() throws -> Scan {
