@@ -191,11 +191,6 @@ enum SettingsMetrics {
     static let linePaddingV: CGFloat = 11
     static let linePaddingH: CGFloat = DesignTokens.Spacing.md
     static let lineMinHeight: CGFloat = 44
-
-    /// 面板内可容纳的内容高度（面板高 − 头部高 − 底部留白）。
-    static func contentHeightBudget(headerHeight: CGFloat) -> CGFloat {
-        DesignTokens.Size.settingsPanel.height - headerHeight - bottomInset
-    }
 }
 
 // MARK: - 头部（"设置" + "完成"）

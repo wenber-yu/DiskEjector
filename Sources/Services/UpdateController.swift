@@ -134,7 +134,12 @@ final class UpdateController: NSObject, ObservableObject {
             hostBundle: Bundle.main,
             applicationBundle: Bundle.main,
             userDriver: driver,
-            delegate: nil)
+            // **不能是 `nil`**：下载失败这件事 Sparkle 同时走两条路 ——
+            // user driver 的 `showUpdaterError` 和 delegate 的
+            // `updater(_:failedToDownloadUpdate:error:)`。delegate 给 `nil` 就等于
+            // 主动放弃后者，而它才是**文档上写明的**「下载失败」信号
+            // （`SPUUpdaterDelegate`：「Called after the specified update failed to download」）。
+            delegate: self)
         do {
             // ObjC 是 `- (BOOL)startUpdater:(NSError **)error`，Swift 侧被重命名成 `start()`。
             try updater.start()
@@ -346,6 +351,20 @@ final class UpdateController: NSObject, ObservableObject {
         Int(old * 100) != Int(new * 100)
     }
 
+    /// 这次报错该不该算成「下载失败」。
+    ///
+    /// **判据取自我们自己的状态**（是不是正在下载），不新增一个「这一错是不是下载错」的位 ——
+    /// 能派生就别用「手动开关」（同 §「能派生就别用『手动开关』」）。
+    ///
+    /// **为什么抽成纯函数**：真实环境里「下载中报错」**构造不出来**（要真的下载、且真的失败），
+    /// 而它正是 `.failed` 那一态的来源。留成驱动里一句 `if case` 的话，
+    /// 「分支写反了」或「被删掉了」都不会有任何断言变红
+    /// —— 2026-09-18 实扫发现 `driverDidFailDownload` 当时**全仓库没有调用点**，就是这么发生的。
+    nonisolated static func isDownloadFailure(phase: UpdatePhase) -> Bool {
+        if case .downloading = phase { return true }
+        return false
+    }
+
     /// 手动「检查更新」时清掉跳过标记。
     ///
     /// **跳过必须可撤销**：不清的话用户点「检查更新」也看不到那个版本，
@@ -455,5 +474,40 @@ extension UpdateController {
             // 否则用户既不知道有新版本、也没有再打开的入口，只能等下次启动。
             reply(.dismiss)
         }
+    }
+}
+
+// MARK: - Sparkle 的 delegate 侧（与 user driver 互为兜底）
+//
+// `SPUUpdaterDelegate` 在头文件里标了 `NS_SWIFT_UI_ACTOR`，所以它到 Swift 侧就是
+// `@MainActor` 协议 —— 这个类本身也是 `@MainActor`，实现起来不需要跳线程。
+
+extension UpdateController: SPUUpdaterDelegate {
+
+    /// 下载失败。**这是「下载失败」那一态在文档上写明的来源**
+    /// （`SPUUpdaterDelegate`：「Called after the specified update failed to download」）。
+    ///
+    /// ## 为什么这条和 `UpdateUserDriver.showUpdaterError` 里那条分流都要有
+    ///
+    /// 2026-09-18 实扫发现 `driverDidFailDownload` **全仓库只有定义、没有任何调用点**：
+    /// 于是设计稿 `08-update.html` 给「下载失败」配的那一整行（文案 + 「重试」按钮）
+    /// **永远画不出来**，而界面上完全看不出来 —— 下载出错时流程落进
+    /// `driverDidReset()` → `phase = .idle`，表现是「进度条无声消失」，
+    /// 与「下载完成了」长得一模一样。
+    ///
+    /// ⚠️ **未核实**：下载失败时 Sparkle 到底走 user driver 那条、还是 delegate 这条
+    /// （也可能两条都走）。本环境读不到应用日志、`--preview-*` 又不建 updater，
+    /// 真机验证需要一个「真的下载、且真的失败」的场景。**两条都接上，是为了不依赖这个假设**；
+    /// 万一两条都触发，也只是把同一个状态设两遍（幂等）。
+    ///
+    /// ⚠️ 选择器必须与 ObjC 侧逐字对上。**2026-09-18 实测**：把 `failedToDownloadUpdate`
+    /// 改一个字母（`…Updates`），**编译照过、测试全绿、什么都不崩** —— 编译器只给一条
+    /// `nearly matches optional requirement` 的 **warning**，而 warning 在构建日志里
+    /// 和噪音没有区别。真正的后果是方法还在、却永远不会被调：
+    /// 与「这个方法根本没写」逐字相同。所以 `UpdateSettingsTests` 用 `responds(to:)`
+    /// 去问**运行时**，而不是读源码猜（那条断言实测有牙：拼错即红）。
+    func updater(_ updater: SPUUpdater, failedToDownloadUpdate item: SUAppcastItem, error: Error) {
+        Self.logger.error("下载失败：\(error.localizedDescription, privacy: .public)")
+        driverDidFailDownload(version: item.displayVersionString)
     }
 }

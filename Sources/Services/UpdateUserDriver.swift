@@ -128,13 +128,28 @@ final class UpdateUserDriver: NSObject, SPUUserDriver {
     }
 
     func showUpdaterError(_ error: Error, acknowledgement: @escaping () -> Void) {
-        // 更新流程本身出错（feed 拿不到、签名不匹配、Sparkle 自己起不来…）。
+        // 更新流程出错。**分两种，落点不同**：
+        //
+        // - **正在下载时出错 = 下载失败** → `.failed`（界面：文案 + 「重试」按钮）。
+        //   这是 `.failed` 在 user driver 这条路上的来源 ——
+        //   2026-09-18 实扫发现 `driverDidFailDownload` 当时**全仓库没有调用点**，
+        //   不分流的话这一态永远画不出来，而表现是「进度条无声消失」：
+        //   与「下载完成了」长得一模一样，用户既不知道失败了、也没有重试入口。
+        // - **其余**（feed 拿不到、签名不匹配、Sparkle 自己起不来…）→ 回到上一态 + 日志。
+        //   这是**有意行为**，不是漏掉的（见下）。
         //
         // **不弹窗**：本应用的弹窗是给「要不要装」用的；错误另有落点
-        // （设置行回到上一态 + 日志）。给一个「更新失败」弹窗会打断用户拔盘，
+        // （设置行 + 日志）。给一个「更新失败」弹窗会打断用户拔盘，
         // 而这件事与他此刻在做的事无关。
+        //
+        // 判据走 `UpdateController.isDownloadFailure(phase:)`（纯函数，有单测）——
+        // 不新增一个「这一错是不是下载错」的位：能派生就别用「手动开关」。
         Self.logger.error("更新出错：\(error.localizedDescription, privacy: .public)")
-        controller?.driverDidReset()
+        if let controller, UpdateController.isDownloadFailure(phase: controller.phase) {
+            controller.driverDidFailDownload(version: controller.pendingUpdate?.version)
+        } else {
+            controller?.driverDidReset()
+        }
         acknowledgement()
     }
 

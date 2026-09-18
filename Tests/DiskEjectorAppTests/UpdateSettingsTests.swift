@@ -46,6 +46,20 @@ struct UpdateSettingsTests {
         return String(rest[rest.startIndex..<end])
     }
 
+    /// 只留代码行，去掉整行注释。
+    ///
+    /// **为什么必须去掉**：本仓库的注释习惯是**引用**被断言的那个标识符
+    /// （例如「2026-09-18 实扫发现 `driverDidFailDownload` 当时没有调用点」）。
+    /// 对整段方法体直接 `contains` 的话，**把调用删掉、注释留着**依然会绿 ——
+    /// 断言于是退化成「这个字符串在文件里出现过」，而这里要钉的是「真的调了它」。
+    ///
+    /// 只去**整行**注释（`//` 打头）；行尾注释留着，因为它前面那截是真代码。
+    private func codeOnly(_ body: String) -> String {
+        body.split(separator: "\n", omittingEmptySubsequences: false)
+            .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
+            .joined(separator: "\n")
+    }
+
     // MARK: - 「检查更新」行的状态
 
     /// **优先级**：进行中的态 > 跳过 > 已是最新 > 从未检查。
@@ -239,7 +253,7 @@ struct UpdateSettingsTests {
     /// 也不会有别的断言变红**，只有真发一版、真等一天才看得出来。
     @Test func 启动链上必须真的建起updater() throws {
         let source = try contents("Sources/DiskEjectorApp/DiskEjectorApp.swift")
-        let body = try functionBody("func applicationDidFinishLaunching(", in: source)
+        let body = codeOnly(try functionBody("func applicationDidFinishLaunching(", in: source))
 
         #expect(
             body.contains("UpdateController.shared.startIfNeeded()"),
@@ -256,6 +270,100 @@ struct UpdateSettingsTests {
             启动链上调了 checkForUpdates() —— 那会**每次启动都主动联网并可能弹窗**。
             启动只负责把 updater 建起来；要不要检查由 Sparkle 的排期与「自动更新」开关决定
             （见 UpdateController.startIfNeeded() 的说明）。
+            """
+        )
+    }
+
+    // MARK: - 「下载失败」这一态必须真的有生产者
+
+    /// 这次报错该不该算成「下载失败」——**纯函数**，所以能把两种情形都构造出来。
+    ///
+    /// 真实环境里「下载中报错」**造不出来**（要真的下载、且真的失败），
+    /// 而它正是 `.failed` 那一态的唯一来源。留成驱动里一句 `if case` 的话，
+    /// 「分支写反了」或「被删掉了」都不会有任何断言变红
+    /// —— 2026-09-18 实扫发现 `driverDidFailDownload` 当时**全仓库没有调用点**，就是这么发生的。
+    @Test func 只有正在下载时出错才算下载失败() {
+        #expect(UpdateController.isDownloadFailure(phase: .downloading(version: "1.1.0", fraction: 0)))
+        #expect(UpdateController.isDownloadFailure(phase: .downloading(version: "1.1.0", fraction: 0.97)))
+
+        // 其余每一态都不是「下载失败」——**尤其 `.failed` 自己**：
+        // 它已经在这一态里了，再判一次会让错误处理递归地停不下来。
+        #expect(!UpdateController.isDownloadFailure(phase: .idle))
+        #expect(!UpdateController.isDownloadFailure(phase: .found(version: "1.1.0")))
+        #expect(!UpdateController.isDownloadFailure(phase: .ready(version: "1.1.0")))
+        #expect(!UpdateController.isDownloadFailure(phase: .failed(version: "1.1.0")))
+    }
+
+    /// **「下载失败」这一态必须有生产者，而且接线断掉时这条会红。**
+    ///
+    /// 2026-09-18 实扫发现：`UpdateUserDriver` 调用了**除 `driverDidFailDownload` 以外**
+    /// 的每一个 `driverDid*` —— 于是下载出错时流程落进 `driverDidReset()` → `phase = .idle`，
+    /// 表现是「进度条无声消失」：**与「下载完成了」长得一模一样**，
+    /// 用户既不知道失败了、也没有重试入口，而设计稿给这一态配的整行（文案 + 「重试」）
+    /// 永远画不出来。三处都要钉：
+    ///
+    /// ① `ensureUpdater()` 必须把 `self` 交给 Sparkle 当 delegate
+    ///   （原来传的是 `nil`，等于主动放弃 `updater:failedToDownloadUpdate:error:`）；
+    /// ② `showUpdaterError` 必须按「是不是正在下载」分流，而不是无条件 `driverDidReset()`；
+    /// ③ **选择器要在运行时真的存在** —— 见下一条测试。
+    @Test func 下载失败必须真的接到界面那一态() throws {
+        let controllerSource = try contents("Sources/Services/UpdateController.swift")
+        let ensureBody = codeOnly(try functionBody("private func ensureUpdater()", in: controllerSource))
+
+        #expect(
+            ensureBody.contains("delegate: self"),
+            """
+            SPUUpdater 的 delegate 不是 self。
+            下载失败这件事 Sparkle 同时走两条路：user driver 的 showUpdaterError 与
+            delegate 的 updater:failedToDownloadUpdate:error:。delegate 给 nil 就等于
+            主动放弃后者，而它才是文档上写明的「下载失败」信号。
+            """
+        )
+        #expect(
+            !ensureBody.contains("delegate: nil"),
+            "delegate 又变回 nil 了 —— 见上一条说明。"
+        )
+
+        let driverSource = try contents("Sources/Services/UpdateUserDriver.swift")
+        let errorBody = codeOnly(try functionBody("func showUpdaterError(", in: driverSource))
+
+        #expect(
+            errorBody.contains("isDownloadFailure(phase:"),
+            """
+            showUpdaterError 没有按「是不是正在下载」分流。
+            不分流的话任何错误（feed 拿不到、签名不匹配…）都落进 driverDidReset()，
+            「下载失败」这一态就永远没有生产者。
+            """
+        )
+        #expect(
+            errorBody.contains("driverDidFailDownload(version:"),
+            """
+            showUpdaterError 里没有调 driverDidFailDownload —— 下载失败这一态又变成孤儿了。
+            这正是 2026-09-18 实扫查出来的那个 bug：它当时全仓库只有定义、没有任何调用点。
+            """
+        )
+    }
+
+    /// **选择器签名要与 ObjC 侧逐字对上，而写错只出 warning、不会编译失败。**
+    ///
+    /// `SPUUpdaterDelegate` 的方法是 `@objc optional`：签名差一个词（比如把
+    /// `failedToDownloadUpdate` 写成 `failedToDownloadUpdates`、或参数类型写成 `SUAppcastItem?`），
+    /// 编译器只给一条 `nearly matches optional requirement` 的 **warning** ——
+    /// 而 warning 在构建日志里与噪音没有区别。后果是方法还在、却永远不会被调：
+    /// 与「这个方法根本没写」逐字相同。这正是这次要修的病，所以用 `responds(to:)`
+    /// 问**运行时**，而不是读源码猜。（实测有牙：改一个字母即红。）
+    ///
+    /// 只问「在不在」是**有意的**：能问到，就说明它作为 ObjC 选择器被导出，
+    /// 说明它确实匹配上了协议里那条要求（否则 Swift 不会给它 `@objc`）。
+    @MainActor
+    @Test func 下载失败的delegate选择器真的被导出了() {
+        #expect(
+            UpdateController.shared.responds(
+                to: NSSelectorFromString("updater:failedToDownloadUpdate:error:")),
+            """
+            UpdateController 没有导出 updater:failedToDownloadUpdate:error:。
+            多半是签名与 SPUUpdaterDelegate 对不上了（少一个词、参数类型不精确）——
+            这种错**不会编译失败**，只会让方法静默不被调用，而表现与「没有这个方法」逐字相同。
             """
         )
     }
