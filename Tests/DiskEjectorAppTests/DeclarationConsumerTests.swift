@@ -67,19 +67,26 @@ struct DesignTokenConsumerTests {
         "e3": "设计稿三档阴影之一（窗口 / 弹窗），实现目前只用 `e1`",
     ]
 
-    /// 只被**测试**引用、生产代码不用的令牌 —— **记为待查，不是「没问题」**。
+    /// 只被**测试**引用、生产代码不用的令牌 —— 是**设计稿实测基准**，不是「拿常量跟自己比」。
     ///
-    /// 它们被测试拿来当**期望值**（例如 `MenuPopoverLayoutTests` 里的
-    /// `let expected = DesignTokens.Size.menuRowHeight`）。这正是 §8.48 记过的那条：
-    /// **守卫的期望值要取「设计稿的字面值」，不能取实现里的令牌** ——
-    /// 否则令牌的值被人改错，断言照样绿（**拿常量跟自己比**）。
-    /// 也就是说这 5 个的**值**目前没有任何东西在守。
+    /// ⚠️ **2026-09-18 订正**：这里原先写「正是 §8.48 那条 —— 期望值不能取实现里的令牌，
+    /// 否则拿常量跟自己比，断言照样绿」—— **这个归因是错的**，实扫证伪了它。
+    /// 判据是「**实现读不读它**」：这 5 个生产代码**零引用**，行高是 SwiftUI 自然布局出来的，
+    /// 所以测试量的是 **「实现渲染高度 == 设计稿渲染高度」** ——
+    /// 改实现的 padding、或改令牌的值，**两个方向都会红**（实测容差 2pt、偏差 ≤ 0.47pt）。
+    /// 拿它们当期望值是对的：比把 169/127/133/69 散落成字面值更好（有注释、有出处）。
+    ///
+    /// 真正的洞在**另一头**：镜像本身没有与设计稿同源的守卫。行高在设计稿里是自然布局
+    /// （CSS 里没有 `height` 声明），只能靠无头 Chrome 实测 ⇒ **进不了 CI**。
+    /// 复核脚本 `.build/probe/design_row_height.py`；**2026-09-18 复核逐项仍成立**
+    /// （169.47 / 127.47 / 133.47 / 68.72，且状态对应关系也核对过）。
     private static let testOnlyReferences: [String: String] = [
-        "titleBarHeight": "只被 `TitleBarBaselineTests` / `MenuDiskRowLayoutTests` 引用",
-        "diskRowBusyHeight": "只被 `MenuDiskRowLayoutTests` 当期望值引用",
-        "diskRowSafeHeight": "只被 `MenuDiskRowLayoutTests` 当期望值引用",
-        "diskRowUnknownHeight": "只被 `MenuDiskRowLayoutTests` 当期望值引用",
-        "menuRowHeight": "只被 `MenuDiskRowLayoutTests` / `MenuPopoverLayoutTests` 当期望值引用",
+        "titleBarHeight": "设计稿实测基准（`.titlebar` 52px）⚠️ 这 5 个里**唯一能**做成 CI 守卫的"
+            + "（CSS 有 `--h-titlebar: 52px`），但**还没做** —— 见 §8.51.4",
+        "diskRowBusyHeight": "设计稿实测基准 169.47（`.row--busy`），只被 `MenuDiskRowLayoutTests` 当期望值",
+        "diskRowSafeHeight": "设计稿实测基准 127.47（「可以安全推出」），只被 `MenuDiskRowLayoutTests` 当期望值",
+        "diskRowUnknownHeight": "设计稿实测基准 133.47（「占用情况未知」），只被 `MenuDiskRowLayoutTests` 当期望值",
+        "menuRowHeight": "设计稿实测基准 68.72（`.mrow`），只被 `MenuDiskRowLayoutTests` / `MenuPopoverLayoutTests` 当期望值",
     ]
 
     private static var exemptions: [String: String] {

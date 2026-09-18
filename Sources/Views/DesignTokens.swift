@@ -416,15 +416,24 @@ enum DesignTokens {
         /// 名称行与 meta 行之间的间距（设计稿 `.row__id { gap: 3px }`）。
         static let rowIdGap: CGFloat = 3
 
-        /// 完整行：被占用（含证据区）高度 —— 设计稿实测 169。
+        /// 完整行：被占用（含证据区）高度 —— 设计稿实测 **169.47**（`.row--busy`）。
+        ///
+        /// ⚠️ **行高在设计稿里没有声明**：`.row` / `.mrow` / `.crow` 的高度都是
+        /// 「padding + 内容」自然排出来的，CSS 里找不到 `height`，DESIGN-SPEC 里也
+        /// 搜不到这几个数 ⇒ 它们是**一次性实测的快照**，改了设计稿不会有任何东西报警。
+        /// **复核方法**：`.build/probe/design_row_height.py`（无头 Chrome 量设计稿 HTML）。
+        /// **2026-09-18 复核**：169.47 / 127.47 / 133.47 / 68.72 / 46 —— **逐项仍成立**，
+        /// 状态对应关系也对（127.47 = 「可以安全推出」，133.47 = 「占用情况未知」）。
+        /// 令牌**取整到整点**（169.47 → 169）；测试容差 2pt，实测偏差 ≤ 0.47pt。
         static let diskRowBusyHeight: CGFloat = 169
-        /// 完整行：可安全推出高度 —— 设计稿实测 127。
+        /// 完整行：可安全推出高度 —— 设计稿实测 **127.47**。
         static let diskRowSafeHeight: CGFloat = 127
-        /// 完整行：占用情况未知高度 —— 设计稿实测 133。
+        /// 完整行：占用情况未知高度 —— 设计稿实测 **133.47**。
         static let diskRowUnknownHeight: CGFloat = 133
-        /// 紧凑行高度 —— 设计稿实测 46。
+        /// 紧凑行高度 —— 设计稿实测 **46**（`.crow`：上下各 8 内边距 + 内容 30）。
         static let compactRowHeight: CGFloat = 46
-        /// 菜单面板磁盘行高度 —— 设计稿实测 69（32 图标 / 53 文本块 + 上下各 8 内边距）。
+        /// 菜单面板磁盘行高度 —— 设计稿实测 **68.72**（`.mrow`：上下各 8 内边距）。
+        /// 取整到 69；`MenuPopoverLayoutTests` 那条增量断言容差 **0.5**，实测偏差 0.28。
         static let menuRowHeight: CGFloat = 69
         /// 菜单面板动作行高度 —— 设计稿实测 **32.0000**（`getBoundingClientRect` 四位小数）。
         ///

@@ -301,4 +301,59 @@ struct TitleBarBaselineTests {
             "\(who)的墨迹下界 \(rows.last)pt 已经触到容器底 \(containerHeight)pt —— 扫描范围没避开 `Hairline`"
         )
     }
+
+    // MARK: 与设计稿同源
+
+    /// #filePath = <仓库根>/Tests/DiskEjectorAppTests/TitleBarBaselineTests.swift
+    private var repoRoot: URL {
+        URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+    }
+
+    /// 从 CSS 文本里取 `token` **之后**第一个 `<数字>px`。
+    ///
+    /// ⚠️ 只在 token 之后找：`ds.css` 里 `--h-titlebar` 出现**两处**
+    /// （声明处 `--h-titlebar: 52px`、使用处 `height: var(--h-titlebar)`），
+    /// 而它上方那段注释里还写着 800 / 826 —— 全文搜数字会搜到注释里的那个，
+    /// 于是「改了 CSS 不改注释」也照样绿。
+    private func pxValue(in css: String, token: String) -> Double? {
+        guard let t = css.range(of: token) else { return nil }
+        let rest = css[t.upperBound...]
+        guard
+            let m = rest.range(of: #"[0-9]+(?:\.[0-9]+)?px"#, options: .regularExpression)
+        else { return nil }
+        return Double(rest[m].dropLast(2))
+    }
+
+    /// 设计稿的 `--h-titlebar` 与实现的 ``DesignTokens/Size/titleBarHeight`` **必须同数**。
+    ///
+    /// **为什么需要**：``内容带加留白等于设计稿的标题栏总高()`` 守的是
+    /// `52 = 32 + 20` —— 那是**内部自洽**，而 52 这个数**本身没有出处**：
+    /// 设计稿把 `--h-titlebar` 改成 56 时，实现这边 32 + 20 依然自洽、照样绿，
+    /// 于是两边分叉而没人还账（和设置面板 826 / 800 分叉一整轮同一个病，见 §8.43）。
+    ///
+    /// 这一条补上那一头，模式照 `SettingsLayoutTests` 的
+    /// `设计稿与实现的面板尺寸必须同数()` —— **读设计稿的源文件，不是常量自己跟自己比**。
+    ///
+    /// ⚠️ 判据只能是「**两边相等**」，不能写成「等于 52」：后者在有人把两边**同时**
+    /// 改成 56 时依然会红 —— 那是假失败，会把下一个人引向错误方向。
+    @Test func 设计稿与实现的标题栏高度必须同数() throws {
+        let css = try String(
+            contentsOf: repoRoot.appendingPathComponent("DiskEjector-UI-Design/v2/assets/ds.css"),
+            encoding: .utf8)
+        let designH = try #require(
+            pxValue(in: css, token: "--h-titlebar:"),
+            "ds.css 里找不到 --h-titlebar 的 px 值（声明处才带冒号；使用处是 var(--h-titlebar)）")
+        print("  [标题栏] 设计稿 \(designH)px ｜ 实现 \(DesignTokens.Size.titleBarHeight)pt")
+        #expect(
+            designH == Double(DesignTokens.Size.titleBarHeight),
+            """
+            设计稿 --h-titlebar = \(designH)px，实现 titleBarHeight = \
+            \(DesignTokens.Size.titleBarHeight)pt —— 两边必须同数。
+            「内容带 + 留白 = 总高」只保证内部自洽；52 这个数的出处要靠这一条。改一边就改另一边。
+            """
+        )
+    }
 }
