@@ -824,21 +824,17 @@ body.ds {
 .swatch--orange { background: #ff9f0a; }
 .swatch--green  { background: #34c759; }
 
-/* 关于区 */
-.about {
-  display: flex; flex-direction: column; align-items: center;
-  padding: var(--s-4) var(--s-3) var(--s-3); text-align: center;
-}
-.about__icon {
-  width: 56px; height: 56px; border-radius: var(--r-lg);
-  display: flex; align-items: center; justify-content: center;
-  background: linear-gradient(160deg, var(--accent), var(--accent-hover));
-  color: #fff; box-shadow: var(--e2); margin-bottom: var(--s-3);
-}
-.about__icon svg { width: 28px; height: 28px; }
-.about__name { font-size: var(--fs-15); font-weight: 600; }
-.about__ver  { font-size: var(--fs-11); color: var(--text-3); margin-top: 2px; font-variant-numeric: tabular-nums; }
-.about__act  { margin-top: var(--s-3); }
+/* 关于区 —— ⚠️ 2026-09-18 实扫删除（§8.52.3）
+
+   这里原有一套 `.about*` / `.about__icon|name|ver|act`（纵向居中、56px 大图标），
+   是**被放弃的旧设计**，且**零消费者**（实扫：9 个 HTML + ds.js 里没有一个元素用它）。
+
+   现行设计是横向一行的 `.aboutrow*`（图标 44×44、padding 13px 16px），
+   ⚠️ 它的样式定义在 **`screens/05-settings.html` 的 `<style>` 块里，不在本文件** ——
+   本文件是「令牌 + 全部组件样式」的官方位置，这处不一致本身就是隐患。
+   实现侧 `SettingsView` 引用的也是 `.aboutrow`（`// MARK: 关于（横向一行，设计稿 .aboutrow）`）。
+
+   实测确认删掉这 5 个类后 05-settings.html 渲染不变（`.aboutrow` 仍是 70pt 高、padding 13px）。*/
 
 /* ============================================================================
    13. 授权引导 Onboarding

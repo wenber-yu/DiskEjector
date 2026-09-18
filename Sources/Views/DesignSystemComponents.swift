@@ -699,7 +699,14 @@ struct StorageMeter: View {
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    /// 高用量阈值（设计稿 `.meter--high`）。
+    /// 高用量阈值。
+    ///
+    /// ⚠️ **2026-09-18 实扫：`.meter--high` 这条规则在设计稿里是「有定义、没元素用」**
+    /// （`ds.css` 定义了它，但 9 个 HTML 里**没有一个**元素带这个类），
+    /// 而且设计稿里**所有容量条的样本都不到 90%**（实测最高 70%）——
+    /// 也就是说 **`0.9` 这个阈值在设计稿里没有可视依据**，目前它是实现侧自己定的数。
+    /// 原先这里写「（设计稿 `.meter--high`）」，读的人会以为设计稿画过这一态 —— **没有**。
+    /// 要给它一个出处，得先在设计稿的状态矩阵里补一个 ≥90% 的样本（已登记为待办）。
     private let highThreshold = 0.9
 
     private var isHigh: Bool { ratio >= highThreshold }
