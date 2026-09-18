@@ -61,7 +61,13 @@ fi
 
 rm -rf "$UPDATES_DIR"
 mkdir -p "$UPDATES_DIR"
-cp "$ARCHIVE" "$UPDATES_DIR/$APP_NAME-$VERSION.$(basename "$ARCHIVE" | awk -F. '{print $NF}')"
+# ⚠️ 上传时用的文件名**必须**与 appcast 里 enclosure 的末段逐字相同 ——
+# 下方「回读」里有一条守卫专门比对这两者（2026-09-18 加：此前脚本的
+# 指引写的是 `DiskEjector.dmg`，而 enclosure 是 `DiskEjector-<版本>.dmg`，
+# 照指引做 = 用户点「安装更新」时 404，而 appcast 本身不报任何错）。
+ARCHIVE_EXT="$(basename "$ARCHIVE" | awk -F. '{print $NF}')"
+UPLOAD_ASSET="$UPDATES_DIR/$APP_NAME-$VERSION.$ARCHIVE_EXT"
+cp "$ARCHIVE" "$UPLOAD_ASSET"
 
 # 发布说明：同名（扩展名不同）的 .md / .html 会被 generate_appcast 自动捡走
 if [ -n "${RELEASE_NOTES_FILE:-}" ] && [ -f "$RELEASE_NOTES_FILE" ]; then
@@ -108,6 +114,16 @@ if ! printf '%s' "$ENCLOSURE_URL" | grep -q "releases/download/v$VERSION/"; then
     echo "   检查 --download-url-prefix 是否以斜杠结尾（generate_appcast 不带斜杠会吃掉最后一段）。" >&2
     exit 1
 fi
+# 文件名也要对：enclosure 的末段必须与「我们要你上传的那个文件」同名。
+# 这一条防的是「指引里写一个名字、enclosure 里写另一个名字」这种
+# **两边各写一次、却没人比对**的分叉 —— 传上去也 404，而且不报错。
+if [ "$(basename "$ENCLOSURE_URL")" != "$(basename "$UPLOAD_ASSET")" ]; then
+    echo "❌ enclosure 的文件名（$(basename "$ENCLOSURE_URL")）与待上传文件（$(basename "$UPLOAD_ASSET")）不一致" >&2
+    echo "   照现在的 enclosure 传上去也下不到；两者必须逐字相同。" >&2
+    exit 1
+fi
+echo "   待上传：$UPLOAD_ASSET"
+echo "   （文件名必须与上面 enclosure 的末段逐字相同，改名即 404）"
 if printf '%s' "$ENCLOSURE_URL" | grep -q 'download//'; then
     echo "⚠️  enclosure 里出现了 download//（重复斜杠），请人工核对" >&2
 fi
@@ -122,8 +138,9 @@ cat <<NEXT
 
 下一步（三步，顺序不能反）：
   1) 创建 GitHub Release：tag 必须是 v$VERSION，并把
-     $(basename "$ARCHIVE") 作为资产上传
-     —— appcast 里的 enclosure 指向的就是这个资产，tag/文件名对不上就 404。
+     $UPLOAD_ASSET
+     作为资产上传 —— **文件名不能改**：appcast 的 enclosure 写的就是它，
+     改名 = 用户点「安装更新」时 404，而 appcast 本身不会报任何错。
   2) 把 appcast.xml 提交并推送（SUFeedURL 读的是它的 raw 地址，推送后才生效）。
   3) 老版本应用启动 → 检查更新 → 应当看到 $VERSION。
 NEXT
