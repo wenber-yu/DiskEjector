@@ -4,9 +4,9 @@
         <title>DiskEjector</title>
         <item>
             <title>2026.09.18.4</title>
-            <pubDate>Fri, 18 Sep 2026 18:54:31 +0800</pubDate>
+            <pubDate>Fri, 18 Sep 2026 19:26:28 +0800</pubDate>
             <link>https://github.com/wenber-yu/DiskEjector</link>
-            <sparkle:version>74</sparkle:version>
+            <sparkle:version>78</sparkle:version>
             <sparkle:shortVersionString>2026.09.18.4</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
             <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
@@ -17,7 +17,7 @@
 <li data-page-node-id="m1ICXIdPCLeNZAXhGoihdt">新增语言设置：简体中文 / 繁體中文 / English（切换后需重启应用生效）</li>
 </ul>
 ]]></description>
-            <enclosure url="https://github.com/wenber-yu/DiskEjector/releases/download/v2026.09.18.4/DiskEjector-2026.09.18.4.dmg" length="2699040" type="application/octet-stream"/>
+            <enclosure url="https://github.com/wenber-yu/DiskEjector/releases/download/v2026.09.18.4/DiskEjector-2026.09.18.4.dmg" length="2700731" type="application/octet-stream"/>
         </item>
     </channel>
 </rss>
