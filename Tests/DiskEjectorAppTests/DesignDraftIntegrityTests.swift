@@ -122,6 +122,45 @@ struct DesignDraftIntegrityTests {
         #expect(unused.count < scan.defined.count / 2, "零消费者超过一半 —— 解析多半出了问题")
     }
 
+    // MARK: 图标
+
+    /// 设计稿里**用了但图标表里没有**的名字，必须为零 —— 一个都不许有。
+    ///
+    /// 为什么这一向比另一向重要得多：`ds.js` 的 `build(name)` 里是
+    /// `var body = I[name]; if (!body) return '';` —— **名字写错就返回空串**。
+    /// 于是 `<i data-i="ejct">` 渲染出来**什么都没有**，而
+    /// **「图标是空白」与「这块本来就没放图标」在界面上逐字相同**，读 HTML 看不出来。
+    @Test func 用了但图标表里没有的名字一个都不许有() throws {
+        let (defined, used) = try loadIcons()
+        // 解析器的**锚**：图标表要是没解析到，下面的差集会空着，通过得毫无意义
+        #expect(defined.count > 25, "只解析到 \(defined.count) 个图标 —— 图标表没读到")
+        #expect(defined.contains("eject"), "`eject` 都没解析到 —— 图标表结构变了？")
+        #expect(used.contains("eject"), "`eject` 明明在用却没收集到 —— data-i 的扫描坏了")
+
+        let missing = used.subtracting(defined)
+        #expect(
+            missing.isEmpty,
+            """
+            这些图标名被 `<i data-i="…">` 用着，但 `ds.js` 的图标表里**没有**：
+            \(missing.sorted().joined(separator: ", "))
+            `build()` 对未知名字返回**空串** ⇒ 这些位置渲染出来是**空白**，
+            而「图标是空白」与「本来就没放图标」长得一模一样。
+            """
+        )
+    }
+
+    /// 图标表里**定义了但没用**的名字 —— 只打印。
+    ///
+    /// 图标表是**库**（和 `ds.css` 一样是组件库），**库里允许有存货**；
+    /// i18n 文案是**内容**，内容不允许有孤儿。判据见 §8.54.2。
+    @Test func 图标表里的存货只记录不报警() throws {
+        let (defined, used) = try loadIcons()
+        let spare = defined.subtracting(used).sorted()
+        print("  [设计稿] 图标表存货：\(spare.count) 个 —— \(spare.joined(separator: ", "))")
+        #expect(!spare.isEmpty, "一个存货都没有 —— 「定义」那一向多半没扫到")
+        #expect(spare.count < defined.count / 2, "存货超过一半 —— 解析多半出了问题")
+    }
+
     // MARK: i18n
 
     /// `i18n-extra.json` 里**声明了但没有页面在用**的键 —— 死文案，登记在案。
@@ -169,6 +208,30 @@ struct DesignDraftIntegrityTests {
             """
             这些键登记为「没有页面在用」，但现在已经**有消费者**了：\(stale.sorted().joined(separator: ", "))
             还了账就回来划掉 —— 否则这张表会像 §8.33 那 6 条一样越积越不可信。
+            """
+        )
+    }
+
+    /// 页面**引用了但声明集里没有**的键 —— 静默回退，一个都不许有。
+    ///
+    /// `tools/build_i18n.py` 的注释自己写着：「抄漏一条不会报错，只会在切到那门语言时
+    /// **静默回退成中文** —— 而『回退』和『翻好了』长得一模一样」。
+    /// 声明集是 **`i18n-extra.json` ∪ `Localizable.xcstrings`**（设计稿可以引用产品已有文案）。
+    @Test func 页面引用了但没有声明的文案键一个都不许有() throws {
+        let (_, referenced) = try loadI18n()
+        let declared = try Self.declaredTextKeys(repoRoot: repoRoot)
+        #expect(declared.count > 150, "只解析到 \(declared.count) 个键 —— xcstrings 没读到")
+        #expect(
+            declared.contains("ds.sample.cap.usedFreeA"),
+            "`usedFreeA` 不在声明集里 —— xcstrings / i18n-extra 都没读到")
+
+        let missing = referenced.subtracting(declared)
+        #expect(
+            missing.isEmpty,
+            """
+            这些 `data-i18n` 引用的键**在任何一处都没有声明**：
+            \(missing.sorted().joined(separator: ", "))
+            切到英文/繁体时会**静默回退成中文** —— 和「翻好了」长得一模一样。
             """
         )
     }
@@ -241,9 +304,52 @@ struct DesignDraftIntegrityTests {
         return (declared, referenced)
     }
 
+    /// 返回（图标表里定义的名字，被 `data-i` 用到的名字）。
+    private func loadIcons() throws -> (defined: Set<String>, used: Set<String>) {
+        let js = try read(designRoot.appendingPathComponent("assets/ds.js"))
+        // 图标表：`var I = { … }`，以缩进 2 空格的 `};` 收尾
+        guard let block = Self.matches(in: js, pattern: #"var I = \{([\s\S]*?)\n  \};"#).first else {
+            Issue.record("ds.js 里找不到 `var I = { … }` 图标表 —— 结构变了？")
+            return ([], [])
+        }
+        let defined = Set(Self.matches(in: block, pattern: #"^\s*(\w+)\s*:"#, lines: true))
+
+        var used: Set<String> = []
+        for url in try htmlFiles() { used.formUnion(Self.matches(in: try read(url), pattern: #"data-i="([^"]+)""#)) }
+        used.formUnion(Self.matches(in: js, pattern: #"data-i="([^"]+)""#))
+        // i18n 文案值里也可以嵌 `<i data-i="gear">`（回填后会重新水合）
+        let extraURL = designRoot.appendingPathComponent("assets/i18n-extra.json")
+        if FileManager.default.fileExists(atPath: extraURL.path) {
+            used.formUnion(Self.matches(in: try read(extraURL), pattern: #"data-i="([^"]+)""#))
+        }
+        return (defined, used)
+    }
+
+    /// 文案键的**声明集** = `i18n-extra.json` ∪ `Localizable.xcstrings`。
+    private static func declaredTextKeys(repoRoot: URL) throws -> Set<String> {
+        var out: Set<String> = []
+        let extraURL = repoRoot.appendingPathComponent(
+            "DiskEjector-UI-Design/v2/assets/i18n-extra.json")
+        if let obj = try? JSONSerialization.jsonObject(with: Data(contentsOf: extraURL)) as? [String: Any] {
+            out.formUnion(obj.keys.filter { !$0.hasPrefix("_") })
+        }
+        let xcsURL = repoRoot.appendingPathComponent("Sources/Localization/Localizable.xcstrings")
+        if let obj = try? JSONSerialization.jsonObject(with: Data(contentsOf: xcsURL)) as? [String: Any],
+            let strings = obj["strings"] as? [String: Any]
+        {
+            out.formUnion(strings.keys)
+        }
+        return out
+    }
+
     /// 取正则的第 1 捕获组。
-    private static func matches(in text: String, pattern: String) -> [String] {
-        guard let re = try? NSRegularExpression(pattern: pattern) else { return [] }
+    /// - parameter lines: 需要 `^` 按行匹配时打开（例如逐行取对象的键）。
+    private static func matches(in text: String, pattern: String, lines: Bool = false) -> [String] {
+        guard
+            let re = try? NSRegularExpression(
+                pattern: pattern, options: lines ? [.anchorsMatchLines] : []
+            )
+        else { return [] }
         let range = NSRange(text.startIndex..<text.endIndex, in: text)
         return re.matches(in: text, range: range).compactMap { m in
             Range(m.range(at: 1), in: text).map { String(text[$0]) }
