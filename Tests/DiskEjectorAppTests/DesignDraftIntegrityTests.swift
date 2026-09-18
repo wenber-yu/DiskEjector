@@ -325,6 +325,101 @@ struct DesignDraftIntegrityTests {
         print("[设计稿] 定义了但没用到的 CSS 变量：\(unused.count) 个 —— \(unused.joined(separator: ", "))")
     }
 
+    // MARK: ds.js 查询的 DOM 目标
+
+    /// **ds.js 查询不到目标 ⇒ 那段逻辑静默不生效**，与「这段逻辑本来就没触发」逐字相同。
+    ///
+    /// `document.querySelectorAll('[data-lang-btn]')` 选中 0 个元素时**不报错** ——
+    /// JS 里的空集合是合法的。于是「接线断了」与「功能没写」在界面上长得一模一样
+    /// （与 §8.47「updater 从来没启动过」同形，只是那一侧是 Swift、这一侧是 JS）。
+    ///
+    /// ⚠️ **元素从哪来不止一个来源**（上一轮踩的坑，见 §8.57.2）：
+    /// HTML 静态 `class="…"` 之外，ds.js 自己还会造 ——
+    /// `.className = '…'` / `classList.add(…)` / `setAttribute('data-lang-btn', …)`。
+    /// 只认 HTML 静态会把 `.langbar` 误判成断链。所以来源是**并集**，
+    /// 且由两条**负向锚**（`langbar` / `data-lang-btn` 必须在已知集里）钉住 ——
+    /// 若哪天这两条来源的解析坏了，守卫会**先红在这里**，而不是误报一堆断链。
+    private static let unresolvedDOMTargets: [String: String] = [
+        "data-i18n-attr":
+            """
+        ds.js 实现了**属性级翻译**（`data-i18n-attr="aria-label:键,title:键"`，
+        用法就写在 ds.js:136 的注释里），但设计稿里**一个元素都没用** ⇒ 这段代码从不执行。
+        而硬编码中文的 `aria-label` / `title` 有 **67 处** ——
+        切到英文时正文翻了、**无障碍标签仍是中文**（VoiceOver 会念中文），
+        而 aria-label 不显示，**走查看不出来**。
+        要不要接线（以及接哪些）是设计决策，待拍板；这里先登记，由「不得增加」那条守住别再恶化。
+        """
+    ]
+
+    @Test func 脚本查询的DOM目标必须存在() throws {
+        let s = try loadDOM()
+
+        // 锚：三张已知表都得有货，否则「0 处断链」只是「三张表都是空的」。
+        #expect(s.selectors.count >= 15, "只解析到 \(s.selectors.count) 个查询 —— ds.js 没读到")
+        #expect(s.classes.count >= 150, "只解析到 \(s.classes.count) 个 class —— HTML/ds.js 没读到")
+        #expect(s.ids.count >= 30, "只解析到 \(s.ids.count) 个 id")
+        #expect(s.attrs.count >= 8, "只解析到 \(s.attrs.count) 个属性")
+
+        // 负向锚：这两个名字**只能**由 ds.js 的动态创建提供。
+        // 它们不在已知集 ⇒ 不是「设计稿断了」，是**我的解析漏了来源**（假红）。
+        #expect(s.classes.contains("langbar"), "`langbar` 不在已知集 —— `.className = '…'` 这条来源漏了（会假红）")
+        #expect(
+            s.attrs.contains("data-lang-btn"),
+            "`data-lang-btn` 不在已知集 —— `setAttribute(…)` 这条来源漏了（会假红）")
+
+        let unregistered = Set(s.missing.map { $0.target }).subtracting(Self.unresolvedDOMTargets.keys)
+        let detail = s.missing
+            .filter { unregistered.contains($0.target) }
+            .map { "\($0.form)('\($0.selector)') → \($0.target)" }
+            .sorted().joined(separator: "\n  ")
+        #expect(
+            unregistered.isEmpty,
+            """
+            ds.js 查询的这些目标**在设计稿里不存在**（且没登记）：
+              \(detail)
+            选中 0 个元素**不报错** —— 那段逻辑会静默不生效。
+            若是 ds.js 自己动态创建的，补一条来源解析；若是设计稿真断了，修 HTML；
+            若是有意保留的能力，登记进 `unresolvedDOMTargets` 并写清理由。
+            """)
+    }
+
+    /// 豁免表**不许过期**：登记为「没人用」的目标，一旦有元素在用了就要回来划掉。
+    @Test func 已登记的DOM目标如果有元素在用了要划掉() throws {
+        let s = try loadDOM()
+        let stale = Self.unresolvedDOMTargets.keys.filter { s.htmlAttrs.contains($0) }
+        #expect(
+            stale.isEmpty,
+            """
+            这些目标登记为「没有元素在用」，但 HTML 里**已经有了**：\(stale.sorted().joined(separator: ", "))
+            还了账就回来划掉 —— 否则这张表会像 §8.33 那 6 条一样越积越不可信。
+            """)
+    }
+
+    /// **量化基线**：硬编码中文的无障碍标签**只许减少，不许增加**。
+    ///
+    /// 修不修那 67 处是设计决策（要拍板），但**继续劣化是不需要讨论的** ——
+    /// 每新增一处，切到英文时它就又是「中文的无障碍标签」。
+    /// 报红时一定有问题（只可能因为新增），所以它可以进 CI。
+    @Test func 硬编码中文的无障碍标签不得增加() throws {
+        var n = 0
+        for url in try htmlFiles() {
+            let text = Self.withoutStyleBlocks(try read(url))
+            for v in Self.matches(in: text, pattern: #"(?:aria-label|title)="([^"]*)""#) {
+                if v.range(of: #"[\u{4e00}-\u{9fff}]"#, options: .regularExpression) != nil { n += 1 }
+            }
+        }
+        #expect(
+            n <= Self.hardcodedA11yBaseline,
+            """
+            硬编码中文的 `aria-label` / `title` 现在是 \(n) 处，基线 \(Self.hardcodedA11yBaseline) 处 —— **增加了**。
+            新增的部分切到英文时不会跟着变（VoiceOver 会念中文），而 aria-label 不显示、走查看不出来。
+            要么用 `data-i18n-attr="aria-label:键,title:键"` 接上翻译，要么说明为什么这里是例外。
+            """)
+    }
+
+    /// 基线 = 2026-09-19 实测的 **67 处**。修掉会变小（仍绿），新增会变大（必红）。
+    private static let hardcodedA11yBaseline = 67
+
     // MARK: 扫描
 
     private struct Scan {
@@ -506,6 +601,86 @@ struct DesignDraftIntegrityTests {
             if !withFallback.contains(v) && !available.contains(v) { p.missing.append(v) }
         }
         return p
+    }
+
+    // MARK: DOM 目标
+
+    private struct DOMScan {
+        /// （查询形式，选择器原文）
+        var selectors: [(form: String, text: String)] = []
+        var classes: Set<String> = []
+        var ids: Set<String> = []
+        /// 所有已知属性名 = HTML 静态 ∪ ds.js 动态赋值
+        var attrs: Set<String> = []
+        /// **只**从 HTML 静态解析到的属性名 —— 用来查「豁免表是不是过期了」
+        var htmlAttrs: Set<String> = []
+        /// （查询形式，选择器原文，解析不到的那个目标）
+        var missing: [(form: String, selector: String, target: String)] = []
+    }
+
+    private func loadDOM() throws -> DOMScan {
+        let js = try read(designRoot.appendingPathComponent("assets/ds.js"))
+        var s = DOMScan()
+
+        // ① 查询：四种调用形式 + `closest` / `matches`
+        let forms: [(String, String)] = [
+            ("querySelector", #"querySelector\(\s*['\"]([^'\"]+)['\"]"#),
+            ("querySelectorAll", #"querySelectorAll\(\s*['\"]([^'\"]+)['\"]"#),
+            ("getElementById", #"getElementById\(\s*['\"]([^'\"]+)['\"]"#),
+            ("getElementsByClassName", #"getElementsByClassName\(\s*['\"]([^'\"]+)['\"]"#),
+            ("closest/matches", #"\.(?:closest|matches)\(\s*['\"]([^'\"]+)['\"]"#),
+        ]
+        for (form, p) in forms {
+            for text in Self.matches(in: js, pattern: p) { s.selectors.append((form, text)) }
+        }
+
+        // ② 来源 A：HTML 静态（`<style>` 里的内容不算）
+        var corpus = ""
+        for url in try htmlFiles() { corpus += Self.withoutStyleBlocks(try read(url)) }
+        s.classes.formUnion(Self.classAttributes(in: corpus))
+        s.ids.formUnion(Self.matches(in: corpus, pattern: #"\bid="([^"]+)""#))
+        // ⚠️ 属性可能是**无值的**（`<div data-expandable>`），只认 `data-x=` 会漏掉它
+        // ⇒ 用前瞻收到 `=` / 空白 / `>` 三种结尾。
+        let htmlAttrs = Self.matches(in: corpus, pattern: #"\s(data-[\w-]+)(?=[\s=>])"#)
+        s.htmlAttrs.formUnion(htmlAttrs)
+        s.attrs.formUnion(htmlAttrs)
+
+        // ③ 来源 B：ds.js 自己动态造出来的
+        for v in Self.matches(in: js, pattern: #"\.className\s*=\s*['\"]([^'\"]+)['\"]"#) {
+            s.classes.formUnion(v.split(separator: " ").map(String.init))
+        }
+        for v in Self.matches(in: js, pattern: #"classList\.(?:add|toggle|remove)\(\s*['\"]([^'\"]+)['\"]"#) {
+            s.classes.insert(v)
+        }
+        for v in Self.matches(in: js, pattern: #"setAttribute\(\s*['\"]class['\"]\s*,\s*['\"]([^'\"]+)['\"]"#) {
+            s.classes.formUnion(v.split(separator: " ").map(String.init))
+        }
+        s.ids.formUnion(Self.matches(in: js, pattern: #"\.id\s*=\s*['\"]([^'\"]+)['\"]"#))
+        // 任意属性名（含 `aria-*` / `data-*`）—— 只要 ds.js 会写出来，这个属性就算「存在」
+        s.attrs.formUnion(Self.matches(in: js, pattern: #"setAttribute\(\s*['\"]([\w-]+)['\"]"#))
+
+        // ④ 判定：`#id` / `.class` / `[attr]` 三种目标各自查表
+        for (form, text) in s.selectors {
+            // ⚠️ `target` 一律存**裸名**（不带 `#` / `.` / `[]`）——
+            // 豁免表的键也是裸名，两边形状不同就会**永远匹配不上**（账本形同虚设）。
+            switch form {
+            case "getElementById":
+                if !s.ids.contains(text) { s.missing.append((form, text, text)) }
+            case "getElementsByClassName":
+                if !s.classes.contains(text) { s.missing.append((form, text, text)) }
+            default:
+                for i in Self.matches(in: text, pattern: #"#([\w-]+)"#) where !s.ids.contains(i) {
+                    s.missing.append((form, text, i))
+                }
+                for c in Self.matches(in: text, pattern: #"\.([\w-]+)"#) where !s.classes.contains(c) {
+                    s.missing.append((form, text, c))
+                }
+                for a in Self.matches(in: text, pattern: #"\[([\w-]+)[\]=]"#) where !s.attrs.contains(a) {
+                    s.missing.append((form, text, a))
+                }
+            }
+        }
+        return s
     }
 
     /// 取正则的第 1 捕获组。
