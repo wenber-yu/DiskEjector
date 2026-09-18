@@ -420,6 +420,25 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         setupMainWindow()
 
         if !Self.isPreviewRun { maybeShowFDAOnboarding() }
+
+        // **updater 必须在启动时建起来。**
+        //
+        // Sparkle 只在 `SPUUpdater.start()` 之后才开始按 `SUScheduledCheckInterval` 排期
+        // （见 `UpdateController.startIfNeeded()` 的说明：这里**不额外**调
+        // `checkForUpdatesInBackground()`，免得每次启动都打网络请求）。
+        // 不建它，「自动更新」开关、`SUEnableAutomaticChecks=true`、
+        // `SUScheduledCheckInterval=86400` 三样**全都显示为「配好了」**，
+        // 而实际上一次检查都不会发生：设置行永远停在「尚未检查」。
+        // （判据同登录项第三态：**「设了没生效」与「功能坏了」在界面上不能长得一样**。）
+        //
+        // ⚠️ 2026-09-18 实测踩到：`startIfNeeded()` 此前**全仓库只有定义、没有任何调用点**
+        // —— 这条链等于从未接通，而它不会编译失败、不会崩、也不会有别的断言变红。
+        // 守卫见 `UpdateSettingsTests.启动链上必须真的建起updater`。
+        //
+        // 预览模式跳过：`ensureUpdater()` 自己也会拦（`--preview-*` 的 `Bundle.main`
+        // 不是合规 app bundle），这里再拦一次是为了让真机自检**不发出网络请求** ——
+        // 自检要可重复，混进一次联网会让结果随网络状况变。
+        if !Self.isPreviewRun { UpdateController.shared.startIfNeeded() }
     }
 
     /// 直发版首次启动引导用户授予「完全磁盘访问」。

@@ -205,11 +205,17 @@ struct UpdateFeedTests {
         )
     }
 
-    /// 发布说明文件里**不能有 HTML 注释**。
+    /// 发布说明文件必须**能被真实解析器解析出条目**，且里面**不能有 HTML 注释**。
     ///
     /// `UpdateReleaseNotes.stripTags` 只剥 `<…>` 尖括号对 —— `<!-- 说明 -->`
     /// 剥掉 `<!--` 之后，**注释正文会原样出现在新版本弹窗里**（2026-09-18 实测踩到）。
     /// 脚本里已有一条守卫直接拦下，这里再对**仓库里真实存在的说明文件**兜一层。
+    ///
+    /// ⚠️ 第二条断言（解析出条目）是 2026-09-18 补的：说明文件被外部编辑器改写
+    /// （例如注入 `data-page-node-id="…"` 这类**属性**）时，`stripTags` 的深度计数
+    /// 会把整个标签连属性一起吞掉，于是**解析结果不变** —— 但那只是这一次运气好。
+    /// 「改坏了」在弹窗上的表现是「这一块不显示」，与「本来就没写说明」长得一模一样，
+    /// 所以这里必须用**真实解析器**跑一遍，而不是靠读文件推断。
     @Test func 发布说明文件里不能有HTML注释() throws {
         let dir = repoRoot.appendingPathComponent("release-notes")
         guard FileManager.default.fileExists(atPath: dir.path) else { return }
@@ -222,6 +228,14 @@ struct UpdateFeedTests {
             #expect(
                 !body.contains("<!--"),
                 "release-notes/\(file) 里有 HTML 注释 —— 解析器不认注释，注释正文会原样出现在弹窗里"
+            )
+            let lines = UpdateReleaseNotes.lines(fromHTML: body)
+            #expect(
+                !lines.isEmpty,
+                """
+                release-notes/\(file) 用真实解析器跑出来是空的 → 用它生成的 appcast
+                会让弹窗的「本次更新」整块不显示，而那与「没写说明」长得一模一样。
+                """
             )
         }
     }

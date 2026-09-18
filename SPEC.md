@@ -281,6 +281,16 @@ helper 的登录项方案。（「符合 MAS 要求」这条理由随不上架�
 > 比对「enclosure 末段」与「待上传文件名」是否逐字相同 —— 这条守卫是补的，
 > 因为此前脚本的指引写的是 `DiskEjector.dmg`，与 enclosure 不一致。
 
+**updater 必须在启动时建起来**（`applicationDidFinishLaunching` 调
+`UpdateController.startIfNeeded()`）：Sparkle **只在 `SPUUpdater.start()` 之后**才按
+`SUScheduledCheckInterval` 排期自动检查，不建它一次检查都不会发生。
+⚠️ 2026-09-18 实测：这一行调用**此前是缺失的**（`startIfNeeded()` 全仓库只有定义、
+没有任何调用点），于是「自动更新」开关、`SUEnableAutomaticChecks=true`、
+`SUScheduledCheckInterval=86400` 三样**全都形同虚设**，而界面上完全看不出来
+（设置行永远停在「尚未检查」，与「用户没点过检查」长得一模一样）。
+现在有守卫 `UpdateSettingsTests.启动链上必须真的建起updater` 钉住（读源码，
+且**限定在该函数体内**）。实测自动检查发生在**启动后 2~13 秒**，不是启动瞬间。
+
 **发布说明（新版本弹窗的「本次更新」清单）**：由 `release-notes/<版本>.html`
 （只含 `<ul><li>…</li></ul>`）在生成时经 `RELEASE_NOTES_FILE=…` 传入，
 被 `generate_appcast` **内嵌**进 appcast 的 `<description>` —— 界面只读内嵌的那份

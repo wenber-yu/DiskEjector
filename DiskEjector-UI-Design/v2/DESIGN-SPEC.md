@@ -5383,6 +5383,106 @@ appcast 里三个值都对得上产物：`sparkle:version=66` = `CFBundleVersion
 
 ---
 
+## §8.47 最贵的一条：updater 从来没启动过（2026-09-18）
+
+这一节是查「应用到底会不会去拉 feed」这个问题时**查出来的东西** ——
+答案是「修之前不会」，而原因**不在 feed 上**。
+
+### §8.47.1 症状：三样都「配好了」，而一次检查都没发生过
+
+`UpdateController.startIfNeeded()` 存在，文档注释也写得很清楚（「启动后的静默检查」），
+但它**全仓库只有定义、没有任何调用点**（实扫 `startIfNeeded` 只有 1 处命中 = 那个 `func`）。
+于是 `SPUUpdater.start()` 从未执行过 —— 而它才是 Sparkle 排期自动检查的唯一入口
+（`SPUUpdater.h`：「By default Sparkle calls this method automatically on a scheduled basis
+if automatic update checks are enabled」）。
+
+后果是这三样**全都显示为「配好了」**：
+
+| 看起来配好了 | 实际 |
+|---|---|
+| 设置面板「自动更新」开关 | 能读写 `SPUUpdaterSettings`（它不要求 updater 已启动），但永远不会触发任何检查 |
+| `SUEnableAutomaticChecks=true` | 白写 |
+| `SUScheduledCheckInterval=86400` | 白写 |
+
+界面上唯一的痕迹是设置行**永远停在「尚未检查」** —— 而那与「用户没点过检查」长得一模一样。
+
+> **判据：没有生产者去推进的状态，在界面上与「已经支持了」长得一模一样。**
+> 与 §8.41 那条（「没有说明」与「说明没生效」）是同一类病，而这次断的是**接线**：
+> 它不会编译失败、不会崩、也不会有别的断言变红。
+
+### §8.47.2 修法：一行 + 一条守卫
+
+`applicationDidFinishLaunching` 里补上调用（预览模式跳过，理由同 `ensureUpdater()` 里那道：
+自检要可重复，混进一次联网会让结果随网络状况变）：
+
+```swift
+if !Self.isPreviewRun { UpdateController.shared.startIfNeeded() }
+```
+
+守卫 `UpdateSettingsTests.启动链上必须真的建起updater` **读源码**，两条：
+① 必须有 `UpdateController.shared.startIfNeeded()`；
+② **不得**有 `checkForUpdates()`（那会每次启动都主动联网、还可能弹窗）。
+
+⚠️ 断言被**限定在 `applicationDidFinishLaunching` 的函数体里**（为此在测试里加了个
+`functionBody(_:in:)` 小工具）：整文件 `contains` 会被**别处的一句注释**满足 ——
+断言于是退化成「这个字符串在仓库里出现过」，与「启动链上真的调了它」是两回事。
+
+**实测有牙**：删掉调用 → 红；换成 `checkForUpdates()` → 两条一起红（`2 issues`）。
+
+### §8.47.3 怎么在「读不到应用日志」的环境里验证它（四组对照）
+
+本环境 `log show` 被沙箱拦（`log: Cannot run while sandboxed`，退出码 64），
+`--preview-*` 又**故意不建 updater**（`ensureUpdater()` 里那道 guard）。可用回执只有两个：
+
+- **`SULastCheckTime`** —— `SPUUpdater.h` 写明「上次检查的时间存在宿主 bundle 的
+  user defaults 的 `SULastCheckTime` 键」；**没这个键 = 从来没检查过**。
+- `lsof -nP -a -p <pid> -i` 抓到的对外连接。⚠️ `-p` 与 `-i` 是**或**关系，
+  不加 `-a` 会把全机器的网络进程都列出来（第一版就是这样，输出里混进了 redis / rapportd）。
+
+A/C 两组**一个字都不用改**，跑的就是交付产物本身：
+
+| 组 | 产物 | feed | 结果 |
+|---|---|---|---|
+| A | **修复前** | 线上 https | ❌ 25s 内**无连接**、`SULastCheckTime` **始终不存在** |
+| C | 修复后 | 线上 https | ✅ 抓到 `TCP 127.0.0.1:53720->127.0.0.1:7890`（本机代理），`SULastCheckTime` 写入（启动后 **+13s**） |
+| B′ | 修复后（换 bundle id + 重签） | 线上 https | ✅ `SULastCheckTime` 写入（**+2s**） |
+| B | 修复后（换 bundle id + 重签） | **本地 http** | ❌ 无请求、无时间戳 |
+
+三条结论：
+
+1. **修复有效** —— 同一个产物、同一个 feed，只差那一行调用，联网行为与 Sparkle 的
+   时间戳就从「无」变成「有」。
+2. **应用真的能拉线上 feed**（本轮要回答的问题，答案是**能**）。
+3. **本地 http 服务这条观测面对本应用不可用** —— B 组一个请求都没发出去。
+   ⚠️ **未核实**：拦在 Sparkle 自己的 https 校验（`SUInsecureFeedURLError = 0003`）
+   还是 ATS —— 本环境读不到日志，**没有区分**。记在这里是为了**下次别再走这条路**。
+   （B′ 的作用是排除「重新签名导致 updater 起不来」这个混淆因素：B′ 只换 id 与签名、
+   feed 不动，它成功 → B 的失败可以归因到 http，而不是归因到签名。）
+
+⚠️ **自动检查不是「启动瞬间」发生**：实测 **+2s ~ +13s**。所以「启动后马上打开设置看」
+显示「尚未检查」是**正常的**，不能据此判断开关没生效。
+
+⚠️ A/C 用的是**真实 bundle id**，会写进用户真实的偏好域。跑完必须
+`defaults delete com.diskejector.app SULastCheckTime` —— 留着它，真实应用下次启动会以为
+「刚检查过」，**一整天不再检查**。（探针脚本的 `trap` 干这件事。它还会留下
+`SUHasLaunchedBefore = 1`，与真实首次启动会写的值相同，`SUEnableAutomaticChecks=true`
+下无行为差异。）
+
+探针脚本留在 `.build/probe/feedcheck.sh`（`A|B|Bp|C` 四组，自带清理）。
+
+### §8.47.4 顺带确认：被外部编辑器改过的说明文件仍然能解析
+
+`release-notes/2026.09.18.3.html` 在某个时刻被注入过 `data-page-node-id="…"` 属性
+（**不是本会话改的**，如实记录、未回滚）。**属性在标签内部**，而 `stripTags` 是
+**深度计数**（`<` 进、`>` 出，深度为 0 才收字符）→ 整个标签连属性一起被吞掉，
+**解析结果不变**。
+
+但「这次运气好」不是判据，所以把 `发布说明文件里不能有HTML注释` 这条守卫**加了一条**：
+对 `release-notes/*.html` 逐个跑**真实解析器** `UpdateReleaseNotes.lines(fromHTML:)`，
+断言非空 —— 于是「编辑器改写会不会弄坏弹窗」从推断变成了实测（跑通了）。
+
+---
+
 ## 9. 文件清单
 
 ```

@@ -29,6 +29,23 @@ struct UpdateSettingsTests {
         try String(contentsOf: repoRoot.appendingPathComponent(relative), encoding: .utf8)
     }
 
+    /// 取一个成员函数的方法体（签名之后、下一个同缩进的成员声明之前）。
+    ///
+    /// **为什么不直接对整份源码 `contains`**：整文件搜索会被**别处的一句注释或死代码**
+    /// 满足 —— 断言于是退化成「这个字符串在仓库里出现过」，与「启动链上真的调了它」
+    /// 是两回事。而这里要钉的恰恰是**调用点在哪个函数里**。
+    private func functionBody(_ signature: String, in source: String) throws -> String {
+        let start = try #require(
+            source.range(of: signature),
+            "找不到 \(signature) —— 改名了就要同步这条断言")
+        let rest = source[start.upperBound...]
+        let boundaries = [
+            "\n    func ", "\n    private func ", "\n    static func ", "\n    @discardableResult",
+        ]
+        let end = boundaries.compactMap { rest.range(of: $0)?.lowerBound }.min() ?? rest.endIndex
+        return String(rest[rest.startIndex..<end])
+    }
+
     // MARK: - 「检查更新」行的状态
 
     /// **优先级**：进行中的态 > 跳过 > 已是最新 > 从未检查。
@@ -204,6 +221,43 @@ struct UpdateSettingsTests {
         #expect(
             !source.contains("static let autoUpdate ="),
             "AppSettings.Key 里不该有 autoUpdate —— 真相在 Sparkle 那边，另存一份会与它脱节")
+    }
+
+    // MARK: - updater 的启动时机
+
+    /// **updater 必须在启动链上真的被建起来** —— 否则「自动更新」开关只是个装饰。
+    ///
+    /// 2026-09-18 实测到的断点：`UpdateController.startIfNeeded()` **全仓库只有定义、
+    /// 没有任何调用点**（死代码）。于是 `SPUUpdater.start()` 从未执行过，Sparkle 的
+    /// 自动检查排期从未开始 —— 而 Info.plist 里的 `SUEnableAutomaticChecks=true`、
+    /// `SUScheduledCheckInterval=86400`、设置面板上那个「自动更新」开关，
+    /// **三样全都显示为「配好了」**；设置行则永远停在「尚未检查」。
+    ///
+    /// 这正是本仓库反复记的那类判据：**「设了没生效」与「功能坏了」在界面上长得一样**，
+    /// 所以必须有一条断言把「接线还在不在」钉住。这条读源码 —— 与
+    /// `检查更新在设置面板里只有一个入口` 同一个理由：接线断掉**不会编译失败、不会崩、
+    /// 也不会有别的断言变红**，只有真发一版、真等一天才看得出来。
+    @Test func 启动链上必须真的建起updater() throws {
+        let source = try contents("Sources/DiskEjectorApp/DiskEjectorApp.swift")
+        let body = try functionBody("func applicationDidFinishLaunching(", in: source)
+
+        #expect(
+            body.contains("UpdateController.shared.startIfNeeded()"),
+            """
+            applicationDidFinishLaunching 里没有 `UpdateController.shared.startIfNeeded()`。
+            Sparkle 只在 `SPUUpdater.start()` 之后才会排期自动检查 —— 不建它，
+            「自动更新」开关、SUEnableAutomaticChecks、SUScheduledCheckInterval 全都形同虚设，
+            而界面上完全看不出来（设置行永远停在「尚未检查」）。
+            """
+        )
+        #expect(
+            !body.contains("checkForUpdates()"),
+            """
+            启动链上调了 checkForUpdates() —— 那会**每次启动都主动联网并可能弹窗**。
+            启动只负责把 updater 建起来；要不要检查由 Sparkle 的排期与「自动更新」开关决定
+            （见 UpdateController.startIfNeeded() 的说明）。
+            """
+        )
     }
 
     // MARK: - 语言
