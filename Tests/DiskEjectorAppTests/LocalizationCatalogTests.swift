@@ -85,6 +85,90 @@ struct LocalizationCatalogTests {
         )
     }
 
+    /// **每个键都必须有消费者**（`Sources/` 里出现过 `.key`）。
+    ///
+    /// ## 为什么这条必须存在（2026-09-18 实扫）
+    ///
+    /// 「有声明、没有消费者」是这半年里最贵的一类 bug，已经撞了三次：
+    /// `startIfNeeded()`（updater 从未启动）、`driverDidFailDownload`（`.failed` 那一态
+    /// 没有生产者）、三组 `*BusyBar*` 令牌接错行（菜单行与紧凑行各错一处）。
+    /// **文案键尤其隐蔽**：删掉一个没人用的键，代码照样编译、测试照样绿、
+    /// 界面看不出任何变化 —— 它只是躺在三份语言表里，而下一个读到的人
+    /// 会以为还有一个地方在用它。实测当时就躺着两个（见下一条）。
+    ///
+    /// ## 口径：`.key` 成员表达式就算消费者，且**偏松**
+    ///
+    /// 消费者有三种形式：`L10n.tr(.x)`、`L10n.tr(cond ? .on : .off)`、
+    /// `titleKey: .x`（键被当值传进结构体字段）。只认第一种会误报
+    /// （实测 158 个键里有 9 个是后两种形式）。
+    /// 代价是**别的枚举的同名 case 也能满足它** —— `openSettings` 既是文案键、
+    /// 又是 `MenuAction` 的 case。也就是说这条守卫**会漏报，但不会误报**，宁可漏报。
+    ///
+    /// 完整的（能抓漏报的）扫描在 `.build/probe/keyref_scan.py`，见 §8.48。
+    @Test func 每个键都必须有消费者() throws {
+        let keys = try topLevelKeyCounts().keys.sorted()
+        #expect(keys.count > 100, "只解析到 \(keys.count) 个键，解析逻辑可能坏了")
+
+        let sourcesRoot =
+            catalogURL
+            .deletingLastPathComponent()  // Localization/
+            .deletingLastPathComponent()  // Sources/
+        guard let walker = FileManager.default.enumerator(at: sourcesRoot, includingPropertiesForKeys: nil)
+        else {
+            Issue.record("枚举不到 \(sourcesRoot.path)")
+            return
+        }
+        var code = ""
+        var fileCount = 0
+        for case let url as URL in walker where url.pathExtension == "swift" {
+            fileCount += 1
+            let text = try String(contentsOf: url, encoding: .utf8)
+            // 去掉**整行**注释：本仓库的注释习惯是**引用**被讨论的标识符
+            // （例如本条注释自己就提到了 `terminateAndEject`），不去掉的话
+            // 「把调用删掉、注释留着」依然会绿。
+            code +=
+                text.split(separator: "\n", omittingEmptySubsequences: false)
+                .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
+                .joined(separator: "\n")
+        }
+        #expect(
+            fileCount > 30,
+            "只读到 \(fileCount) 个 .swift —— 路径多半不对，下面的结论一律作废"
+        )
+
+        let unused = keys.filter { key in
+            code.range(of: "\\.\(key)(?![A-Za-z0-9_])", options: .regularExpression) == nil
+        }
+        #expect(
+            unused.isEmpty,
+            """
+            这些文案键在 Sources/ 里没有任何消费者：\(unused)。\
+            删掉它们不会编译失败、不会让任何测试变红，只是躺在三份语言表里 —— \
+            而下一个读到的人会以为还有一个地方在用它们。
+            """
+        )
+    }
+
+    /// 两个**零消费者**的文案键已删除（2026-09-18 实扫）。
+    ///
+    /// **为什么要把「不存在」钉成测试**：与上面 App Store 那两条同一个理由 ——
+    /// 死文案会误导人。这两条尤其：
+    /// - `terminateAndEject`（「终止程序并推出」）与**实际在用**的
+    ///   `closeAndEject`（「关闭并推出」）**语义相近、用词不同** ——
+    ///   下一个读到的人很容易以为还有一个动作叫「终止程序并推出」；
+    /// - `updateChecking`（「正在检查…」）是**故意不画**的那一态的残留
+    ///   （`showUserInitiatedUpdateCheck` 只写日志、不画「正在检查…」，见 §8.35.5）。
+    @Test func 两个零消费者的文案键不再存在() {
+        #expect(
+            L10n.Key(rawValue: "terminateAndEject") == nil,
+            "「终止程序并推出」没有任何消费者（按钮用的是 closeAndEject「关闭并推出」），文案键不该再留着"
+        )
+        #expect(
+            L10n.Key(rawValue: "updateChecking") == nil,
+            "「正在检查…」是故意不画的那一态的残留，文案键不该再留着"
+        )
+    }
+
     /// App Store 渠道的文案已删除（2026-09-18 决定：本应用不上架 MAS）。
     ///
     /// **为什么要把「不存在」钉成测试**：死文案和死代码一样会误导人 —— 下一轮有人看到

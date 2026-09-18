@@ -426,13 +426,32 @@ struct DiskRow: View {
         return state.isBusy ? DesignTokens.Palette.warningSoft : DesignTokens.Palette.subtle
     }
 
-    /// 被占用行的左侧琥珀条（设计稿 `.row--busy::before`：3pt，上下各内缩 10）。
+    /// 被占用行的左侧琥珀条 —— **两种密度各有自己的规格**（设计稿 §3 的「三种行」）。
+    ///
+    /// | 密度 | 设计稿类 | 宽 / 上下内缩 |
+    /// |---|---|---|
+    /// | ``DiskRowDensity/regular`` | `.row--busy::before` | 3 / 10 |
+    /// | ``DiskRowDensity/compact`` | `.crow--busy::before` | 3 / 8 |
+    ///
+    /// ⚠️ **2026-09-18 实扫修正**：此前这里**不分密度**，紧凑行也拿 `.row--busy` 的
+    /// 内缩 10 —— 琥珀条比设计稿**短 4pt**（46 − 2×10 = 26，应为 46 − 2×8 = 30）。
+    ///
+    /// 当时 `MainWindowDiskListTests` **把设计稿的账算对了**（「行高 46 − 上下各内缩 8 = 30」），
+    /// 却量到 26，于是把差的 4pt 归因给 `UnevenRoundedRectangle` 的取整 ——
+    /// 而 4pt 正好是 `2 ×（10 − 8）`。**算术与实测对不上时，先怀疑接线，别先怀疑取整。**
     @ViewBuilder
     private var busyBar: some View {
         if state.isBusy {
-            BusyBar(
-                width: DesignTokens.Size.rowBusyBarWidth,
-                verticalInset: DesignTokens.Size.rowBusyBarInset)
+            switch density {
+            case .regular:
+                BusyBar(
+                    width: DesignTokens.Size.rowBusyBarWidth,
+                    verticalInset: DesignTokens.Size.rowBusyBarInset)
+            case .compact:
+                BusyBar(
+                    width: DesignTokens.Size.compactBusyBarWidth,
+                    verticalInset: DesignTokens.Size.compactBusyBarInset)
+            }
         }
     }
 
@@ -795,13 +814,20 @@ struct MenuBarDiskRow: View {
         state.isBusy ? DesignTokens.Palette.warningSoft : DesignTokens.Palette.subtle
     }
 
-    /// 被占用行的左侧琥珀条（设计稿 `.crow--busy::before`：3pt，上下各内缩 8）。
+    /// 被占用行的左侧琥珀条（设计稿 `.mrow--busy::before`：**2.5pt**，上下各内缩 7）。
+    ///
+    /// ⚠️ **2026-09-18 实扫修正**：此前这里引的设计稿类名是 `.crow--busy`（**紧凑行**的
+    /// 规格：3pt / 内缩 8），取的值也是 `compactBusyBar*` —— 而 `MenuBarDiskRow` 是
+    /// **菜单栏面板行**（只被 `MenuPopoverView` 用，对应 `02-menu-bar.html` 的 `.mrow`）。
+    /// 于是琥珀条比设计稿**宽 0.5pt**、内缩多 1pt：
+    /// 这正是 ``DesignTokens/Size/menuBusyBarWidth`` 那段注释说「已经修好」的那个症状 ——
+    /// 而承载修复的 `menuBusyBar*` 两个令牌当时**零消费者**（注释里的 `✅` 是假的）。
     @ViewBuilder
     private var busyBar: some View {
         if state.isBusy {
             BusyBar(
-                width: DesignTokens.Size.compactBusyBarWidth,
-                verticalInset: DesignTokens.Size.compactBusyBarInset)
+                width: DesignTokens.Size.menuBusyBarWidth,
+                verticalInset: DesignTokens.Size.menuBusyBarInset)
         }
     }
 }

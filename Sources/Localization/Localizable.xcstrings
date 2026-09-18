@@ -491,13 +491,6 @@
         "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "在 Dock 中顯示圖示" } }
       }
     },
-    "terminateAndEject" : {
-      "localizations" : {
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "终止程序并推出" } },
-        "en" : { "stringUnit" : { "state" : "translated", "value" : "Terminate & Eject" } },
-        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "終止程式並退出" } }
-      }
-    },
     "tintedMode" : {
       "localizations" : {
         "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "色调模式（系统背景色）" } },
@@ -559,13 +552,6 @@
         "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "点「后台更新并重启」后，应用会在后台下载并校验签名，完成后自动重启完成安装。正在推出的磁盘不会被打断。" } },
         "en" : { "stringUnit" : { "state" : "translated", "value" : "After you choose “Update in Background & Restart”, the app downloads and verifies the update in the background, then restarts to finish installing. Disks that are being ejected are not interrupted." } },
         "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "按下「背景下載並重新啟動」後，應用程式會在背景下載並驗證簽章，完成後自動重新啟動以完成安裝。正在退出的磁碟不會被中斷。" } }
-      }
-    },
-    "updateChecking" : {
-      "localizations" : {
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "正在检查…" } },
-        "en" : { "stringUnit" : { "state" : "translated", "value" : "Checking…" } },
-        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "正在檢查…" } }
       }
     },
     "updateDownloadingFormat" : {

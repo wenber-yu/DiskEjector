@@ -222,9 +222,9 @@ struct MainWindowDiskListTests {
     /// |---|---|---|---|
     /// | 2（本文件其他用例） | `.regular` | `y=74 h=148` | 行高 169 − 上下各内缩 10 = 149 |
     /// | 3（本用例） | `.regular` | `y=74 h=148` / `y=250 h=147` / `y=425 h=**95**` | 同上；**第三条被窗口下沿截断**，见下 |
-    /// | 4（下一用例） | `.compact` | `h=26` × 4 | 行高 46 − 上下各内缩 8 = 30（实测 26，见下） |
+    /// | 4（下一用例） | `.compact` | `h=30` × 4 | 行高 46 − 上下各内缩 8 = 30 |
     ///
-    /// 完整行与紧凑行差近 **6 倍**，不需要精确定标就能分开。
+    /// 完整行与紧凑行差近 **5 倍**，不需要精确定标就能分开。
     ///
     /// ## 两个实测到的、值得记一笔的现象
     ///
@@ -233,10 +233,13 @@ struct MainWindowDiskListTests {
     ///    `520 − 标题带 52 − 上内边距 12 − 下内边距 16 = 440` —— **放不下，要滚动**。
     ///    所以本用例的断言只看 `runs.first`（第一条完整可见），
     ///    `runs.count == 3` 仍然成立是因为第三条还剩 95pt 露在外面。
-    /// 2. **紧凑行实测 26 而不是算出来的 30**。差在 `UnevenRoundedRectangle` 的
-    ///    `.padding(.vertical, 8)` 与行的 `clipShape` 圆角（`Radius.md`）——
-    ///    贴边 3pt 宽的条在上下圆角处被切掉一小段。**不为它调阈值**：
-    ///    判据要的是「完整行 vs 紧凑行」这个 6 倍差，不是复刻几何算术。
+    /// 2. ~~紧凑行实测 26 而不是算出来的 30，差在 `UnevenRoundedRectangle` 的取整~~
+    ///    —— **这条归因是错的，2026-09-18 订正**。当时算出的 30 是对的，量到的 26 也是对的；
+    ///    错的是**紧凑行接错了令牌**：它拿的是完整行的 `rowBusyBarInset`（10）而不是紧凑行的 8，
+    ///    于是 46 − 2×10 = **26**。差的 4pt 正好是 `2 ×（10 − 8）`。
+    ///    而当时这条断言只写 `< 40` —— 26 与 30 **都能过**，失败与通过长得一模一样。
+    ///    **算术与实测对不上时，先怀疑接线，别先怀疑取整。**
+    ///    现在内缩由 `MenuDiskRowLayoutTests/三种行的琥珀条各用自己那组的规格` 逐行钉住。
     @Test func 三块忙盘仍是完整行() async {
         let ds = disks(3)
         let view = await ViewFixtures.mainWindow(disks: ds, occupancy: occupancy(ds, busy: 3))
@@ -253,7 +256,7 @@ struct MainWindowDiskListTests {
         )
     }
 
-    /// **4 块盘切紧凑行**：琥珀条段长从实测 148pt 掉到 26pt，且 4 块盘全都画出来。
+    /// **4 块盘切紧凑行**：琥珀条段长从实测 148pt 掉到 30pt，且 4 块盘全都画出来。
     ///
     /// ## 断言顺序是**故意**的：先段长、后条数
     ///
@@ -277,11 +280,13 @@ struct MainWindowDiskListTests {
             return
         }
         #expect(
-            first.height < 40,
+            abs(first.height - 30) <= 2,
             """
             4 块盘（≥ 阈值 \(DesignTokens.Size.compactRowThreshold)）应切**紧凑行**：\
-            琥珀条段长实测 26pt（完整行是 148pt），实测 \(first.height)pt —— 没切紧凑行。\
-            判据是 `ContentView.density`（`DiskRowDensity.forCount(store.disks.count)`）没有真的接到行上。
+            琥珀条段长应为 **30pt**（设计稿 `.crow--busy::before`：行高 46 − 上下各内缩 8），\
+            实测 \(first.height)pt。**≈26 就是紧凑行拿回了完整行的内缩 10**（2026-09-18 那次接错），\
+            ≈148 则是压根没切紧凑行 —— 判据是 `ContentView.density`\
+            （`DiskRowDensity.forCount(store.disks.count)`）没有真的接到行上。
             """
         )
         #expect(
@@ -292,7 +297,10 @@ struct MainWindowDiskListTests {
             """
         )
         for run in runs {
-            #expect(run.height < 40, "第 y=\(run.top)pt 那条长 \(run.height)pt —— 同一列里混了完整行与紧凑行")
+            #expect(
+                abs(run.height - 30) <= 2,
+                "第 y=\(run.top)pt 那条长 \(run.height)pt（应为 30）—— 同一列里混了完整行与紧凑行，或内缩取错了"
+            )
         }
     }
 }

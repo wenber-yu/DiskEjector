@@ -436,4 +436,123 @@ struct MenuDiskRowLayoutTests {
             "紧凑行理想宽度 \(width)pt 超过窗口宽 800pt，会被截断"
         )
     }
+
+    // MARK: - 三种行的琥珀条规格（设计稿 §3 第 3 项）
+
+    /// 琥珀像素判据：`r − max(g, b) > 60`。与 `MainWindowDiskListTests.isAmber` 同一套阈值 ——
+    /// 琥珀文字 `#B25000` 是 98（算）、琥珀浅底 ≈13（不算）。
+    private func isAmber(_ c: NSColor) -> Bool {
+        let r = c.redComponent * 255
+        let g = c.greenComponent * 255
+        let b = c.blueComponent * 255
+        return Int(r - max(g, b)) > 60
+    }
+
+    /// 量一条忙盘琥珀条：**宽**、起止 y、段长，外加该行的高（pt，原点左上）。
+    ///
+    /// 宽在**垂直中点**量 —— 琥珀条只圆右端，在上下端点上会少一截。
+    private func amberBar(
+        _ view: some View, width: CGFloat
+    ) -> (barWidth: CGFloat, top: CGFloat, height: CGFloat, rowHeight: CGFloat)? {
+        let scale: CGFloat = 2
+        let rowHeight = renderedSize(view, width: width).height
+        let size = CGSize(width: width, height: rowHeight)
+        guard let rep = OffscreenRender.bitmap(view, size: size),
+            let box = OffscreenRender.boundingBox(view, size: size, matching: isAmber)
+        else { return nil }
+
+        let x0 = Int(box.minX * scale)
+        let yMid = Int(box.midY * scale)
+        guard x0 >= 0, x0 < rep.pixelsWide, yMid >= 0, yMid < rep.pixelsHigh else { return nil }
+
+        var px = 0
+        while x0 + px < rep.pixelsWide, rep.colorAt(x: x0 + px, y: yMid).map(isAmber) == true {
+            px += 1
+        }
+
+        var start: Int?
+        var top = 0
+        var height = 0
+        for y in 0..<rep.pixelsHigh {
+            let amber = rep.colorAt(x: x0 + 1, y: y).map(isAmber) ?? false
+            if amber, start == nil {
+                start = y
+            } else if !amber, let s = start {
+                top = s
+                height = y - s
+                break
+            }
+        }
+        guard px > 0, height > 0 else { return nil }
+        return (CGFloat(px) / scale, CGFloat(top) / scale, CGFloat(height) / scale, rowHeight)
+    }
+
+    /// 设计稿里 `.row--busy` / `.mrow--busy` / `.crow--busy` 是**三条独立规则**：
+    /// 完整行 3 / 内缩 10、菜单行 **2.5** / 内缩 7、紧凑行 3 / 内缩 8（宽 / 上下内缩）。
+    ///
+    /// ## 为什么必须有这条（2026-09-18 实扫）
+    ///
+    /// 三组令牌当时**接错了两处**：`MenuBarDiskRow`（菜单面板行）用的是紧凑行的 3 / 8，
+    /// `DiskRow` 的紧凑分支用的是完整行的 3 / 10 —— 而给菜单行的 `menuBusyBar*`（2.5 / 7）
+    /// **零消费者**。`DESIGN-SPEC.md` §3 那一项还标着 `✅`、`DesignTokens.swift` 的注释还写着
+    /// 「曾经菜单面板行宽了 0.5pt，已修」—— 两处都是**假 ✅**：令牌的值一直是对的，没人用它。
+    ///
+    /// 后果都可见：菜单行琥珀条宽 0.5pt、紧凑行的条短 4pt。
+    /// 而 `MainWindowDiskListTests` 当时**把设计稿的账算对了**（46 − 2×8 = 30）、量到 26，
+    /// 把差的 4pt 归因给了 `UnevenRoundedRectangle` 的取整 ——
+    /// **算术与实测对不上时，先怀疑接线，别先怀疑取整。**
+    ///
+    /// ## 为什么不能只断言令牌的值
+    ///
+    /// `#expect(menuBusyBarWidth == 2.5)` 是**拿常量跟自己比**：令牌的值一直是 2.5，
+    /// 错的是「哪一行用了它」。所以这里**量像素**，且期望值取**设计稿的字面值** ——
+    /// 令牌被改坏时这条也会红。
+    ///
+    /// ## ⚠️ 宽度那一轴只能守上限（实测：2.5pt 落不了地）
+    ///
+    /// 把 `BusyBar` 的修饰符链原样搬到隔离容器里实测（2026-09-18，2x、浅色、行首对齐）：
+    ///
+    /// | `.frame(width:)` | 渲染出的琥珀宽 |
+    /// |---|---|
+    /// | 2.4 | 2.0pt（4px） |
+    /// | **2.5** | **3.0pt（6px）** |
+    /// | 2.6 / 3.0 / 3.4 | 3.0pt（6px） |
+    /// | 5.0 | 5.0pt（10px） |
+    ///
+    /// 也就是说**菜单行的 2.5pt 在这条画法下渲染成 3.0pt** —— 与完整行、紧凑行的 3pt
+    /// **逐像素相同**。机制未核实（怀疑是形状 rect 被对齐到整点），但结论是硬的：
+    /// 宽度这一轴在 0.5pt 的尺度上**不可观测**，所以这里只守「不比设计稿宽出 0.5pt 以上」
+    /// （能抓住「接成 5pt」这类粗错）。**能守的是内缩** —— 见下面的段长断言。
+    @Test func 三种行的琥珀条各用自己那组的规格() {
+        let busy = OccupancyResult.occupied(sampleProcesses)
+        let cases: [(tag: String, view: AnyView, width: CGFloat, barWidth: CGFloat, inset: CGFloat)] = [
+            ("主窗口完整行（`.row--busy`）", AnyView(mainRow(occupancy: busy, density: .regular)), 800, 3, 10),
+            ("主窗口紧凑行（`.crow--busy`）", AnyView(mainRow(occupancy: busy, density: .compact)), 800, 3, 8),
+            ("菜单栏面板行（`.mrow--busy`）", AnyView(row(occupancy: busy)), panelRowWidth, 2.5, 7),
+        ]
+        for c in cases {
+            guard let m = amberBar(c.view, width: c.width) else {
+                Issue.record(
+                    "\(c.tag)：一条琥珀条都没量到 —— 这次量测整体不可信（列位置/阈值错了？），后面的结论一律作废"
+                )
+                continue
+            }
+            #expect(
+                m.barWidth <= c.barWidth + 0.5,
+                """
+                \(c.tag)的琥珀条宽实测 \(m.barWidth)pt，设计稿规定 \(c.barWidth)pt —— \
+                多半是接错了另一组 `*BusyBar*` 令牌（三组：3/10、3/8、2.5/7）。
+                """
+            )
+            let expected = m.rowHeight - 2 * c.inset
+            #expect(
+                abs(m.height - expected) <= 1.5,
+                """
+                \(c.tag)的琥珀条段长实测 \(m.height)pt（宽 \(m.barWidth)pt），应为「行高 \
+                \(m.rowHeight) − 上下各内缩 \(c.inset)」= \(expected)pt —— 内缩取错了另一组令牌。\
+                段位置：y=\(m.top)。
+                """
+            )
+        }
+    }
 }

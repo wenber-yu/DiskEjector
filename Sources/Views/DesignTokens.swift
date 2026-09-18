@@ -89,7 +89,15 @@ enum DesignTokens {
 
     /// 设计稿 §2.2。数值即 pt，字重在使用处给出。
     enum FontSize {
-        /// 20 / 600 —— 弹窗、引导主标题。
+        /// 20 / 600 —— ⚠️ **零消费者，且设计稿也没用过它**。
+        ///
+        /// 2026-09-18 实扫：`Sources/` 里没有一处引用它。原先这里写的是
+        /// 「弹窗、引导主标题」—— **那是一句假话**：弹窗标题实际用 ``title``（15）、
+        /// 引导页标题用 ``heading``（17），都没有 20。
+        /// 设计稿侧 `ds.css` 也只在令牌表里**声明**了 `--fs-20`，任何页面都没应用。
+        ///
+        /// **保留**（不删）的理由：本文件是 `ds.css` 的镜像，`--fs-20` 还在设计稿的档位表里；
+        /// 删掉会让「两边数值必须一致」这句话出现缺口。**但别把它读成「某处在用 20pt」。**
         static let display: CGFloat = 20
         /// 17 / 600 —— 引导页标题。
         static let heading: CGFloat = 17
@@ -106,25 +114,13 @@ enum DesignTokens {
         /// 11 / 600 —— 分组标题（配 `tracking`）。
         static let groupTitle: CGFloat = 11
 
-        // 兼容旧命名（语义等价，保留以免调用点大改）。
-        /// 主窗口标题栏标题 —— 15 / 600。
-        static let titleBar: CGFloat = title
-        /// 磁盘行磁盘名 —— 15 / 600。
-        static let diskCardName: CGFloat = title
-        /// 容量标签 —— 12。
-        static let capacity: CGFloat = caption
-        /// 进程芯片文字 —— 12。
-        static let processTag: CGFloat = caption
-        /// 主按钮文字 —— 12 / 500（设计稿按钮统一 sm 尺寸）。
-        static let primaryButton: CGFloat = caption
-        /// 菜单栏磁盘名 —— 13 / 600。
-        static let menuDiskName: CGFloat = bodyStrong
-        /// 菜单栏磁盘 meta —— 11。
-        static let menuDiskMeta: CGFloat = footnote
-        /// 弹出面板标题 —— 13 / 600。
-        static let menuTitle: CGFloat = bodyStrong
-        /// 设置面板分组标题 —— 11 / 600。
-        static let settingsTitle: CGFloat = groupTitle
+        // ⚠️ 2026-09-18 实扫删除：这里原有 9 个「兼容旧命名」的语义别名
+        // （`titleBar` / `diskCardName` / `capacity` / `processTag` / `primaryButton` /
+        //  `menuDiskName` / `menuDiskMeta` / `menuTitle` / `settingsTitle`）。
+        // 它们声明的存在理由是「语义等价，**保留以免调用点大改**」——
+        // 而实扫（`.build/probe/keyref_scan.py`）发现**调用点是 0**：迁移早就做完了，
+        // 别名只是留了下来。**注释里的理由被证伪 ⇒ 令牌即死代码**，故删。
+        // 视图要用语义名时，上表里已有对应档位（如「菜单栏磁盘名」= ``bodyStrong``）。
     }
 
     // MARK: 行高
@@ -464,8 +460,22 @@ enum DesignTokens {
         /// 紧凑行更是漏了上下内缩，琥珀条顶到了行的上下边缘。
         /// 三处的圆角也**只圆右端**（`border-radius: 0 2px 2px 0`）——
         /// 左端贴着行的左边缘，圆角会在行的圆角外侧露出一小段弧，看起来像没对齐。
+        ///
+        /// ⚠️ **2026-09-18 实扫：上面那句「修好了」当时是假的。**
+        /// `menuBusyBar*`（2.5 / 7）与 `compactBusyBar*`（3 / 8）三个令牌**接错了行**：
+        /// `MenuBarDiskRow`（菜单面板行）拿的是紧凑行的 3 / 8，
+        /// 而 `DiskRow` 的紧凑分支拿的是完整行的 3 / 10 ——
+        /// 于是菜单行**仍然宽 0.5pt**（正是这段话声称已修的症状），紧凑行的条**短 4pt**。
+        /// 设计稿 §3 那张「三种行各有自己的规格 ✅」是**假 ✅**。
+        /// 现在三处各自接对自己的令牌，并由
+        /// `MenuDiskRowLayoutTests/三种行的琥珀条各用自己那组的规格` 钉住（量像素）。
         static let rowBusyBarWidth: CGFloat = 3
         static let rowBusyBarInset: CGFloat = 10
+        /// ⚠️ **2.5 落不了地**：2026-09-18 把 `BusyBar` 的修饰符链原样搬到隔离容器实测，
+        /// `.frame(width: 2.5)` 在行首（x 为整数）渲染出来是 **3.0pt**（6px）——
+        /// 与 2.6 / 3.0 / 3.4 逐像素相同（2.4 → 2.0、5.0 → 5.0）。机制未核实。
+        /// 也就是说菜单行的琥珀条**实际就是 3pt**，与另外两种行一样宽；
+        /// 这里保留 2.5 是为了记住设计稿的原值，别把它当成「实现已经做到 2.5」。
         static let menuBusyBarWidth: CGFloat = 2.5
         static let menuBusyBarInset: CGFloat = 7
         static let compactBusyBarWidth: CGFloat = 3
@@ -530,13 +540,10 @@ enum DesignTokens {
         static let swatchSize: CGFloat = 22
         static let swatchRingOffset: CGFloat = 4
 
-        // 兼容旧命名。
-        /// 进程标签高（= 芯片高）。
-        static let processTagHeight: CGFloat = processChipHeight
-        /// 进程标签内图标（= 芯片图标）。
-        static let processTagIcon: CGFloat = processChipIcon
-        /// 主按钮高度（设计稿按钮统一 sm）。
-        static let primaryButtonHeight: CGFloat = buttonSmallHeight
+        // ⚠️ 2026-09-18 实扫删除：`processTagHeight` / `processTagIcon` /
+        // `primaryButtonHeight` 三个「兼容旧命名」的别名 —— 与 ``FontSize`` 里那 9 个
+        // 同一批、同一条被证伪的理由（调用点 0）。用到的语义已由
+        // ``processChipHeight`` / ``processChipIcon`` / ``buttonSmallHeight`` 承担。
     }
 
     // MARK: 色彩
@@ -587,8 +594,11 @@ enum DesignTokens {
 
         // MARK: 表面
 
-        /// 窗口实体面（色调模式）。
-        static var base: Color { adaptive(light: hex(0xFFFFFF), dark: hex(0x1C1C1E)) }
+        // ⚠️ 2026-09-18 实扫删除：`base`（= 后来的 ``windowBase(for:)`` 的旧名）
+        // 与 ``mutedBackground``（= ``subtle`` 的旧名）、``accentFallback`` 三个
+        // **零消费者**令牌。前两个的注释都写着「旧名／兼容旧命名」，
+        // 而实扫发现调用点是 0 —— 理由被证伪，令牌即死代码。
+
         /// 浮层、设置卡片、进程芯片。
         static var raised: Color { adaptive(light: hex(0xFFFFFF), dark: hex(0x2C2C2E)) }
         /// 悬停底、分段控件槽、徽标。
@@ -667,8 +677,6 @@ enum DesignTokens {
         static var borderStrong: Color { ink(0.18) }
         /// 分隔线（比 `border` 更淡）。
         static var hairline: Color { ink(0.08) }
-        /// 悬停底色（兼容旧命名）。
-        static var mutedBackground: Color { subtle }
 
         // MARK: 文字
 
@@ -689,9 +697,6 @@ enum DesignTokens {
         static var textDecorative: Color { ink(light: 0.38, dark: 0.36) }
 
         // MARK: 语义色
-
-        /// 强调色兜底（真实强调色由 ``AccentColor`` 提供，随设置变化）。
-        static var accentFallback: Color { adaptive(light: hex(0x0A84FF), dark: hex(0x409CFF)) }
 
         /// 被占用：琥珀。**唯一用途**是左侧色条、证据区、占用文字。
         static var warning: Color { adaptive(light: hex(0xFF9500), dark: hex(0xFF9F0A)) }
