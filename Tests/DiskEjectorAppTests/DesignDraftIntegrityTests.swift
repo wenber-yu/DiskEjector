@@ -524,6 +524,91 @@ struct DesignDraftIntegrityTests {
 
     // MARK: 扫描
 
+    // MARK: 页面之间的导航 + 文档清单（§8.63）
+
+    /// 每个页面顶部 `<nav>` 必须**列全所有屏** —— 上一轮守的是「index → 页面」，
+    /// 这一向是「**页面 → 页面**」：新增一屏却忘了在 8 个页面的 nav 里加，
+    /// 从其他任何一屏都**点不过去**（只能退回 index），而**没有任何东西会报错**。
+    @Test func 每个页面的导航必须列全所有屏() throws {
+        let all = Set(try screenFiles())
+        var problems: [String] = []
+        for page in try screenFiles() {
+            let links = Set(try navLinks(of: page).map { $0.href })
+            // 负向锚：一个 nav 链接都解析不到 = 口径失效，不是「列全了」
+            if links.isEmpty {
+                problems.append("\(page)：nav 里一个页面链接都没解析到 —— 解析口径失效（假绿）")
+                continue
+            }
+            let missing = all.subtracting(links).sorted()
+            if !missing.isEmpty {
+                problems.append("\(page)：nav 缺 \(missing.joined(separator: ", "))")
+            }
+        }
+        #expect(
+            problems.isEmpty,
+            """
+            页面之间的导航不全：
+            \(problems.joined(separator: "\n  "))
+            新增一屏却忘了加进各页的 nav ⇒ 从其他任何一屏都**点不过去**，
+            而这件事**不会有任何报错**（与 §8.45「有能力、没接线」同形）。
+            """)
+    }
+
+    /// nav 里的**名字**也必须与该页面自己的 `<title>` 主名一致（实测当前 8×8 全对）。
+    @Test func 导航里的页面名必须与页面自己的标题一致() throws {
+        var problems: [String] = []
+        for page in try screenFiles() {
+            for link in try navLinks(of: page) {
+                guard
+                    FileManager.default.fileExists(
+                        atPath: designRoot.appendingPathComponent("screens/\(link.href)").path)
+                else {
+                    problems.append("\(page)：nav 指向不存在的文件 \(link.href)")
+                    continue
+                }
+                guard let main = try pageMainTitle("screens/\(link.href)") else { continue }
+                if link.text != main {
+                    problems.append("\(page) 的 nav 写「\(link.text)」，而 \(link.href) 的标题主名是「\(main)」")
+                }
+            }
+        }
+        #expect(
+            problems.isEmpty,
+            """
+            导航里的名字与页面自己的标题对不上：
+            \(problems.joined(separator: "\n  "))
+            改了页面标题却没改 nav（或反过来）**两边都不报错** ——
+            读者点进去发现名字不一样，只会以为那不是同一屏。
+            """)
+    }
+
+    /// §9 文件清单里对每个页面的**说明**，必须包含该页面自己的 `<title>` 主名。
+    ///
+    /// 首跑抓到一处真的：03 号页的清单说明写「推出确认（破坏性）与失败弹窗」，
+    /// 而它自己的标题主名是「**推出流程弹窗**」—— 7/8 通过，只有它不通过（⇒ 口径无假红）。
+    @Test func 文件清单里的页面说明必须含该页面的标题主名() throws {
+        let listing = try screenListing()
+        #expect(
+            listing.count >= 8,
+            "§9 文件清单里只解析到 \(listing.count) 个页面 —— 解析口径失效（假绿）")
+
+        var problems: [String] = []
+        for (file, desc) in listing.sorted(by: { $0.key < $1.key }) {
+            guard let main = try pageMainTitle("screens/\(file)") else { continue }
+            if !desc.contains(main) {
+                problems.append("§9 里 \(file) 的说明「\(desc)」不含它的标题主名「\(main)」")
+            }
+        }
+        #expect(
+            problems.isEmpty,
+            """
+            §9 文件清单的说明与页面自己的标题对不上：
+            \(problems.joined(separator: "\n  "))
+            页面改了名字而文档没跟上 ⇒ 读者按文档找的是旧名字，
+            而文档与页面**都不会报错**（与 §8.62 那处同型，只是这一处在文档侧）。
+            """)
+    }
+
     private struct LinkScan {
         var links: [(href: String, text: String)] = []
     }
@@ -558,6 +643,69 @@ struct DesignDraftIntegrityTests {
         guard let t = Self.matches(in: html, pattern: #"<title>(.*?)</title>"#).first else { return nil }
         return t.trimmingCharacters(in: .whitespacesAndNewlines)
             .split(separator: "·").first.map { String($0).trimmingCharacters(in: .whitespaces) }
+    }
+
+    /// 某个页面顶部 `<nav>` 里的页面链接（`<a href="0X-….html">名字</a>`）。
+    private func navLinks(of page: String) throws -> [(href: String, text: String)] {
+        let html = try read(designRoot.appendingPathComponent("screens/\(page)"))
+        guard let nav = Self.match(in: html, pattern: ##"<nav[^>]*>(.*?)</nav>"##) else { return [] }
+        let pattern = ##"<a\s+href="([\w-]+\.html)"[^>]*>(.*?)</a>"##
+        guard let re = try? NSRegularExpression(pattern: pattern) else { return [] }
+        let range = NSRange(nav.startIndex..<nav.endIndex, in: nav)
+        return re.matches(in: nav, range: range).compactMap { m in
+            guard let hr = Range(m.range(at: 1), in: nav), let tr = Range(m.range(at: 2), in: nav)
+            else { return nil }
+            return (String(nav[hr]), Self.plainText(String(nav[tr])))
+        }
+    }
+
+    /// §9 文件清单里「页面文件名 → 说明」。
+    private func screenListing() throws -> [String: String] {
+        let spec = try read(designRoot.appendingPathComponent("DESIGN-SPEC.md"))
+        guard
+            let block = Self.match(
+                in: spec,
+                pattern: ##"^## 9\. 文件清单\s*\n+```\n(.*?)\n```"##)
+        else { return [:] }
+        var out: [String: String] = [:]
+        for line in block.split(separator: "\n", omittingEmptySubsequences: false) {
+            let l = String(line)
+            guard let m = l.range(of: ##"(\d\d-[\w-]+\.html)\s+(\S.*)$"##, options: .regularExpression)
+            else { continue }
+            let parts = l[m]
+            // 文件名 + 说明（说明里的 `#` 之后是行内注释，剥掉）
+            guard let mm = Self.firstMatch(in: String(parts), pattern: ##"^(\d\d-[\w-]+\.html)\s+(.*?)(?:\s+#.*)?$"##)
+            else { continue }
+            out[mm.0] = mm.1
+        }
+        return out
+    }
+
+    /// 取**第一个**匹配（整段），用于 `<nav>…</nav>` 这类**跨行**块。
+    ///
+    /// ⚠️ 两个 option 都不能少：`.dotMatchesLineSeparators` 让 `.` 跨行；
+    /// `.anchorsMatchLines` 让 `^` 匹配**行首**（默认只匹配字符串开头 ——
+    /// 少了它，「第 9 章」这种不在文件开头的行永远匹配不到，且**不报错、只返回 nil**）。
+    private static func match(in text: String, pattern: String) -> String? {
+        guard
+            let re = try? NSRegularExpression(
+                pattern: pattern, options: [.dotMatchesLineSeparators, .anchorsMatchLines])
+        else { return nil }
+        let range = NSRange(text.startIndex..<text.endIndex, in: text)
+        guard let m = re.firstMatch(in: text, range: range), let r = Range(m.range(at: 1), in: text)
+        else { return nil }
+        return String(text[r])
+    }
+
+    /// 取第一个匹配的**两个捕获组**（文件名 / 说明）。
+    private static func firstMatch(in text: String, pattern: String) -> (String, String)? {
+        guard let re = try? NSRegularExpression(pattern: pattern, options: [.anchorsMatchLines])
+        else { return nil }
+        let range = NSRange(text.startIndex..<text.endIndex, in: text)
+        guard let m = re.firstMatch(in: text, range: range),
+            let a = Range(m.range(at: 1), in: text), let b = Range(m.range(at: 2), in: text)
+        else { return nil }
+        return (String(text[a]), String(text[b]))
     }
 
     /// 页面自己的 `<h1>`（取第一个）。
