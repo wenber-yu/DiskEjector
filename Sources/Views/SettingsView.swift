@@ -48,6 +48,12 @@ struct SettingsView: View {
     ///   `writePNG` 里 `Int(∞ * 2)` 直接 SIGTRAP（快照那套代码的注释里记着这个坑）。
     var fillsHost: Bool = false
 
+    /// ⚠️ **仅供离屏出图**：见 ``SettingsSectionsColumn/updateStateOverride``。
+    ///
+    /// 透传到 ``SettingsSectionsColumn``，让「更新」组那七态各出一张走查图。
+    /// 真实入口（`AppDelegate.makeSettingsWindow()`）不传 → 走真实状态。
+    var updateStateOverride: UpdateController.CheckRowState?
+
     @Environment(\.dismiss) private var dismiss
     @State private var launchAtLoginPrompt: LaunchAtLoginPrompt?
 
@@ -69,9 +75,12 @@ struct SettingsView: View {
                 }
             }
             ScrollView {
-                SettingsSectionsColumn { error in
-                    launchAtLoginPrompt = prompt(for: error)
-                }
+                SettingsSectionsColumn(
+                    onLaunchAtLoginError: { error in
+                        launchAtLoginPrompt = prompt(for: error)
+                    },
+                    updateStateOverride: updateStateOverride
+                )
                 .padding(.bottom, SettingsMetrics.bottomInset)
             }
             .scrollContentBackground(.hidden)
@@ -252,6 +261,23 @@ struct SettingsSectionsColumn: View {
 
     /// 登录项操作失败时上抛（宿主弹提示；测试里给空实现）。
     var onLaunchAtLoginError: (LaunchAtLoginError) -> Void = { _ in }
+
+    /// ⚠️ **仅供离屏出图 / 预览**：`nil` 时走真实状态 ``UpdateController/rowState``。
+    ///
+    /// **为什么需要它**：七态里「下载中 / 已就绪 / 失败」在真机上造不出来
+    /// （要真实的 appcast + 下载 + 签名校验），而它们恰恰是最需要走查的三种画法 ——
+    /// 没有这个口子，走查图永远只有首帧那一态，等于**没画过的状态没人看过**。
+    ///
+    /// **为什么注入的是「状态」而不是 ``UpdateController/phase``**：`phase` 只是
+    /// ``UpdateController/rowState(phase:skippedVersion:lastCheck:)`` 的三个输入之一，
+    /// 另外两个（已跳过的版本、上次检查时间）来自 `UserDefaults` ——
+    /// 只注入 `phase` 会留下两个不确定输入，出图**不可复现**。
+    /// 注入「状态」跳过的只有那个**纯函数**，而它每条分支都有自己的单测
+    /// （`UpdateSettingsTests.行状态的优先级`）。
+    ///
+    /// ⚠️ **不要**改成「给 `UpdateController.shared` 塞一个假 phase」——
+    /// 那会连带编出假的进度、假的「可以取消」，与 §8.30 记的「夹具保真度」是同一个坑。
+    var updateStateOverride: UpdateController.CheckRowState?
 
     @AppStorage(AppSettings.Key.visualStyle) private var visualStyleRaw = VisualStyle.default.rawValue
     @AppStorage(AppSettings.Key.accentColor) private var accentColorRaw = AccentColor.default.rawValue
@@ -445,7 +471,7 @@ struct SettingsSectionsColumn: View {
     /// 与「功能坏了」长得一模一样 —— 所以那一态换成「立即重启」。
     @ViewBuilder
     private var updateCheckLine: some View {
-        switch updateController.rowState {
+        switch updateStateOverride ?? updateController.rowState {
         case .neverChecked:
             line(
                 label: L10n.tr(.checkForUpdates),

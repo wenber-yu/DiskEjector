@@ -363,6 +363,56 @@ struct SettingsLayoutTests {
         )
     }
 
+    /// 「更新」行**七态渲染出来必须一样高**。
+    ///
+    /// **为什么**：这一行是设置面板里**唯一**会在运行中换画法的行 ——
+    /// 其余行的形态由偏好决定，只有它随事件（检查中 / 下载中 / 已就绪 / 失败…）变形。
+    /// 而面板是**固定高度**的：只要有一态比别的高，切到那一态时要么多出一条空白带、
+    /// 要么把最后一行挤到折叠线外（历史上「关于」整段就是这样消失的，见文件头）。
+    /// 「下载中」那一态尤其危险 —— 它多画了一条轨道 + 一个百分比。
+    ///
+    /// ⚠️ 这条断言**与渲染机器无关**（只比七个高度互相相等，不比绝对值），所以能进 CI。
+    /// 七态的出图进不了 CI（`DE_SNAPSHOTS=1` 才跑）→ **光出图不补守卫等于没补**（§8.33）。
+    @Test func 更新行七态渲染出来必须一样高() {
+        let lastCheck = Date(timeIntervalSince1970: 1_789_000_000)
+        func row(_ phase: UpdatePhase, skipped: String? = nil) -> UpdateController.CheckRowState {
+            UpdateController.rowState(phase: phase, skippedVersion: skipped, lastCheck: lastCheck)
+        }
+        let states: [(String, UpdateController.CheckRowState)] = [
+            ("尚未检查", UpdateController.rowState(phase: .idle, skippedVersion: nil, lastCheck: nil)),
+            ("已是最新", row(.idle)),
+            ("已跳过", row(.idle, skipped: "1.1.0")),
+            ("发现新版本", row(.found(version: "1.1.0"))),
+            ("下载中", row(.downloading(version: "1.1.0", fraction: 0.42))),
+            ("已就绪", row(.ready(version: "1.1.0"))),
+            ("失败", row(.failed(version: "1.1.0"))),
+        ]
+
+        var heights: [(String, CGFloat)] = []
+        for (name, state) in states {
+            let h = renderedSize(
+                SettingsSectionsColumn(updateStateOverride: state), width: panelWidth
+            ).height
+            heights.append((name, h))
+        }
+        let printed = heights.map { "\($0.0) \($0.1)" }.joined(separator: " ｜ ")
+        print("  [更新行七态] \(printed)")
+
+        // 判据是「**七个互相相等**」，不是「等于某个数」—— 后者会把「整体挪了 1pt」
+        // 报成七条失败，而真正要防的是**某一态与别的不一样**。
+        let first = heights[0].1
+        for (name, h) in heights.dropFirst() {
+            #expect(
+                abs(h - first) <= 0.5,
+                """
+                「\(name)」渲染出来 \(h)pt，而「\(heights[0].0)」是 \(first)pt —— 七态必须一样高。
+                设置面板是固定高度：某一态更高就会挤掉最后一行（或留出空白带）。
+                全部七态：\(printed)
+                """
+            )
+        }
+    }
+
     @Test func 分段控件不许吃掉标签列的宽度() {
         _ = NSApplication.shared
         let control = SettingsSegmentedControl(

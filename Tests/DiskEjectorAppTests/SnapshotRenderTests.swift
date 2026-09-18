@@ -130,6 +130,18 @@ struct SnapshotRenderTests {
         pid: 39298, processName: "tail", displayName: "tail",
         executablePath: "/usr/bin/tail", path: "/Volumes/My Passport/clip.mp4")
 
+    /// 设置面板「更新」行七态出图用的**固定**「上次检查时间」。
+    ///
+    /// ⚠️ **不能用 `Date()`**：那会让每次跑出来的「上次检查：…」都不一样，
+    /// 两张图 diff 不出真变化 —— 而走查图的价值恰恰在于「这次与上次不同之处 = 我改的东西」。
+    /// 取值与设计稿同源（`08-update.html` 的「上次检查：今天 14:30」，日期取 2026-09-17）。
+    private static let designLastCheck =
+        DateComponents(
+            calendar: Calendar(identifier: .gregorian),
+            timeZone: TimeZone(secondsFromGMT: 8 * 3600),
+            year: 2026, month: 9, day: 17, hour: 14, minute: 30
+        ).date ?? Date(timeIntervalSince1970: 0)
+
     /// 更新弹窗的样本值 —— **逐字取自设计稿 `08-update.html` A 段**
     /// （1.0.0 → 1.1.0、构建 42 → 58、2026-09-17、12.4 MB、三条更新）。
     ///
@@ -516,6 +528,39 @@ struct SnapshotRenderTests {
         let updateModel = UpdateAlertBuilder.model(for: Self.designUpdateFixture)
         try dumpAlert(updateModel, name: "update-dialog-light")
         try dumpAlert(updateModel, name: "update-dialog-dark", dark: true)
+
+        // ---- 设置面板「更新」行：七态（设计稿 08-update.html 的 B / C 段）----
+        //
+        // ⚠️ **状态必须经由生产那个纯函数得出**，不能手写 `.downloading(…)`：
+        // 手写等于「夹具自己编了一个状态」，而
+        // `rowState(phase:skippedVersion:lastCheck:)` 的**优先级**
+        // （进行中四态 > 已跳过 > 已是最新 > 尚未检查）恰恰是最容易搞错的地方。
+        // 从 `phase` 走一遍那个函数，出图才同时验证了「判定」与「画法」。
+        //
+        // ⚠️ **时间戳必须是固定值**（不是 `Date()`）：出图要可复现，
+        // 否则每次跑出来的「上次检查」都不一样，两张图 diff 不出真变化。
+        //
+        // ⚠️ **样本值与设计稿同源**（版本 1.1.0、上次检查 2026-09-17 14:30）。
+        let lastCheck = Self.designLastCheck
+        func row(_ phase: UpdatePhase, skipped: String? = nil) -> UpdateController.CheckRowState {
+            UpdateController.rowState(phase: phase, skippedVersion: skipped, lastCheck: lastCheck)
+        }
+        let updateRowStates: [(String, UpdateController.CheckRowState)] = [
+            ("never-checked", UpdateController.rowState(phase: .idle, skippedVersion: nil, lastCheck: nil)),
+            ("up-to-date", row(.idle)),
+            ("skipped", row(.idle, skipped: "1.1.0")),
+            ("found", row(.found(version: "1.1.0"))),
+            ("downloading", row(.downloading(version: "1.1.0", fraction: 0.42))),
+            ("ready", row(.ready(version: "1.1.0"))),
+            ("failed", row(.failed(version: "1.1.0"))),
+        ]
+        for (slug, state) in updateRowStates {
+            try dump(
+                SettingsView(updateStateOverride: state),
+                width: DesignTokens.Size.settingsPanel.width,
+                height: DesignTokens.Size.settingsPanel.height,
+                name: "settings-update-\(slug)-light")
+        }
 
         // ---- 深色对照（设计稿 07-dark.html）----
         try dump(
