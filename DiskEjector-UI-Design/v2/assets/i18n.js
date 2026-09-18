@@ -5,6 +5,10 @@
    来源：Sources/Localization/Localizable.xcstrings
        + DiskEjector-UI-Design/v2/assets/i18n-extra.json
    ----------------------------------------------------------------------------
+   源指纹 add1e738a3fdb31d84e3386697a190bf303d6257862fdb4d6cc90e465c54ac5b
+     = sha256(xcstrings + extra + 本脚本) —— 任一方变了它就是旧的，
+       由 DesignDraftIntegrityTests 拦下「改了源忘了重跑」。
+   ----------------------------------------------------------------------------
    · 无前缀的键 = 产品已有文案，逐字取自 xcstrings；
    · ds. 前缀的键 = 设计稿专有（新增界面 / 样本数据 / 设计稿 chrome）。
    · 值里允许 HTML（<b> / <code> / <br> / <i data-i="gear">），
@@ -195,7 +199,6 @@ window.DS_L10N = {
       "settingsGroupGeneral": "通用",
       "settingsGroupUpdates": "更新",
       "showDockIcon": "在 Dock 中显示图标",
-      "terminateAndEject": "终止程序并推出",
       "tintedMode": "色调模式（系统背景色）",
       "tintedModeShort": "色调",
       "transparentMode": "透明模式（Liquid Glass 毛玻璃）",
@@ -209,7 +212,6 @@ window.DS_L10N = {
       "updateCallout": "点「后台更新并重启」后，应用会在后台下载并校验签名，完成后自动重启完成安装。正在推出的磁盘不会被打断。",
       "updateChannelDevelopment": "开发版",
       "updateChannelDirect": "官网直发版",
-      "updateChecking": "正在检查…",
       "updateDownloadingFormat": "正在后台下载 %@",
       "updateEscHint": "Esc 稍后再提醒",
       "updateFailedFormat": "%@ 下载失败",
@@ -401,7 +403,6 @@ window.DS_L10N = {
       "settingsGroupGeneral": "General",
       "settingsGroupUpdates": "Updates",
       "showDockIcon": "Show icon in Dock",
-      "terminateAndEject": "Terminate & Eject",
       "tintedMode": "Tinted (System Background)",
       "tintedModeShort": "Tinted",
       "transparentMode": "Transparent (Liquid Glass)",
@@ -415,7 +416,6 @@ window.DS_L10N = {
       "updateCallout": "After you choose “Update in Background & Restart”, the app downloads and verifies the update in the background, then restarts to finish installing. Disks that are being ejected are not interrupted.",
       "updateChannelDevelopment": "Development build",
       "updateChannelDirect": "Direct build",
-      "updateChecking": "Checking…",
       "updateDownloadingFormat": "Downloading %@ in the background",
       "updateEscHint": "Esc to remind later",
       "updateFailedFormat": "Failed to download %@",
@@ -607,7 +607,6 @@ window.DS_L10N = {
       "settingsGroupGeneral": "一般",
       "settingsGroupUpdates": "更新",
       "showDockIcon": "在 Dock 中顯示圖示",
-      "terminateAndEject": "終止程式並退出",
       "tintedMode": "色調模式（系統背景色）",
       "tintedModeShort": "色調",
       "transparentMode": "透明模式（Liquid Glass 毛玻璃）",
@@ -621,7 +620,6 @@ window.DS_L10N = {
       "updateCallout": "按下「背景下載並重新啟動」後，應用程式會在背景下載並驗證簽章，完成後自動重新啟動以完成安裝。正在退出的磁碟不會被中斷。",
       "updateChannelDevelopment": "開發版",
       "updateChannelDirect": "官網直發版",
-      "updateChecking": "正在檢查…",
       "updateDownloadingFormat": "正在背景下載 %@",
       "updateEscHint": "Esc 稍後再提醒",
       "updateFailedFormat": "%@ 下載失敗",

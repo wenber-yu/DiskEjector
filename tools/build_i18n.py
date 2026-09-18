@@ -17,6 +17,7 @@
 没有脚本的话，i18n.js 里 150 条 × N 语言只能手抄，抄漏一条不会报错，
 只会在切到那门语言时静默回退成中文 —— 而「回退」和「翻好了」长得一模一样。
 """
+import hashlib
 import json
 import os
 import re
@@ -25,6 +26,7 @@ import sys
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 XCS = os.path.join(REPO, 'Sources/Localization/Localizable.xcstrings')
 EXTRA = os.path.join(REPO, 'DiskEjector-UI-Design/v2/assets/i18n-extra.json')
+SELF = os.path.abspath(__file__)
 OUT = os.path.join(REPO, 'DiskEjector-UI-Design/v2/assets/i18n.js')
 
 LANGS = [
@@ -32,6 +34,20 @@ LANGS = [
     ('en', 'en', 'English'),
     ('zh-Hant', 'zh-Hant', '繁體中文'),
 ]
+
+
+def fingerprint():
+    """源指纹 —— 三个输入（两个源文件 + 本脚本）的字节拼起来算一个 sha256。
+
+    写进生成物头部，供 `DesignDraftIntegrityTests/i18n.js 必须与源同步` 比对：
+    **任何一方变了，指纹就变** ⇒ 生成物过期会被测试拦下。
+
+    ⚠️ 拼接顺序必须与测试里一致：XCS → EXTRA → 本脚本。
+    """
+    h = hashlib.sha256()
+    for p in (XCS, EXTRA, SELF):
+        h.update(open(p, 'rb').read())
+    return h.hexdigest()
 
 
 def md_bold(s):
@@ -123,6 +139,10 @@ def main():
         '   生成：python3 tools/build_i18n.py',
         '   来源：Sources/Localization/Localizable.xcstrings',
         '       + DiskEjector-UI-Design/v2/assets/i18n-extra.json',
+        '   ----------------------------------------------------------------------------',
+        '   源指纹 %s' % fingerprint(),
+        '     = sha256(xcstrings + extra + 本脚本) —— 任一方变了它就是旧的，',
+        '       由 DesignDraftIntegrityTests 拦下「改了源忘了重跑」。',
         '   ----------------------------------------------------------------------------',
         '   · 无前缀的键 = 产品已有文案，逐字取自 xcstrings；',
         '   · ds. 前缀的键 = 设计稿专有（新增界面 / 样本数据 / 设计稿 chrome）。',

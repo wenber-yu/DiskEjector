@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 import Testing
 
@@ -236,6 +237,44 @@ struct DesignDraftIntegrityTests {
         )
     }
 
+    /// **生成物与源必须同步**：改了源忘了重跑 `tools/build_i18n.py`，`i18n.js` 就是旧的。
+    ///
+    /// 这一向才贵：**加了键忘了重跑** ⇒ 切到英文时设计稿**静默回退成中文**，
+    /// 而「回退」和「翻好了」在界面上长得一模一样 —— `build_i18n.py` 的头注释自己写着这句。
+    ///
+    /// 实测已经抓到过一次（§8.48 那轮）：从 `xcstrings` 删掉 2 个键后源是 156 条，
+    /// 而**已提交的 `i18n.js` 里那 2 个键还在**（3 门语言 × 2 = 6 行），
+    /// 文件时间戳甚至比源还旧 —— 生成步骤被跳过了，谁也没发现。
+    ///
+    /// 守的办法是**源指纹**，不是在测试里跑一遍 python：
+    /// 环境无关（不要求机器上有 python、不起进程），且**任一方变了必然红**。
+    @Test func 生成物i18njs的源指纹必须与源一致() throws {
+        let jsURL = designRoot.appendingPathComponent("assets/i18n.js")
+        let js = try read(jsURL)
+
+        // 锚 ①：指纹行**必须解析得到**。找不到就红，绝不静默放过 ——
+        // 万一头部格式改了而正则没跟上，它会「永远绿」，那种绿比不测更糟（§8.55.5）。
+        let embedded = try #require(
+            Self.matches(in: js, pattern: #"源指纹\s+([0-9a-f]{64})"#).first,
+            """
+            \(jsURL.lastPathComponent) 头部找不到「源指纹 <64 位 hex>」。
+            要么没跑过 `python3 tools/build_i18n.py`，要么头部格式改了而这里的正则没跟上。
+            """)
+
+        let expected = try Self.sourceFingerprint(repoRoot: repoRoot)
+
+        #expect(
+            embedded == expected,
+            """
+            \(jsURL.lastPathComponent) 与源**不同步**：
+              文件里  \(embedded.prefix(16))…
+              源算得  \(expected.prefix(16))…
+            源（Localizable.xcstrings / i18n-extra.json / build_i18n.py）有一方改过了 —— 重跑：
+                python3 tools/build_i18n.py
+            并把新生成的 i18n.js 一起提交（它是生成物，但必须入库）。
+            """)
+    }
+
     // MARK: 扫描
 
     private struct Scan {
@@ -340,6 +379,27 @@ struct DesignDraftIntegrityTests {
             out.formUnion(strings.keys)
         }
         return out
+    }
+
+    /// 源指纹 = sha256(xcstrings → extra → 生成脚本)，**拼接顺序必须与
+    /// `tools/build_i18n.py` 的 `fingerprint()` 逐字一致**（那边注释里标了顺序）。
+    ///
+    /// 顺序写反**不会报错** —— 只会算出另一个值，于是守卫**永远红**且看不出为什么。
+    /// 所以顺带钉住三件事：三个输入都得读得到、**都得有内容**。
+    /// 路径写错 ⇒ `Data(contentsOf:)` 直接抛 ⇒ 不会静默；但读到 0 字节不抛，只能靠这条。
+    private static func sourceFingerprint(repoRoot: URL) throws -> String {
+        let rels = [
+            "Sources/Localization/Localizable.xcstrings",
+            "DiskEjector-UI-Design/v2/assets/i18n-extra.json",
+            "tools/build_i18n.py",
+        ]
+        var sha = SHA256()
+        for rel in rels {
+            let data = try Data(contentsOf: repoRoot.appendingPathComponent(rel))
+            #expect(data.count > 200, "\(rel) 只有 \(data.count) 字节 —— 路径写错了？")
+            sha.update(data: data)
+        }
+        return sha.finalize().map { String(format: "%02x", $0) }.joined()
     }
 
     /// 取正则的第 1 捕获组。
