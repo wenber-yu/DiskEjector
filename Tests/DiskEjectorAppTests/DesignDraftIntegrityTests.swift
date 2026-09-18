@@ -654,6 +654,16 @@ struct DesignDraftIntegrityTests {
         var key: String?  // data-i18n
         var note: Bool  // 在设计说明区内（说明区的中文不翻，不参与判定）
         var suppressed: Bool  // 自身、祖先或后代已接线
+        /// 祖先里**还挂着** `data-i18n`（不含「祖先是说明区」）。
+        ///
+        /// 这一种是**有害**的：父元素回填时整块 `innerHTML` 覆盖 ⇒ 本元素连同它的
+        /// 标签、样式、图标一起消失，本元素自己的键**永远不会被应用**（§8.69）。
+        var ancestorWired: Bool
+        /// 后代里出现过的标签名。
+        ///
+        /// 回填是整块覆盖 ⇒ 值里没有的标签会被**静默丢掉**（`<i data-i>` 图标 / `<b>` /
+        /// `<strong>` / 整个 `<button>`）。
+        var childTags: Set<String>
     }
 
     /// 极简 HTML 扫描：把文本**累积到栈上每一个元素**，弹出时给出「元素整文本」。
@@ -670,6 +680,7 @@ struct DesignDraftIntegrityTests {
             var attrs: [String: String]
             var text = ""
             var descWired = false  // 后代里已经有人接线 ⇒ 祖先不必再报
+            var childTags: Set<String> = []
         }
         func isNote(_ cls: String?) -> Bool {
             guard let cls else { return false }
@@ -705,9 +716,19 @@ struct DesignDraftIntegrityTests {
                     inner.split(separator: " ").first.map { $0.lowercased() } ?? ""
                 if closing {
                     guard let idx = stack.lastIndex(where: { $0.tag == name }) else { continue }
+                    // ⚠️ 两种「祖先」要分开算：**祖先接线** 与 **祖先是说明区** ——
+                    // 后者只是不参与判定，前者会让本元素的接线**失效**（§8.69）。
+                    let strictWired = stack[..<idx].contains { $0.attrs["data-i18n"] != nil }
                     let ancestorWired =
-                        stack[..<idx].contains { $0.attrs["data-i18n"] != nil }
-                        || stack[..<idx].contains { isNote($0.attrs["class"]) }
+                        strictWired || stack[..<idx].contains { isNote($0.attrs["class"]) }
+                    // ⚠️ 后代标签要**在后代关闭时往上送**，不能等父关闭时再来收集 ——
+                    // 那时后代早就出栈了（首版写成后者 ⇒ `childTags` 恒为空，扫出 0 处）。
+                    if idx > 0 {
+                        for k in idx..<stack.count {
+                            stack[idx - 1].childTags.insert(stack[k].tag)
+                            stack[idx - 1].childTags.formUnion(stack[k].childTags)
+                        }
+                    }
                     for k in idx..<stack.count {
                         let n = stack[k]
                         out.append(
@@ -716,7 +737,9 @@ struct DesignDraftIntegrityTests {
                                 key: n.attrs["data-i18n"],
                                 note: isNote(n.attrs["class"]) || ancestorWired,
                                 suppressed: ancestorWired || n.descWired
-                                    || n.attrs["data-i18n"] != nil))
+                                    || n.attrs["data-i18n"] != nil,
+                                ancestorWired: strictWired,
+                                childTags: n.childTags))
                     }
                     // 往上传递：本元素（或其后代）已接线 ⇒ 祖先不必再报
                     let wired =
@@ -809,6 +832,198 @@ struct DesignDraftIntegrityTests {
             症状：**切到英文时那一行还是中文** —— 不报错、也不算漏翻（键压根没被引用）。
             两边是**逐字**对得上的，接上即可，不会改变中文显示。
             """)
+    }
+
+    /// 已接线的元素**不许嵌在另一个已接线元素里**。
+    ///
+    /// 症状：`applyLang` 是 `el.innerHTML = 文案` —— **整块覆盖**。父元素一回填，
+    /// 里面的 `<button>` / `<span class="path">` 连同它自己的 `data-i18n` 一起消失
+    /// ⇒ 子元素的键**永远不会被应用**（它已经脱离文档了）。
+    /// 实测 01-main-window：切英文后 `.row__act button` **5 → 4**（按钮变一行纯文字）。
+    ///
+    /// ⚠️ 这一条也是**上一轮守卫 56 的刹车**：给「整文本对得上」的元素接线时，
+    /// 若它是个**容器**（里面还有已接线的子元素），接线本身就是在破坏页面。
+    /// （上一轮我自己的接线脚本就误伤了 01/07 的 `row__act`，本轮由这条兜住。）
+    @Test func 已接线的元素不许嵌在另一个已接线元素里() throws {
+        let dir = designRoot.appendingPathComponent("screens")
+        var problems: [String] = []
+        var scanned = 0
+        for name in try screenFiles() {
+            for element in elementTexts(in: try read(dir.appendingPathComponent(name))) {
+                guard let key = element.key else { continue }
+                scanned += 1
+                if element.ancestorWired {
+                    problems.append("\(name)：\(key)")
+                }
+            }
+        }
+        print("  [设计稿] 接线元素 \(scanned) 个，其中嵌在别人里面的 \(problems.count) 个")
+        #expect(scanned >= 150, "只扫到 \(scanned) 个已接线元素 —— 解析器没读到？")
+        #expect(
+            problems.isEmpty,
+            """
+            这些元素挂了 `data-i18n`，可它的**祖先里还有一层** `data-i18n`：
+            \(problems.joined(separator: "\n  "))
+            回填是 `innerHTML` **整块覆盖** ⇒ 父一回填，子元素连同它的键一起消失。
+            去掉**外层**那个 `data-i18n`（留子元素的）即可。
+            """)
+    }
+
+    /// `ds.js` 里取文案用的**键**，必须是语言包里有的**字面量**。
+    ///
+    /// 症状：`t(currentLang(), appLanguage)` —— `appLanguage` 是语言包里的**键名**，
+    /// 却当裸标识符用了 ⇒ 加载即 `ReferenceError` ⇒ `init()` **半途中断**
+    /// ⇒ 语言栏不生成、`applyLang` **一次都没跑过**。而页面看着完全正常
+    /// （中文是 HTML 里写死的）⇒ 这条静默了整整一个版本，还顺带**掩盖**了上面那条。
+    @Test func 脚本里取文案用的键必须是语言包里有的字面量() throws {
+        let js = try read(designRoot.appendingPathComponent("assets/ds.js"))
+        guard let zh = try loadLanguagePack()["zh-Hans"] else {
+            Issue.record("语言包里没有 zh-Hans 列")
+            return
+        }
+        let calls = Self.translateCalls(in: js)
+        let declared = Self.declaredNames(in: js)
+        // 锚：至少得解析出 3 处调用（`t(lang, key)` 那个是**定义**，已排除）、
+        // 其中至少 1 处是字面量键 —— 否则「0 问题」只是「没扫到」。
+        #expect(calls.count >= 3, "只解析到 \(calls.count) 处 t() 调用 —— 解析口径失效")
+        var problems: [String] = []
+        var literals = 0
+        for call in calls {
+            let arg = call.keyArg
+            if let key = Self.quoted(arg) {
+                literals += 1
+                if zh[key] == nil { problems.append("'\(key)' 不在语言包里") }
+                continue
+            }
+            if Self.isBareIdentifier(arg) {
+                if !declared.contains(arg) {
+                    problems.append(
+                        "\(arg)：既不是字符串字面量，也不是 ds.js 里声明过的名字 ⇒ 加载即 ReferenceError")
+                }
+                continue
+            }
+            // 其余：`el.getAttribute('data-i18n')` / `parts[1]` 这类动态取键，跳过
+        }
+        #expect(literals >= 1, "一处字面量键都没解析到 —— 解析口径失效")
+        #expect(
+            problems.isEmpty,
+            """
+            ds.js 里取文案的键有问题：
+            \(problems.joined(separator: "\n  "))
+            键名要写**字符串**（`t(currentLang(), 'appLanguage')`）；
+            写成裸标识符 ⇒ 加载即 `ReferenceError` ⇒ `init()` 中断，
+            语言栏不生成、`applyLang` 一次都不跑 —— 而页面看着**完全正常**。
+            """)
+    }
+
+    /// 已接线元素**内部的子标签**，语言包的值里必须也有 —— 否则回填时会被整块覆盖掉。
+    ///
+    /// ⚠️ **只记录不报警**（§8.69.5）：修法（补结构进语言包 / 改回填机制 / 拆 DOM）
+    /// 是**设计决策**，本轮不擅改。这里先给一条**上限锚**钉住基线：不许再变多。
+    /// 实测：修好 `ds.js` 让 i18n 第一次真跑起来后，01-main-window 的图标 **23 → 15**、
+    /// `<b>` **21 → 11**、按钮 **6 → 5**。
+    @Test func 已接线元素里的子标签必须在语言包值里出现() throws {
+        let dir = designRoot.appendingPathComponent("screens")
+        guard let zh = try loadLanguagePack()["zh-Hans"] else {
+            Issue.record("语言包里没有 zh-Hans 列")
+            return
+        }
+        var rows: [String] = []
+        for name in try screenFiles() {
+            for element in elementTexts(in: try read(dir.appendingPathComponent(name))) {
+                guard let key = element.key, let value = zh[key] else { continue }
+                let valueTags = Set(tags(in: value).map { $0.name })
+                let missing = element.childTags.subtracting(valueTags).sorted()
+                guard !missing.isEmpty else { continue }
+                rows.append("\(name)：\(key) → 值里没有 \(missing.joined(separator: "/"))")
+            }
+        }
+        print("  [设计稿] 接线元素内的子标签在值里缺失：\(rows.count) 处（只记录，待设计决策）")
+        for row in rows.prefix(8) { print("      \(row)") }
+        // 上限锚：**不许比基线更多** —— 新增接线时别再引入新的结构丢失。
+        // （基线 35 = 2026-09-18 实测；等 §8.69.5 的设计决策落地后改成 `isEmpty` 硬断言。）
+        #expect(
+            rows.count <= 35,
+            "缺失从基线 35 涨到了 \(rows.count) 处 —— 新接线又引入了结构丢失（§8.69.5）")
+    }
+
+    /// 取 `ds.js` 里 `t(…)` **调用**的两个实参（排除 `function t(lang, key)` 这个定义）。
+    private static func translateCalls(in js: String) -> [(whole: String, keyArg: String)] {
+        guard let re = try? NSRegularExpression(pattern: #"\bt\s*\("#) else { return [] }
+        let range = NSRange(js.startIndex..<js.endIndex, in: js)
+        var out: [(String, String)] = []
+        for m in re.matches(in: js, range: range) {
+            guard let open = Range(m.range, in: js) else { continue }
+            if js[js.startIndex..<open.lowerBound].hasSuffix("function ") { continue }
+            var depth = 0
+            var i = open.upperBound
+            while i < js.endIndex {
+                if js[i] == "(" {
+                    depth += 1
+                } else if js[i] == ")" {
+                    if depth == 0 { break }
+                    depth -= 1
+                }
+                i = js.index(after: i)
+            }
+            guard i < js.endIndex else { continue }
+            var d = 0
+            var j = open.upperBound
+            var comma: String.Index?
+            while j < i {
+                if js[j] == "(" {
+                    d += 1
+                } else if js[j] == ")" {
+                    d -= 1
+                } else if js[j] == ",",
+                    d == 0
+                {
+                    comma = j
+                    break
+                }
+                j = js.index(after: j)
+            }
+            guard let comma else { continue }
+            let keyArg = String(js[js.index(after: comma)..<i])
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            out.append((String(js[open.lowerBound...i]), keyArg))
+        }
+        return out
+    }
+
+    /// `ds.js` 里**声明过**的名字（`var` / `let` / `const` / `function` / 形参）。
+    private static func declaredNames(in js: String) -> Set<String> {
+        var names: Set<String> = []
+        let patterns = [
+            #"\b(?:var|let|const|function)\s+([A-Za-z_$][A-Za-z0-9_$]*)"#,
+            #"\bfunction\s*[A-Za-z_$][A-Za-z0-9_$]*\s*\(([^)]*)\)"#,
+        ]
+        for pattern in patterns {
+            guard let re = try? NSRegularExpression(pattern: pattern) else { continue }
+            let range = NSRange(js.startIndex..<js.endIndex, in: js)
+            for m in re.matches(in: js, range: range) {
+                guard let g = Range(m.range(at: 1), in: js) else { continue }
+                for part in String(js[g]).split(separator: ",") {
+                    let n = part.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !n.isEmpty { names.insert(n) }
+                }
+            }
+        }
+        return names
+    }
+
+    private static func quoted(_ s: String) -> String? {
+        guard s.count >= 2,
+            (s.hasPrefix("'") && s.hasSuffix("'"))
+                || (s.hasPrefix("\"") && s.hasSuffix("\""))
+        else { return nil }
+        return String(s.dropFirst().dropLast())
+    }
+
+    private static func isBareIdentifier(_ s: String) -> Bool {
+        guard let re = try? NSRegularExpression(pattern: #"^[A-Za-z_$][A-Za-z0-9_$]*$"#)
+        else { return false }
+        return re.firstMatch(in: s, range: NSRange(s.startIndex..<s.endIndex, in: s)) != nil
     }
 
     /// CSS **变量**（自定义属性）的「用了没定义」 —— 此前一条守卫都没有。

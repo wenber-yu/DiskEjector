@@ -196,7 +196,7 @@
 
     var label = document.createElement('span');
     label.className = 'langbar__label';
-    label.textContent = t(currentLang(), appLanguage);
+    label.textContent = t(currentLang(), 'appLanguage');
     bar.appendChild(label);
 
     window.DS_LANGS.forEach(function (l) {
