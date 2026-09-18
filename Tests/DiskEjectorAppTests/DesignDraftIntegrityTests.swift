@@ -546,6 +546,108 @@ struct DesignDraftIntegrityTests {
             """)
     }
 
+    // MARK: 跨语言结构（§8.67）
+
+    /// 格式占位符：`%@` / `%d` / `%.0f` / `%1$@` …
+    private static let placeholderPattern = #"(%(?:\d+\$)?(?:\.\d+)?[@dfslqSDF])"#
+
+    /// 各语言的**格式占位符序列**必须一致。
+    ///
+    /// 这是语言包里**后果最重**的一类漂移：实现侧是 `String(format:)`，
+    /// 占位符少一个 ⇒ 参数对不上 ⇒ **运行时可能直接崩**（`%d` 接到字符串），
+    /// 而不是「显示得不好看」。翻译时漏掉或调换一个 `%@` 太容易了。
+    ///
+    /// 与 §8.65「样本数字一致」不同：那条只管 `ds.sample.*` 的**内容**，
+    /// 这条管**任意键**的**结构**，且覆盖所有三门语言。
+    @Test func 各语言的格式占位符必须一致() throws {
+        let pack = try loadLanguagePack()
+        guard !pack.isEmpty else {
+            Issue.record("语言包一门语言都没解析到")
+            return
+        }
+        // ⚠️ 键集合必须取**各语言的并集**，不能只按某一门语言筛。
+        // 否则那门语言把占位符一删 ⇒ 这个键**自己从被检集合里消失** ⇒ 变异反而变绿
+        // （实测 M89：删掉英文的 `%@`，判成绿 —— 判据把变异藏起来了）。
+        // 与 §8.61.2「扫描看不见『该写的没写』」同源，只是这次是判据自身的盲区。
+        let keys = Set(pack.values.flatMap { $0.keys }).filter { key in
+            pack.values.contains {
+                !Self.matches(in: $0[key] ?? "", pattern: Self.placeholderPattern).isEmpty
+            }
+        }.sorted()
+        // 锚：含占位符的键不能太少，且必须见过 `%@`（最常见的那个）
+        #expect(keys.count >= 20, "只有 \(keys.count) 个键含占位符 —— 匹配口径失效")
+        let allPlaceholders = keys.flatMap { key in
+            pack.values.flatMap {
+                Self.matches(in: $0[key] ?? "", pattern: Self.placeholderPattern)
+            }
+        }
+        #expect(
+            allPlaceholders.contains("%@"), "一个 `%@` 都没扫到 —— 占位符口径失效（假绿）")
+
+        var problems: [String] = []
+        for key in keys {
+            var perLang: [String: String] = [:]
+            for (lang, t) in pack {
+                perLang[lang] =
+                    Self.matches(in: t[key] ?? "", pattern: Self.placeholderPattern)
+                    .joined(separator: " ")
+            }
+            if Set(perLang.values).count > 1 {
+                let detail = perLang.keys.sorted().map { "\($0)=[\(perLang[$0] ?? "")]" }
+                    .joined(separator: "  ")
+                problems.append("\(key)：\(detail)")
+            }
+        }
+        #expect(
+            problems.isEmpty,
+            """
+            同一条文案在各语言下的**占位符**对不上：
+            \(problems.joined(separator: "\n  "))
+            实现侧是 String(format:) —— 少一个 `%@` 就是**参数个数不匹配**，
+            轻则显示错乱、重则运行时崩溃，而不是「翻得不好看」。
+            """)
+    }
+
+    /// 各语言的 **HTML 标签结构**必须一致（`<b>` 强调在哪儿，各语言都得有）。
+    ///
+    /// 中文加了 `<b>` 强调、英文忘了 ⇒ 那门语言**重点丢了**，
+    /// 而文案本身是翻好的 —— 没人会盯着「这一门语言少了个加粗」看。
+    /// 与 §8.66 不同：那条是**单语言内**的合法性与闭合，这条是**跨语言**的结构一致。
+    @Test func 各语言的HTML标签结构必须一致() throws {
+        let pack = try loadLanguagePack()
+        guard !pack.isEmpty else {
+            Issue.record("语言包一门语言都没解析到")
+            return
+        }
+        // 同上的并集口径（实测 M91：删掉英文的 `<b>`，键从集合里消失 ⇒ 判成绿）
+        let keys = Set(pack.values.flatMap { $0.keys }).filter { key in
+            pack.values.contains { ($0[key] ?? "").contains("<") }
+        }.sorted()
+        // 锚：含标签的键不能太少（现状 5 个）
+        #expect(keys.count >= 3, "只有 \(keys.count) 个键含标签 —— 匹配口径失效")
+
+        var problems: [String] = []
+        for key in keys {
+            var perLang: [String: String] = [:]
+            for (lang, t) in pack {
+                perLang[lang] = tags(in: t[key] ?? "").map { $0.name }.joined(separator: ",")
+            }
+            if Set(perLang.values).count > 1 {
+                let detail = perLang.keys.sorted().map { "\($0)=[\(perLang[$0] ?? "")]" }
+                    .joined(separator: "  ")
+                problems.append("\(key)：\(detail)")
+            }
+        }
+        #expect(
+            problems.isEmpty,
+            """
+            同一条文案在各语言下的**标签结构**对不上：
+            \(problems.joined(separator: "\n  "))
+            中文加了 `<b>` 而英文没有 ⇒ 那门语言的**重点丢了**，
+            而文案本身是翻好的 —— 逐条看很难发现。
+            """)
+    }
+
     /// CSS **变量**（自定义属性）的「用了没定义」 —— 此前一条守卫都没有。
     ///
     /// `var(--foo)` 拼错 / 定义被删 ⇒ 渲染出来是「**没这个样式**」，
