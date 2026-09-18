@@ -275,6 +275,162 @@ struct DesignDraftIntegrityTests {
             """)
     }
 
+    // MARK: 语言包内部（§8.65）
+
+    /// 生成物 `i18n.js` 里的**语言包本体**（`window.DS_L10N = { … };`），按语言取键值表。
+    ///
+    /// ⚠️ 读的是**生成物**而不是 `i18n-extra.json`：想知道「英文那一列到底有没有值」，
+    /// 只能看生成物 —— `extra.json` 里写了，不代表 `build_i18n.py` 抄进去了。
+    /// 与上面「源指纹」那条互补：**它**守「生成物是不是旧的」，**这一组**守
+    /// 「生成物**内部**三门语言对不对得上」。
+    private func loadLanguagePack() throws -> [String: [String: String]] {
+        let js = try read(designRoot.appendingPathComponent("assets/i18n.js"))
+        let marker = "window.DS_L10N = "
+        guard let start = js.range(of: marker)?.upperBound,
+            let tail = js.range(of: "\n};", range: start..<js.endIndex)?.lowerBound
+        else {
+            Issue.record("i18n.js 里解析不到语言包（`window.DS_L10N = {` … `\\n};`）")
+            return [:]
+        }
+        // `tail` 指向 `};` 前的换行；往回一步是外层收尾的那个 `}`。
+        let json = String(js[start...js.index(tail, offsetBy: 1)])
+        guard let obj = try? JSONSerialization.jsonObject(with: Data(json.utf8)),
+            let pack = obj as? [String: [String: String]]
+        else {
+            Issue.record("语言包不是 [语言: [键: 值]] —— 生成脚本的输出格式变了？")
+            return [:]
+        }
+        return pack
+    }
+
+    /// 三门语言的**键集合必须完全一致**。
+    ///
+    /// 缺一个键 ⇒ 切到那门语言时 `t()` 取不到 ⇒ **静默回退成中文**（ds.js 的回退链），
+    /// 而「回退」与「翻好了」在界面上**长得一模一样** —— 这是本仓库反复出现的同一类病。
+    /// 现有两条 i18n 守卫看的是**键在不在声明集里**，不看「每一门语言都齐不齐」。
+    @Test func 三门语言的键集合必须完全一致() throws {
+        let pack = try loadLanguagePack()
+        let langs = pack.keys.sorted()
+        // 锚：三门语言都得解析到，否则「差集为空」只是「两边都是空」
+        #expect(langs.count >= 3, "只解析到 \(langs) 门语言 —— 语言包结构变了？")
+        guard let first = langs.first else {
+            Issue.record("语言包一门语言都没解析到")
+            return
+        }
+        let base = Set(pack[first, default: [:]].keys)
+        #expect(base.count > 150, "只有 \(base.count) 个键 —— 语言包没读全")
+
+        var problems: [String] = []
+        for lang in langs.dropFirst() {
+            let keys = Set(pack[lang, default: [:]].keys)
+            let missing = base.subtracting(keys).sorted()
+            let extra = keys.subtracting(base).sorted()
+            if !missing.isEmpty {
+                problems.append(
+                    "\(lang) 缺 \(missing.count) 个键：\(missing.prefix(5).joined(separator: ", "))…")
+            }
+            if !extra.isEmpty {
+                problems.append(
+                    "\(lang) 多 \(extra.count) 个键：\(extra.prefix(5).joined(separator: ", "))…")
+            }
+        }
+        #expect(
+            problems.isEmpty,
+            """
+            三门语言的键集合对不上：
+            \(problems.joined(separator: "\n  "))
+            缺的那个键会**静默回退成中文** —— 界面上看不出「没翻」，只看得出「还是中文」。
+            """)
+    }
+
+    /// **样本文案**在各语言下的数字必须逐字一致。
+    ///
+    /// 这条是 `i18n-extra.json` 头注释里**明写**的约定：
+    /// 「`ds.sample.<...>` 走查用的样本数据（磁盘名、容量数字、版本号），
+    ///   各语言数字必须一致，否则走查图对不上」。
+    /// ⇒ 约定写下来了，但没有判据 —— 这正是 §8.45「有能力、没接线」那一族：
+    /// **明写的规则没人执行，和没写一样。**
+    @Test func 样本文案在各语言下的数字必须一致() throws {
+        let pack = try loadLanguagePack()
+        guard let first = pack.keys.sorted().first, let table = pack[first] else { return }
+        let samples = table.keys.filter { $0.hasPrefix("ds.sample.") }.sorted()
+        #expect(samples.count >= 5, "只有 \(samples.count) 个样本键 —— 前缀约定改了？")
+
+        var problems: [String] = []
+        for key in samples {
+            var perLang: [String: String] = [:]
+            for (lang, t) in pack {
+                // ⚠️ `matches` 固定取**捕获组 1**：写 `(?:…)` 这种非捕获组 ⇒
+                // `range(at: 1)` 越界 ⇒ NSException（进程直接 abort，不是测试失败）。
+                let nums = Self.matches(in: t[key] ?? "", pattern: #"(\d+(?:\.\d+)?)"#)
+                perLang[lang] = nums.joined(separator: "|")
+            }
+            let distinct = Set(perLang.values)
+            if distinct.count > 1 {
+                let detail = perLang.keys.sorted().map { "\($0)=[\(perLang[$0] ?? "")]" }
+                    .joined(separator: "  ")
+                problems.append("\(key)：\(detail)")
+            }
+        }
+        #expect(
+            problems.isEmpty,
+            """
+            样本数据在各语言下数字不一致：
+            \(problems.joined(separator: "\n  "))
+            走查图是逐语言各出一套的 —— 数字对不上，两门语言的图就**不是同一个盘**，
+            比完以为是自己改坏了。约定见 `i18n-extra.json` 头注释。
+            """)
+    }
+
+    /// 语言包里**不许有空值**。
+    ///
+    /// 空串与「这一行本来就没有文字」在渲染结果上**逐字相同** ——
+    /// 界面上就是一个空白位置，谁也不会想到是翻译漏了。
+    @Test func 语言包里不许有空值() throws {
+        let pack = try loadLanguagePack()
+        var problems: [String] = []
+        for (lang, table) in pack {
+            let empty = table.filter { $0.value.isEmpty }.keys.sorted()
+            if !empty.isEmpty {
+                problems.append("\(lang)：\(empty.joined(separator: ", "))")
+            }
+        }
+        #expect(
+            problems.isEmpty,
+            """
+            语言包里有空值：
+            \(problems.joined(separator: "\n  "))
+            空串渲染出来就是一个**空白位置**，和「这行本来就没有文字」一模一样。
+            """)
+    }
+
+    /// 英文那一列**不许出现中文字符**（漏翻）。
+    ///
+    /// 与「键在不在」互补：键在、值也在、但值**就是中文** ——
+    /// `t()` 取得到，回退链根本不触发，界面上完全正常，**只有切到英文才看得见**，
+    /// 而走查时没人会逐条切一遍。
+    ///
+    /// ⚠️ 判据之所以能这么硬：实测英文列 **0 处**含 CJK，不存在「本来就该留中文」的例外。
+    @Test func 英文文案里不许出现中文字符() throws {
+        let pack = try loadLanguagePack()
+        guard let en = pack["en"] else {
+            Issue.record("语言包里没有英文列")
+            return
+        }
+        // 负向锚：英文列是空的 ⇒ 下面「0 处漏翻」只是「没扫到任何东西」
+        #expect(en.count > 150, "英文列只有 \(en.count) 个键 —— 没读全")
+        let han = en.filter { _, value in
+            value.unicodeScalars.contains { (0x4E00...0x9FFF).contains($0.value) }
+        }.keys.sorted()
+        #expect(
+            han.isEmpty,
+            """
+            英文列里出现了中文字符（漏翻）：\(han.joined(separator: ", "))
+            键在、值也在 ⇒ 回退链**不会触发**，界面上看不出任何异常 ——
+            只有切到英文才会发现那一行还是中文。
+            """)
+    }
+
     /// CSS **变量**（自定义属性）的「用了没定义」 —— 此前一条守卫都没有。
     ///
     /// `var(--foo)` 拼错 / 定义被删 ⇒ 渲染出来是「**没这个样式**」，
