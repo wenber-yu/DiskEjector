@@ -352,10 +352,10 @@
         </thead>
         <tbody>
           <tr>
-            <td><b>尚未检查</b></td>
+            <td><b data-i18n="updateNeverChecked">尚未检查</b></td>
             <td>刚启动，第一次检查还没跑完</td>
             <td>不弹</td>
-            <td><code>尚未检查</code> —— <b>不能写「已是最新版本」</b></td>
+            <td><code data-i18n="updateNeverChecked">尚未检查</code> —— <b>不能写「已是最新版本」</b></td>
           </tr>
           <tr>
             <td><b>已是最新</b></td>
@@ -459,7 +459,7 @@
         <ul class="note-list">
           <li><b>「有新版本」是第三种状态，不能用布尔量建模。</b>
             「检查完了但没有新版本」与「还没检查过」在界面上都是「没有新版本」，
-            但它们该显示的文字不同（<code>已是最新版本</code> vs <code>尚未检查</code>）——
+            但它们该显示的文字不同（<code>已是最新版本</code> vs <code data-i18n="updateNeverChecked">尚未检查</code>）——
             必须另有一个「检查是否完成 / 上次检查时间」的位。</li>
           <li><b>「不上架」这个决定把一批渠道分支变成了死代码 —— 已于 2026-09-18 删除。</b>
             <code>UpdateService.channel</code> 的 <code>.appStore</code> 分支

@@ -169,13 +169,12 @@ struct DesignDraftIntegrityTests {
     /// 与 CSS 类**不同**：删掉一个没用的文案键**不改变任何渲染**，所以这一向是
     /// 「零消费者 = 可删」。但仍然**登记而不是立刻删** —— 因为有些是
     /// 「备着给还没画的样本用的」，那是设计决策，不该由扫描器替人决定（§8.52.5 同理）。
-    private static let unusedI18nKeys: [String: String] = [
-        "ds.sample.cap.usedFreeC": """
-        2 TB 那块盘的「已用 / 剩余」文案。它没被用掉是因为**设计稿里 2 TB 只有紧凑行样本**
-        （`ds.sample.cap.compactC`），**没有菜单行样本** —— 菜单行只有 1 TB / 500 GB 两块
-        （用 `usedFreeA` / `usedFreeB`）。补一行 2 TB 菜单样本、或删这个键，都是设计决策。
-        """
-    ]
+    ///
+    /// ⚠️ **已清空**（§8.68）：原先唯一一条 `ds.sample.cap.usedFreeC` 在那一轮给
+    /// 2 TB 那块盘接上了 `data-i18n`（它本就是界面里「已用 1.4 TB · 剩余 600 GB」那一行的文案，
+    /// 只是**忘了接线**，不是没有样本）。⇒ 表空了，但**别删这张表**：
+    /// 下次再出现死文案，登记进来比直接删键安全（删键是设计决策，不由扫描器替人决定）。
+    private static let unusedI18nKeys: [String: String] = [:]
 
     /// 声明了但没页面在用的文案键，必须全在豁免表里。
     @Test func 声明了但没有页面在用的文案键必须登记在案() throws {
@@ -645,6 +644,170 @@ struct DesignDraftIntegrityTests {
             \(problems.joined(separator: "\n  "))
             中文加了 `<b>` 而英文没有 ⇒ 那门语言的**重点丢了**，
             而文案本身是翻好的 —— 逐条看很难发现。
+            """)
+    }
+
+    // MARK: 界面文案漏接（§8.68）
+
+    private struct ElementText {
+        var text: String
+        var key: String?  // data-i18n
+        var note: Bool  // 在设计说明区内（说明区的中文不翻，不参与判定）
+        var suppressed: Bool  // 自身、祖先或后代已接线
+    }
+
+    /// 极简 HTML 扫描：把文本**累积到栈上每一个元素**，弹出时给出「元素整文本」。
+    ///
+    /// 为什么必须拿**整文本**：`已用 <b>300 GB</b> · 剩余 <b>700 GB</b>` 这种，
+    /// 文本被 `<b>` 切成好几段 —— 只看单段永远对不上语言包里的整句。
+    /// （首版按「单个文本片段」比对 ⇒ 01/07 的容量行**一处都没扫到**。）
+    ///
+    /// ⚠️ 只支持设计稿这种手写 HTML：没有注释、`screens/` 下没有内联 `<script>`。
+    /// 换 `XMLParser` 反而更糟 —— **HTML 不是合法 XML**。
+    private func elementTexts(in html: String) -> [ElementText] {
+        struct Node {
+            var tag: String
+            var attrs: [String: String]
+            var text = ""
+            var descWired = false  // 后代里已经有人接线 ⇒ 祖先不必再报
+        }
+        func isNote(_ cls: String?) -> Bool {
+            guard let cls else { return false }
+            // ⚠️ `frame__label` 是**画框标签**（「800 × 520 · …」），属设计稿 chrome，不翻。
+            // ⚠️ **没有** `dim`：那是**弹窗遮罩层**（`<div class="dim">` 包着整个 alert），
+            // 把它当说明区 ⇒ 所有弹窗内容被豁免，守卫对弹窗**完全失效**（实测 M95 假绿）。
+            // 类名有歧义时（dim 既可指遮罩也可指次要文字），宁可**不豁免** ——
+            // 漏报比误报危险：误报会被人看见，漏报不会。
+            return [
+                "spec-note", "note-list", "doc__", "state-tbl", "framecap", "legend",
+                "frame__label",
+            ]
+            .contains { cls.contains($0) }
+        }
+        let voids: Set<String> = [
+            "br", "img", "meta", "link", "input", "hr", "source",
+            "path", "circle", "rect", "use", "stop", "line", "polyline", "polygon", "ellipse",
+        ]
+        var stack: [Node] = []
+        var out: [ElementText] = []
+        var i = html.startIndex
+        while i < html.endIndex {
+            if html[i] == "<" {
+                guard let gt = html[i...].firstIndex(of: ">") else { break }
+                var inner = String(html[html.index(after: i)..<gt])
+                i = html.index(after: gt)
+                if inner.hasPrefix("!") { continue }  // 注释 / DOCTYPE
+                let closing = inner.hasPrefix("/")
+                if closing { inner.removeFirst() }
+                let selfClosing = inner.hasSuffix("/")
+                if selfClosing { inner.removeLast() }
+                let name =
+                    inner.split(separator: " ").first.map { $0.lowercased() } ?? ""
+                if closing {
+                    guard let idx = stack.lastIndex(where: { $0.tag == name }) else { continue }
+                    let ancestorWired =
+                        stack[..<idx].contains { $0.attrs["data-i18n"] != nil }
+                        || stack[..<idx].contains { isNote($0.attrs["class"]) }
+                    for k in idx..<stack.count {
+                        let n = stack[k]
+                        out.append(
+                            ElementText(
+                                text: n.text,
+                                key: n.attrs["data-i18n"],
+                                note: isNote(n.attrs["class"]) || ancestorWired,
+                                suppressed: ancestorWired || n.descWired
+                                    || n.attrs["data-i18n"] != nil))
+                    }
+                    // 往上传递：本元素（或其后代）已接线 ⇒ 祖先不必再报
+                    let wired =
+                        stack[idx...].contains { $0.attrs["data-i18n"] != nil }
+                        || stack[idx...].contains { $0.descWired }
+                    stack.removeSubrange(idx...)
+                    // ⚠️ 必须是 **||=**：兄弟元素（无 data-i18n）弹出时会把祖先的标记**清掉**
+                    // ⇒ 祖先又被当成没接线（实测：05-settings 的开关行假红 4 处）。
+                    if let last = stack.indices.last { stack[last].descWired = stack[last].descWired || wired }
+                    continue
+                }
+                if !selfClosing, !voids.contains(name), !name.isEmpty {
+                    var attrs: [String: String] = [:]
+                    for pair in Self.attrPairs(in: inner) { attrs[pair.0] = pair.1 }
+                    stack.append(Node(tag: name, attrs: attrs))
+                }
+                continue
+            }
+            let next = html[i...].firstIndex(of: "<") ?? html.endIndex
+            let piece = String(html[i..<next])
+            // `<script>` / `<style>` 里的文本不当文案
+            let inRaw = stack.contains { ["script", "style"].contains($0.tag) }
+            if !inRaw { for k in stack.indices { stack[k].text += piece } }
+            i = next
+        }
+        return out
+    }
+
+    /// 取标签里的 `名="值"` 对。
+    private static func attrPairs(in inner: String) -> [(String, String)] {
+        // ⚠️ 属性名里有**数字**（`data-i18n`、`data-i`）：写成 `[a-zA-Z-]+` 会漏掉它们
+        // ⇒ `data-i18n` 解析不出来 ⇒ 已接线的元素被当成没接线（本轮首跑 `wired → 0`）。
+        guard let re = try? NSRegularExpression(pattern: #"([a-zA-Z][a-zA-Z0-9-]*)="([^"]*)""#)
+        else { return [] }
+        let range = NSRange(inner.startIndex..<inner.endIndex, in: inner)
+        return re.matches(in: inner, range: range).compactMap { m in
+            guard let a = Range(m.range(at: 1), in: inner), let b = Range(m.range(at: 2), in: inner)
+            else { return nil }
+            return (String(inner[a]), String(inner[b]))
+        }
+    }
+
+    /// 界面里写死的中文，如果语言包里**明明有这条文案**，就必须接上 `data-i18n`。
+    ///
+    /// 漏接的症状：**切到英文时那一行还是中文** —— 不报错、不算漏翻（键压根没被引用）、
+    /// 语言包的「覆盖」统计也看不出来。实测一轮扫出 **26 处**（§8.68）。
+    ///
+    /// 判据用「元素整文本 == 语言包 zh-Hans 的某个值」，因为两边都**逐字**对得上时，
+    /// 接线是**零改动**的 —— 不存在「不知该挂哪个键」的歧义。
+    @Test func 界面里写死的中文必须接上语言包() throws {
+        let pack = try loadLanguagePack()
+        guard let zh = pack["zh-Hans"] else {
+            Issue.record("语言包里没有 zh-Hans 列")
+            return
+        }
+        var byValue: [String: [String]] = [:]
+        for (key, value) in zh {
+            let plain = Self.plainText(value)
+            guard !plain.isEmpty else { continue }
+            byValue[plain, default: []].append(key)
+        }
+        #expect(byValue.count > 150, "只有 \(byValue.count) 条中文文案 —— 语言包没读全")
+
+        var problems: [String] = []
+        var wired = 0  // 已接线且整文本对得上键值的元素数（口径自证）
+        let dir = designRoot.appendingPathComponent("screens")
+        for name in try screenFiles() {
+            for element in elementTexts(in: try read(dir.appendingPathComponent(name))) {
+                let text = Self.plainText(element.text)
+                guard let keys = byValue[text] else { continue }
+                if let key = element.key {
+                    if keys.contains(key) { wired += 1 }
+                    continue
+                }
+                if element.note || element.suppressed { continue }
+                problems.append("\(name)：'\(text)' → \(keys.joined(separator: " / "))")
+            }
+        }
+        print("  [设计稿] 界面文案接线：整文本对得上的已接线元素 \(wired) 个")
+        // 负向锚：**口径自证** —— 已接线的元素里必须有一大批整文本对得上，
+        // 否则说明「整文本」的拼法与语言包对不上，下面「0 处漏接」就是假绿。
+        #expect(
+            wired >= 30,
+            "只有 \(wired) 个已接线元素的整文本对得上语言包 —— 整文本口径失效（假绿）")
+        #expect(
+            problems.isEmpty,
+            """
+            页面上写死了这些中文，而语言包里**明明有**这条文案，却没接 `data-i18n`：
+            \(problems.joined(separator: "\n  "))
+            症状：**切到英文时那一行还是中文** —— 不报错、也不算漏翻（键压根没被引用）。
+            两边是**逐字**对得上的，接上即可，不会改变中文显示。
             """)
     }
 
