@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<html lang="zh-CN" data-theme="light" data-accent="blue">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<html lang="zh-CN" data-theme="light" data-accent="blue" data-page-node-id="Nh1KrVP0ZkwReL3haqWFyH">
+<head data-page-node-id="1BkFV8XBcVib4nThOfFHCl">
+<meta charset="UTF-8" data-page-node-id="GNjg0V5kRTgXFmWRKvkY5a">
+<meta name="viewport" content="width=device-width, initial-scale=1.0" data-page-node-id="SDrOwSuLbU1SaviZDB0p3r">
 <title>状态矩阵 · DiskEjector UI v2</title>
-<link rel="stylesheet" href="../assets/ds.css">
+<link rel="stylesheet" href="../assets/ds.css" data-page-node-id="0XAPuRhtZHGsOOA27gxnbu">
 <style>
   .note-list { margin: 0; padding-left: 18px; font-size: var(--fs-12); color: var(--text-2); line-height: 1.7; }
   .note-list li { margin-bottom: 6px; }
@@ -22,294 +22,295 @@
   .dot { width: 9px; height: 9px; border-radius: 999px; display: inline-block; flex: none; }
 </style>
 </head>
-<body class="ds">
-<div class="wallpaper">
-<div class="doc">
+<body class="ds" data-page-node-id="w689fDT7e3BuHDmy2d0Pqs">
+<div class="wallpaper" data-page-node-id="zEJfDMzZAIc1euqhrw95Vd">
+<div class="doc" data-page-node-id="Zf0ezNijtzHRx17EcYW0uq">
 
-  <nav class="doc__nav">
-    <a href="../index.html">设计规范总览</a>
-    <a href="01-main-window.html">主窗口</a>
-    <a href="02-menu-bar.html">菜单栏面板</a>
-    <a href="03-eject-flow.html">推出流程弹窗</a>
-    <a href="04-onboarding.html">授权引导</a>
-    <a href="05-settings.html">设置面板</a>
-    <a href="06-states.html" aria-current="page">状态矩阵</a>
-    <a href="07-dark.html">深色模式</a>
+  <nav class="doc__nav" data-page-node-id="OYXLQDod0S0FrIrv5RR5Et">
+    <a href="../index.html" data-page-node-id="b85CiJxIVWeWe6ZGYUjLVw">设计规范总览</a>
+    <a href="01-main-window.html" data-page-node-id="TPvNCWAlBDWtj1SYduvlYW">主窗口</a>
+    <a href="02-menu-bar.html" data-page-node-id="BEDFnekBot1HpZGK6eHAv2">菜单栏面板</a>
+    <a href="03-eject-flow.html" data-page-node-id="PjTRTBMmY7Gq0opyNEzXO8">推出流程弹窗</a>
+    <a href="04-onboarding.html" data-page-node-id="09lbVP12tqjiOHYSZS4ekG">授权引导</a>
+    <a href="05-settings.html" data-page-node-id="VWlGFsal2y5TUihrAVcviy">设置面板</a>
+    <a href="06-states.html" aria-current="page" data-page-node-id="GYAKl8ay8k3cmofVDAnqE3">状态矩阵</a>
+    <a href="07-dark.html" data-page-node-id="ESrym6TKGNJMRphosCWJMm">深色模式</a>
+    <a href="08-update.html" data-page-node-id="HoBiVU8giHIPGhGq400HSG">版本更新</a>
   </nav>
 
-  <p class="doc__eyebrow">Screen 06 · States</p>
-  <h1 class="doc__title">状态矩阵</h1>
-  <p class="doc__lede">
-    一个界面是否经得起用，取决于它的<strong>边缘状态</strong>是否都被设计过。
+  <p class="doc__eyebrow" data-page-node-id="0xU9F7uO3FyFmRNqvOXFLd">Screen 06 · States</p>
+  <h1 class="doc__title" data-page-node-id="BUeo62joG1U1G2Y69z8hf5">状态矩阵</h1>
+  <p class="doc__lede" data-page-node-id="vDf6QtXdIl314V5im0nb72">
+    一个界面是否经得起用，取决于它的<strong data-page-node-id="WBaimacaGgom1cuKkuT9zO">边缘状态</strong>是否都被设计过。
     这一页覆盖空、多、忙、未知四种情况，以及它们的视觉语言如何保持一致。
   </p>
 
   <!-- ===================== A. 空状态 ===================== -->
-  <div class="doc__section" style="margin-top:0">
-    <h2 class="doc__h2">A · 空状态 <em>Empty</em></h2>
-    <p class="doc__h2desc">
-      空状态不是「出错」，是<strong>还没开始</strong>。所以它不该用警告色，也不该只写「无数据」——
+  <div class="doc__section" style="margin-top:0" data-page-node-id="rTxPJIuuIuK63mFlXZc1XX">
+    <h2 class="doc__h2" data-page-node-id="7oj4hne4pNsiEmaET5cE6v">A · 空状态 <em data-page-node-id="bFjwVBfvNml9FEGOh2M1At">Empty</em></h2>
+    <p class="doc__h2desc" data-page-node-id="AS2ouWMrc3uAqeMIivb76w">
+      空状态不是「出错」，是<strong data-page-node-id="YlHPO92QofboqMtFIZXHGE">还没开始</strong>。所以它不该用警告色，也不该只写「无数据」——
       要告诉用户接下来会发生什么，并且不需要他做任何事。
     </p>
 
-    <div class="frame">
-      <div class="frame__label">800 × 520 · 未插入任何外置磁盘</div>
-      <div class="win win--main">
-        <header class="titlebar">
-          <div class="traffic" aria-hidden="true"><i></i><i></i><i></i></div>
-          <span class="titlebar__title">外置磁盘</span>
-          <span class="titlebar__spacer"></span>
-          <div class="titlebar__tools">
-            <button class="iconbtn" title="刷新磁盘列表" aria-label="刷新磁盘列表"><i data-i="refresh"></i></button>
-            <button class="iconbtn" title="设置" aria-label="设置"><i data-i="gear"></i></button>
+    <div class="frame" data-page-node-id="USxlDYYl0jEbqEIgkOFfJ7">
+      <div class="frame__label" data-page-node-id="ogVvf0tVOBp8ocM5GxyIYe">800 × 520 · 未插入任何外置磁盘</div>
+      <div class="win win--main" data-page-node-id="se7mdwhE0wBd6f5DHVW1Mn">
+        <header class="titlebar" data-page-node-id="uC6sctGrDzy07Ov5TCEsKQ">
+          <div class="traffic" aria-hidden="true" data-page-node-id="fexrG3yU6aJQ9Dh6RigPMZ"><i data-page-node-id="ePN7l4rwzl8vvyqO7EBmr4"></i><i data-page-node-id="AG7FZsqdYVTWXVApPuyQoY"></i><i data-page-node-id="Id31qKrWei35xd9vFit7kk"></i></div>
+          <span class="titlebar__title" data-i18n="externalDisksTitle" data-page-node-id="wWh6MWq8Wlxf9wVTfHWbRA">外置磁盘</span>
+          <span class="titlebar__spacer" data-page-node-id="tUIO2qF3UozNrZvA8OJ8vK"></span>
+          <div class="titlebar__tools" data-page-node-id="e8zHDFVDnyLpWGzXDIrXet">
+            <button class="iconbtn" title="刷新磁盘列表" aria-label="刷新磁盘列表" data-page-node-id="tRKvc2T4tu1OKMPA4LbToq"><i data-i="refresh" data-page-node-id="9xaraVbMXIS7BYgGU880an"></i></button>
+            <button class="iconbtn" title="设置" aria-label="设置" data-page-node-id="gIodQ9H4tqGE44S8qPcDtA"><i data-i="gear" data-page-node-id="iqiCvDrHjksnXpc2YuD5Ou"></i></button>
           </div>
         </header>
 
-        <div class="scrollarea">
-          <div class="empty">
-            <div class="empty__art"><i data-i="drive"></i></div>
-            <div class="empty__title">还没有可推出的磁盘</div>
-            <div class="empty__desc">
-              插入移动硬盘或 U 盘后，会自动出现在这里。<br>
+        <div class="scrollarea" data-page-node-id="kyjzJgClU3hnulaO8486Vm">
+          <div class="empty" data-page-node-id="5FR1513iBEN3AEhP6Nef9W">
+            <div class="empty__art" data-page-node-id="uV0hcLb4pIwp0drtApTx8e"><i data-i="drive" data-page-node-id="f7LEvXUCtzAwrCIjagjYxr"></i></div>
+            <div class="empty__title" data-i18n="ds.empty.noDisks" data-page-node-id="YqmFO51KDNOGzz9bXSEoe2">还没有可推出的磁盘</div>
+            <div class="empty__desc" data-i18n="ds.empty.hintLong" data-page-node-id="yJjcbTw0arkl8gt0O1J0PI">
+              插入移动硬盘或 U 盘后，会自动出现在这里。<br data-page-node-id="HFyY6Mj56h9sgRJF82YQZu">
               系统盘与网络卷不会被列出。
             </div>
-            <div class="empty__act">
-              <button class="btn btn--outline"><i data-i="refresh"></i>刷新</button>
+            <div class="empty__act" data-page-node-id="8GuBKAtVzYwl7moF81CzaQ">
+              <button class="btn btn--outline" data-i18n="refresh" data-page-node-id="ivuazoQpCAFzH07Br93fwB"><i data-i="refresh" data-page-node-id="C64HXSffywbNGLvJP75sKY"></i>刷新</button>
             </div>
           </div>
         </div>
       </div>
-      <p class="spec-note">
-        <b>为什么写「系统盘与网络卷不会被列出」。</b>用户插了盘却没看到时，第一个疑问是
+      <p class="spec-note" data-page-node-id="pcQpg6LIx8pHI9TN6XNYxm">
+        <b data-page-node-id="i8xqbegxGxuofQDlDvOUCs">为什么写「系统盘与网络卷不会被列出」。</b>用户插了盘却没看到时，第一个疑问是
         「是不是坏了」。这句话提前解释了筛选规则，把一次可能的困惑消灭在发生之前。
       </p>
     </div>
   </div>
 
   <!-- ===================== B. 高密度 ===================== -->
-  <div class="doc__section">
-    <h2 class="doc__h2">B · 多盘高密度 <em>Compact</em></h2>
-    <p class="doc__h2desc">
-      <strong>≥ 4 块磁盘时自动切换到单行布局。</strong>完整行的 112pt 高在 6 块盘时会把列表撑到
+  <div class="doc__section" data-page-node-id="6J5pWh4eBTRcKnDUNeGbMZ">
+    <h2 class="doc__h2" data-page-node-id="dDiTFEsWtaXWFyYK5Jlj57">B · 多盘高密度 <em data-page-node-id="ncRGpUBRLDw99ruOWnxg73">Compact</em></h2>
+    <p class="doc__h2desc" data-page-node-id="9zRBu2vKkLb5M1Zw4Kd8D6">
+      <strong data-page-node-id="vLDCCRrqmImvH6mkciRkfP">≥ 4 块磁盘时自动切换到单行布局。</strong>完整行的 112pt 高在 6 块盘时会把列表撑到
       三屏，用户反而找不到目标。紧凑行压到 46pt，一屏 8 块，同时保留判定所需的全部信息：
       名称、容量、占用状态、动作。
     </p>
 
-    <div class="frame">
-      <div class="frame__label">800 × 520 · 6 块磁盘 · 紧凑行</div>
-      <div class="win win--main">
-        <header class="titlebar">
-          <div class="traffic" aria-hidden="true"><i></i><i></i><i></i></div>
-          <span class="titlebar__title">外置磁盘</span>
-          <span class="titlebar__sub">6 块</span>
-          <span class="titlebar__spacer"></span>
-          <div class="titlebar__tools">
-            <button class="iconbtn" title="刷新磁盘列表" aria-label="刷新磁盘列表"><i data-i="refresh"></i></button>
-            <button class="iconbtn" title="设置" aria-label="设置"><i data-i="gear"></i></button>
+    <div class="frame" data-page-node-id="LVrSRnWccT3QY3dwukEIs7">
+      <div class="frame__label" data-page-node-id="OqaYpOdOi3oOHMu98Bkv71">800 × 520 · 6 块磁盘 · 紧凑行</div>
+      <div class="win win--main" data-page-node-id="swkveWHP1SEqf2lVvIQzk6">
+        <header class="titlebar" data-page-node-id="BHAOLMgRCxQSkA092eu0Kp">
+          <div class="traffic" aria-hidden="true" data-page-node-id="7LwETrBNmBAqr2hOkjiMVr"><i data-page-node-id="E4vjxepbFtDFSkLfvRDP1g"></i><i data-page-node-id="PPWOGerf3vzbjGAOzDsCwM"></i><i data-page-node-id="2ZH34hwGJgtz9s6UJemjaH"></i></div>
+          <span class="titlebar__title" data-i18n="externalDisksTitle" data-page-node-id="JiZulbiKk9j6BBuPQKMHVo">外置磁盘</span>
+          <span class="titlebar__sub" data-i18n="ds.titlebar.disks6" data-page-node-id="L7FRYvvDC8i14BwQYffEF4">6 块</span>
+          <span class="titlebar__spacer" data-page-node-id="HpWS7l3YvaF0Pt1D3GFhQ8"></span>
+          <div class="titlebar__tools" data-page-node-id="0Qv6kRn1rMFFjh0q8JwaPP">
+            <button class="iconbtn" title="刷新磁盘列表" aria-label="刷新磁盘列表" data-page-node-id="aCb4H9DBzOsYe6fhd5gan1"><i data-i="refresh" data-page-node-id="NbRyl3DYTGHqKDH8rruWvJ"></i></button>
+            <button class="iconbtn" title="设置" aria-label="设置" data-page-node-id="RwVTAiimmXM74x1uvimDuD"><i data-i="gear" data-page-node-id="Lc1XsoQASFiP57k5FFw18k"></i></button>
           </div>
         </header>
 
-        <div class="scrollarea">
-          <div class="disklist" style="gap:4px">
+        <div class="scrollarea" data-page-node-id="GIgHwbz5mAbrdYpWa2LnaQ">
+          <div class="disklist" style="gap:4px" data-page-node-id="GdELk76ruMsC0G31b0qu5A">
 
-            <div class="crow crow--busy">
-              <div class="crow__icon crow__icon--busy"><i data-i="drive"></i></div>
-              <span class="crow__name">Samsung T7</span>
-              <span class="crow__meta">1 TB · 已用 300 GB · 剩余 700 GB</span>
-              <span class="crow__grow"></span>
-              <span class="crow__status"><i data-i="warn"></i>2 个程序占用</span>
-              <button class="btn btn--danger btn--sm crow__btn">关闭并推出</button>
+            <div class="crow crow--busy" data-page-node-id="ugNXTaiIm4CiEXdadXN5HV">
+              <div class="crow__icon crow__icon--busy" data-page-node-id="AF4ujp7KDxIID1P5nGFKN3"><i data-i="drive" data-page-node-id="EHPLLiXetdWK3dsXxO8R71"></i></div>
+              <span class="crow__name" data-page-node-id="CaHdRQtITMgGZCdZyyInWm">Samsung T7</span>
+              <span class="crow__meta" data-i18n="ds.sample.cap.compactA" data-page-node-id="j6bWsHyqK3BpoDvA8nuESk">1 TB · 已用 300 GB · 剩余 700 GB</span>
+              <span class="crow__grow" data-page-node-id="cvWud4vrmtun1ZtvUIuhec"></span>
+              <span class="crow__status" data-i18n="ds.occ.appsShort2" data-page-node-id="qdBDa1wTw1gTC9SjihfxOf"><i data-i="warn" data-page-node-id="lLR4dIGELtISIv436niKmm"></i>2 个程序占用</span>
+              <button class="btn btn--danger btn--sm crow__btn" data-i18n="closeAndEject" data-page-node-id="ShNzE6NV6UOkfiRautVFqf">关闭并推出</button>
             </div>
 
-            <div class="crow">
-              <div class="crow__icon"><i data-i="drive"></i></div>
-              <span class="crow__name">WD Blue</span>
-              <span class="crow__meta">500 GB · 已用 120 GB · 剩余 380 GB</span>
-              <span class="crow__grow"></span>
-              <span class="crow__status crow__status--safe"><i data-i="check"></i>可安全推出</span>
-              <button class="btn btn--primary btn--sm crow__btn">推出</button>
+            <div class="crow" data-page-node-id="0ummFaQgTIiGWhhh77gst6">
+              <div class="crow__icon" data-page-node-id="WZnzvgCSklYRqEdSaZIXuh"><i data-i="drive" data-page-node-id="G9Gtt5vIPNKkJc0P8Wqz6Q"></i></div>
+              <span class="crow__name" data-page-node-id="2Erc9ofY8Vle8sNYke7AgT">WD Blue</span>
+              <span class="crow__meta" data-i18n="ds.sample.cap.compactB" data-page-node-id="Kbbw9hGlMjtSQpDsQ5CVkz">500 GB · 已用 120 GB · 剩余 380 GB</span>
+              <span class="crow__grow" data-page-node-id="ZANQ2hATmkJQZN73izO2af"></span>
+              <span class="crow__status crow__status--safe" data-i18n="compactSafe" data-page-node-id="lilkspqOUiT4lq0y8qGlNM"><i data-i="check" data-page-node-id="ItH54QprE05hsTtGTa7eNf"></i>可安全推出</span>
+              <button class="btn btn--primary btn--sm crow__btn" data-i18n="eject" data-page-node-id="PmmbpXBoRHH3OpNlGHhP3y">推出</button>
             </div>
 
-            <div class="crow">
-              <div class="crow__icon"><i data-i="drive"></i></div>
-              <span class="crow__name">Backup SSD</span>
-              <span class="crow__meta">2 TB · 已用 1.4 TB · 剩余 600 GB</span>
-              <span class="crow__grow"></span>
-              <span class="crow__status crow__status--safe"><i data-i="check"></i>可安全推出</span>
-              <button class="btn btn--primary btn--sm crow__btn">推出</button>
+            <div class="crow" data-page-node-id="3v9jOyR6VbXimR8b46XSu2">
+              <div class="crow__icon" data-page-node-id="lptKW274AAt6VHpLHHVNJi"><i data-i="drive" data-page-node-id="fTrt23hHpJ68qNCFFWFOZv"></i></div>
+              <span class="crow__name" data-page-node-id="yyfzLBKbiLLma2WRfwdli7">Backup SSD</span>
+              <span class="crow__meta" data-i18n="ds.sample.cap.compactC" data-page-node-id="DzwiCl5TOIAiY9GiSE9ssN">2 TB · 已用 1.4 TB · 剩余 600 GB</span>
+              <span class="crow__grow" data-page-node-id="uvuPIdkNI8OGIl6cnusyKM"></span>
+              <span class="crow__status crow__status--safe" data-i18n="compactSafe" data-page-node-id="SZVA4526DPGJBOEeYsfYCa"><i data-i="check" data-page-node-id="cOGE55OiBGw2daW0oboBkk"></i>可安全推出</span>
+              <button class="btn btn--primary btn--sm crow__btn" data-i18n="eject" data-page-node-id="CsnIWgsJrCo3NOTu8Io34S">推出</button>
             </div>
 
-            <div class="crow crow--busy">
-              <div class="crow__icon crow__icon--busy"><i data-i="drive"></i></div>
-              <span class="crow__name">SanDisk Extreme</span>
-              <span class="crow__meta">1 TB · 已用 640 GB · 剩余 384 GB</span>
-              <span class="crow__grow"></span>
-              <span class="crow__status"><i data-i="warn"></i>1 个程序占用</span>
-              <button class="btn btn--danger btn--sm crow__btn">关闭并推出</button>
+            <div class="crow crow--busy" data-page-node-id="7iDyPUPe0tBRoAvbPu3en7">
+              <div class="crow__icon crow__icon--busy" data-page-node-id="5HbiGrqNUD1coZlP3Ai7IV"><i data-i="drive" data-page-node-id="96kGG9DinmOy3gw6zuHBPq"></i></div>
+              <span class="crow__name" data-page-node-id="B5Ao23nuWaiFyQEIZMnpxw">SanDisk Extreme</span>
+              <span class="crow__meta" data-i18n="ds.sample.cap.compactD" data-page-node-id="iXZxBMjQgD4dx8Hh6lxkA9">1 TB · 已用 640 GB · 剩余 384 GB</span>
+              <span class="crow__grow" data-page-node-id="A8BoD87kPIinnI0aP1llse"></span>
+              <span class="crow__status" data-i18n="ds.occ.appsShort1" data-page-node-id="PiXvK4yFcbSdGPk5bDEZnE"><i data-i="warn" data-page-node-id="HFJzCgbksvCuqcIqh1rEB1"></i>1 个程序占用</span>
+              <button class="btn btn--danger btn--sm crow__btn" data-i18n="closeAndEject" data-page-node-id="G8EEzEh0PC0vS27xGGAyps">关闭并推出</button>
             </div>
 
-            <div class="crow">
-              <div class="crow__icon"><i data-i="drive"></i></div>
-              <span class="crow__name">Untitled</span>
-              <span class="crow__meta">64 GB · 已用 12 GB · 剩余 52 GB</span>
-              <span class="crow__grow"></span>
-              <span class="crow__status crow__status--unknown">可安全推出</span>
-              <button class="btn btn--primary btn--sm crow__btn">推出</button>
+            <div class="crow" data-page-node-id="VgfGPHGgRr5m7Sla4yBX5q">
+              <div class="crow__icon" data-page-node-id="r7zufzHErmhESAtbYsodxi"><i data-i="drive" data-page-node-id="MFUzZCmEFQFUKqY086HHHg"></i></div>
+              <span class="crow__name" data-page-node-id="XT0H9oETDR8EDpCwyi5aUd">Untitled</span>
+              <span class="crow__meta" data-i18n="ds.sample.cap.compactE" data-page-node-id="YAjaGBFmKFCzQ3YXgrdFHb">64 GB · 已用 12 GB · 剩余 52 GB</span>
+              <span class="crow__grow" data-page-node-id="7pzN9d22WG2RtCWvz2VH9Q"></span>
+              <span class="crow__status crow__status--unknown" data-i18n="compactSafe" data-page-node-id="9iixmcoteTaDK9o1WdMOAr">可安全推出</span>
+              <button class="btn btn--primary btn--sm crow__btn" data-i18n="eject" data-page-node-id="8123nVS4SzPzNmaEMiGS79">推出</button>
             </div>
 
-            <div class="crow">
-              <div class="crow__icon"><i data-i="drive"></i></div>
-              <span class="crow__name">Time Machine</span>
-              <span class="crow__meta">4 TB · 已用 3.1 TB · 剩余 900 GB</span>
-              <span class="crow__grow"></span>
-              <span class="crow__status crow__status--safe"><i data-i="check"></i>可安全推出</span>
-              <button class="btn btn--primary btn--sm crow__btn">推出</button>
+            <div class="crow" data-page-node-id="FSTrYEWyUmcDtCVBeVZ91A">
+              <div class="crow__icon" data-page-node-id="vvvCLyuLFkfJQNpTDUGHM8"><i data-i="drive" data-page-node-id="SpfthCDbn0w95E6t94SDM5"></i></div>
+              <span class="crow__name" data-page-node-id="egTQhKQQw5ZltaqFftb1EJ">Time Machine</span>
+              <span class="crow__meta" data-i18n="ds.sample.cap.compactF" data-page-node-id="638x8P7qwH8BAXQEmNZj9e">4 TB · 已用 3.1 TB · 剩余 900 GB</span>
+              <span class="crow__grow" data-page-node-id="b0DRHh198AMAdlzOkd2ODE"></span>
+              <span class="crow__status crow__status--safe" data-i18n="compactSafe" data-page-node-id="xy5SogD2Kb3iwCstCy4jG8"><i data-i="check" data-page-node-id="URIDkxsHnH6UxvJhcxQ2Bl"></i>可安全推出</span>
+              <button class="btn btn--primary btn--sm crow__btn" data-i18n="eject" data-page-node-id="47g9dUliUsP3fjnxZJ6d2i">推出</button>
             </div>
 
           </div>
         </div>
       </div>
-      <p class="spec-note">
-        <b>紧凑模式去掉容量条</b>——「已用 300 GB · 剩余 700 GB」已经完整表达同一信息，
+      <p class="spec-note" data-page-node-id="DiLI6O3EWfnCXbA8bgEWAL">
+        <b data-page-node-id="v0q8encqqBKV1cqyKGS5gb">紧凑模式去掉容量条</b>——「已用 300 GB · 剩余 700 GB」已经完整表达同一信息，
         再画一根条只是重复。有占用时仍保留左侧琥珀条与红色按钮，判定线索一条不少。
       </p>
     </div>
   </div>
 
   <!-- ===================== C. 进行中 ===================== -->
-  <div class="doc__section">
-    <h2 class="doc__h2">C · 进行中 <em>In progress</em></h2>
-    <p class="doc__h2desc">
-      所有进行中的状态都必须<strong>就地反馈</strong>，而不是弹一个「处理中…」的遮罩。
+  <div class="doc__section" data-page-node-id="G0gDLfvLqCGwSuLwLnhZNX">
+    <h2 class="doc__h2" data-page-node-id="3qq6oujDVVDEfEdnFldPnC">C · 进行中 <em data-page-node-id="0A3Q9eIZ3wEWsb4zNGbV0G">In progress</em></h2>
+    <p class="doc__h2desc" data-page-node-id="ExnhfI43g1Nn7aXwPsiCnL">
+      所有进行中的状态都必须<strong data-page-node-id="DFaT5d0PiV4Bzk1KHQUFEO">就地反馈</strong>，而不是弹一个「处理中…」的遮罩。
       用户点哪一行，就在那一行看到反馈。
     </p>
 
-    <div class="artboard" style="gap:48px">
-      <div class="frame">
-        <div class="frame__label">推出中 · 按钮就地变为 spinner</div>
-        <div class="win" style="width:520px;border-radius:var(--r-md)">
-          <div style="padding:12px">
-            <div class="row" style="padding:12px 10px">
-              <div class="row__icon"><div class="diskicon"><i data-i="drive"></i></div></div>
-              <div class="row__main">
-                <div class="row__head">
-                  <div class="row__id">
-                    <div class="row__nameline">
-                      <span class="row__name">WD Blue</span>
-                      <span class="row__fs">500 GB</span>
+    <div class="artboard" style="gap:48px" data-page-node-id="cucensDD2s7aDqQBA3pU45">
+      <div class="frame" data-page-node-id="OJaWnXB7Kryc31F1mOtVnn">
+        <div class="frame__label" data-page-node-id="iBVFWwNfqzkGTVCUwSBFmE">推出中 · 按钮就地变为 spinner</div>
+        <div class="win" style="width:520px;border-radius:var(--r-md)" data-page-node-id="BgQ0oZ3IH0rcoyg5YDmvH2">
+          <div style="padding:12px" data-page-node-id="AnWm5IAggaRYZ0S8qLseXu">
+            <div class="row" style="padding:12px 10px" data-page-node-id="iTemENqSl0I1MMM1z5pemb">
+              <div class="row__icon" data-page-node-id="cpecg6QKRFg1dVJpKNu4qP"><div class="diskicon" data-page-node-id="G5FXSX0ibR40nKHLHDGSJO"><i data-i="drive" data-page-node-id="WAGuaPY7YZLWFf0yy1WYDO"></i></div></div>
+              <div class="row__main" data-page-node-id="bPoMkMBHfNQxZGrVd0Fry7">
+                <div class="row__head" data-page-node-id="0jjSCelDGXVTHCp9I8nIRK">
+                  <div class="row__id" data-page-node-id="bfIWOs4vjMPPFuxJLme1WX">
+                    <div class="row__nameline" data-page-node-id="oYhbEsVCbsLth2j3jWsCYZ">
+                      <span class="row__name" data-page-node-id="VUmrJMV6FW2HMpqvjTpuQO">WD Blue</span>
+                      <span class="row__fs" data-page-node-id="UqD7ZbmKQsBWQDmjdhT60w">500 GB</span>
                     </div>
-                    <div class="row__meta">已用 <b>120 GB</b> · 剩余 <b>380 GB</b></div>
+                    <div class="row__meta" data-page-node-id="UGrYziD9HJxpe342eE1MO2">已用 <b data-page-node-id="CbuV9qdPJOgCq8zEQLSUGg">120 GB</b> · 剩余 <b data-page-node-id="Env8waNnGSPl6sm3YCYHHT">380 GB</b></div>
                   </div>
-                  <div class="row__act">
-                    <button class="btn btn--outline btn--sm" disabled style="opacity:.75;cursor:default">
-                      <span class="spin"><i data-i="spinner"></i></span>推出中
+                  <div class="row__act" data-page-node-id="KKipvuX7PvWWmHDiJ6ac2I">
+                    <button class="btn btn--outline btn--sm" disabled style="opacity:.75;cursor:default" data-page-node-id="AwLqX68ZEJS83Tigz1desz">
+                      <span class="spin" data-page-node-id="lNCe691dcXugLzCcwvyrwH"><i data-i="spinner" data-page-node-id="JQNkkCxK5fvR0UKClZpq9D"></i></span>推出中
                     </button>
                   </div>
                 </div>
-                <div class="meter">
-                  <div class="meter__track"><div class="meter__fill" style="width:24%"></div></div>
-                  <span class="meter__pct">24%</span>
+                <div class="meter" data-page-node-id="kS3nwwhojqoUwmtkaH5CEh">
+                  <div class="meter__track" data-page-node-id="MGynSAuEIRJQW6C50EEAGy"><div class="meter__fill" style="width:24%" data-page-node-id="KSgQTmqCE4lsYOlltQgDbi"></div></div>
+                  <span class="meter__pct" data-page-node-id="v6BKoLwBNNKYGo1FNSzBG1">24%</span>
                 </div>
               </div>
             </div>
           </div>
         </div>
-        <p class="spec-note" style="max-width:520px">
-          推出中按钮<strong>保留原尺寸</strong>（换成 spinner 后不能塌陷），并禁用重复点击。
+        <p class="spec-note" style="max-width:520px" data-page-node-id="zWpgTAGOcjxMM73eiRr7CA">
+          推出中按钮<strong data-page-node-id="Okhc2jcBHcNwDIUmYA38bR">保留原尺寸</strong>（换成 spinner 后不能塌陷），并禁用重复点击。
           不显示进度百分比——系统推出接口不提供进度，编一个进度条是撒谎。
         </p>
       </div>
 
-      <div class="frame">
-        <div class="frame__label">首次加载 · 骨架屏（< 300ms 不显示）</div>
-        <div class="win" style="width:520px;border-radius:var(--r-md)">
-          <div style="padding:12px;display:flex;flex-direction:column;gap:10px">
-            <div style="display:flex;align-items:center;gap:10px">
-              <div class="skeleton" style="width:30px;height:30px;border-radius:8px"></div>
-              <div class="skeleton" style="width:110px;height:13px"></div>
-              <div class="skeleton" style="width:150px;height:11px"></div>
+      <div class="frame" data-page-node-id="r7gJaGFoZOVp0uBxY0LVyD">
+        <div class="frame__label" data-page-node-id="QFvkDZ1a1niT9NRxewTUC0">首次加载 · 骨架屏（< 300ms 不显示）</div>
+        <div class="win" style="width:520px;border-radius:var(--r-md)" data-page-node-id="tKlShBilv8i0dbRAJsbuzT">
+          <div style="padding:12px;display:flex;flex-direction:column;gap:10px" data-page-node-id="6C9PF7Gij05DiXVF1zgdZc">
+            <div style="display:flex;align-items:center;gap:10px" data-page-node-id="VUYtXL8ULS2E0V7VKBhfSX">
+              <div class="skeleton" style="width:30px;height:30px;border-radius:8px" data-page-node-id="x2f3g4RerMnRKEgdVwvou2"></div>
+              <div class="skeleton" style="width:110px;height:13px" data-page-node-id="oFLeicsCYYh0bLuOEKxFgE"></div>
+              <div class="skeleton" style="width:150px;height:11px" data-page-node-id="0GPYywwtHW6i26LJVdBJAC"></div>
             </div>
-            <div style="display:flex;align-items:center;gap:10px">
-              <div class="skeleton" style="width:30px;height:30px;border-radius:8px"></div>
-              <div class="skeleton" style="width:90px;height:13px"></div>
-              <div class="skeleton" style="width:170px;height:11px"></div>
+            <div style="display:flex;align-items:center;gap:10px" data-page-node-id="o5nqUi7AGLDCypqodF4uS6">
+              <div class="skeleton" style="width:30px;height:30px;border-radius:8px" data-page-node-id="Zr9aGZGXAcCuJjnZY88qnZ"></div>
+              <div class="skeleton" style="width:90px;height:13px" data-page-node-id="XF9FA1TQ8aCrhRqeNIGeRH"></div>
+              <div class="skeleton" style="width:170px;height:11px" data-page-node-id="AN0OjLka4ihp9YHG7J8csL"></div>
             </div>
-            <div style="display:flex;align-items:center;gap:10px">
-              <div class="skeleton" style="width:30px;height:30px;border-radius:8px"></div>
-              <div class="skeleton" style="width:130px;height:13px"></div>
-              <div class="skeleton" style="width:140px;height:11px"></div>
+            <div style="display:flex;align-items:center;gap:10px" data-page-node-id="1rGPui7MwDNm5KPBPLsLE8">
+              <div class="skeleton" style="width:30px;height:30px;border-radius:8px" data-page-node-id="d9iZVzSbXo4Kt6bQO4tLzO"></div>
+              <div class="skeleton" style="width:130px;height:13px" data-page-node-id="nvYb1lQMj5v3z7G85DKmcq"></div>
+              <div class="skeleton" style="width:140px;height:11px" data-page-node-id="XltexsuxBLbcFh3snM0mde"></div>
             </div>
           </div>
         </div>
-        <p class="spec-note" style="max-width:520px">
-          磁盘枚举通常在 <code>50ms</code> 内完成，所以骨架屏只在<strong>超过 300ms</strong> 时出现，
-          避免一闪而过的闪烁。占用检测（<code>lsof</code>）较慢，走行内状态文字而不是骨架屏。
+        <p class="spec-note" style="max-width:520px" data-page-node-id="9Hv5guibV4aH3vb5Vawzxp">
+          磁盘枚举通常在 <code data-page-node-id="smWGf9abq6JFvZ4AsXwJuv">50ms</code> 内完成，所以骨架屏只在<strong data-page-node-id="ITommc0xs6qP67COSOogon">超过 300ms</strong> 时出现，
+          避免一闪而过的闪烁。占用检测（<code data-page-node-id="prsFe1upHlLz4AzcCVR41K">lsof</code>）较慢，走行内状态文字而不是骨架屏。
         </p>
       </div>
     </div>
   </div>
 
   <!-- ===================== D. 视觉语言 ===================== -->
-  <div class="doc__section">
-    <h2 class="doc__h2">D · 视觉语言对照 <em>Semantics</em></h2>
-    <p class="doc__h2desc">
-      三种磁盘状态共用一套固定的编码规则：<strong>左侧色条 + 图标 + 文字结论 + 按钮形态</strong>。
+  <div class="doc__section" data-page-node-id="5hpdetmUYoH3luQ7RIQsC7">
+    <h2 class="doc__h2" data-page-node-id="VitHEIbuEqO4pdp1hO227h">D · 视觉语言对照 <em data-page-node-id="lpxhYTvSA93tSZwjfsq2Zp">Semantics</em></h2>
+    <p class="doc__h2desc" data-page-node-id="pAvweZBduTfjmjLlX8I8cm">
+      三种磁盘状态共用一套固定的编码规则：<strong data-page-node-id="NCJG5HLjOiwlgFLtX1cCV0">左侧色条 + 图标 + 文字结论 + 按钮形态</strong>。
       任何状态都至少有两重编码，不依赖颜色单独传达信息。
     </p>
 
-    <div class="panel">
-      <table class="state-tbl">
-        <thead>
-          <tr>
-            <th style="width:120px">状态</th>
-            <th style="width:100px">色条</th>
-            <th style="width:200px">行内结论</th>
-            <th style="width:170px">主按钮</th>
-            <th>触发条件</th>
+    <div class="panel" data-page-node-id="WW4uvU4vTO8TMymgaCMzLS">
+      <table class="state-tbl" data-page-node-id="oduw8bn3T5SekS2PPiuS0o">
+        <thead data-page-node-id="wRg9SexfLLZ8hVvCbt7xv2">
+          <tr data-page-node-id="Y8ocGq3JXhF7l64F5lsE74">
+            <th style="width:120px" data-page-node-id="oAAz7CqBSEffzCkaxWIhT6">状态</th>
+            <th style="width:100px" data-page-node-id="4OSGIqeosQBjRFzRH4R9AC">色条</th>
+            <th style="width:200px" data-page-node-id="EO2kjedJdm35nHWbgubNS2">行内结论</th>
+            <th style="width:170px" data-page-node-id="NeGCuoFkLwp3L9GiQGFBgA">主按钮</th>
+            <th data-page-node-id="7wNussRonAWQOTggihitbq">触发条件</th>
           </tr>
         </thead>
-        <tbody>
-          <tr>
-            <td><span style="display:inline-flex;align-items:center;gap:7px"><span class="dot" style="background:var(--warn)"></span><b>被占用</b></span></td>
-            <td><span style="display:inline-block;width:3px;height:18px;border-radius:2px;background:var(--warn)"></span> 琥珀</td>
-            <td><span style="color:var(--warn-text);font-weight:600">2 个程序正在占用</span></td>
-            <td><span class="btn btn--danger btn--sm" style="pointer-events:none">关闭并推出</span></td>
-            <td><code>lsof</code> 检出至少一个进程持有该卷的文件句柄</td>
+        <tbody data-page-node-id="IEmuNxutuajGSF4Y5vgD2i">
+          <tr data-page-node-id="663FXHzjJnKAbmJ1rBddnr">
+            <td data-page-node-id="0b6vuTFxYcJnr7Hl1axNgT"><span style="display:inline-flex;align-items:center;gap:7px" data-page-node-id="rTh3ZYKw4NfmOgOAl0ZISG"><span class="dot" style="background:var(--warn)" data-page-node-id="h0ftAMDzGHfF06hVAbI46r"></span><b data-page-node-id="12YLMjjY8B3OkiAwEXB7g8">被占用</b></span></td>
+            <td data-page-node-id="SuLMXtvxAnWOjh4sdk5UiD"><span style="display:inline-block;width:3px;height:18px;border-radius:2px;background:var(--warn)" data-page-node-id="fDS5Y5ZkYLh50muz00q1rb"></span> 琥珀</td>
+            <td data-page-node-id="zwkRXesF10X22aNJRpAQci"><span style="color:var(--warn-text);font-weight:600" data-page-node-id="KBBTLCWSbw67AmCbnW8KBr">2 个程序正在占用</span></td>
+            <td data-page-node-id="XhvLdxDb3y2EF3s763I0tn"><span class="btn btn--danger btn--sm" style="pointer-events:none" data-page-node-id="E1chLmuBMknCKUNFyOthYd">关闭并推出</span></td>
+            <td data-page-node-id="BrwZTMAFNBZots1PvACuGj"><code data-page-node-id="rgKGa8tZ2ysJBvX4Oq0I14">lsof</code> 检出至少一个进程持有该卷的文件句柄</td>
           </tr>
-          <tr>
-            <td><span style="display:inline-flex;align-items:center;gap:7px"><span class="dot" style="background:var(--ok)"></span><b>可安全推出</b></span></td>
-            <td>—</td>
-            <td><span style="color:var(--ok-text)">✓ 没有程序占用，可以安全推出</span></td>
-            <td><span class="btn btn--primary btn--sm" style="pointer-events:none">推出</span></td>
-            <td><code>lsof</code> 返回 0 行，且已获得 FDA 授权</td>
+          <tr data-page-node-id="Sd6Ye79BBWdSoTgBNjdOMr">
+            <td data-page-node-id="tulHkJzob9wpeRA8yqTXXl"><span style="display:inline-flex;align-items:center;gap:7px" data-page-node-id="pJ1MuLS6My4PekdtOyOBtJ"><span class="dot" style="background:var(--ok)" data-page-node-id="IBpwY3C2TgCm1q4BFpdewn"></span><b data-page-node-id="L2kXEzf81aHE5yEgnyWAS9">可安全推出</b></span></td>
+            <td data-page-node-id="s58CF01DFOKd7iIRNgxoCF">—</td>
+            <td data-page-node-id="8KCJHuHkfcKY7aBlnre86c"><span style="color:var(--ok-text)" data-page-node-id="0AQdWpMRhHKZObnAJNpSu1">✓ 没有程序占用，可以安全推出</span></td>
+            <td data-page-node-id="ANh1gxlOmZrMujEK0MGIVw"><span class="btn btn--primary btn--sm" style="pointer-events:none" data-page-node-id="RO29AoKpFMcEoHVgd7YAsJ">推出</span></td>
+            <td data-page-node-id="ETnD7UpAbra2cEd1bf6EOs"><code data-page-node-id="aReWeLCkcD8JO1BD9Ib8hv">lsof</code> 返回 0 行，且已获得 FDA 授权</td>
           </tr>
-          <tr>
-            <td><span style="display:inline-flex;align-items:center;gap:7px"><span class="dot" style="background:var(--text-3)"></span><b>未知</b></span></td>
-            <td>—</td>
-            <td><span style="color:var(--text-2)">占用情况未知 · 授权后可检测</span></td>
-            <td><span class="btn btn--primary btn--sm" style="pointer-events:none">推出</span></td>
-            <td>未授权 FDA（直发版）或沙盒环境（MAS 版）</td>
+          <tr data-page-node-id="RDchXLycuLfJ6MEuQTWP3G">
+            <td data-page-node-id="k8Up3f6x9qu0oXXoXJ1Goy"><span style="display:inline-flex;align-items:center;gap:7px" data-page-node-id="PELoF6cPmANfZqOiRHXhyH"><span class="dot" style="background:var(--text-3)" data-page-node-id="0EvWXdEAn0DT7122z4eWu5"></span><b data-page-node-id="ZRtGNFGr2Yq4EPBBzC2a0G">未知</b></span></td>
+            <td data-page-node-id="3GVkGc8Qdj8cVC6waJzlT9">—</td>
+            <td data-page-node-id="VilvVav1qzjrPK738fUEHL"><span style="color:var(--text-2)" data-page-node-id="1A1LccpDHZD4y08FtbRVzT">占用情况未知 · 授权后可检测</span></td>
+            <td data-page-node-id="PhHGBJoDdeoN5mHvsHXsI1"><span class="btn btn--primary btn--sm" style="pointer-events:none" data-page-node-id="fvkOOE1xVyAh15kCBx5vj2">推出</span></td>
+            <td data-page-node-id="eLB2poJJsxtEU9bfKwwiye">未授权 FDA，或运行环境被沙盒限制（本应用不上架 MAS，沙盒仅作防御分支）</td>
           </tr>
-          <tr>
-            <td><span style="display:inline-flex;align-items:center;gap:7px"><span class="dot" style="background:var(--accent)"></span><b>进行中</b></span></td>
-            <td>—</td>
-            <td><span style="color:var(--text-2)">按钮就地变为「推出中」+ spinner</span></td>
-            <td><span class="btn btn--outline btn--sm" style="pointer-events:none"><span class="spin"><i data-i="spinner"></i></span>推出中</span></td>
-            <td>已发起推出请求，等待系统返回</td>
+          <tr data-page-node-id="nWO7FjKySU8mxICuPZiFfQ">
+            <td data-page-node-id="TZRpcVBi0a2EH92ac1onEH"><span style="display:inline-flex;align-items:center;gap:7px" data-page-node-id="GKyaiHDdF8OOXZfHOJWWL2"><span class="dot" style="background:var(--accent)" data-page-node-id="s6JmlNNhj5TKApmFjP21Jv"></span><b data-page-node-id="ayRFt9d1uxKB0kO6Tc8Brz">进行中</b></span></td>
+            <td data-page-node-id="EHSvGTLb26FiiFGelodL3f">—</td>
+            <td data-page-node-id="9uUkJQeQyOjpzBYmM8ROPv"><span style="color:var(--text-2)" data-page-node-id="BjsElt9bmORO1muTVjUWq4">按钮就地变为「推出中」+ spinner</span></td>
+            <td data-page-node-id="no7qjuaoJV7eWV1smMrcNv"><span class="btn btn--outline btn--sm" style="pointer-events:none" data-page-node-id="jM9fbom509DEOyuo1rtwG5"><span class="spin" data-page-node-id="B4acXdpqM8UGWGDbYUQ2Ba"><i data-i="spinner" data-page-node-id="S5eom5QcJxUrsEuEgMVrEI"></i></span>推出中</span></td>
+            <td data-page-node-id="6L3FouSmCealDQAGTE966g">已发起推出请求，等待系统返回</td>
           </tr>
         </tbody>
       </table>
     </div>
 
-    <div class="panel" style="margin-top:16px">
-      <h3 class="doc__h3" style="margin-top:0">两条硬规则</h3>
-      <div class="grid2">
-        <ul class="note-list">
-          <li><b>「未知」绝不渲染成「没有占用」。</b>未授权 FDA 时若显示「可安全推出」，用户会以为可以拔，
+    <div class="panel" style="margin-top:16px" data-page-node-id="F7zislkiIJiYCyV6oR3eXG">
+      <h3 class="doc__h3" style="margin-top:0" data-page-node-id="q8uXW4RYKrucJFHmO9GIRu">两条硬规则</h3>
+      <div class="grid2" data-page-node-id="xW40QhTuXXKGOSTy2oumQn">
+        <ul class="note-list" data-page-node-id="4Cb3VVB7G4OxReozch4V7W">
+          <li data-page-node-id="ZEOrnNHybFKq7olurdpEVy"><b data-page-node-id="AMUvDrkgJb5XEjY6JnH03X">「未知」绝不渲染成「没有占用」。</b>未授权 FDA 时若显示「可安全推出」，用户会以为可以拔，
             实际上 Spotlight 可能正抓着这块盘——这是本应用最不能犯的错误。</li>
         </ul>
-        <ul class="note-list">
-          <li><b>琥珀只表示「被占用」，红色只表示「破坏性」。</b>磁盘快写满、容量告警等其他语义
+        <ul class="note-list" data-page-node-id="mLLLYSAkDl4hOWipHmkTWl">
+          <li data-page-node-id="Sj3997HISoZyEJI6KuKCii"><b data-page-node-id="3zZjDxiKGQ9zr7fCdNXPSA">琥珀只表示「被占用」，红色只表示「破坏性」。</b>磁盘快写满、容量告警等其他语义
             一律不使用这两种颜色，避免同一颜色在同一界面里承担两种含义。</li>
         </ul>
       </div>
@@ -318,6 +319,7 @@
 
 </div>
 </div>
+<script src="../assets/i18n.js"></script>
 <script src="../assets/ds.js"></script>
 </body>
 </html>

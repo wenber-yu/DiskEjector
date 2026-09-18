@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<html lang="zh-CN" data-theme="light" data-accent="blue">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<html lang="zh-CN" data-theme="light" data-accent="blue" data-page-node-id="hzeh26ggexG3QBaTXrNReR">
+<head data-page-node-id="3O2eexxMdEHvOUSKqUGJKu">
+<meta charset="UTF-8" data-page-node-id="YLvyPtoHMC5BYdL3Ew2pOg">
+<meta name="viewport" content="width=device-width, initial-scale=1.0" data-page-node-id="140WWvwl09VOsKBxl0ZXIL">
 <title>授权引导 · DiskEjector UI v2</title>
-<link rel="stylesheet" href="../assets/ds.css">
+<link rel="stylesheet" href="../assets/ds.css" data-page-node-id="zQdSAA2EAx3a6B9UKVe9e5">
 <style>
   .note-list { margin: 0; padding-left: 18px; font-size: var(--fs-12); color: var(--text-2); line-height: 1.7; }
   .note-list li { margin-bottom: 6px; }
@@ -12,118 +12,119 @@
   .note-list code { font-family: var(--font-mono); font-size: var(--fs-11); background: var(--bg-subtle); padding: 1px 5px; border-radius: var(--r-xs); }
 </style>
 </head>
-<body class="ds">
-<div class="wallpaper">
-<div class="doc">
+<body class="ds" data-page-node-id="N7CsOkuNymaQ3NztlwAp31">
+<div class="wallpaper" data-page-node-id="SJLLSBawPBbmvPLJRJHfu2">
+<div class="doc" data-page-node-id="LjtsdWLbpc59MH05yoQ5gn">
 
-  <nav class="doc__nav">
-    <a href="../index.html">设计规范总览</a>
-    <a href="01-main-window.html">主窗口</a>
-    <a href="02-menu-bar.html">菜单栏面板</a>
-    <a href="03-eject-flow.html">推出流程弹窗</a>
-    <a href="04-onboarding.html" aria-current="page">授权引导</a>
-    <a href="05-settings.html">设置面板</a>
-    <a href="06-states.html">状态矩阵</a>
-    <a href="07-dark.html">深色模式</a>
+  <nav class="doc__nav" data-page-node-id="xhLnAjUDpK0WkjQ7AdNlMA">
+    <a href="../index.html" data-page-node-id="VjRMlR22YMxfbtX7l8nGGP">设计规范总览</a>
+    <a href="01-main-window.html" data-page-node-id="ZnyOtswG9e8iHdxre9n0BA">主窗口</a>
+    <a href="02-menu-bar.html" data-page-node-id="Cj7paE4FqADsdYHSqpIFe6">菜单栏面板</a>
+    <a href="03-eject-flow.html" data-page-node-id="G4UVfGHeBmQqdlUJxWEuPB">推出流程弹窗</a>
+    <a href="04-onboarding.html" aria-current="page" data-page-node-id="95ORIgeYpaAaxkzgX1sPe3">授权引导</a>
+    <a href="05-settings.html" data-page-node-id="XdjnO67cZcEuBx2HlW61g1">设置面板</a>
+    <a href="06-states.html" data-page-node-id="xF2r214cGNBS9FePclB91c">状态矩阵</a>
+    <a href="07-dark.html" data-page-node-id="YY64u66eQ4Ce08b0l3uodg">深色模式</a>
+    <a href="08-update.html" data-page-node-id="Dn3YnoLXZwn03kKh5o0Ur7">版本更新</a>
   </nav>
 
-  <p class="doc__eyebrow">Screen 04 · Onboarding</p>
-  <h1 class="doc__title">完全磁盘访问引导</h1>
-  <p class="doc__lede">
-    这是本应用<strong>唯一一次主动打断用户</strong>，也只出现在首次启动且尚未授权时。
+  <p class="doc__eyebrow" data-page-node-id="gXY1khBDZR60E3RjWB9Alg">Screen 04 · Onboarding</p>
+  <h1 class="doc__title" data-page-node-id="qFQqkshZzyQxHaG5GIpapI">完全磁盘访问引导</h1>
+  <p class="doc__lede" data-page-node-id="1a80HxpxUDnY6CosThj2g8">
+    这是本应用<strong data-page-node-id="z0X5znolTi69VRup0KCBK0">唯一一次主动打断用户</strong>，也只出现在首次启动且尚未授权时。
     引导的成败决定核心功能是否可用，所以它必须回答两个问题：
-    <strong>为什么非给不可</strong>，以及<strong>给完之后要做什么</strong>。
+    <strong data-page-node-id="sqQT30tLaAJcmPAdS276ag">为什么非给不可</strong>，以及<strong data-page-node-id="6CGeTQWpDlaQXvWVTXTo93">给完之后要做什么</strong>。
   </p>
 
-  <div class="artboard" style="gap:64px">
+  <div class="artboard" style="gap:64px" data-page-node-id="NVfOhqnBbvTbZAqEne3noa">
 
     <!-- ============ 引导面板 ============ -->
-    <div class="frame">
-      <div class="frame__label">380 × 自适应 · 首次启动 · 未授权</div>
+    <div class="frame" data-page-node-id="tEjzEGinz5iL0uFOOg0CMt">
+      <div class="frame__label" data-page-node-id="E6y0Bo0zpnDhH3xXKkadcj">380 × 自适应 · 首次启动 · 未授权</div>
 
-      <div class="win win--popover" style="width:380px;border-radius:var(--r-lg)">
-        <div class="onboard">
-          <div class="onboard__icon"><i data-i="lock"></i></div>
-          <div class="onboard__title">需要「完全磁盘访问」</div>
-          <div class="onboard__desc">
-            要知道<strong>是哪个程序占着你的硬盘</strong>，DiskEjector 需要这项系统权限。<br>
+      <div class="win win--popover" style="width:380px;border-radius:var(--r-lg)" data-page-node-id="Gu5lkuex4afZ4u0G3NeSSc">
+        <div class="onboard" data-page-node-id="2aJsYDn6EH6BX4vB4VfKmR">
+          <div class="onboard__icon" data-page-node-id="OU5kkpuDv9BwdiAh5Q9Ghf"><i data-i="lock" data-page-node-id="GB6x1QzrzrDzUBw2HYeKYW"></i></div>
+          <div class="onboard__title" data-i18n="fdaOnboardingTitle" data-page-node-id="yU5w4GASWZbNrmGKLndghq">需要「完全磁盘访问」</div>
+          <div class="onboard__desc" data-i18n="fdaOnboardingBody" data-page-node-id="AdJ37jaDQfc3s1HwmOk1vI">
+            要知道<strong data-page-node-id="VDaED6HRiN9k6TM8PoJ7AX">是哪个程序占着你的硬盘</strong>，DiskEjector 需要这项系统权限。<br data-page-node-id="w7nhjRD5jXYWq2yr9bpMUU">
             macOS 不允许普通应用查看其他进程打开的文件——不给权限，就只剩一个空列表。
           </div>
 
-          <div class="steps">
-            <div class="step">
-              <div class="step__rail">
-                <div class="step__dot">1</div>
-                <div class="step__line"></div>
+          <div class="steps" data-page-node-id="pfEcW166idpwqSDIZALoDi">
+            <div class="step" data-page-node-id="amzAGxzefUGuG2o2psxHDy">
+              <div class="step__rail" data-page-node-id="OyZNEV56XLSudMBg5Md7Np">
+                <div class="step__dot" data-page-node-id="WlAiL1LNYFBaHyw0ekWuLV">1</div>
+                <div class="step__line" data-page-node-id="SacQtYMEiG3HNkrESJKLNc"></div>
               </div>
-              <div class="step__text">
-                点下方按钮，直接打开对应面板
-                <small><span class="path">系统设置 › 隐私与安全性 › 完全磁盘访问</span></small>
-              </div>
-            </div>
-
-            <div class="step">
-              <div class="step__rail">
-                <div class="step__dot">2</div>
-                <div class="step__line"></div>
-              </div>
-              <div class="step__text">
-                在列表中找到 <b>DiskEjector</b>，打开右侧开关
-                <small>若不在列表中，点左下角 <span class="path">＋</span> 从「应用程序」添加</small>
+              <div class="step__text" data-page-node-id="MDqa4T3PzpJOMNnFEaqogu">
+                <span data-i18n="fdaOnboardingStep1Text" data-page-node-id="aEohIsvdW8D4RM5hYJf2t8">点下方按钮，直接打开对应面板</span>
+                <small data-i18n="fdaOnboardingPathSettings" data-page-node-id="ASvmWlVBNG7mS578aLgCD4"><span class="path" data-i18n="fdaOnboardingPathSettings" data-page-node-id="CwMnMlL9HzkKr8b08MTEOX">系统设置 › 隐私与安全性 › 完全磁盘访问</span></small>
               </div>
             </div>
 
-            <div class="step">
-              <div class="step__rail">
-                <div class="step__dot">3</div>
+            <div class="step" data-page-node-id="uGO58ub1PgezqwqK6vyNv2">
+              <div class="step__rail" data-page-node-id="9CACtev2SrPJJ2KBEWdQtG">
+                <div class="step__dot" data-page-node-id="ohWKCzCfBOa3n6xoobuwUb">2</div>
+                <div class="step__line" data-page-node-id="KZEp5Ne4ijtKSJNRUarjWE"></div>
               </div>
-              <div class="step__text" style="padding-bottom:0">
-                切回 DiskEjector 即可
-                <small>无需重启，占用情况会自动刷新</small>
+              <div class="step__text" data-page-node-id="VyT0Z8I49guu70YEBrScld">
+                <span data-i18n="fdaOnboardingStep2Text" data-page-node-id="Gygbutv66VmKrpSJsUFljs">在列表中找到 <b data-page-node-id="nyJiKlE0641WypsIKh7lGL">DiskEjector</b>，打开右侧开关</span>
+                <small data-i18n="ds.onboarding.notListed" data-page-node-id="B87XA0XSLfjRRQ3yrmpXsc">若不在列表中，点左下角 <span class="path" data-page-node-id="sviTRkFg1Q0R9582eQnHwe">＋</span> 从「应用程序」添加</small>
+              </div>
+            </div>
+
+            <div class="step" data-page-node-id="P1npjyOJ9WYhtiPOYFm7Ls">
+              <div class="step__rail" data-page-node-id="uA6ws5wiDfkNpjew3Pu8Ka">
+                <div class="step__dot" data-page-node-id="knbIm61F2uTWxRnJZg7bLs">3</div>
+              </div>
+              <div class="step__text" style="padding-bottom:0" data-page-node-id="XU3qNl4L5TyrSzox9HmymH">
+                <span data-i18n="fdaOnboardingStep3Text" data-page-node-id="kkIJMRb5bcZ3AncIzmkYis">切回 DiskEjector 即可</span>
+                <small data-i18n="fdaOnboardingStep3Note" data-page-node-id="WAH1Mh2no7HfJrSXes7tGZ">无需重启，占用情况会自动刷新</small>
               </div>
             </div>
           </div>
 
-          <div class="callout callout--info" style="margin-top:20px">
-            <i data-i="shield"></i>
-            <span>这项权限只用于读取「哪个进程打开了磁盘上的文件」，DiskEjector 不会读取你的文件内容。</span>
+          <div class="callout callout--info" style="margin-top:20px" data-page-node-id="jlKZrpUs48VIKQC5Rit3JI">
+            <i data-i="shield" data-page-node-id="K67qhUPgGI3ZznwMQLhiYU"></i>
+            <span data-i18n="fdaOnboardingPrivacy" data-page-node-id="G1koEGLBpaUPpOUCRva6Mf">这项权限只用于读取「哪个进程打开了磁盘上的文件」，DiskEjector 不会读取你的文件内容。</span>
           </div>
 
-          <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:20px">
-            <button class="btn btn--outline">稍后</button>
-            <button class="btn btn--primary">打开系统设置</button>
+          <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:20px" data-page-node-id="7dlbJ9FQjQlhnhfbzsL7hj">
+            <button class="btn btn--outline" data-i18n="notNow" data-page-node-id="PUyAC0CojTJo4UhiC41pFS">稍后</button>
+            <button class="btn btn--primary" data-i18n="openSystemSettings" data-page-node-id="8GnEAxPZ91E0sFCLlk4kUH">打开系统设置</button>
           </div>
         </div>
       </div>
 
-      <p class="spec-note">
-        <b>为什么写「不给权限就只剩一个空列表」。</b>用户对权限弹窗的默认反应是拒绝。
+      <p class="spec-note" data-page-node-id="2bKiOyCTapfBlxNQLZuSTN">
+        <b data-page-node-id="jJGdFQROKWSDzWqJkYEEKs">为什么写「不给权限就只剩一个空列表」。</b>用户对权限弹窗的默认反应是拒绝。
         与其用「以提升体验」这类空话，不如直说后果——这句话解释了为什么之后
         界面上会出现「占用情况未知」，让两者前后自洽。
       </p>
     </div>
 
     <!-- ============ 授权后的横幅对照 ============ -->
-    <div class="frame">
-      <div class="frame__label">主窗口横幅 · 未授权 vs 已授权</div>
+    <div class="frame" data-page-node-id="JZaKV8aTZoiFSdPVifcQGl">
+      <div class="frame__label" data-page-node-id="Dmc1KzHFC7iGErCzzyzsJP">主窗口横幅 · 未授权 vs 已授权</div>
 
-      <div style="display:flex;flex-direction:column;gap:20px">
-        <div style="width:560px;border-radius:var(--r-md);overflow:hidden;box-shadow:var(--e2)">
-          <div class="banner" style="padding:10px 16px">
-            <span class="banner__icon"><i data-i="lock"></i></span>
-            <span class="banner__text">需要「完全磁盘访问」才能看到<strong>是谁占用了磁盘</strong></span>
-            <button class="btn btn--outline btn--sm">打开系统设置</button>
+      <div style="display:flex;flex-direction:column;gap:20px" data-page-node-id="hhwqGw1DZTnvNOYrbauof2">
+        <div style="width:560px;border-radius:var(--r-md);overflow:hidden;box-shadow:var(--e2)" data-page-node-id="4LuRlGDhAPB4vfXnra8uMc">
+          <div class="banner" style="padding:10px 16px" data-page-node-id="9KUH8rBnxnXnZEFS8XmaGR">
+            <span class="banner__icon" data-page-node-id="MoENizYg9x53P0MXfyZeEv"><i data-i="lock" data-page-node-id="uJlcLn6WGNxnHUHj8N3jvM"></i></span>
+            <span class="banner__text" data-i18n="fdaBannerLead" data-page-node-id="PnQd9Adf63mktjEVrK53kk">需要「完全磁盘访问」才能看到<strong data-page-node-id="pNDmVuNyyVnF5yelXK2jcz">是谁占用了磁盘</strong></span>
+            <button class="btn btn--outline btn--sm" data-i18n="openSystemSettings" data-page-node-id="b1rcNQIZSoCAyV3VRm7loX">打开系统设置</button>
           </div>
         </div>
 
-        <div style="width:560px;border-radius:var(--r-md);overflow:hidden;box-shadow:var(--e2)">
-          <div style="display:flex;align-items:center;gap:10px;padding:10px 16px;background:var(--ok-soft);box-shadow:inset 0 0 0 0.5px var(--ok-line)">
-            <span style="color:var(--ok);display:inline-flex"><i data-i="checkCircle"></i></span>
-            <span style="flex:1;font-size:var(--fs-12);color:var(--text-1)">已获得完全磁盘访问，占用检测正常</span>
+        <div style="width:560px;border-radius:var(--r-md);overflow:hidden;box-shadow:var(--e2)" data-page-node-id="xiDVaa9dsEuOyr9OH4sdyb">
+          <div style="display:flex;align-items:center;gap:10px;padding:10px 16px;background:var(--ok-soft);box-shadow:inset 0 0 0 0.5px var(--ok-line)" data-page-node-id="gUwYdOCdZd3tgoFGf9CUi1">
+            <span style="color:var(--ok);display:inline-flex" data-page-node-id="a3PS7vJeXcOhY7SfQRttnG"><i data-i="checkCircle" data-page-node-id="Q765m9WqVZtWCEHK84nXzr"></i></span>
+            <span style="flex:1;font-size:var(--fs-12);color:var(--text-1)" data-i18n="ds.fda.granted" data-page-node-id="tqjqqCHctg1JiSmaCSDDqo">已获得完全磁盘访问，占用检测正常</span>
           </div>
         </div>
-        <p class="spec-note" style="margin-top:0">
-          <b>授权成功后给一次正反馈</b>（绿色条，约 3 秒后自动淡出）。
+        <p class="spec-note" style="margin-top:0" data-page-node-id="40iG7rrdjvJGyRGB1Seziv">
+          <b data-page-node-id="7l2JX2btxIqW6phQ0173sp">授权成功后给一次正反馈</b>（绿色条，约 3 秒后自动淡出）。
           用户刚在系统设置里翻了一通，回到应用需要确认「我做对了」——
           否则他会怀疑是不是还要再授权一次。
         </p>
@@ -133,29 +134,29 @@
   </div>
 
   <!-- ===================== 说明 ===================== -->
-  <div class="doc__section">
-    <h2 class="doc__h2">设计说明 <em>Rationale</em></h2>
-    <div class="grid2">
-      <div class="panel">
-        <h3 class="doc__h3" style="margin-top:0">要点</h3>
-        <ul class="note-list">
-          <li><b>只弹一次。</b>用 <code>hasShownFDAOnboarding</code> 记住是否已展示；之后未授权只在主窗口留一条横幅，不再打断。</li>
-          <li><b>「稍后」是真的稍后。</b>拒绝不等于功能失效——磁盘仍可推出，只是看不到占用者。界面必须诚实反映这一点。</li>
-          <li><b>三步带编号与连接线。</b>权限引导是「跨应用的任务」，用户要离开本应用、在系统设置里操作、再回来。编号帮助他在中断后接上。</li>
-          <li><b>直达链接。</b><code>x-apple.systempreferences:…?Privacy_AllFiles</code>，不让用户自己找路径。</li>
-          <li><b>不承诺重启。</b>应用每 15 秒轮询一次，并在窗口重新激活时立即刷新——文案如实写「无需重启」。</li>
+  <div class="doc__section" data-page-node-id="zGZg4u9aWe2et5eDLqKgQL">
+    <h2 class="doc__h2" data-page-node-id="fIWf26I8oxTZnfBU20yDVM">设计说明 <em data-page-node-id="ZrYQ5X77961IJTRGRPUrqJ">Rationale</em></h2>
+    <div class="grid2" data-page-node-id="UysENoTuAau3yqAgfF6MaN">
+      <div class="panel" data-page-node-id="OVRLD3gEhbxUuOt0TNyw2K">
+        <h3 class="doc__h3" style="margin-top:0" data-page-node-id="AuJgxkOeZobLXjtqKgJvoP">要点</h3>
+        <ul class="note-list" data-page-node-id="ez9nRsMwVq6UD2kzxE3OX2">
+          <li data-page-node-id="GaWifhP0mdl32FCsgnfqGC"><b data-page-node-id="DyUIrKlA6wL6Plnnm0D1Gu">只弹一次。</b>用 <code data-page-node-id="VuKGXLFzNTYNRYDKcjrTzF">hasShownFDAOnboarding</code> 记住是否已展示；之后未授权只在主窗口留一条横幅，不再打断。</li>
+          <li data-page-node-id="Sh4t1EsajtX8B7TEJWXZyF"><b data-page-node-id="5ASlZe1JmynTWwIreNv3jt">「稍后」是真的稍后。</b>拒绝不等于功能失效——磁盘仍可推出，只是看不到占用者。界面必须诚实反映这一点。</li>
+          <li data-page-node-id="bKOv4aHlJJ2F7RWCD0kqcA"><b data-page-node-id="hQC4AjdQLH0y2OTBow9X9F">三步带编号与连接线。</b>权限引导是「跨应用的任务」，用户要离开本应用、在系统设置里操作、再回来。编号帮助他在中断后接上。</li>
+          <li data-page-node-id="PsFHt6ab6aJSfJZsZCWaT0"><b data-page-node-id="ytCbMH3Kv78GzARxWCOp4S">直达链接。</b><code data-page-node-id="wRwbKcH0bSmAODv8pGxhxi">x-apple.systempreferences:…?Privacy_AllFiles</code>，不让用户自己找路径。</li>
+          <li data-page-node-id="W0e8KAA7oZ3UyN7pTNGBoB"><b data-page-node-id="sG6ZWIOeDdJfEvSJ7L92nK">不承诺重启。</b>应用每 15 秒轮询一次，并在窗口重新激活时立即刷新——文案如实写「无需重启」。</li>
         </ul>
       </div>
 
-      <div class="panel">
-        <h3 class="doc__h3" style="margin-top:0">规格 Handoff</h3>
-        <ul class="note-list">
-          <li>面板宽 <code>380</code>，内容内边距 <code>24 / 20 / 20</code></li>
-          <li>顶部图标容器 <code>52 × 52</code>，圆角 <code>14</code>，图标 <code>26</code></li>
-          <li>标题 <code>17 / 600</code> 居中；说明 <code>13 / 400</code> 居中，行高 <code>1.6</code></li>
-          <li>步骤序号圆点 <code>22 × 22</code>；连接线 <code>1.5px</code>；步骤文字 <code>12</code>，注释 <code>11</code></li>
-          <li>路径用等宽字体 <code>11 mono</code> + 静默底</li>
-          <li>主按钮高 <code>30</code>；按钮组右对齐，间距 <code>8</code></li>
+      <div class="panel" data-page-node-id="wj9rp3xQULO1l2FFKIPrKT">
+        <h3 class="doc__h3" style="margin-top:0" data-page-node-id="CEqCv5Sz4yaDffxX4Z0a1M">规格 Handoff</h3>
+        <ul class="note-list" data-page-node-id="Hmhtw6GCAaZSLb26esa9JE">
+          <li data-page-node-id="FErkfIvb6gte6nEBCmJRP7">面板宽 <code data-page-node-id="ZbRBuD1N4EZdy1xB5PZltn">380</code>，内容内边距 <code data-page-node-id="pMKW3eeo8eoKa15Xv5QrKw">24 / 20 / 20</code></li>
+          <li data-page-node-id="i60kGe6co6hBbWrETyo7Tl">顶部图标容器 <code data-page-node-id="CjyDx1gEFI2aYiomXEdFpC">52 × 52</code>，圆角 <code data-page-node-id="xxFE1SU6iMgOd21QJcglPk">14</code>，图标 <code data-page-node-id="Y7Zp96ZdQiEniECvN9Bttu">26</code></li>
+          <li data-page-node-id="nTTZRsSKMJ6d3iibr3e5C2">标题 <code data-page-node-id="8AhHhdi9Gu1RALClfqQ5bb">17 / 600</code> 居中；说明 <code data-page-node-id="bkfhCNUXV06y2TmFCciDG3">13 / 400</code> 居中，行高 <code data-page-node-id="fotHClexF8yxKpmuUe8wOP">1.6</code></li>
+          <li data-page-node-id="NXyLE1HLlqd8GlEUUCDgW2">步骤序号圆点 <code data-page-node-id="zdwFzkd0TiS76X7SSnRVse">22 × 22</code>；连接线 <code data-page-node-id="CYcHqLYhwPn3LPfI2zgGDn">1.5px</code>；步骤文字 <code data-page-node-id="3PYftK0PCdfUhnOIiRNtKC">12</code>，注释 <code data-page-node-id="KTy1XBEnvO8Qfc1P7z88Wf">11</code></li>
+          <li data-page-node-id="xEDiTLWhxtV4Msnbnup7Wl">路径用等宽字体 <code data-page-node-id="2TyWkOyun2toH33QQFdA4F">11 mono</code> + 静默底</li>
+          <li data-page-node-id="wzGcSWmnhvv8kxfOkcpTc7">主按钮高 <code data-page-node-id="oU9SGsquc6bvQZCjbHZ5by">30</code>；按钮组右对齐，间距 <code data-page-node-id="OVK0vAGDCnbqLmgoo8ju3w">8</code></li>
         </ul>
       </div>
     </div>
@@ -163,6 +164,7 @@
 
 </div>
 </div>
+<script src="../assets/i18n.js"></script>
 <script src="../assets/ds.js"></script>
 </body>
 </html>

@@ -31,6 +31,7 @@
     <a href="05-settings.html">设置面板</a>
     <a href="06-states.html">状态矩阵</a>
     <a href="07-dark.html">深色模式</a>
+    <a href="08-update.html">版本更新</a>
   </nav>
 
   <p class="doc__eyebrow">Screen 03 · Eject Flow</p>
@@ -52,13 +53,13 @@
             <div class="alert__head">
               <div class="alert__icon alert__icon--warn"><i data-i="warn"></i></div>
               <div style="min-width:0">
-                <div class="alert__title">即将推出「Samsung T7」</div>
-                <div class="alert__sub">以下程序正在读写这块磁盘。它们挡着推出的路，需要先结束才能推出。</div>
+                <div class="alert__title" data-i18n="ds.eject.confirmTitle">即将推出「Samsung T7」</div>
+                <div class="alert__sub" data-i18n="ejectBusyMessageFormat">以下程序正在读写这块磁盘。它们挡着推出的路，需要先结束才能推出。</div>
               </div>
             </div>
 
             <div class="alert__section">
-              <div class="alert__label">正在占用 · 2 个</div>
+              <div class="alert__label" data-i18n="ds.occ.sectionCount">正在占用 · 2 个</div>
               <div class="alert__list">
                 <div class="alert__item">
                   <span class="appicon appicon--finder"><i data-i="folder"></i></span>
@@ -67,7 +68,7 @@
                 </div>
                 <div class="alert__item">
                   <span class="appicon appicon--photo"><i data-i="photo"></i></span>
-                  <span class="alert__item-name">图像捕捉</span>
+                  <span class="alert__item-name" data-i18n="ds.app.imageCapture">图像捕捉</span>
                   <span class="alert__item-pid">PID 5678</span>
                 </div>
               </div>
@@ -75,14 +76,14 @@
 
             <div class="callout">
               <i data-i="warn"></i>
-              <span>关闭它们会丢失未保存的内容。DiskEjector 会先请求正常退出，几秒后仍未退出的将被强制结束，然后重新尝试推出。</span>
+              <span data-i18n="ds.alert.busyFull">关闭它们会丢失未保存的内容。DiskEjector 会先请求正常退出，几秒后仍未退出的将被强制结束，然后重新尝试推出。</span>
             </div>
           </div>
 
           <div class="alert__foot">
-            <span class="alert__foot-note">此操作不可撤销</span>
-            <button class="btn btn--outline">取消</button>
-            <button class="btn btn--danger">关闭并推出</button>
+            <span class="alert__foot-note" data-i18n="ejectBusyIrreversibleCaption">此操作不可撤销</span>
+            <button class="btn btn--outline" data-i18n="cancel">取消</button>
+            <button class="btn btn--danger" data-i18n="closeAndEject">关闭并推出</button>
           </div>
         </div>
       </div>
@@ -101,27 +102,27 @@
             <div class="alert__head">
               <div class="alert__icon alert__icon--danger"><i data-i="x"></i></div>
               <div style="min-width:0">
-                <div class="alert__title">无法推出「Samsung T7」</div>
-                <div class="alert__sub">磁盘仍然被占用。有一个程序在这块盘上打开了文件，请关闭它后重试。</div>
+                <div class="alert__title" data-i18n="ds.eject.failTitle">无法推出「Samsung T7」</div>
+                <div class="alert__sub" data-i18n="ejectFailedInUseReason">磁盘仍然被占用。有一个程序在这块盘上打开了文件，请关闭它后重试。</div>
               </div>
             </div>
 
             <div class="alert__section">
-              <div class="alert__label">可能的原因</div>
+              <div class="alert__label" data-i18n="ejectFailedCausesTitle">可能的原因</div>
               <div style="display:flex;flex-direction:column;gap:6px;font-size:var(--fs-12);color:var(--text-2);line-height:1.55">
-                <div style="display:flex;gap:8px"><span>·</span><span>有程序仍在这块盘上打开了文件（常见于播放器、编辑器、备份工具）</span></div>
-                <div style="display:flex;gap:8px"><span>·</span><span>Spotlight 正在为这块盘建立索引，稍等片刻后重试</span></div>
+                <div style="display:flex;gap:8px"><span>·</span><span data-i18n="ejectFailedCauseFileOpen">有程序仍在这块盘上打开了文件（常见于播放器、编辑器、备份工具）</span></div>
+                <div style="display:flex;gap:8px"><span>·</span><span data-i18n="ejectFailedCauseSpotlight">Spotlight 正在为这块盘建立索引，稍等片刻后重试</span></div>
               </div>
             </div>
 
             <div class="callout callout--info">
               <i data-i="doc"></i>
-              <span>这次失败已记入日志（时间、磁盘名、错误原因），可在设置中查看。</span>
+              <span data-i18n="ds.alert.failedLogged">这次失败已记入日志（时间、磁盘名、错误原因），可在设置中查看。</span>
             </div>
           </div>
 
           <div class="alert__foot">
-            <button class="btn btn--outline">查看日志</button>
+            <button class="btn btn--outline" data-i18n="viewLog">查看日志</button>
             <button class="btn btn--primary">好</button>
           </div>
         </div>
@@ -201,6 +202,7 @@
 
 </div>
 </div>
+<script src="../assets/i18n.js"></script>
 <script src="../assets/ds.js"></script>
 </body>
 </html>

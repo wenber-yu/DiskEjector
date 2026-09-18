@@ -123,6 +123,111 @@
     document.documentElement.setAttribute('data-accent', a);
   };
 
+  // ==========================================================================
+  // 多语言（i18n）
+  // --------------------------------------------------------------------------
+  // 设计稿的界面文案**不再硬编码在 HTML 里**：HTML 里保留中文作为「源语言快照」，
+  // 真正显示的是 `i18n.js` 里当前语言那一套值。这样：
+  //   · 加一门语言 = 在 i18n.js 补一套值，页面一个字都不用改；
+  //   · 换语言后可以**量测英文下的布局** —— 本地化最容易破的就是固定尺寸容器。
+  //
+  // 标注方式：
+  //   <div data-i18n="showDockIcon">在 Dock 中显示图标</div>
+  //   <button data-i18n-attr="aria-label:refresh,title:refresh">…</button>
+  // 值里允许 HTML（<b> / <code> / <i data-i="gear">），回填后会重新水合图标。
+  // ==========================================================================
+
+  /// 缺键登记表：控制台会报出来，避免「漏翻了却看不出来」。
+  var _missing = {};
+
+  /// 取一条文案：当前语言 → 回退简体中文 → 回退键名本身。
+  function t(lang, key) {
+    var table = (window.DS_L10N || {})[lang] || {};
+    var fallback = (window.DS_L10N || {})['zh-Hans'] || {};
+    if (table[key] != null) return table[key];
+    if (fallback[key] != null) {
+      if (!_missing[key]) {
+        _missing[key] = 1;
+        console.warn('[ds] 语言 ' + lang + ' 缺少文案键：' + key + '（已回退简体中文）');
+      }
+      return fallback[key];
+    }
+    console.warn('[ds] 语言包里根本没有这个键：' + key);
+    return key;
+  }
+
+  /// 把当前语言的文案写回页面。
+  ///
+  /// **必须重新 hydrate**：`innerHTML` 会把 `<i data-i="gear">` 里已经注入的 `<svg>` 覆盖掉，
+  /// 不重新水合的话切到英文后**所有图标消失** —— 而 HTML 里明明有、DOM 里也还在，
+  /// 只是变成了空标签（与 §8.34 那个「水合前量测」是同一类问题）。
+  function applyLang(lang) {
+    document.querySelectorAll('[data-i18n]').forEach(function (el) {
+      el.innerHTML = t(lang, el.getAttribute('data-i18n'));
+    });
+    document.querySelectorAll('[data-i18n-attr]').forEach(function (el) {
+      el.getAttribute('data-i18n-attr').split(',').forEach(function (pair) {
+        var parts = pair.split(':');
+        if (parts.length !== 2) return;
+        // 属性里不能带 HTML 标签，剥掉再写（否则 aria-label 会被 VoiceOver 念成标签名）
+        el.setAttribute(parts[0], t(lang, parts[1]).replace(/<[^>]+>/g, ''));
+      });
+    });
+    hydrate(document);
+  }
+
+  window.dsSetLang = function (lang) {
+    document.documentElement.setAttribute('lang', lang);
+    document.querySelectorAll('[data-lang-btn]').forEach(function (b) {
+      b.setAttribute('aria-pressed', String(b.getAttribute('data-lang-btn') === lang));
+    });
+    applyLang(lang);
+    try { localStorage.setItem('ds-lang', lang); } catch (e) { /* file:// 下可能不可用，忽略 */ }
+  };
+
+  /// 生成语言切换栏。**自动插到 .doc__nav 后面，页面 HTML 不用改** ——
+  /// 否则 9 个页面各贴一份，漏一个就变成「那页切不了语言」。
+  function buildLangBar() {
+    var nav = document.querySelector('.doc__nav');
+    if (!nav || !window.DS_LANGS || document.querySelector('.langbar')) return;
+
+    var bar = document.createElement('div');
+    bar.className = 'langbar';
+
+    var label = document.createElement('span');
+    label.className = 'langbar__label';
+    label.textContent = t(currentLang(), appLanguage);
+    bar.appendChild(label);
+
+    window.DS_LANGS.forEach(function (l) {
+      var b = document.createElement('button');
+      b.className = 'pill';
+      b.setAttribute('type', 'button');
+      b.setAttribute('data-lang-btn', l.code);
+      b.setAttribute('aria-pressed', String(l.code === currentLang()));
+      b.textContent = l.name;          // 语言名不翻译，永远用各自语言的写法
+      b.addEventListener('click', function () { window.dsSetLang(l.code); });
+      bar.appendChild(b);
+    });
+
+    var hint = document.createElement('span');
+    hint.className = 'langbar__hint';
+    hint.textContent = '切换语言后，界面文案一起变；设计说明（中文论述）保持不变。';
+    bar.appendChild(hint);
+
+    nav.parentNode.insertBefore(bar, nav.nextSibling);
+  }
+
+  /// 当前语言：本地存储 → 浏览器语言 → 简体中文。
+  function currentLang() {
+    var saved = null;
+    try { saved = localStorage.getItem('ds-lang'); } catch (e) { /* 忽略 */ }
+    if (saved && (window.DS_L10N || {})[saved]) return saved;
+    var nav2 = (navigator.language || 'zh-Hans');
+    if ((window.DS_L10N || {})[nav2]) return nav2;
+    return 'zh-Hans';
+  }
+
   function init() {
     hydrate(document);
 
@@ -176,6 +281,12 @@
         head.setAttribute('aria-expanded', String(!collapsed));
       });
     });
+
+    // ---- 多语言 ----
+    // 顺序有讲究：**先建语言栏**（它会读文案），**再应用语言**
+    // （applyLang 用 innerHTML 覆盖节点，之后必须重新 hydrate，见 applyLang 的注释）。
+    buildLangBar();
+    window.dsSetLang(currentLang());
   }
 
   if (document.readyState === 'loading') {

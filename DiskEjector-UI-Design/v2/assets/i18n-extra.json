@@ -1,0 +1,244 @@
+{
+  "_comment": [
+    "设计稿专有文案（实现侧 xcstrings 里没有的）。手改本文件，然后跑：",
+    "  python3 tools/build_i18n.py",
+    "重新生成 assets/i18n.js —— 不要直接改 i18n.js，它是生成物。",
+    "",
+    "键名约定：",
+    "  ds.<域>.<用途>        例：ds.update.autoUpdate",
+    "  ds.sample.<...>       走查用的样本数据（磁盘名、容量数字、版本号），",
+    "                        各语言数字必须一致，否则走查图对不上。",
+    "值里允许 HTML：<b> / <code> / <br> / <i data-i=\"gear\">；回填后由 ds.js 重新水合图标。",
+    "注意 & 要写成 &amp;（值会被当 HTML 写回 innerHTML）。"
+  ],
+  "ds.update.upToDate": [
+    "上次检查：今天 14:30 · 已是最新版本",
+    "Last checked: Today 14:30 · Up to date",
+    "上次檢查：今天 14:30 · 已是最新版本"
+  ],
+  "ds.update.found": [
+    "发现 1.1.0 · 上次检查：今天 14:30",
+    "1.1.0 available · Last checked: Today 14:30",
+    "發現 1.1.0 · 上次檢查：今天 14:30"
+  ],
+  "ds.update.downloading": [
+    "正在后台下载 1.1.0",
+    "Downloading 1.1.0 in the background",
+    "正在背景下載 1.1.0"
+  ],
+  "ds.update.ready": [
+    "1.1.0 已下载完成",
+    "1.1.0 is ready to install",
+    "1.1.0 已下載完成"
+  ],
+  "ds.update.failed": [
+    "1.1.0 下载失败",
+    "1.1.0 download failed",
+    "1.1.0 下載失敗"
+  ],
+  "ds.update.skipped": [
+    "已跳过 1.1.0 · 再点一次仍会检查并提示",
+    "Skipped 1.1.0 · checking again still shows it",
+    "已跳過 1.1.0 · 再點一次仍會檢查並提示"
+  ],
+  "ds.alert.updateTitle": [
+    "磁盘推出助手 1.1.0 已发布",
+    "DiskEjector 1.1.0 is available",
+    "磁碟推出助理 1.1.0 已發佈"
+  ],
+  "ds.alert.updateSub": [
+    "当前 1.0.0（构建 42）→ 1.1.0（构建 58）<br>2026-09-17 · 12.4 MB",
+    "Current 1.0.0 (42) → 1.1.0 (58)<br>2026-09-17 · 12.4 MB",
+    "目前 1.0.0（組建 42）→ 1.1.0（組建 58）<br>2026-09-17 · 12.4 MB"
+  ],
+  "ds.alert.change1": [
+    "设置里新增<b>「自动更新」</b>开关，可后台下载并在重启后安装",
+    "New <b>Automatically Update</b> switch — downloads in the background and installs on restart",
+    "設定裡新增<b>「自動更新」</b>開關，可背景下載並在重啟後安裝"
+  ],
+  "ds.alert.change2": [
+    "修复未插入磁盘时骨架层一直不消失的问题",
+    "Fixes the skeleton view never disappearing when no disk is attached",
+    "修正未插入磁碟時骨架層一直不消失的問題"
+  ],
+  "ds.alert.change3": [
+    "推出失败弹窗新增<b>「查看日志」</b>直达入口",
+    "The eject-failure alert now has a direct <b>View Log</b> button",
+    "推出失敗彈窗新增<b>「檢視日誌」</b>直達入口"
+  ],
+  "ds.app.imageCapture": [
+    "图像捕捉",
+    "Image Capture",
+    "影像擷取"
+  ],
+  "ds.titlebar.disks2": [
+    "2 块",
+    "2 disks",
+    "2 台"
+  ],
+  "ds.titlebar.disks3": [
+    "3 块",
+    "3 disks",
+    "3 台"
+  ],
+  "ds.titlebar.disks6": [
+    "6 块",
+    "6 disks",
+    "6 台"
+  ],
+  "ds.sample.cap.usedFreeA": [
+    "已用 300 GB · 剩余 700 GB",
+    "300 GB used · 700 GB free",
+    "已用 300 GB · 剩餘 700 GB"
+  ],
+  "ds.sample.cap.usedFreeB": [
+    "已用 120 GB · 剩余 380 GB",
+    "120 GB used · 380 GB free",
+    "已用 120 GB · 剩餘 380 GB"
+  ],
+  "ds.sample.cap.usedFreeC": [
+    "已用 1.4 TB · 剩余 600 GB",
+    "1.4 TB used · 600 GB free",
+    "已用 1.4 TB · 剩餘 600 GB"
+  ],
+  "ds.sample.cap.compactA": [
+    "1 TB · 已用 300 GB · 剩余 700 GB",
+    "1 TB · 300 GB used · 700 GB free",
+    "1 TB · 已用 300 GB · 剩餘 700 GB"
+  ],
+  "ds.sample.cap.compactB": [
+    "500 GB · 已用 120 GB · 剩余 380 GB",
+    "500 GB · 120 GB used · 380 GB free",
+    "500 GB · 已用 120 GB · 剩餘 380 GB"
+  ],
+  "ds.sample.cap.compactC": [
+    "2 TB · 已用 1.4 TB · 剩余 600 GB",
+    "2 TB · 1.4 TB used · 600 GB free",
+    "2 TB · 已用 1.4 TB · 剩餘 600 GB"
+  ],
+  "ds.sample.cap.compactD": [
+    "1 TB · 已用 640 GB · 剩余 384 GB",
+    "1 TB · 640 GB used · 384 GB free",
+    "1 TB · 已用 640 GB · 剩餘 384 GB"
+  ],
+  "ds.sample.cap.compactE": [
+    "64 GB · 已用 12 GB · 剩余 52 GB",
+    "64 GB · 12 GB used · 52 GB free",
+    "64 GB · 已用 12 GB · 剩餘 52 GB"
+  ],
+  "ds.sample.cap.compactF": [
+    "4 TB · 已用 3.1 TB · 剩余 900 GB",
+    "4 TB · 3.1 TB used · 900 GB free",
+    "4 TB · 已用 3.1 TB · 剩餘 900 GB"
+  ],
+  "ds.occ.appsUsingA": [
+    "2 个程序正在占用",
+    "In use by 2 apps",
+    "2 個程式正在使用"
+  ],
+  "ds.occ.appsShort1": [
+    "1 个程序占用",
+    "1 app",
+    "1 個程式使用"
+  ],
+  "ds.occ.appsShort2": [
+    "2 个程序占用",
+    "2 apps",
+    "2 個程式使用"
+  ],
+  "ds.occ.sectionCount": [
+    "正在占用 · 2 个",
+    "In use · 2",
+    "使用中 · 2 個"
+  ],
+  "ds.occ.namedList": [
+    "占用程序：Finder、图像捕捉",
+    "In use by: Finder, Image Capture",
+    "使用程式：Finder、影像擷取"
+  ],
+  "ds.eject.confirmTitle": [
+    "即将推出「Samsung T7」",
+    "About to eject “Samsung T7”",
+    "即將推出「Samsung T7」"
+  ],
+  "ds.eject.failTitle": [
+    "无法推出「Samsung T7」",
+    "Can’t eject “Samsung T7”",
+    "無法推出「Samsung T7」"
+  ],
+  "ds.eject.reasonShort": [
+    "以下程序正在读写这块磁盘。",
+    "These apps are reading from or writing to this disk.",
+    "以下程式正在讀寫這塊磁碟。"
+  ],
+  "ds.empty.noDisks": [
+    "还没有可推出的磁盘",
+    "No disks to eject",
+    "還沒有可推出的磁碟"
+  ],
+  "ds.empty.noExternal": [
+    "未检测到外置磁盘",
+    "No external disks detected",
+    "未偵測到外接磁碟"
+  ],
+  "ds.empty.hintShort": [
+    "插入移动硬盘或 U 盘后，会自动出现在这里",
+    "Plug in a drive or USB stick and it shows up here",
+    "插入行動硬碟或 USB 隨身碟後，會自動出現在這裡"
+  ],
+  "ds.empty.hintLong": [
+    "插入移动硬盘或 U 盘后，会自动出现在这里。 系统盘与网络卷不会被列出。",
+    "Plug in a drive or USB stick and it shows up here. Startup disks and network volumes aren’t listed.",
+    "插入行動硬碟或 USB 隨身碟後，會自動出現在這裡。系統碟與網路磁碟區不會被列出。"
+  ],
+  "ds.onboarding.notListed": [
+    "若不在列表中，点左下角 ＋ 从「应用程序」添加",
+    "If it’s not listed, click ＋ at the bottom left and add it from Applications",
+    "若不在清單中，點左下角 ＋ 從「應用程式」加入"
+  ],
+  "ds.loginItem.awaiting": [
+    "等待系统批准",
+    "Awaiting system approval",
+    "等待系統核准"
+  ],
+  "ds.fda.granted": [
+    "已获得完全磁盘访问，占用检测正常",
+    "Full Disk Access granted — detection is working",
+    "已取得完整磁碟存取權，偵測正常"
+  ],
+  "ds.about.versionLine": [
+    "版本 1.0.0 · 构建 42 · Developer ID 直发版",
+    "Version 1.0.0 · Build 42 · Developer ID",
+    "版本 1.0.0 · 組建 42 · Developer ID 直發版"
+  ],
+  "ds.alert.busyShort": [
+    "关闭它们会丢失未保存的内容。",
+    "Quitting them loses any unsaved work.",
+    "關閉它們會遺失未儲存的內容。"
+  ],
+  "ds.alert.busyFull": [
+    "关闭它们会丢失未保存的内容。DiskEjector 会先请求正常退出，几秒后仍未退出的将被强制结束，然后重新尝试推出。",
+    "Quitting them loses any unsaved work. DiskEjector first asks them to quit, force-quits any that are still running a few seconds later, then tries to eject again.",
+    "關閉它們會遺失未儲存的內容。DiskEjector 會先請求正常退出，幾秒後仍未退出的將被強制結束，然後重新嘗試退出。"
+  ],
+  "ds.alert.failedLogged": [
+    "这次失败已记入日志（时间、磁盘名、错误原因），可在设置中查看。",
+    "This failure was logged (time, disk, reason) — open Settings to see it.",
+    "這次失敗已記入日誌（時間、磁碟名、錯誤原因），可在設定中查看。"
+  ],
+  "ds.alert.updateCalloutShort": [
+    "点「后台更新并重启」后，应用会在后台下载并校验签名，完成后自动重启完成安装。",
+    "Update &amp; Restart downloads and verifies the update in the background, then restarts to finish installing.",
+    "點「背景下載並重新啟動」後，App 會在背景下載並驗證簽章，完成後自動重新啟動完成安裝。"
+  ],
+  "ds.language.followSystemHint": [
+    "跟随系统语言（当前：简体中文）",
+    "Follows the system language (currently: Simplified Chinese)",
+    "跟隨系統語言（目前：繁體中文）"
+  ],
+  "ds.language.pendingHint": [
+    "将在重启后切换为 English",
+    "Will switch to English after restart",
+    "將在重新啟動後切換為 English"
+  ]
+}

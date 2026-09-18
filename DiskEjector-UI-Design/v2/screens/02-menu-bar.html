@@ -38,6 +38,7 @@
     <a href="05-settings.html">设置面板</a>
     <a href="06-states.html">状态矩阵</a>
     <a href="07-dark.html">深色模式</a>
+    <a href="08-update.html">版本更新</a>
   </nav>
 
   <p class="doc__eyebrow">Screen 02 · Menu Bar Popover</p>
@@ -65,7 +66,7 @@
         <div class="win win--popover" role="img" aria-label="菜单栏弹出面板，列出两块外置磁盘">
           <div class="pop__header">
             <span class="pop__appicon"><i data-i="eject"></i></span>
-            <span class="pop__appname">磁盘推出助手</span>
+            <span class="pop__appname" data-i18n="appName">磁盘推出助手</span>
             <span class="pop__count">2</span>
             <span style="flex:1"></span>
             <button class="iconbtn" title="刷新磁盘列表" aria-label="刷新磁盘列表"><i data-i="refresh"></i></button>
@@ -78,8 +79,8 @@
               <div class="mrow__icon mrow__icon--busy"><i data-i="drive"></i></div>
               <div class="mrow__text">
                 <div class="mrow__name">Samsung T7<span>（1 TB）</span></div>
-                <div class="mrow__cap">已用 300 GB · 剩余 700 GB</div>
-                <div class="mrow__occ">占用程序：Finder、图像捕捉</div>
+                <div class="mrow__cap" data-i18n="ds.sample.cap.usedFreeA">已用 300 GB · 剩余 700 GB</div>
+                <div class="mrow__occ" data-i18n="ds.occ.namedList">占用程序：Finder、图像捕捉</div>
               </div>
               <button class="mbtn mbtn--busy" title="关闭并推出 Samsung T7"
                       aria-label="关闭并推出 Samsung T7"><i data-i="eject"></i></button>
@@ -90,8 +91,8 @@
               <div class="mrow__icon"><i data-i="drive"></i></div>
               <div class="mrow__text">
                 <div class="mrow__name">WD Blue<span>（500 GB）</span></div>
-                <div class="mrow__cap">已用 120 GB · 剩余 380 GB</div>
-                <div class="mrow__occ mrow__occ--safe">可安全推出</div>
+                <div class="mrow__cap" data-i18n="ds.sample.cap.usedFreeB">已用 120 GB · 剩余 380 GB</div>
+                <div class="mrow__occ mrow__occ--safe" data-i18n="compactSafe">可安全推出</div>
               </div>
               <button class="mbtn" title="推出 WD Blue" aria-label="推出 WD Blue"><i data-i="eject"></i></button>
             </div>
@@ -116,7 +117,7 @@
       <div class="win win--popover">
         <div class="pop__header">
           <span class="pop__appicon"><i data-i="eject"></i></span>
-          <span class="pop__appname">磁盘推出助手</span>
+          <span class="pop__appname" data-i18n="appName">磁盘推出助手</span>
           <span class="pop__count">0</span>
           <span style="flex:1"></span>
           <button class="iconbtn" title="刷新磁盘列表" aria-label="刷新磁盘列表"><i data-i="refresh"></i></button>
@@ -127,8 +128,8 @@
             <div class="empty__art" style="width:56px;height:56px;margin-bottom:2px;border-radius:var(--r-lg)">
               <i data-i="drive"></i>
             </div>
-            <div style="font-size:var(--fs-13);font-weight:600">未检测到外置磁盘</div>
-            <div style="font-size:var(--fs-11);color:var(--text-2);line-height:1.55;max-width:250px">
+            <div style="font-size:var(--fs-13);font-weight:600" data-i18n="ds.empty.noExternal">未检测到外置磁盘</div>
+            <div style="font-size:var(--fs-11);color:var(--text-2);line-height:1.55;max-width:250px" data-i18n="ds.empty.hintShort">
               插入移动硬盘或 U 盘后，会自动出现在这里
             </div>
           </div>
@@ -189,6 +190,7 @@
 
 </div>
 </div>
+<script src="../assets/i18n.js"></script>
 <script src="../assets/ds.js"></script>
 </body>
 </html>

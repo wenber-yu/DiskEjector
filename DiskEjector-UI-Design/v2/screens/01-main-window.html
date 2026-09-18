@@ -31,6 +31,7 @@
     <a href="05-settings.html">设置面板</a>
     <a href="06-states.html">状态矩阵</a>
     <a href="07-dark.html">深色模式</a>
+    <a href="08-update.html">版本更新</a>
   </nav>
 
   <p class="doc__eyebrow">Screen 01 · Main Window</p>
@@ -49,8 +50,8 @@
       <!-- 标题栏 -->
       <header class="titlebar">
         <div class="traffic" aria-hidden="true"><i></i><i></i><i></i></div>
-        <span class="titlebar__title">外置磁盘</span>
-        <span class="titlebar__sub">3 块</span>
+        <span class="titlebar__title" data-i18n="externalDisksTitle">外置磁盘</span>
+        <span class="titlebar__sub" data-i18n="ds.titlebar.disks3">3 块</span>
         <span class="titlebar__spacer"></span>
         <div class="titlebar__tools">
           <button class="iconbtn" title="刷新磁盘列表" aria-label="刷新磁盘列表"><i data-i="refresh"></i></button>
@@ -77,7 +78,7 @@
                   <div class="row__meta">已用 <b>300 GB</b> · 剩余 <b>700 GB</b></div>
                 </div>
                 <div class="row__act">
-                  <button class="btn btn--danger btn--sm">
+                  <button class="btn btn--danger btn--sm" data-i18n="closeAndEject">
                     <i data-i="eject"></i>关闭并推出
                   </button>
                 </div>
@@ -90,15 +91,15 @@
                 <div class="evid evid--busy">
                   <div class="evid__head">
                     <i data-i="warn"></i>
-                    <span><span class="evid__count">2</span> 个程序正在占用</span>
+                    <span data-i18n="ds.occ.appsUsingA"><span class="evid__count">2</span> 个程序正在占用</span>
                     <button class="evid__hint" data-toggle-evid aria-expanded="true"
-                            style="border:0;background:transparent;font:inherit;color:var(--text-2);cursor:pointer;display:inline-flex;align-items:center;gap:3px;">
+                            style="border:0;background:transparent;font:inherit;color:var(--text-2);cursor:pointer;display:inline-flex;align-items:center;gap:3px;" data-i18n="collapseList">
                       收起清单 <i data-i="chevronDown"></i>
                     </button>
                   </div>
                   <div class="evid__chips">
                     <span class="chip"><span class="appicon appicon--finder"><i data-i="folder"></i></span><span class="chip__name">Finder</span></span>
-                    <span class="chip"><span class="appicon appicon--photo"><i data-i="photo"></i></span><span class="chip__name">图像捕捉</span></span>
+                    <span class="chip"><span class="appicon appicon--photo"><i data-i="photo"></i></span><span class="chip__name" data-i18n="ds.app.imageCapture">图像捕捉</span></span>
                   </div>
                 </div>
               </div>
@@ -120,7 +121,7 @@
                   <div class="row__meta">已用 <b>120 GB</b> · 剩余 <b>380 GB</b></div>
                 </div>
                 <div class="row__act">
-                  <button class="btn btn--primary btn--sm"><i data-i="eject"></i>推出</button>
+                  <button class="btn btn--primary btn--sm" data-i18n="eject"><i data-i="eject"></i>推出</button>
                 </div>
               </div>
               <div class="meter">
@@ -129,7 +130,7 @@
               </div>
               <div class="row__evid">
                 <div class="evid evid--safe">
-                  <span class="statusline"><i data-i="check"></i>没有程序占用，可以安全推出</span>
+                  <span class="statusline" data-i18n="safeToEjectConclusion"><i data-i="check"></i>没有程序占用，可以安全推出</span>
                 </div>
               </div>
             </div>
@@ -150,7 +151,7 @@
                   <div class="row__meta">已用 <b>1.4 TB</b> · 剩余 <b>600 GB</b></div>
                 </div>
                 <div class="row__act">
-                  <button class="btn btn--primary btn--sm"><i data-i="eject"></i>推出</button>
+                  <button class="btn btn--primary btn--sm" data-i18n="eject"><i data-i="eject"></i>推出</button>
                 </div>
               </div>
               <div class="meter">
@@ -159,7 +160,7 @@
               </div>
               <div class="row__evid">
                 <div class="evid evid--safe">
-                  <span class="statusline"><i data-i="check"></i>没有程序占用，可以安全推出</span>
+                  <span class="statusline" data-i18n="safeToEjectConclusion"><i data-i="check"></i>没有程序占用，可以安全推出</span>
                 </div>
               </div>
             </div>
@@ -183,8 +184,8 @@
       <div class="win win--main">
         <header class="titlebar">
           <div class="traffic" aria-hidden="true"><i></i><i></i><i></i></div>
-          <span class="titlebar__title">外置磁盘</span>
-          <span class="titlebar__sub">2 块</span>
+          <span class="titlebar__title" data-i18n="externalDisksTitle">外置磁盘</span>
+          <span class="titlebar__sub" data-i18n="ds.titlebar.disks2">2 块</span>
           <span class="titlebar__spacer"></span>
           <div class="titlebar__tools">
             <button class="iconbtn" title="刷新磁盘列表" aria-label="刷新磁盘列表"><i data-i="refresh"></i></button>
@@ -194,10 +195,10 @@
 
         <div class="banner">
           <span class="banner__icon"><i data-i="lock"></i></span>
-          <span class="banner__text">
+          <span class="banner__text" data-i18n="fdaBannerLead">
             需要「完全磁盘访问」才能看到<strong>是谁占用了磁盘</strong>
           </span>
-          <button class="btn btn--outline btn--sm">打开系统设置</button>
+          <button class="btn btn--outline btn--sm" data-i18n="openSystemSettings">打开系统设置</button>
         </div>
 
         <div class="scrollarea">
@@ -214,7 +215,7 @@
                     <div class="row__meta">已用 <b>300 GB</b> · 剩余 <b>700 GB</b></div>
                   </div>
                   <div class="row__act">
-                    <button class="btn btn--primary btn--sm"><i data-i="eject"></i>推出</button>
+                    <button class="btn btn--primary btn--sm" data-i18n="eject"><i data-i="eject"></i>推出</button>
                   </div>
                 </div>
                 <div class="meter">
@@ -225,8 +226,8 @@
                   <div class="evid evid--unknown">
                     <div class="evid__head">
                       <i data-i="info"></i>
-                      <span>占用情况未知</span>
-                      <span class="evid__hint">授权后可检测</span>
+                      <span data-i18n="unknownEvidenceTitle">占用情况未知</span>
+                      <span class="evid__hint" data-i18n="unknownEvidenceHint">授权后可检测</span>
                     </div>
                   </div>
                 </div>
@@ -245,7 +246,7 @@
                     <div class="row__meta">已用 <b>120 GB</b> · 剩余 <b>380 GB</b></div>
                   </div>
                   <div class="row__act">
-                    <button class="btn btn--primary btn--sm"><i data-i="eject"></i>推出</button>
+                    <button class="btn btn--primary btn--sm" data-i18n="eject"><i data-i="eject"></i>推出</button>
                   </div>
                 </div>
                 <div class="meter">
@@ -256,8 +257,8 @@
                   <div class="evid evid--unknown">
                     <div class="evid__head">
                       <i data-i="info"></i>
-                      <span>占用情况未知</span>
-                      <span class="evid__hint">授权后可检测</span>
+                      <span data-i18n="unknownEvidenceTitle">占用情况未知</span>
+                      <span class="evid__hint" data-i18n="unknownEvidenceHint">授权后可检测</span>
                     </div>
                   </div>
                 </div>
@@ -319,6 +320,7 @@
 
 </div>
 </div>
+<script src="../assets/i18n.js"></script>
 <script src="../assets/ds.js"></script>
 </body>
 </html>

@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<html lang="zh-CN" data-theme="light" data-accent="blue">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<html lang="zh-CN" data-theme="light" data-accent="blue" data-page-node-id="7Eg3Ns69J0GGIpB1z4nLxz">
+<head data-page-node-id="CbGflOrBb8H7djOfw7NWZt">
+<meta charset="UTF-8" data-page-node-id="pIWtaMqPEHS9GRs5fUdWi3">
+<meta name="viewport" content="width=device-width, initial-scale=1.0" data-page-node-id="olro6qvQIfrMxF0uHRkbxy">
 <title>设置面板 · DiskEjector UI v2</title>
-<link rel="stylesheet" href="../assets/ds.css">
+<link rel="stylesheet" href="../assets/ds.css" data-page-node-id="pmt2aCojZpc6OBrFDqrK1w">
 <style>
   .note-list { margin: 0; padding-left: 18px; font-size: var(--fs-12); color: var(--text-2); line-height: 1.7; }
   .note-list li { margin-bottom: 6px; }
@@ -37,71 +37,72 @@
   .linkbtn svg { width: 12px; height: 12px; }
 </style>
 </head>
-<body class="ds">
-<div class="wallpaper">
-<div class="doc">
+<body class="ds" data-page-node-id="m4epPCE5UlaxC17c7n8AA1">
+<div class="wallpaper" data-page-node-id="RJyr8lnz1VFtRPJW4vzdpZ">
+<div class="doc" data-page-node-id="4CiAWRlBK4XDv6DcjLkcUT">
 
-  <nav class="doc__nav">
-    <a href="../index.html">设计规范总览</a>
-    <a href="01-main-window.html">主窗口</a>
-    <a href="02-menu-bar.html">菜单栏面板</a>
-    <a href="03-eject-flow.html">推出流程弹窗</a>
-    <a href="04-onboarding.html">授权引导</a>
-    <a href="05-settings.html" aria-current="page">设置面板</a>
-    <a href="06-states.html">状态矩阵</a>
-    <a href="07-dark.html">深色模式</a>
+  <nav class="doc__nav" data-page-node-id="0R9lAaRfIRioc1qkB3Nqrt">
+    <a href="../index.html" data-page-node-id="lpEVHGVThRoqMJH5Hz62wn">设计规范总览</a>
+    <a href="01-main-window.html" data-page-node-id="rNeRG2S8jmzd3Ci7BD9arR">主窗口</a>
+    <a href="02-menu-bar.html" data-page-node-id="hPUB6oXfIqrk2Ri8BSBGHH">菜单栏面板</a>
+    <a href="03-eject-flow.html" data-page-node-id="zavIhZYeMGV0rE4EifiO1Y">推出流程弹窗</a>
+    <a href="04-onboarding.html" data-page-node-id="QErJIAno2PocvxBwRfeZlI">授权引导</a>
+    <a href="05-settings.html" aria-current="page" data-page-node-id="89UXi8d3kmqQeICBbB5LRB">设置面板</a>
+    <a href="06-states.html" data-page-node-id="hboDR3ArMMoCZIzGiShD7w">状态矩阵</a>
+    <a href="07-dark.html" data-page-node-id="O2rOa1tVGB3e4SGuXRw1nO">深色模式</a>
+    <a href="08-update.html" data-page-node-id="4GKI4kGHOHveiYVinzT5V5">版本更新</a>
   </nav>
 
-  <p class="doc__eyebrow">Screen 05 · Settings</p>
-  <h1 class="doc__title">设置面板</h1>
-  <p class="doc__lede">
-    设置面板只有四组内容，且<strong>每一组都对应一个用户会主动产生的疑问</strong>：
-    「能不能别那么透明」「能不能换个颜色」「能不能开机就在」「出问题了去哪看」。
+  <p class="doc__eyebrow" data-page-node-id="YJd2dLWbbIUuQBZy4x0CND">Screen 05 · Settings</p>
+  <h1 class="doc__title" data-page-node-id="ACvx5AubuxSDumGOpkPfGD">设置面板</h1>
+  <p class="doc__lede" data-page-node-id="GX5V9yVEQOiCtVU6cg2Gzl">
+    设置面板只有五组内容，且<strong data-page-node-id="6KVx5ucYCmD1jUFjM1SWfu">每一组都对应一个用户会主动产生的疑问</strong>：
+    「能不能别那么透明」「能不能换个颜色」「能不能开机就在」「出问题了去哪看」「会不会自己更新」。
     没有对应问题的项，就不该出现在这里。
   </p>
 
-  <div class="artboard" style="gap:64px">
+  <div class="artboard" style="gap:64px" data-page-node-id="5jsjQ2Hx5Wf30IPzgNp2fU">
 
     <!-- ============ 设置面板 ============ -->
-    <div class="frame">
-      <div class="frame__label">440 × 566 · 四组内容全部可见，无需滚动</div>
+    <div class="frame" data-page-node-id="IRbUW2f4WrY5IVqh8CQSDG">
+      <div class="frame__label" data-page-node-id="QzG1X6DuUzyB28aRcm2EYM">480 × 800 · 五组内容全部可见（与产品侧同数；浏览器切英文时底部留白被吃掉，见 §8.43）</div>
 
-      <div class="win" style="width:var(--w-settings);height:566px">
-        <div class="shead">
-          <span class="shead__title">设置</span>
-          <span style="flex:1"></span>
-          <button class="btn btn--outline btn--sm">完成</button>
+      <div class="win" style="width:var(--w-settings);height:var(--h-settings)" data-page-node-id="9rdqMgyeX5rGq8fy7HlgUX">
+        <div class="shead" data-page-node-id="ZD25WhZGodQHWFbYl6ZFTs">
+          <span class="shead__title" data-page-node-id="z7Owz4JYBALVkVJoGdUqWR" data-i18n="openSettings">设置</span>
+          <span style="flex:1" data-page-node-id="FlQ9xXgCbrqOoeRQMzPSpL"></span>
+          <button class="btn btn--outline btn--sm" data-page-node-id="qveLmrDeye3FQKORBNPDVH" data-i18n="done">完成</button>
         </div>
 
-        <div class="settings__body">
+        <div class="settings__body" data-page-node-id="i4xpcjn7RtPJ3uefSrGYLn">
 
           <!-- 外观 -->
-          <div class="sgroup">
-            <div class="sgroup__title">外观</div>
-            <div class="scard">
-              <div class="sline">
-                <div class="sline__text">
-                  <div class="sline__label">视觉效果</div>
-                  <div class="sline__desc">透明模式使用系统毛玻璃；色调模式使用固定的浅色背景。</div>
+          <div class="sgroup" data-page-node-id="uaN7NHMX1l352VD8wtkpxy">
+            <div class="sgroup__title" data-page-node-id="PC7Ie1KjGQ1WXf5rv3xevn" data-i18n="settingsGroupAppearance">外观</div>
+            <div class="scard" data-page-node-id="7Dxk4AmyWL9hdVidjkx7Fm">
+              <div class="sline" data-page-node-id="J8S3zmU2vVwMOsO8Gw4t0P">
+                <div class="sline__text" data-page-node-id="ATdHiNVCFOJ7VGdGmFOKYa">
+                  <div class="sline__label" data-page-node-id="SZnB0zhGzeL8db9zaa3VKv" data-i18n="visualEffects">视觉效果</div>
+                  <div class="sline__desc" data-page-node-id="9fp6NfCqsnhH9EAtsV609k" data-i18n="transparentModeFootnote">透明模式使用系统毛玻璃；色调模式使用固定的浅色背景。</div>
                 </div>
-                <div class="sline__control">
-                  <div class="seg" role="tablist">
-                    <button class="seg__opt" role="tab" aria-selected="true">透明</button>
-                    <button class="seg__opt" role="tab" aria-selected="false">色调</button>
+                <div class="sline__control" data-page-node-id="0OZCEh9O7Hyd6dmWhlPFYH">
+                  <div class="seg" role="tablist" data-page-node-id="BGlUDxDoq160uBFiZEtlvz">
+                    <button class="seg__opt" role="tab" aria-selected="true" data-page-node-id="dzTpBnRvdcoB9DLsoAjTZm" data-i18n="transparentModeShort">透明</button>
+                    <button class="seg__opt" role="tab" aria-selected="false" data-page-node-id="V7EpUMiVAf5qxJMxfU5Ygb" data-i18n="tintedModeShort">色调</button>
                   </div>
                 </div>
               </div>
 
-              <div class="sline">
-                <div class="sline__text">
-                  <div class="sline__label">强调色</div>
+              <div class="sline" data-page-node-id="pIcVBIVgECh4ByXgu1d5a0">
+                <div class="sline__text" data-page-node-id="8YN3DAR4TPoDg3JKQBcQ8P">
+                  <div class="sline__label" data-page-node-id="8Yum6sgLyzGYHkoEcbvBRK" data-i18n="accentColor">强调色</div>
                 </div>
-                <div class="sline__control">
-                  <div class="swatches">
-                    <button class="swatch swatch--blue"   data-accent-btn="blue"   aria-pressed="true"  aria-label="蓝色"></button>
-                    <button class="swatch swatch--purple" data-accent-btn="purple" aria-pressed="false" aria-label="紫色"></button>
-                    <button class="swatch swatch--orange" data-accent-btn="orange" aria-pressed="false" aria-label="橙色"></button>
-                    <button class="swatch swatch--green"  data-accent-btn="green"  aria-pressed="false" aria-label="绿色"></button>
+                <div class="sline__control" data-page-node-id="ZnlXf9PDlS5B2VQx31jRRB">
+                  <div class="swatches" data-page-node-id="a9S4kaN8rS3ddTk8FsuZXE">
+                    <button class="swatch swatch--blue"   data-accent-btn="blue"   aria-pressed="true"  aria-label="蓝色" data-page-node-id="FIC9i4ipYjURIOZQqNCl7I"></button>
+                    <button class="swatch swatch--purple" data-accent-btn="purple" aria-pressed="false" aria-label="紫色" data-page-node-id="wH7wzC0QqhXhyVylHkyxQg"></button>
+                    <button class="swatch swatch--orange" data-accent-btn="orange" aria-pressed="false" aria-label="橙色" data-page-node-id="adXDTTezPELPrHHHZialrp"></button>
+                    <button class="swatch swatch--green"  data-accent-btn="green"  aria-pressed="false" aria-label="绿色" data-page-node-id="iFafCujI6B1vIxKKkeG3S2"></button>
                   </div>
                 </div>
               </div>
@@ -109,135 +110,224 @@
           </div>
 
           <!-- 通用 -->
-          <div class="sgroup">
-            <div class="sgroup__title">通用</div>
-            <div class="scard">
+          <div class="sgroup" data-page-node-id="ohKIXpa9l7YDfHQezY32vL">
+            <div class="sgroup__title" data-page-node-id="TLvShbmGavoGhaiItN6Y4M" data-i18n="settingsGroupGeneral">通用</div>
+            <div class="scard" data-page-node-id="VYlfcDn0YgcHbkSurL4y3z">
               <div class="sline">
                 <div class="sline__text">
-                  <div class="sline__label">在 Dock 中显示图标</div>
+                  <div class="sline__label" data-i18n="appLanguage">语言</div>
+                  <div class="sline__desc" data-i18n="ds.language.followSystemHint">跟随系统语言（当前：简体中文）</div>
                 </div>
                 <div class="sline__control">
-                  <button class="switch" role="switch" aria-checked="false" aria-label="在 Dock 中显示图标"></button>
+                  <span class="popup" role="button" aria-haspopup="listbox" aria-expanded="false" aria-label="语言">
+                    <span data-i18n="followSystemLanguage">跟随系统</span>
+                    <i data-i="chevronDown"></i>
+                  </span>
                 </div>
               </div>
 
-              <div class="sline">
-                <div class="sline__text">
-                  <div class="sline__label">登录时启动</div>
-                  <div class="sline__desc">开机后自动驻留菜单栏，插盘即可用。</div>
+
+              <div class="sline" data-page-node-id="XxXrvYHGgS3EPimV3AaDz0">
+                <div class="sline__text" data-page-node-id="odxlhTGQoRqFJb6XWdXnV8">
+                  <div class="sline__label" data-page-node-id="M7ZQRxckglgWO5HHGqrzdC" data-i18n="showDockIcon">在 Dock 中显示图标</div>
                 </div>
-                <div class="sline__control">
-                  <button class="switch" role="switch" aria-checked="true" aria-label="登录时启动"></button>
+                <div class="sline__control" data-page-node-id="U1UtYK8XpxHsJjGBDoqxVV">
+                  <button class="switch" role="switch" aria-checked="false" aria-label="在 Dock 中显示图标" data-page-node-id="E7dRDrJqsRGuinmObCSuFI"></button>
+                </div>
+              </div>
+
+              <div class="sline" data-page-node-id="CM7VLcR8ztPVBxpEqzVvci">
+                <div class="sline__text" data-page-node-id="mVDPDmDNyUXNxKdfYrDduj">
+                  <div class="sline__label" data-page-node-id="VzQWn231AJp2v87NaXgkUC" data-i18n="launchAtLogin">登录时启动</div>
+                  <div class="sline__desc" data-page-node-id="j5sLRAiVEAs9iLK8ycBpkY" data-i18n="launchAtLoginFootnote">开机后自动驻留菜单栏，插盘即可用。</div>
+                </div>
+                <div class="sline__control" data-page-node-id="IDMdDqwqdhvaFSA9YPfAMW">
+                  <button class="switch" role="switch" aria-checked="true" aria-label="登录时启动" data-page-node-id="5EI2d8F531kupTqNQ6GDhj"></button>
                 </div>
               </div>
             </div>
           </div>
 
           <!-- 诊断 -->
-          <div class="sgroup">
-            <div class="sgroup__title">诊断</div>
-            <div class="scard">
-              <div class="sline">
-                <div class="sline__text">
-                  <div class="sline__label">错误日志</div>
-                  <div class="sline__desc">记录每次推出失败的时间、磁盘与原因。</div>
+          <div class="sgroup" data-page-node-id="7Tqtld1ii7gzSvi2ZS4Txx">
+            <div class="sgroup__title" data-page-node-id="mSeruOpscieUztOvhodVtq" data-i18n="settingsGroupDiagnostics">诊断</div>
+            <div class="scard" data-page-node-id="KWhsfFZoKjWRelBOss5v02">
+              <div class="sline" data-page-node-id="fSCVWwLYIv6B5t2T57da0C">
+                <div class="sline__text" data-page-node-id="GHCOkI5iubq1JMZ2zhTv3b">
+                  <div class="sline__label" data-page-node-id="R0xJfNo7ATVPDXCmosryFo" data-i18n="logSectionTitle">错误日志</div>
+                  <div class="sline__desc" data-page-node-id="v9aAud95IUNOewy1F0Soif" data-i18n="logSectionHint">记录每次推出失败的时间、磁盘与原因。</div>
                 </div>
-                <div class="sline__control">
-                  <button class="linkbtn">在访达中显示 <i data-i="externalLink"></i></button>
+                <div class="sline__control" data-page-node-id="nqCmakCjLkTfxLnAMxk7zn">
+                  <button class="linkbtn" data-page-node-id="1oGaWv6oY91sLon17LeZjD" data-i18n="revealLogInFinder">在访达中显示 <i data-i="externalLink" data-page-node-id="9PfOefKgZ5TogVGyqjP6Pp"></i></button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 更新 -->
+          <div class="sgroup" data-page-node-id="NfsML53Knw81jvtSx06Zbh">
+            <div class="sgroup__title" data-page-node-id="43EnelFN41OYLN2H6aPKL2" data-i18n="settingsGroupUpdates">更新</div>
+            <div class="scard" data-page-node-id="H4nu6LchEPBtVuhEP2zqaf">
+              <div class="sline" data-page-node-id="TAqqICKH16IH7rvxV79Qv7">
+                <div class="sline__text" data-page-node-id="crgNEyMbun7ykSuY024hk0">
+                  <div class="sline__label" data-page-node-id="Eh3vAyddq6IfVLUmpAXAVq" data-i18n="autoUpdate">自动更新</div>
+                  <div class="sline__desc" data-page-node-id="LDVDtEiXWUaJw2B3wlPcnT" data-i18n="autoUpdateHint">有新版本时自动下载，并在下次启动时安装。</div>
+                </div>
+                <div class="sline__control" data-page-node-id="fAcbdpbz1vBrVcMaTaYWhI">
+                  <button class="switch" role="switch" aria-checked="true" aria-label="自动更新" data-page-node-id="FFXUflDtto6QzW0gDN2Wwd"></button>
+                </div>
+              </div>
+
+              <div class="sline" data-page-node-id="nIUNM6WIOXMMoVGH7B2rRQ">
+                <div class="sline__text" data-page-node-id="azflgo8BSh0lKoPqwKiUWH">
+                  <div class="sline__label" data-page-node-id="mHkRquqCzUpCvNRAB0kwoL" data-i18n="checkForUpdates">检查更新</div>
+                  <div class="sline__desc" data-page-node-id="M7Dhl0rV93HA207naPzBot" data-i18n="ds.update.upToDate">上次检查：今天 14:30 · 已是最新版本</div>
+                </div>
+                <div class="sline__control" data-page-node-id="XhUVmfHBaucPTxuFan0Xw6">
+                  <button class="btn btn--outline btn--sm" data-page-node-id="SraAw5s2By9y56BY4zD4lT" data-i18n="checkForUpdates">检查更新</button>
                 </div>
               </div>
             </div>
           </div>
 
           <!-- 关于 -->
-          <div class="aboutrow">
-            <div class="aboutrow__icon"><i data-i="eject"></i></div>
-            <div style="flex:1;min-width:0">
-              <div style="font-size:var(--fs-13);font-weight:600">磁盘推出助手</div>
-              <div style="font-size:var(--fs-11);color:var(--text-3);margin-top:2px;font-variant-numeric:tabular-nums">
+          <div class="aboutrow" data-page-node-id="xWBAnBEXcxHfdJV4EGADzu">
+            <div class="aboutrow__icon" data-page-node-id="SR4QFqIdnkTonhcb1Hh6Ef"><i data-i="eject" data-page-node-id="aLU7lSRwdVWoF9QYE5DwFw"></i></div>
+            <div style="flex:1;min-width:0" data-page-node-id="3UWShp96LFwktid1VRzhVi">
+              <div style="font-size:var(--fs-13);font-weight:600" data-page-node-id="SvsEb31ViKhcxeoSTywG3M" data-i18n="appName">磁盘推出助手</div>
+              <div style="font-size:var(--fs-11);color:var(--text-3);margin-top:2px;font-variant-numeric:tabular-nums" data-page-node-id="zVhkh2W1MQdtL6cyO8pBFW" data-i18n="ds.about.versionLine">
                 版本 1.0.0 · 构建 42 · Developer ID 直发版
               </div>
             </div>
-            <button class="btn btn--outline btn--sm">检查更新</button>
           </div>
 
         </div>
       </div>
     </div>
 
-    <!-- ============ 登录项需批准 ============ -->
+    <!-- ============ 改了语言、待重启 ============ -->
     <div class="frame">
-      <div class="frame__label">通用分组 · 登录项需系统批准时的第三态</div>
+      <div class="frame__label">通用分组 · 改了语言但还没重启的第三态</div>
 
       <div style="width:400px;padding:20px;border-radius:var(--r-lg);background:rgba(255,255,255,0.66);box-shadow:var(--e2);-webkit-backdrop-filter:blur(20px);backdrop-filter:blur(20px)">
         <div class="sgroup" style="margin:0">
-          <div class="sgroup__title">通用</div>
+          <div class="sgroup__title" data-i18n="settingsGroupGeneral">通用</div>
           <div class="scard">
             <div class="sline">
               <div class="sline__text">
-                <div class="sline__label">在 Dock 中显示图标</div>
+                <div class="sline__label" data-i18n="appLanguage">语言</div>
+                <div class="sline__desc" data-i18n="ds.language.pendingHint">将在重启后切换为 English</div>
               </div>
               <div class="sline__control">
-                <button class="switch" role="switch" aria-checked="false" aria-label="在 Dock 中显示图标"></button>
-              </div>
-            </div>
-
-            <div class="sline">
-              <div class="sline__text">
-                <div class="sline__label">登录时启动</div>
-              </div>
-              <div class="sline__control">
-                <button class="switch" role="switch" aria-checked="true" aria-label="登录时启动"></button>
-              </div>
-            </div>
-
-            <div class="sline" style="background:var(--warn-soft)">
-              <div class="sline__text">
-                <div class="sline__label" style="color:var(--warn-text);font-weight:500">等待系统批准</div>
-                <div class="sline__desc">注册已提交，但还需在系统设置中手动打开，否则不会自动启动。</div>
-              </div>
-              <div class="sline__control">
-                <button class="btn btn--outline btn--sm">打开系统设置</button>
+                <span class="popup" role="button" aria-haspopup="listbox" aria-expanded="false" aria-label="语言">
+                  <span>English</span>
+                  <i data-i="chevronDown"></i>
+                </span>
+                <button class="btn btn--outline btn--sm" data-i18n="restartNow">立即重启</button>
               </div>
             </div>
           </div>
         </div>
       </div>
 
-      <p class="spec-note" style="max-width:400px">
-        <b>这是一个必须显式画出的第三态。</b>若把登录项只按布尔值建模，开关会显示「已开启」
-        但实际不启动——用户以为设好了，重启后却发现没有。因此 <code>.requiresApproval</code>
+      <p class="spec-note" style="max-width:440px">
+        <b>为什么「改了语言」必须画出一个待重启态。</b>
+        macOS 只在<b>启动时</b>读一次语言偏好（<code>AppleLanguages</code>），改完不可能当场生效。
+        用户选了 English、界面纹丝不动 —— 不写这一行，他无法分辨
+        「切换本来就要等重启」还是「这个功能坏了」。
+        这与登录项的「等待系统批准」、更新的「已跳过 1.1.0」是同一类错误：
+        <b>第三态不画，就等于没有</b>。
+        再给一个「立即重启」按钮，是让这个状态<b>可立刻见效</b>，而不是让人干等或去猜。
+      </p>
+    </div>
+
+    <!-- ============ 登录项需批准 ============ -->
+    <div class="frame" data-page-node-id="8y7duBkRcq2KgK76MTbKGo">
+      <div class="frame__label" data-page-node-id="tGcCronvW48RXi1JspRrij">通用分组 · 登录项需系统批准时的第三态</div>
+
+      <div style="width:400px;padding:20px;border-radius:var(--r-lg);background:rgba(255,255,255,0.66);box-shadow:var(--e2);-webkit-backdrop-filter:blur(20px);backdrop-filter:blur(20px)" data-page-node-id="WK4cL9RXiT6YVkGJAPh2B7">
+        <div class="sgroup" style="margin:0" data-page-node-id="Izu5xH80a91u5FCz2QE5Iw">
+          <div class="sgroup__title" data-page-node-id="5cVE0Hqytj9j3BS5PM2fQ8" data-i18n="settingsGroupGeneral">通用</div>
+          <div class="scard" data-page-node-id="cYGtr6kEVg57vfjvXZjGxe">
+              <div class="sline">
+                <div class="sline__text">
+                  <div class="sline__label" data-i18n="appLanguage">语言</div>
+                  <div class="sline__desc" data-i18n="ds.language.followSystemHint">跟随系统语言（当前：简体中文）</div>
+                </div>
+                <div class="sline__control">
+                  <span class="popup" role="button" aria-haspopup="listbox" aria-expanded="false" aria-label="语言">
+                    <span data-i18n="followSystemLanguage">跟随系统</span>
+                    <i data-i="chevronDown"></i>
+                  </span>
+                </div>
+              </div>
+
+
+            <div class="sline" data-page-node-id="JxKeZIEhsXBTYToQMDNosf">
+              <div class="sline__text" data-page-node-id="vqwDbqsB9Gjnj22RZCcvVb">
+                <div class="sline__label" data-page-node-id="JIA0ccQ0WHXDW67Xb7yJpJ" data-i18n="showDockIcon">在 Dock 中显示图标</div>
+              </div>
+              <div class="sline__control" data-page-node-id="3wToCM78ogdKQduvPZ8xQf">
+                <button class="switch" role="switch" aria-checked="false" aria-label="在 Dock 中显示图标" data-page-node-id="aER6UmTr0RluQIDT6f4aLf"></button>
+              </div>
+            </div>
+
+            <div class="sline" data-page-node-id="lqwEqixcMDV64bRRtfTNKX">
+              <div class="sline__text" data-page-node-id="uEuxEEHozyTOxQUkxCIzCj">
+                <div class="sline__label" data-page-node-id="EzFtLnD9XyPaOLLEtZJ6JC" data-i18n="launchAtLogin">登录时启动</div>
+              </div>
+              <div class="sline__control" data-page-node-id="2XLISlGlhM3ZprT163A3DH">
+                <button class="switch" role="switch" aria-checked="true" aria-label="登录时启动" data-page-node-id="oKu9nCHXcotvTRVVa7Zg4H"></button>
+              </div>
+            </div>
+
+            <div class="sline" style="background:var(--warn-soft)" data-page-node-id="lWr293MFOlFlGkZo7ju7JC">
+              <div class="sline__text" data-page-node-id="rTYyFLR1qQUeT5toKxnBWK">
+                <div class="sline__label" style="color:var(--warn-text);font-weight:500" data-page-node-id="xFA6CqYakARwyvftp8iprF" data-i18n="ds.loginItem.awaiting">等待系统批准</div>
+                <div class="sline__desc" data-page-node-id="8TvLQZrSrGVm0OW2f84RnJ" data-i18n="launchAtLoginPendingHint">注册已提交，但还需在系统设置中手动打开，否则不会自动启动。</div>
+              </div>
+              <div class="sline__control" data-page-node-id="iLG81xoWna6BU2et13qrto">
+                <button class="btn btn--outline btn--sm" data-page-node-id="Df2LyeUFqMauqcnSwAFAb3" data-i18n="openSystemSettings">打开系统设置</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <p class="spec-note" style="max-width:400px" data-page-node-id="FF3LNXeVJDhUxueGxbvg9E">
+        <b data-page-node-id="dUUkHXDdB3LWHMLUc0wW0u">这是一个必须显式画出的第三态。</b>若把登录项只按布尔值建模，开关会显示「已开启」
+        但实际不启动——用户以为设好了，重启后却发现没有。因此 <code data-page-node-id="fTdBNjKiGn3qrU6HQOWeVR">.requiresApproval</code>
         必须单独成行、用琥珀底强调，并给出唯一动作入口；此状态下反复调用注册不会推进，
         所以不提供「重试」按钮。
       </p>
     </div>
 
     <!-- ============ 强调色 ============ -->
-    <div class="frame">
-      <div class="frame__label">强调色 · 界面即时响应，无需重启</div>
-      <div style="width:340px;padding:16px;border-radius:var(--r-md);background:rgba(255,255,255,0.7);box-shadow:var(--e2)">
-        <div style="display:flex;align-items:center;gap:10px">
-          <div style="flex:1;font-size:var(--fs-13);font-weight:500">强调色</div>
-          <div class="swatches">
-            <button class="swatch swatch--blue"   data-accent-btn="blue"   aria-pressed="true"  aria-label="蓝色"></button>
-            <button class="swatch swatch--purple" data-accent-btn="purple" aria-pressed="false" aria-label="紫色"></button>
-            <button class="swatch swatch--orange" data-accent-btn="orange" aria-pressed="false" aria-label="橙色"></button>
-            <button class="swatch swatch--green"  data-accent-btn="green"  aria-pressed="false" aria-label="绿色"></button>
+    <div class="frame" data-page-node-id="Z9MaFywsTTZ8fRpt3jLOy7">
+      <div class="frame__label" data-page-node-id="mv5OzEukhWfbREMXXqtkuO">强调色 · 界面即时响应，无需重启</div>
+      <div style="width:340px;padding:16px;border-radius:var(--r-md);background:rgba(255,255,255,0.7);box-shadow:var(--e2)" data-page-node-id="C3g2u1LiOtRtbsX38AXEhP">
+        <div style="display:flex;align-items:center;gap:10px" data-page-node-id="stog0ITuJhVgwnm4uPInYZ">
+          <div style="flex:1;font-size:var(--fs-13);font-weight:500" data-page-node-id="p8VkICXTVw3EG89CLPw0G5" data-i18n="accentColor">强调色</div>
+          <div class="swatches" data-page-node-id="6oP2iBTjsfgVBf8iMWsI9u">
+            <button class="swatch swatch--blue"   data-accent-btn="blue"   aria-pressed="true"  aria-label="蓝色" data-page-node-id="w7sePv55H291EpNG7XkEf7"></button>
+            <button class="swatch swatch--purple" data-accent-btn="purple" aria-pressed="false" aria-label="紫色" data-page-node-id="QFQfyWYkirIPS73kfNkrrM"></button>
+            <button class="swatch swatch--orange" data-accent-btn="orange" aria-pressed="false" aria-label="橙色" data-page-node-id="Igvzff74xgS2Tzd9FeBHfp"></button>
+            <button class="swatch swatch--green"  data-accent-btn="green"  aria-pressed="false" aria-label="绿色" data-page-node-id="Vf7UUoGcAiyE0YOUsrEAhf"></button>
           </div>
         </div>
-        <div style="margin-top:16px;display:flex;align-items:center;gap:10px">
-          <div class="diskicon"><i data-i="drive"></i></div>
-          <div style="flex:1;min-width:0">
-            <div style="font-size:var(--fs-13);font-weight:600">Samsung T7</div>
-            <div class="meter" style="margin-top:6px">
-              <div class="meter__track"><div class="meter__fill" style="width:30%"></div></div>
-              <span class="meter__pct">30%</span>
+        <div style="margin-top:16px;display:flex;align-items:center;gap:10px" data-page-node-id="UQQ1j77LDh116Df62HnZmq">
+          <div class="diskicon" data-page-node-id="AOHm5zwfdqbkUO7FjbHYSJ"><i data-i="drive" data-page-node-id="XPio2S5Gq1dSrVAZFUrhP3"></i></div>
+          <div style="flex:1;min-width:0" data-page-node-id="BCzsvgFPSjCBj8m9SYs7w4">
+            <div style="font-size:var(--fs-13);font-weight:600" data-page-node-id="nBmBf3VmHkRTTuDbICphYV">Samsung T7</div>
+            <div class="meter" style="margin-top:6px" data-page-node-id="NJhLf7ASn3yBUuX0yTAIlf">
+              <div class="meter__track" data-page-node-id="Ue72xP4gQsq0xNWaYLXLdi"><div class="meter__fill" style="width:30%" data-page-node-id="0ghws7E2lKzHiEj4cKPwnA"></div></div>
+              <span class="meter__pct" data-page-node-id="rv7Q3Pd0zWqLRSmQb4b342">30%</span>
             </div>
           </div>
-          <button class="btn btn--primary btn--sm"><i data-i="eject"></i>推出</button>
+          <button class="btn btn--primary btn--sm" data-page-node-id="RaclS180CqeljqPv7TeMgA" data-i18n="eject"><i data-i="eject" data-page-node-id="6Y8damzDil3GyhmXQEFmRK"></i>推出</button>
         </div>
       </div>
-      <p class="spec-note" style="max-width:340px">
+      <p class="spec-note" style="max-width:340px" data-page-node-id="4xmtu7r42soIpeHOhjoOnr">
         点色板可实时预览强调色对图标容器、容量条、按钮、选中态的影响。
         深色模式下四色各自有独立的深色取值（见「深色模式」页）。
       </p>
@@ -246,31 +336,53 @@
   </div>
 
   <!-- ===================== 说明 ===================== -->
-  <div class="doc__section">
-    <h2 class="doc__h2">设计说明 <em>Rationale</em></h2>
-    <div class="grid2">
-      <div class="panel">
-        <h3 class="doc__h3" style="margin-top:0">要点</h3>
-        <ul class="note-list">
-          <li><b>「视觉效果」用分段控件而不是开关。</b>两个互斥选项一眼看全，也不需要「关闭透明效果」这种双重否定。</li>
-          <li><b>登录项第三态单独成行</b>（见右侧artboard），用琥珀底 + 唯一动作入口。</li>
-          <li><b>诊断区是新增的。</b>推出失败时用户最需要的是「去哪看」。把日志入口放进设置，弹窗里的「查看日志」才有落点。</li>
-          <li><b>关于区改成横向一行。</b>居中大图标 + 竖排版本号的写法要吃掉 206pt；横向布局压到 70pt，同样的信息，四分之一的代价。</li>
-          <li><b>面板高度是量出来的。</b>四组内容在中英文下的实测高度决定 <code>440 × 566</code>；改任何一段文案后需同步复测，否则底部会被折叠到滚动区外——这正是旧版「设置排版不好看」的真实原因。</li>
+  <div class="doc__section" data-page-node-id="HjmzYtEOtFopawjVEvGNIn">
+    <h2 class="doc__h2" data-page-node-id="mHE4rpsVpR8I12OxDoTpTC">设计说明 <em data-page-node-id="GEYBuSlYZ7a9DaoH5s5cua">Rationale</em></h2>
+    <div class="grid2" data-page-node-id="j9XTGVH8VxdjsMPmUi5hFD">
+      <div class="panel" data-page-node-id="i3FFhlsi6bVb48kvAsRhBl">
+        <h3 class="doc__h3" style="margin-top:0" data-page-node-id="RDDwjZlpEXt486iN5vXWiK">要点</h3>
+        <ul class="note-list" data-page-node-id="kwoObFACfvQDvT6vlA6pKS">
+          <li data-page-node-id="UIJPGxkOjXwyqgoQMQOHpe"><b data-page-node-id="IWvljKfL4FdK2JqpvVhj2n">「视觉效果」用分段控件而不是开关。</b>两个互斥选项一眼看全，也不需要「关闭透明效果」这种双重否定。</li>
+          <li data-page-node-id="x0L9PJHWjyu0ZUp6tOhju8"><b data-page-node-id="eIvH09LLH9QStL21aQp949">登录项第三态单独成行</b>（见右侧artboard），用琥珀底 + 唯一动作入口。</li>
+          <li data-page-node-id="CK6VXPWuFlRT8OiaSTOL8L"><b data-page-node-id="fqGWsQSvJJl28G4z6J11TH">诊断区是新增的。</b>推出失败时用户最需要的是「去哪看」。把日志入口放进设置，弹窗里的「查看日志」才有落点。</li>
+          <li data-page-node-id="hGhiI3xUigmflhVnl4nIt5"><b data-page-node-id="YgRZaDN7Zk3qZtEZcNBIzq">关于区改成横向一行。</b>居中大图标 + 竖排版本号的写法要吃掉 206pt；横向布局压到 70pt，同样的信息，四分之一的代价。</li>
+          <li data-page-node-id="9f9wgQWfl1gl6ZL8SZHXi2"><b data-page-node-id="TLEewWeEldlXaIgWNhxDFp">「更新」是新增的第五组，而且是<u data-page-node-id="5RffpNwYBhRWFmOxGwWJzZ">唯一</u>入口。</b>关于行上原来那个「检查更新」按钮已经删掉 ——
+            同一个动作有两个入口时，用户会以为它们做的事不一样（一个是「检查」、一个是「更新」），于是会去点两次。
+            版本号留在关于行（用户报问题时抄的就是它），动作全部收进更新组。</li>
+          <li data-page-node-id="6imUtkKrOQSEppLSbRqJdf"><b data-page-node-id="YeNNcpbG0OKpDuOmYzehKT">「跳过此版本」必须在界面上留下痕迹。</b>跳过之后更新组要显示「已跳过 1.1.0」——
+            否则「跳过」是一个<u data-page-node-id="JWkmRYlWrTgdvfVyjhygH1">看不见的</u>状态：用户点了跳过、下次启动没弹窗，他无法分辨
+            「跳过生效了」还是「检查更新坏了」。这与登录项的「等待系统批准」是同一类问题，第三态必须显式画出来。</li>
+          <li><b>「语言」用下拉，不用开关、也不用分段控件。</b>开关只能表达二值；
+            分段控件超过 3 项就放不下，而语言列表以后还会加 —— 只有下拉能长。
+            默认项是<b>「跟随系统」</b>：macOS 应用的默认行为本来就应该是跟随系统，
+            显式覆盖是给少数人的出口，不该反过来让用户每次都选一次语言。</li>
+          <li data-page-node-id="520OwQucZNF4c6LrHz0Tpq"><b data-page-node-id="gY4GXeksNXkbuNxMIPVp4v">「自动更新」的说明要回答「什么时候装」。</b>写成「有新版本时自动下载，并在下次启动时安装」——
+            用户真正怕的是「它会不会在我干活的时候突然重启」，所以「<u data-page-node-id="pZNyZ8RplCmC0t6TvmZ3yp">下次启动时</u>」这四个字不能省。
+            应用只走 Developer ID 直发、不上架，所以这条文案没有渠道分叉，只有一套。</li>
+          <li data-page-node-id="avxb4UtsX7mR3cnCCcwzuS"><b data-page-node-id="mY3Mrg3K9054wVkY17GIDq">面板尺寸是量出来的，而且按<b>最长的那门语言</b>量。</b>
+            本轮 <code data-page-node-id="clSKiGnUKfzp6DEK2matDF">480 × 826 → 480 × 800</code>：<b>与产品侧统一成一个数</b>。
+            产品侧（SwiftUI / CoreText）英文实测 <b>782.60</b>、中文 <b>766.60</b>，取 800 留 17.4pt 余量。
+            ⚠️ 本页面跑在 Chrome 里，英文**内容区**需要 <b>726.25</b> 而可用只有 <b>710</b> —— 差 16.25pt
+            恰好被底部 16pt 内边距吸收，最后一行只有 <b>0.25pt</b> 溢出窗口下边缘。
+            所以症状不是「末行被裁一截」，而是**「英文下底部留白没了」**（实测见 DESIGN-SPEC §8.43）。
+            <b>宽度不加</b>：480 → 560 只能再省 32pt 高，却要多给 80pt 宽，不划算。
+            改任何一段文案后需同步复测，否则底部会被折叠到滚动区外——这正是旧版「设置排版不好看」的真实原因。</li>
         </ul>
       </div>
 
-      <div class="panel">
-        <h3 class="doc__h3" style="margin-top:0">规格 Handoff</h3>
-        <ul class="note-list">
-          <li>面板 <code>440 × 566</code>，以 sheet 形式从主窗口弹出</li>
-          <li>头部高 <code>52</code>；内容内边距 <code>20 / 20 / 16</code></li>
-          <li>分组标题 <code>11 / 600</code> + 字距 <code>0.05em</code>，距卡片 <code>6</code>；组间距 <code>20</code></li>
-          <li>设置行最小高 <code>44</code>，内边距 <code>11 / 12</code>；行间 <code>0.5px</code> 内嵌分隔线</li>
-          <li>开关 <code>38 × 22</code>，滑块 <code>18</code>，行程 <code>16</code></li>
-          <li>分段控件高 <code>28</code>（外 <code>2</code> 内边距 + 选项 <code>24</code>），圆角 <code>7 / 5</code></li>
-          <li>色板 <code>22 × 22</code>，选中态外描边 <code>2px</code>、偏移 <code>4</code></li>
-          <li>关于行内边距 <code>13 / 16</code>；应用图标 <code>44 × 44</code>，圆角 <code>12</code></li>
+      <div class="panel" data-page-node-id="dvUD95H4BBlcFmP8C77eSG">
+        <h3 class="doc__h3" style="margin-top:0" data-page-node-id="I1VxqYS3Fc6O2PuD3g5IAD">规格 Handoff</h3>
+        <ul class="note-list" data-page-node-id="6KdQZfh6M7irEUfbnmrfyW">
+          <li data-page-node-id="UljFWAj04qlJajxblzf6yl">面板 <code data-page-node-id="vEUpV8EaKwBwBGyv3HjIfP">480 × 800</code>（与产品侧同数，见 DESIGN-SPEC §8.43），独立窗口弹出（不再作为主窗口的 sheet）</li>
+          <li data-page-node-id="HKeawko04yFSP3gtyAy0Wq">头部高 <code data-page-node-id="u77C92svz5qL25nvZ7RvGB">52</code>；内容内边距 <code data-page-node-id="GbRsVYq7L7xj0GEW0ueEA3">20 / 20 / 16</code></li>
+          <li data-page-node-id="yGFxELPjIGvagCWKFnN1ow">分组标题 <code data-page-node-id="wsvU52wXQYU157s94V6bIQ">11 / 600</code> + 字距 <code data-page-node-id="pi0W7beB4rmlRx9jPfle0d">0.05em</code>，距卡片 <code data-page-node-id="v6n3PQWNOvWCxkv9JWxgzF">6</code>；组间距 <code data-page-node-id="8WEoPN24pSbCtGYRws5fUk">20</code></li>
+          <li data-page-node-id="j0f01Q0CetS3H8Vu27KgtR">设置行最小高 <code data-page-node-id="7kfuCFDXCH02mRPm6VGiYj">44</code>，内边距 <code data-page-node-id="3O6qZOCR5rdxI3H8XWeLAA">11 / 12</code>；行间 <code data-page-node-id="EIX8J27qqWy4jvxdJ0xFye">0.5px</code> 内嵌分隔线</li>
+          <li data-page-node-id="WHFIXBTud7K5a4QAAvjzHa">开关 <code data-page-node-id="OLhzxTkordWTcMB9W4xtjY">38 × 22</code>，滑块 <code data-page-node-id="1540M2LrDrHVrSdxIpZ1SW">18</code>，行程 <code data-page-node-id="N1t8npuOsyYLDCE3TAyEtV">16</code></li>
+          <li data-page-node-id="E0yrgNRqyApw3zh5LWHbH1">分段控件高 <code data-page-node-id="rAmXizJ0IgrJby1V9hjTpg">28</code>（外 <code data-page-node-id="3Ap13xsbiqPVFNGWplbUH4">2</code> 内边距 + 选项 <code data-page-node-id="EZg9rDfbJ8VttjYifEvDWK">24</code>），圆角 <code data-page-node-id="Gl1IAzUcSpwNcJeA57CYcU">7 / 5</code></li>
+          <li data-page-node-id="OjMo06P5mfwAfDGpm7icdL">色板 <code data-page-node-id="BtBNP0I3FjVPUQRLhNYfa8">22 × 22</code>，选中态外描边 <code data-page-node-id="Cx1SbQvje6ZWpXIBPyFegU">2px</code>、偏移 <code data-page-node-id="KmigccdC6NNllCsxTqWvvv">4</code></li>
+          <li data-page-node-id="nzpF9IJJZXsosomGWfIE5z">关于行内边距 <code data-page-node-id="uSawsoX5jcQPP2hhpSmBbL">13 / 16</code>；应用图标 <code data-page-node-id="TSVCdZBzwWmiC71UChKhhd">44 × 44</code>，圆角 <code data-page-node-id="CzuGpNkB1uMnYfLQs6Zi4Y">12</code></li>
+          <li data-page-node-id="rR3QVH0qxvEDCxycO2BdRk">更新组两行与其它组同规格：行最小高 <code data-page-node-id="3a7R6bSkjT2Eo7y63NjrQc">44</code>、带说明行实测 <code data-page-node-id="aXHAoqA7GMl2ZuNIjEAlcw">59</code></li>
+          <li data-page-node-id="FppujE156unYZyUs8t7HLy">「自动更新」复用通用组的开关组件（<code data-page-node-id="HNXYFjT5cm5Ae00pGpMB6C">38 × 22</code>），不为它另画一套</li>
         </ul>
       </div>
     </div>
@@ -278,6 +390,7 @@
 
 </div>
 </div>
+<script src="../assets/i18n.js"></script>
 <script src="../assets/ds.js"></script>
 </body>
 </html>

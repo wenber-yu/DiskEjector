@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light" data-accent="blue">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>版本更新 · DiskEjector UI v2</title>
+<link rel="stylesheet" href="../assets/ds.css">
+<style>
+  .note-list { margin: 0; padding-left: 18px; font-size: var(--fs-12); color: var(--text-2); line-height: 1.7; }
+  .note-list li { margin-bottom: 6px; }
+  .note-list b { color: var(--text-1); }
+  .note-list code { font-family: var(--font-mono); font-size: var(--fs-11); background: var(--bg-subtle); padding: 1px 5px; border-radius: var(--r-xs); }
+  table.state-tbl { width: 100%; border-collapse: collapse; font-size: var(--fs-12); }
+  table.state-tbl th {
+    text-align: left; font-size: var(--fs-11); font-weight: 600; color: var(--text-3);
+    text-transform: uppercase; letter-spacing: 0.05em;
+    padding: 0 10px 8px; border-bottom: 0.5px solid var(--border);
+  }
+  table.state-tbl td { padding: 10px; border-bottom: 0.5px solid var(--hairline); vertical-align: top; }
+  table.state-tbl tr:last-child td { border-bottom: 0; }
+  table.state-tbl code { font-family: var(--font-mono); font-size: var(--fs-11); color: var(--text-2); }
+
+  .dim {
+    position: relative; padding: 44px; border-radius: var(--r-lg);
+    background: rgba(20, 22, 28, 0.30);
+    -webkit-backdrop-filter: blur(2px); backdrop-filter: blur(2px);
+    display: flex; align-items: center; justify-content: center;
+  }
+
+  /* 设置分组的迷你复刻：只画「更新」一组，贴在玻璃板上 */
+  .setmock {
+    width: 400px; padding: 20px;
+    border-radius: var(--r-lg);
+    background: rgba(255, 255, 255, 0.66);
+    box-shadow: var(--e2);
+    -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px);
+  }
+  .setmock .sgroup { margin: 0; }
+
+  /* 行内进度条：**固定 16pt 高**，与 .sline__desc 同一行高，下载中不撑高整行 */
+  .progressline { height: 16px; margin-top: 2px; display: flex; align-items: center; gap: 8px; }
+  .progressline .meter__track { flex: 1 1 auto; }
+  .progressline .meter__pct { width: auto; }
+</style>
+</head>
+<body class="ds">
+<div class="wallpaper">
+<div class="doc">
+
+  <nav class="doc__nav">
+    <a href="../index.html">设计规范总览</a>
+    <a href="01-main-window.html">主窗口</a>
+    <a href="02-menu-bar.html">菜单栏面板</a>
+    <a href="03-eject-flow.html">推出流程弹窗</a>
+    <a href="04-onboarding.html">授权引导</a>
+    <a href="05-settings.html">设置面板</a>
+    <a href="06-states.html">状态矩阵</a>
+    <a href="07-dark.html">深色模式</a>
+    <a href="08-update.html" aria-current="page">版本更新</a>
+  </nav>
+
+  <p class="doc__eyebrow">Screen 08 · Update</p>
+  <h1 class="doc__title">版本更新</h1>
+  <p class="doc__lede">
+    更新只有两个问题：<strong>「会不会自己更新」</strong>（设置里的一个开关）和
+    <strong>「现在要不要装」</strong>（一个弹窗）。弹窗<strong>只在自动更新关掉时才会出现</strong>——
+    开着的时候用户什么都不用做，这正是「后台更新」这个词的含义。
+    因此这一页里，弹窗和设置行是同一个状态机的两个出口，不是两件独立的事。
+  </p>
+
+  <!-- ===================== A. 有新版本弹窗 ===================== -->
+  <div class="doc__section" style="margin-top:0">
+    <h2 class="doc__h2">A · 有新版本 <em>New version</em></h2>
+    <p class="doc__h2desc">
+      应用<strong>不上架 App Store</strong>，只走 Developer ID 直发 —— 所以「能不能替换自身」这件事
+      没有分叉：能，直接画。弹窗只有这一版：主按钮「后台更新并重启」、次按钮「跳过此版本」，
+      操作区左边再留一个<strong>不占按钮</strong>的出口（Esc = 稍后）。
+    </p>
+
+    <div class="artboard">
+
+      <!-- 新版本弹窗（唯一一版：应用不上架，没有渠道分叉） -->
+      <div class="frame">
+        <div class="frame__label">新版本弹窗 · 400 × 320（探针实测）</div>
+        <div class="dim">
+          <div class="alert" role="alertdialog" aria-label="磁盘推出助手 1.1.0 已发布">
+            <div class="alert__body">
+              <div class="alert__head">
+                <div class="alert__icon alert__icon--info"><i data-i="down"></i></div>
+                <div style="min-width:0">
+                  <div class="alert__title" data-i18n="ds.alert.updateTitle">磁盘推出助手 1.1.0 已发布</div>
+                  <div class="alert__sub" data-i18n="ds.alert.updateSub">
+                    当前 1.0.0（构建 42）→ 1.1.0（构建 58）<br>
+                    2026-09-17 · 12.4 MB
+                  </div>
+                </div>
+              </div>
+
+              <div class="alert__section">
+                <div class="alert__label" data-i18n="updateWhatsNew">本次更新</div>
+                <div class="changelog">
+                  <div><span>·</span><span data-i18n="ds.alert.change1">设置里新增<b>「自动更新」</b>开关，可后台下载并在重启后安装</span></div>
+                  <div><span>·</span><span data-i18n="ds.alert.change2">修复未插入磁盘时骨架层一直不消失的问题</span></div>
+                  <div><span>·</span><span data-i18n="ds.alert.change3">推出失败弹窗新增<b>「查看日志」</b>直达入口</span></div>
+                </div>
+              </div>
+
+              <div class="callout callout--info">
+                <i data-i="info"></i>
+                <span data-i18n="updateCallout">点「后台更新并重启」后，应用会在后台下载并校验签名，完成后自动重启完成安装。正在推出的磁盘不会被打断。</span>
+              </div>
+            </div>
+
+            <div class="alert__foot">
+              <span class="alert__foot-note" data-i18n="updateEscHint">Esc 稍后再提醒</span>
+              <button class="btn btn--outline" data-i18n="updateSkipVersion">跳过此版本</button>
+              <button class="btn btn--primary" data-i18n="updateInstallAndRestart">后台更新并重启</button>
+            </div>
+          </div>
+        </div>
+        <p class="spec-note" style="max-width:400px">
+          <b>「跳过此版本」和「后台更新并重启」之外，第三个出口是 Esc。</b>
+          只有这两个按钮时，用户被逼着在「永久跳过这个版本」和「现在就重启」之间二选一 ——
+          而多数人真正想说的是「现在不方便」。Esc / 关窗 = 稍后再提醒，
+          这个出口不占按钮，但必须写在操作区左边，否则用户不知道它存在。
+        </p>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ===================== B. 更新分组 ===================== -->
+  <div class="doc__section">
+    <h2 class="doc__h2">B · 设置里的「更新」组 <em>States</em></h2>
+    <p class="doc__h2desc">
+      弹窗关掉之后，状态必须有落点，否则用户无法判断「刚才那下到底生效没有」。
+      所有中间状态都<strong>就地画在设置这一行上</strong>：不弹遮罩、不加横幅、
+      不往主窗口塞东西 —— 后台更新的全部意义就是别打扰用户。
+    </p>
+
+    <div class="artboard" style="gap:32px">
+
+      <!-- B1 默认 -->
+      <div class="frame">
+        <div class="frame__label">1 · 默认 · 自动更新开 · 已是最新</div>
+        <div class="setmock">
+          <div class="sgroup">
+            <div class="sgroup__title" data-i18n="settingsGroupUpdates">更新</div>
+            <div class="scard">
+              <div class="sline">
+                <div class="sline__text">
+                  <div class="sline__label" data-i18n="autoUpdate">自动更新</div>
+                  <div class="sline__desc" data-i18n="autoUpdateHint">有新版本时自动下载，并在下次启动时安装。</div>
+                </div>
+                <div class="sline__control">
+                  <button class="switch" role="switch" aria-checked="true" aria-label="自动更新"></button>
+                </div>
+              </div>
+              <div class="sline">
+                <div class="sline__text">
+                  <div class="sline__label" data-i18n="checkForUpdates">检查更新</div>
+                  <div class="sline__desc" data-i18n="ds.update.upToDate">上次检查：今天 14:30 · 已是最新版本</div>
+                </div>
+                <div class="sline__control">
+                  <button class="btn btn--outline btn--sm" data-i18n="checkForUpdates">检查更新</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <p class="spec-note" style="max-width:400px">
+          与 <a href="05-settings.html" style="color:var(--accent)">设置面板</a> 里的那一组逐字相同。
+          开关默认<b>开</b>：更新是安全修复的通道，默认关掉会让大多数人永远停在旧版本上。
+        </p>
+      </div>
+
+      <!-- B2 有新版本 -->
+      <div class="frame">
+        <div class="frame__label">2 · 自动更新关 · 发现新版本（Esc 之后）</div>
+        <div class="setmock">
+          <div class="sgroup">
+            <div class="sgroup__title" data-i18n="settingsGroupUpdates">更新</div>
+            <div class="scard">
+              <div class="sline">
+                <div class="sline__text">
+                  <div class="sline__label" data-i18n="autoUpdate">自动更新</div>
+                  <div class="sline__desc" data-i18n="autoUpdateHint">有新版本时自动下载，并在下次启动时安装。</div>
+                </div>
+                <div class="sline__control">
+                  <button class="switch" role="switch" aria-checked="false" aria-label="自动更新"></button>
+                </div>
+              </div>
+              <div class="sline">
+                <div class="sline__text">
+                  <div class="sline__label" data-i18n="checkForUpdates">检查更新</div>
+                  <div class="sline__desc" style="color:var(--accent)" data-i18n="ds.update.found">发现 1.1.0 · 上次检查：今天 14:30</div>
+                </div>
+                <div class="sline__control">
+                  <button class="btn btn--primary btn--sm" data-i18n="updateView">查看更新</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <p class="spec-note" style="max-width:400px">
+          <b>「稍后」也必须有落点。</b>用户按了 Esc，弹窗消失、什么都没留下的话，
+          他既不知道有新版本、也没有再打开的入口 —— 只能等下次启动。
+          这一行把「有新版本」这件事留住，并把按钮从「检查更新」换成「查看更新」（主按钮），
+          让用户随时能回到那个弹窗。
+        </p>
+      </div>
+
+      <!-- B3 下载中 -->
+      <div class="frame">
+        <div class="frame__label">3 · 后台下载中 · 行内进度，不打断</div>
+        <div class="setmock">
+          <div class="sgroup">
+            <div class="sgroup__title" data-i18n="settingsGroupUpdates">更新</div>
+            <div class="scard">
+              <div class="sline">
+                <div class="sline__text">
+                  <div class="sline__label" data-i18n="ds.update.downloading">正在后台下载 1.1.0</div>
+                  <div class="progressline">
+                    <div class="meter__track"><div class="meter__fill" style="width:42%"></div></div>
+                    <span class="meter__pct">42%</span>
+                  </div>
+                </div>
+                <div class="sline__control">
+                  <button class="btn btn--outline btn--sm" data-i18n="cancel">取消</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <p class="spec-note" style="max-width:400px">
+          <b>百分比是真的，ETA 是编的 —— 所以只画百分比。</b>下载有确定的字节数，进度条说的是实话；
+          而「还需 1 分钟」在任何网络下都是猜的。（主窗口那条「推出中」不画进度，
+          理由正好相反：系统的推出接口不提供进度。）
+          进度条外层固定 <code>16pt</code>，与说明行同高，<b>下载中这一行不会被撑高</b>。
+        </p>
+      </div>
+
+      <!-- B4 已就绪 -->
+      <div class="frame">
+        <div class="frame__label">4 · 已就绪 · 待重启安装</div>
+        <div class="setmock">
+          <div class="sgroup">
+            <div class="sgroup__title" data-i18n="settingsGroupUpdates">更新</div>
+            <div class="scard">
+              <div class="sline">
+                <div class="sline__text">
+                  <div class="sline__label" data-i18n="ds.update.ready">1.1.0 已下载完成</div>
+                  <div class="sline__desc" data-i18n="updateReadyHint">重启后完成安装；下次退出应用时也会自动安装。</div>
+                </div>
+                <div class="sline__control">
+                  <button class="btn btn--primary btn--sm" data-i18n="restartNow">立即重启</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <p class="spec-note" style="max-width:400px">
+          <b>「重启」不自动做，只提供入口。</b>下载可以完全后台，但重启会关掉用户手上的一切 ——
+          所以「后台更新并重启」的真实语义是<b>「后台下载，重启时安装」</b>：
+          下次退出时静默装上，用户想立刻用新版本再点「立即重启」。
+        </p>
+      </div>
+
+      <!-- B5 已跳过 -->
+      <div class="frame">
+        <div class="frame__label">5 · 已跳过 1.1.0 · 第三态</div>
+        <div class="setmock">
+          <div class="sgroup">
+            <div class="sgroup__title" data-i18n="settingsGroupUpdates">更新</div>
+            <div class="scard">
+              <div class="sline">
+                <div class="sline__text">
+                  <div class="sline__label" data-i18n="autoUpdate">自动更新</div>
+                  <div class="sline__desc" data-i18n="autoUpdateHint">有新版本时自动下载，并在下次启动时安装。</div>
+                </div>
+                <div class="sline__control">
+                  <button class="switch" role="switch" aria-checked="false" aria-label="自动更新"></button>
+                </div>
+              </div>
+              <div class="sline">
+                <div class="sline__text">
+                  <div class="sline__label" data-i18n="checkForUpdates">检查更新</div>
+                  <div class="sline__desc" data-i18n="ds.update.skipped">已跳过 1.1.0 · 再点一次仍会检查并提示</div>
+                </div>
+                <div class="sline__control">
+                  <button class="btn btn--outline btn--sm" data-i18n="checkForUpdates">检查更新</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <p class="spec-note" style="max-width:400px">
+          <b>跳过是一个状态，不是一个动作，所以必须画出来。</b>不写这一行，
+          「点了跳过 → 下次启动没弹窗」与「检查更新坏了」在界面上长得一模一样 ——
+          与登录项的「等待系统批准」是同一类错误。
+          <b>而且它必须可撤销</b>：手动点「检查更新」会清掉跳过标记并重新弹窗，
+          否则用户只能去改偏好文件才能反悔。
+        </p>
+      </div>
+
+      <!-- B6 失败 -->
+      <div class="frame">
+        <div class="frame__label">6 · 下载失败 · 不用琥珀也不用红</div>
+        <div class="setmock">
+          <div class="sgroup">
+            <div class="sgroup__title" data-i18n="settingsGroupUpdates">更新</div>
+            <div class="scard">
+              <div class="sline">
+                <div class="sline__text">
+                  <div class="sline__label" data-i18n="ds.update.failed">1.1.0 下载失败</div>
+                  <div class="sline__desc" data-i18n="updateFailedHint">网络不可用。下次启动会自动重试。</div>
+                </div>
+                <div class="sline__control">
+                  <button class="btn btn--outline btn--sm" data-i18n="updateTryAgain">重试</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <p class="spec-note" style="max-width:400px">
+          <b>这一行不染色。</b>本应用的琥珀只表示「磁盘被占用」、红只表示「破坏性动作」；
+          下载失败两者都不是。借一个已经承担了别的含义的颜色，比没有颜色更糟 ——
+          用户会以为磁盘出了问题。失败靠<b>文字 + 一个「重试」按钮</b>表达。
+        </p>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ===================== C. 状态矩阵 ===================== -->
+  <div class="doc__section">
+    <h2 class="doc__h2">C · 状态矩阵 <em>Matrix</em></h2>
+    <p class="doc__h2desc">
+      一行一个状态。<strong>「弹窗」与「设置行」是同一个状态的两个出口</strong>——
+      任何时候这两列都必须自洽，不允许出现「设置里写着已是最新、却弹了更新窗」。
+    </p>
+
+    <div class="panel">
+      <table class="state-tbl">
+        <thead>
+          <tr>
+            <th style="width:150px">状态</th>
+            <th style="width:190px">触发条件</th>
+            <th style="width:130px">弹窗</th>
+            <th>设置 · 更新组</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><b>尚未检查</b></td>
+            <td>刚启动，第一次检查还没跑完</td>
+            <td>不弹</td>
+            <td><code>尚未检查</code> —— <b>不能写「已是最新版本」</b></td>
+          </tr>
+          <tr>
+            <td><b>已是最新</b></td>
+            <td>检查完成，无更高版本</td>
+            <td>不弹</td>
+            <td>检查更新行：<code>上次检查：今天 14:30 · 已是最新版本</code></td>
+          </tr>
+          <tr>
+            <td><b>有新版本 · 自动更新开</b></td>
+            <td>检查到更高版本</td>
+            <td><b>不弹</b>（这就是开关的意义）</td>
+            <td>直接进入「后台下载中」</td>
+          </tr>
+          <tr>
+            <td><b>有新版本 · 自动更新关</b></td>
+            <td>检查到更高版本</td>
+            <td><b>弹窗 A</b></td>
+            <td>检查更新行：<code>发现 1.1.0</code> + 主按钮「查看更新」</td>
+          </tr>
+          <tr>
+            <td><b>稍后</b>（Esc / 关窗）</td>
+            <td>弹窗被关闭</td>
+            <td>本次不再弹</td>
+            <td>与上一行相同 —— 状态留在界面上</td>
+          </tr>
+          <tr>
+            <td><b>已跳过</b></td>
+            <td>点了「跳过此版本」</td>
+            <td>该版本不再弹（下次启动也不弹）</td>
+            <td>检查更新行：<code>已跳过 1.1.0</code>；手动检查可撤销</td>
+          </tr>
+          <tr>
+            <td><b>后台下载中</b></td>
+            <td>自动更新开，或点了「后台更新并重启」</td>
+            <td>不弹（弹窗已关）</td>
+            <td>行内进度条 + 百分比 + 「取消」</td>
+          </tr>
+          <tr>
+            <td><b>已就绪</b></td>
+            <td>下载并校验签名完成</td>
+            <td>不弹</td>
+            <td><code>1.1.0 已下载完成</code> + 「立即重启」</td>
+          </tr>
+          <tr>
+            <td><b>下载失败</b></td>
+            <td>网络不可用 / 签名校验不通过</td>
+            <td>不弹</td>
+            <td><code>1.1.0 下载失败</code> + 「重试」</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ===================== D. 说明 ===================== -->
+  <div class="doc__section">
+    <h2 class="doc__h2">设计说明 <em>Rationale</em></h2>
+    <div class="grid2">
+      <div class="panel">
+        <h3 class="doc__h3" style="margin-top:0">文案原则</h3>
+        <ul class="note-list">
+          <li><b>标题写版本号，不写「发现新版本」。</b>用户要判断的是「值不值得为它重启一次」，
+            所以版本号、当前版本、体积、日期四样都要在首屏给全 —— 与推出弹窗「标题带磁盘名」同一条规则。</li>
+          <li><b>按钮用动词，且两个按钮都要能单独读懂。</b>「后台更新并重启」而不是「确定」；
+            「跳过此版本」而不是「忽略」——「忽略」读不出是忽略这一次还是永远。</li>
+          <li><b>说清代价与不代价。</b>「正在推出的磁盘不会被打断」这句是必需的：
+            用户按下更新前最怕的就是「会不会把我正在拷的东西弄坏」。</li>
+          <li><b>「跳过」要说清跳过的范围。</b>「跳过此版本」= 只跳这一个版本，下个版本照常提醒。
+            设置行里也照写「已跳过 1.1.0」，带上版本号，避免被读成「关掉了更新」。</li>
+        </ul>
+      </div>
+
+      <div class="panel">
+        <h3 class="doc__h3" style="margin-top:0">规格 Handoff</h3>
+        <ul class="note-list">
+          <li>弹窗沿用 <code>.alert</code>：宽 <code>400</code>、圆角 <code>14</code>、材质 <code>blur(34) saturate(180)</code></li>
+          <li>图标容器 <code>38 × 38</code>，用 <code>--accent-soft</code>（信息态，不是警告态）</li>
+          <li>更新日志：<code>12 / 400</code>，行高 <code>1.55</code>，项目间距 <code>6</code>，项目符号 <code>·</code></li>
+          <li>提示块沿用 <code>.callout--info</code>：圆角 <code>6</code>、内边距 <code>9 / 11</code></li>
+          <li>操作区：提示文案 <code>11 / --text-3</code> 靠左，按钮靠右、间距 <code>8</code></li>
+          <li>设置行内进度条：外层固定 <code>16</code> 高，轨道 <code>5</code>、圆角 <code>999</code>，与磁盘行共用 <code>.meter</code></li>
+          <li>更新组在设置面板中排第 4 组（诊断之后、关于之前），面板 <code>480 × 800</code></li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="panel" style="margin-top:16px">
+      <h3 class="doc__h3" style="margin-top:0">这一页对实现提出的要求（不是设计稿能自己满足的）</h3>
+      <div class="grid2">
+        <ul class="note-list">
+          <li><b>「后台更新并重启」需要一个真正的更新器。</b>当前 <code>UpdateService</code> 只做
+            「打开下载页」，<u>没有任何下载与安装代码</u>。要落地本页 B 段的第 3–4 帧（后台下载中 / 已就绪），
+            必须先有：下载 + 签名校验 + 替换 bundle + 重启。
+            两条路：引入 Sparkle（多一个 SPM 依赖、EdDSA 密钥、appcast 托管），
+            或自写下载 + 校验。<b>在更新器落地之前，弹窗的主按钮只能退回「打开下载页」</b>
+            （<code>UpdateService.openUpdateSource()</code> 现在做的就是打开 GitHub Releases）——
+            先画上「后台更新并重启」再补实现，用户会点到一个什么都不做的按钮。</li>
+          <li><b>「已跳过 1.1.0」需要一个新的持久化键</b>（版本号字符串，不是布尔）。
+            布尔量表达不了「跳过了哪一个」，而按版本号存才能在 1.2.0 时自动恢复提醒。</li>
+        </ul>
+        <ul class="note-list">
+          <li><b>「有新版本」是第三种状态，不能用布尔量建模。</b>
+            「检查完了但没有新版本」与「还没检查过」在界面上都是「没有新版本」，
+            但它们该显示的文字不同（<code>已是最新版本</code> vs <code>尚未检查</code>）——
+            必须另有一个「检查是否完成 / 上次检查时间」的位。</li>
+          <li><b>「不上架」这个决定把一批渠道分支变成了死代码 —— 已于 2026-09-18 删除。</b>
+            <code>UpdateService.channel</code> 的 <code>.appStore</code> 分支
+            （App Store 收据判定、<code>appStoreID</code>、<code>macappstore://</code> 链接、
+            「在 App Store 中查看」文案）连同两条本地化键一并移除，渠道只剩
+            <code>.direct</code> / <code>.development</code> 两种。
+            <b>「不存在」这件事本身钉了两个测试</b>：
+            <code>UpdateServiceTests/不存在AppStore渠道</code> 从枚举反查 <code>appStore</code>，
+            <code>LocalizationCatalogTests/已删除的AppStore渠道文案不再存在</code> 反查两条文案键 ——
+            谁加回来谁红。删掉而不是「留作防御」的理由：防御的前提是那条路<b>可能存在</b>，
+            而 MAS 渠道已经不存在了。</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+</div>
+</div>
+<script src="../assets/i18n.js"></script>
+<script src="../assets/ds.js"></script>
+</body>
+</html>

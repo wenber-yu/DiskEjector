@@ -90,7 +90,18 @@
   /* ---- 尺寸 Size（与 SwiftUI DesignTokens 对齐） ---- */
   --w-main: 800px;   --h-main: 520px;
   --w-popover: 360px;
-  --w-settings: 440px; --h-settings: 602px;
+  /* 480 × 800 是按**英文**实测定的（见 DESIGN-SPEC §8.36.2 / §8.40.2）：
+     440 宽时英文需要 735pt 内容高，480 宽只需 688 —— 宽 40pt 换高 47pt，
+     而且中英高度差从 63pt 收到 32pt，对以后加语言更抗造。
+     ⚠️ 800 是**产品侧（SwiftUI / CoreText）**的口径：它那边英文实测 782.60、中文 766.60。
+     本文件跑在 Chrome 里，英文**内容区**需要 726.25 而可用只有 710 —— 差 16.25pt
+     恰好被底部 16pt 内边距吸收，最后一行只有 **0.25pt** 溢出窗口下边缘。
+     所以症状不是「末行被裁一截」，而是**「英文下底部留白没了」**（实测见 §8.43）。
+     那是 Chrome 与 CoreText 的断行差（本仓库已记为「已知不是 bug」），不是排版写错了。
+     2026-09-18 拍板：**两份文档用同一个数**，不再让 826 与 800 各说各话。
+     宽不再加：480 → 560 只能再省 32pt 高，却要多给 80pt 宽 —— 不划算。
+     ⚠️ 页面里的 .win 必须用 var(--h-settings)，不要另写数字 —— 两个真相迟早会打架。 */
+  --w-settings: 480px; --h-settings: 800px;
   --h-titlebar: 52px;
   --sz-diskicon: 40px;
   --sz-chip-icon: 20px;
@@ -708,6 +719,15 @@ body.ds {
 }
 .alert__foot-note { margin-right: auto; font-size: var(--fs-11); color: var(--text-3); }
 
+/* 更新日志：弹窗里最长的一块文字。12 / 行高 1.55 / 项目间距 6。
+   放在共享 CSS 而不是各页 —— 本页漏定义时它不会报错，只会静默变成一段普通文字。 */
+.changelog {
+  display: flex; flex-direction: column; gap: 6px;
+  font-size: var(--fs-12); color: var(--text-2); line-height: 1.55;
+}
+.changelog > div { display: flex; gap: 8px; }
+.changelog b { color: var(--text-1); font-weight: 500; }
+
 /* ============================================================================
    12. 设置面板 Settings
    ========================================================================== */
@@ -752,6 +772,24 @@ body.ds {
 .switch[aria-checked="true"]::after { transform: translateX(16px); }
 
 /* 分段控件 Segmented */
+
+/* 下拉选择（NSPopUpButton）。**只在「多值且选项会增长」时用** ——
+   「语言」就是典型：开关只能表达二值，分段控件超过 3 项就放不下，
+   而语言列表以后还会加。别拿它去做二值选择，那是开关的活。
+   高度 28 与分段控件一致，同一行里混排不会错落。 */
+.popup {
+  display: inline-flex; align-items: center; gap: 5px;
+  height: 28px; padding: 0 7px 0 10px;
+  border: 0; border-radius: 7px;
+  background: var(--bg-subtle);
+  box-shadow: inset 0 0 0 0.5px var(--border-strong);
+  font-family: var(--font-ui); font-size: var(--fs-12); font-weight: 500;
+  color: var(--text-1); cursor: default;
+}
+.popup > span { white-space: nowrap; }
+/* 箭头比正文小一号、颜色降一级：它是「还能点开」的提示，不是内容。 */
+.popup > i { width: 11px; height: 11px; color: var(--text-3); flex: none; }
+.popup > i svg { width: 11px; height: 11px; stroke-width: 2.2; }
 .seg {
   display: inline-flex; padding: 2px; gap: 2px;
   border-radius: 7px; background: var(--bg-subtle);
@@ -806,7 +844,10 @@ body.ds {
    13. 授权引导 Onboarding
    ========================================================================== */
 
-.onboard { width: 380px; padding: var(--s-6) var(--s-5) var(--s-5); }
+/* ⚠️ 这里原来是 `width: 380px` —— 和父级 .win 的 380 重复了一遍，
+   而 .win 有 1px 边框、内容盒只有 378，于是宽出 2px（探针抓到 .win X 380>378）。
+   **同一个尺寸写两遍，改一处就一定会漏另一处**，所以改成填满父级。 */
+.onboard { width: 100%; padding: var(--s-6) var(--s-5) var(--s-5); }
 .onboard__icon {
   width: 52px; height: 52px; margin: 0 auto var(--s-3);
   border-radius: var(--r-lg);
@@ -901,6 +942,34 @@ body.ds {
 }
 :root[data-theme="dark"] .doc__nav a { background: rgba(255, 255, 255, 0.10); }
 :root[data-theme="dark"] .doc__nav a:hover { background: rgba(255, 255, 255, 0.18); }
+
+/* ---- 语言切换栏 ----
+   由 `ds.js` 自动生成并插到 `.doc__nav` 后面 —— **页面 HTML 里没有**。
+   放在共享 CSS 而不是各页：本页漏定义时它不会报错，只会静默变成一堆裸按钮。 */
+.langbar {
+  display: flex; align-items: center; gap: var(--s-2); flex-wrap: wrap;
+  margin: -8px 0 var(--s-5); padding: 7px 10px;
+  border-radius: var(--r-full);
+  background: rgba(255, 255, 255, 0.55);
+  box-shadow: inset 0 0 0 0.5px var(--border-strong);
+  -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
+}
+.langbar__label {
+  font-size: var(--fs-11); font-weight: 600; letter-spacing: 0.04em;
+  text-transform: uppercase; color: var(--text-3); padding-left: 4px;
+}
+.pill {
+  height: 26px; padding: 0 12px; border: 0; border-radius: var(--r-full);
+  font-family: var(--font-ui); font-size: var(--fs-12); font-weight: 500;
+  background: transparent; color: var(--text-2); cursor: pointer;
+  transition: background var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
+}
+.pill:hover { background: var(--bg-subtle); color: var(--text-1); }
+.pill[aria-pressed="true"] { background: var(--accent); color: var(--on-accent); }
+.pill:focus-visible { outline: 2px solid var(--accent-ring); outline-offset: 2px; }
+.langbar__hint { margin-left: auto; font-size: var(--fs-11); color: var(--text-3); }
+@media (max-width: 620px) { .langbar__hint { display: none; } }
+:root[data-theme="dark"] .langbar { background: rgba(255, 255, 255, 0.10); }
 
 .doc__eyebrow {
   font-size: var(--fs-11); font-weight: 600; letter-spacing: 0.1em;
