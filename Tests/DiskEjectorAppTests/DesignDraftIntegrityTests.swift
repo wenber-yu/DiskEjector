@@ -431,6 +431,121 @@ struct DesignDraftIntegrityTests {
             """)
     }
 
+    // MARK: 文案值里的 HTML（§8.66）
+
+    private struct HtmlTag {
+        var name: String
+        var closing: Bool
+        var attrs: String
+    }
+
+    /// 文案**值里**允许出现的标签 —— `i18n.js` 头注释里明写的清单。
+    private static let allowedValueTags: Set<String> = ["b", "code", "br", "i"]
+
+    /// 空元素（不成对，`<br>` / `<br/>` 都算）。
+    private static let voidTags: Set<String> = ["br"]
+
+    /// 解析文案值里的 HTML 标签。
+    ///
+    /// ⚠️ 只认 `<tag …>` / `</tag>` / `<tag/>` 这一种写法 —— 文案是**手写**的，
+    /// 不会有注释、不会有 `<script>`；真要去解析完整 HTML 就得换 XMLParser，
+    /// 而 HTML 不是合法 XML（`<br>` 不闭合、实体未声明），换过去只会更糟。
+    private func tags(in value: String) -> [HtmlTag] {
+        guard let re = try? NSRegularExpression(pattern: #"<(/?)([A-Za-z][A-Za-z0-9]*)([^>]*)>"#)
+        else { return [] }
+        let range = NSRange(value.startIndex..<value.endIndex, in: value)
+        return re.matches(in: value, range: range).compactMap { m in
+            guard let slash = Range(m.range(at: 1), in: value),
+                let name = Range(m.range(at: 2), in: value),
+                let attrs = Range(m.range(at: 3), in: value)
+            else { return nil }
+            return HtmlTag(
+                name: String(value[name]).lowercased(),
+                closing: !value[slash].isEmpty,
+                attrs: String(value[attrs]))
+        }
+    }
+
+    /// 文案值里的 HTML 标签**必须闭合**。
+    ///
+    /// 值是被 `innerHTML` 回填的 ⇒ 少了 `</b>` 时浏览器**不报错**，
+    /// 只是把这个元素**后面所有的文字都变粗** —— 症状在**别处**，
+    /// 谁也不会想到是那一条文案少写了个结束标签。
+    @Test func 文案值里的HTML标签必须闭合() throws {
+        let pack = try loadLanguagePack()
+        var problems: [String] = []
+        var scanned = 0
+        var sawBold = false
+        for (lang, table) in pack {
+            for (key, value) in table.sorted(by: { $0.key < $1.key }) {
+                guard value.contains("<") else { continue }
+                scanned += 1
+                var stack: [String] = []
+                for tag in tags(in: value) {
+                    if tag.name == "b" { sawBold = true }
+                    if tag.closing {
+                        if Self.voidTags.contains(tag.name) { continue }
+                        if stack.last != tag.name {
+                            problems.append(
+                                "[\(lang)] \(key)：</\(tag.name)> 对不上 \(stack.last.map { "<\($0)>" } ?? "空")")
+                        } else {
+                            stack.removeLast()
+                        }
+                    } else if !Self.voidTags.contains(tag.name) {
+                        stack.append(tag.name)
+                    }
+                }
+                if !stack.isEmpty {
+                    problems.append(
+                        "[\(lang)] \(key)：未闭合 \(stack.map { "<\($0)>" }.joined(separator: " "))")
+                }
+            }
+        }
+        // 锚：扫到的含标签值不能太少，且必须见过 `<b>`（白名单里最常见的那个）
+        #expect(scanned >= 5, "只扫到 \(scanned) 条含标签的文案 —— 解析口径失效")
+        #expect(sawBold, "一条 `<b>` 都没扫到 —— 标签解析口径失效（假绿）")
+        #expect(
+            problems.isEmpty,
+            """
+            文案值里的 HTML 标签不闭合：
+            \(problems.joined(separator: "\n  "))
+            值是按 **innerHTML** 回填的 ⇒ 少了 `</b>` 浏览器**不报错**，
+            只是把它**后面所有文字都变粗** —— 症状出现在别处，很难想到是这条文案写漏了。
+            """)
+    }
+
+    /// 文案值里的标签**必须在允许清单内**，且 `<i>` 必须带 `data-i`。
+    ///
+    /// 头注释写着「值里允许 HTML（`<b>` / `<code>` / `<br>` / `<i data-i="gear">`）」——
+    /// 又是一条**明写却没有判据**的约定（§8.65.2 同族）。
+    ///
+    /// `<i>` 那条更具体：图标靠 `data-i` 水合，**没有 `data-i` 的 `<i>` 就是一段斜体字** ——
+    /// 与 §8.45「有能力、没接线」同族：结构有了，接上标识才算数。
+    @Test func 文案值里的HTML标签必须在允许清单内() throws {
+        let pack = try loadLanguagePack()
+        var problems: [String] = []
+        for (lang, table) in pack {
+            for (key, value) in table.sorted(by: { $0.key < $1.key }) {
+                for tag in tags(in: value) {
+                    if !Self.allowedValueTags.contains(tag.name) {
+                        problems.append("[\(lang)] \(key)：不允许的标签 <\(tag.name)>")
+                    }
+                    if tag.name == "i", !tag.closing, !tag.attrs.contains("data-i") {
+                        problems.append("[\(lang)] \(key)：<i> 没有 data-i —— 水合时找不到图标名")
+                    }
+                }
+            }
+        }
+        #expect(
+            problems.isEmpty,
+            """
+            文案值里出现了允许清单之外的标签：
+            \(problems.joined(separator: "\n  "))
+            允许的是 `<b>` / `<code>` / `<br>` / `<i data-i="…">`（见 i18n.js 头注释）。
+            值是用 **innerHTML** 回填的 —— 多写一个块级标签就会把那一行的行内布局顶开。
+            """)
+    }
+
     /// CSS **变量**（自定义属性）的「用了没定义」 —— 此前一条守卫都没有。
     ///
     /// `var(--foo)` 拼错 / 定义被删 ⇒ 渲染出来是「**没这个样式**」，
