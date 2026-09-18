@@ -420,7 +420,166 @@ struct DesignDraftIntegrityTests {
     /// 基线 = 2026-09-19 实测的 **67 处**。修掉会变小（仍绿），新增会变大（必红）。
     private static let hardcodedA11yBaseline = 67
 
+    // MARK: 索引 ↔ 页面自身标题（§8.62）
+
+    /// 索引里**指向某个页面**的链接，其文字必须包含**该页面自己 `<title>` 的主名**。
+    ///
+    /// 这一类的静默性：改了页面标题（或改了索引里的叫法），**两边都不报错** ——
+    /// 读者按索引点进去，看到的是另一个名字，只会以为自己记错了。
+    /// 首跑就抓到一处真的：04 号页在卡片里叫「完全磁盘访问引导」，
+    /// 而它自己的标题（与导航链接）叫「授权引导」—— **同一页面两个名字**。
+    ///
+    /// ⚠️ 口径是「**包含**」而不是「相等」：导航链接是短名（相等），
+    /// 卡片链接带 `SCREEN 04` 前缀与一整句描述（只可能是子串）。
+    /// 一开始按「相等」写会 16 条全红 —— 那是**假红**（描述性文案本来就长）。
+    @Test func 索引里指向页面的名字必须与该页面自己的标题一致() throws {
+        let s = try loadLinks()
+
+        // 负向锚：解析不到链接 = 口径失效，不是「全都一致」
+        #expect(s.links.count >= 8, "只解析到 \(s.links.count) 条指向页面的链接 —— 解析口径失效（假绿）")
+
+        var mismatches: [String] = []
+        for link in s.links {
+            let file = designRoot.appendingPathComponent(link.href)
+            guard FileManager.default.fileExists(atPath: file.path) else {
+                mismatches.append("\(link.href)：索引指向的文件不存在")
+                continue
+            }
+            guard let main = try pageMainTitle(link.href) else {
+                mismatches.append("\(link.href)：页面里读不到 <title>")
+                continue
+            }
+            if !link.text.contains(main) {
+                mismatches.append("\(link.href)：索引写「\(link.text)」，页面标题主名是「\(main)」")
+            }
+        }
+        #expect(
+            mismatches.isEmpty,
+            """
+            索引与页面自己的标题对不上：
+            \(mismatches.joined(separator: "\n  "))
+            改了页面标题、或改了索引里的叫法，**两边都不会报错** ——
+            读者按索引点进去看到另一个名字，只会以为自己记错了。
+            统一成一个名字（页面 `<title>` 是准绳：它是页面对自己的正式命名）。
+            """)
+    }
+
+    /// 页面**自己**的两个名字必须一致：`<title>` 主名 与 `<h1>`。
+    ///
+    /// 这一处比「索引 ↔ 页面」更近：用户打开页面，浏览器标签是一个名字、
+    /// 页面大标题是另一个名字 —— 而**没有任何东西会报错**。
+    /// 首跑同样只红 04 号页（`<title>`「授权引导」 vs `<h1>`「完全磁盘访问引导」），
+    /// 其余 7 页**逐字相等** ⇒ 这个「相等」口径没有假红。
+    @Test func 页面自己的大标题必须与它自己的title一致() throws {
+        let files = try screenFiles()
+        var mismatches: [String] = []
+        for name in files {
+            let rel = "screens/\(name)"
+            guard let main = try pageMainTitle(rel) else {
+                mismatches.append("\(rel)：读不到 <title>")
+                continue
+            }
+            guard let h1 = try pageH1(rel) else {
+                mismatches.append("\(rel)：读不到 <h1>")
+                continue
+            }
+            if h1 != main {
+                mismatches.append("\(rel)：<title> 主名「\(main)」 vs <h1>「\(h1)」")
+            }
+        }
+        #expect(
+            mismatches.isEmpty,
+            """
+            页面自己的两个名字对不上：
+            \(mismatches.joined(separator: "\n  "))
+            浏览器标签显示一个名字、页面大标题显示另一个，**没有任何东西会报错** ——
+            读者只会以为有两个不同的页面。以 `<title>` 为**（它是页面对自己的正式命名）。
+            """)
+    }
+
+    /// 反向（缺位）：**每个页面都必须被索引链接到**。
+    ///
+    /// ⚠️ 与 §8.61 那条相反：这一向**可以**靠扫描守住 ——
+    /// 「页面文件集合」与「索引链接集合」都是现成的，不依赖历史，
+    /// 所以「新加了一屏却忘记挂进索引」能判出来（那一屏从此没人找得到）。
+    @Test func 每个页面都必须被索引链接到() throws {
+        let s = try loadLinks()
+        let linked = Set(s.links.map { $0.href })
+        let fm = FileManager.default
+        let screensDir = designRoot.appendingPathComponent("screens")
+        let files = (try fm.contentsOfDirectory(atPath: screensDir.path))
+            .filter { $0.hasSuffix(".html") }.sorted()
+
+        #expect(!files.isEmpty, "screens/ 下一个页面都没有 —— 路径错了（假绿）")
+
+        let orphans = files.filter { !linked.contains("screens/\($0)") }
+        #expect(
+            orphans.isEmpty,
+            """
+            这些页面**没有被索引链接到**：\(orphans.joined(separator: ", "))
+            新增一屏却忘记挂进 index.html，**不会有任何报错** ——
+            它就在那里，但没人点得到（与 §8.45「有能力、没接线」同形）。
+            """)
+    }
+
     // MARK: 扫描
+
+    private struct LinkScan {
+        var links: [(href: String, text: String)] = []
+    }
+
+    private func loadLinks() throws -> LinkScan {
+        let idx = try read(designRoot.appendingPathComponent("index.html"))
+        // 卡片链接是**多行**的（`<a class="scard-link" …>` 里嵌了标题与描述），
+        // 导航链接是单行的 —— 一个正则要同时吃下两种，故 `.` 需跨行。
+        //
+        // ⚠️ 定界符必须用 **`##"`**：正则里的 `[^"#]` 含有 `"#` 这个序列，
+        // 用普通 `#"…"#` 会被当成**字符串提前结束**（编译期报错：consecutive statements）。
+        // 与 §8.50.3「注释会蒙过扫描器」同族：**自己写的文本里出现了自己用的定界符**。
+        let pattern = ##"<a\s[^>]*href="(screens/[^"#]+)"[^>]*>(.*?)</a>"##
+        guard
+            let re = try? NSRegularExpression(
+                pattern: pattern, options: [.dotMatchesLineSeparators, .caseInsensitive])
+        else { return LinkScan() }
+        var scan = LinkScan()
+        let range = NSRange(idx.startIndex..<idx.endIndex, in: idx)
+        for m in re.matches(in: idx, range: range) {
+            guard let hr = Range(m.range(at: 1), in: idx),
+                let tr = Range(m.range(at: 2), in: idx)
+            else { continue }
+            scan.links.append((String(idx[hr]), Self.plainText(String(idx[tr]))))
+        }
+        return scan
+    }
+
+    /// `<title>主名 · DiskEjector UI v2</title>` ⇒ `主名`（页面对自己的正式命名）。
+    private func pageMainTitle(_ rel: String) throws -> String? {
+        let html = try read(designRoot.appendingPathComponent(rel))
+        guard let t = Self.matches(in: html, pattern: #"<title>(.*?)</title>"#).first else { return nil }
+        return t.trimmingCharacters(in: .whitespacesAndNewlines)
+            .split(separator: "·").first.map { String($0).trimmingCharacters(in: .whitespaces) }
+    }
+
+    /// 页面自己的 `<h1>`（取第一个）。
+    private func pageH1(_ rel: String) throws -> String? {
+        let html = try read(designRoot.appendingPathComponent(rel))
+        guard let raw = Self.matches(in: html, pattern: ##"<h1[^>]*>(.*?)</h1>"##).first else { return nil }
+        return Self.plainText(raw)
+    }
+
+    /// `screens/` 下的页面文件名（不含 index.html 等）。
+    private func screenFiles() throws -> [String] {
+        let dir = designRoot.appendingPathComponent("screens")
+        return (try FileManager.default.contentsOfDirectory(atPath: dir.path))
+            .filter { $0.hasSuffix(".html") }.sorted()
+    }
+
+    /// 去标签 + 压平空白（`SCREEN 04\n  名字 …` ⇒ 一行）。
+    private static func plainText(_ html: String) -> String {
+        let stripped = replace(in: html, pattern: #"<[^>]+>"#, with: "")
+        return stripped.split(whereSeparator: { $0.isWhitespace || $0.isNewline })
+            .joined(separator: " ")
+    }
 
     private struct Scan {
         var defined: Set<String> = []
