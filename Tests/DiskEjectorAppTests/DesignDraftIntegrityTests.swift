@@ -609,6 +609,114 @@ struct DesignDraftIntegrityTests {
             """)
     }
 
+    // MARK: 页面引用的资源（§8.64）
+
+    /// 每个页面都必须把**样式与两个脚本**都引上（缺哪个都是「页面还在、功能没了」）。
+    ///
+    /// 缺位类，但按 §8.61.2 的判据可以守：**「该有的全集」可派生**（页面集合 + 固定的三个资源）。
+    @Test func 每个页面都必须引用样式与脚本() throws {
+        let required = ["ds.css", "i18n.js", "ds.js"]
+        var problems: [String] = []
+        for url in try htmlFiles() {
+            let html = try read(url)
+            let refs =
+                Self.matches(in: html, pattern: ##"<link[^>]+href="([^"]+\.css)""##)
+                + Self.matches(in: html, pattern: ##"<script[^>]+src="([^"]+\.js)""##)
+            let have = Set(refs.map { ($0 as NSString).lastPathComponent })
+            // 负向锚：一个 css/js 都没扫到 = 口径失效，不是「都引了」
+            if have.isEmpty {
+                problems.append("\(url.lastPathComponent)：一个 css/js 引用都没解析到 —— 解析口径失效（假绿）")
+                continue
+            }
+            let missing = required.filter { !have.contains($0) }
+            if !missing.isEmpty {
+                problems.append("\(url.lastPathComponent)：没引 \(missing.joined(separator: " / "))")
+            }
+        }
+        #expect(
+            problems.isEmpty,
+            """
+            有页面的样式 / 脚本没引全：
+            \(problems.joined(separator: "\n  "))
+            少引一个，页面**还在**，只是样式或交互没了 —— 浏览器只在控制台报 404，
+            走查时「页面能打开」会让人以为没问题。
+            """)
+    }
+
+    /// `ds.js` 依赖 `i18n.js` 先定义 `window.DS_L10N` / `window.DS_LANGS`
+    /// （ds.js line 145/192 直接读这两个全局量）。
+    ///
+    /// ⚠️ 这个依赖**只存在于 HTML 里 `<script>` 的先后顺序**，代码里没有任何声明 ——
+    /// 交换两行 ⇒ 语言包未定义 ⇒ 文案全空，而**交换两行不会有任何报错**。
+    /// 与 §8.45「有能力、没接线」同族：**依赖是隐式的，就一定要有个地方把它钉住。**
+    @Test func 语言包必须排在dsjs之前() throws {
+        var problems: [String] = []
+        for url in try htmlFiles() {
+            let html = try read(url)
+            let scripts = Self.matchesWithLocation(
+                in: html, pattern: ##"<script[^>]+src="([^"]+\.js)""##
+            ).map { (($0.text as NSString).lastPathComponent, $0.location) }
+            let names = scripts.map { $0.0 }
+            guard let i18n = names.firstIndex(where: { $0.contains("i18n") }),
+                let ds = names.firstIndex(of: "ds.js")
+            else {
+                problems.append("\(url.lastPathComponent)：没同时引到 i18n.js 与 ds.js（\(names)）")
+                continue
+            }
+            if i18n > ds {
+                problems.append(
+                    "\(url.lastPathComponent)：i18n.js（第 \(i18n + 1) 个脚本）排在 ds.js（第 \(ds + 1) 个）之后")
+            }
+        }
+        #expect(
+            problems.isEmpty,
+            """
+            语言包与 ds.js 的加载顺序不对：
+            \(problems.joined(separator: "\n  "))
+            ds.js 启动时直接读 window.DS_L10N / window.DS_LANGS（都由 i18n.js 定义），
+            而这个依赖**只体现在 HTML 里两个 <script> 的先后** —— 交换两行不报错，
+            只会让语言包变成 undefined（文案全空）。
+            """)
+    }
+
+    /// 页面里引用的**本地**资源必须真实存在（相对该页面解析）。
+    ///
+    /// 浏览器对 404 只在**控制台**报一下：样式表 404 ⇒ 页面变成裸 HTML，
+    /// 图标 404 ⇒ 那个位置空着，两者在「页面能打开」这件事上都看不出来。
+    @Test func 页面引用的本地资源必须存在() throws {
+        var problems: [String] = []
+        var total = 0
+        for url in try htmlFiles() {
+            let html = try read(url)
+            let dir = url.deletingLastPathComponent()
+            // ⚠️ 定界符必须是 `##"…"##` 且**末尾三连引号**：正则以 `"` 收尾（匹配属性值
+            // 的右引号），它后面还得再跟一个 `"` 才是 raw string 的结束引号，然后才是 `##`。
+            // 只写两个引号 ⇒ 编译器把 `"` 当成正则内容，`##` 成了裸的磅字面量（编译不过）。
+            for raw in Self.matches(in: html, pattern: ##"(?:href|src)="([^"]+)""##) {
+                let ref = raw.split(separator: "#")[0].split(separator: "?").joined()
+                guard !ref.isEmpty,
+                    !ref.hasPrefix("#"), !ref.hasPrefix("http://"), !ref.hasPrefix("https://"),
+                    !ref.hasPrefix("mailto:"), !ref.hasPrefix("data:"), !ref.hasPrefix("javascript:")
+                else { continue }
+                total += 1
+                let resolved = dir.appendingPathComponent(String(ref))
+                if !FileManager.default.fileExists(atPath: resolved.path) {
+                    problems.append("\(url.lastPathComponent)：'\(ref)' → \(resolved.path)")
+                }
+            }
+        }
+        // 负向锚：一条本地引用都没扫到 = 口径失效
+        #expect(total >= 20, "只扫到 \(total) 条本地引用 —— 解析口径失效（假绿）")
+        #expect(
+            problems.isEmpty,
+            """
+            页面引用了不存在的本地资源：
+            \(problems.joined(separator: "\n  "))
+            浏览器对 404 **只在控制台报一下**：样式表没了页面变成裸 HTML、
+            图片没了那个位置空着 —— 而「页面能打开」这件事完全不受影响。
+            """)
+    }
+
     private struct LinkScan {
         var links: [(href: String, text: String)] = []
     }
@@ -695,6 +803,21 @@ struct DesignDraftIntegrityTests {
         guard let m = re.firstMatch(in: text, range: range), let r = Range(m.range(at: 1), in: text)
         else { return nil }
         return String(text[r])
+    }
+
+    /// 取第一个匹配的**两个捕获组**（文件名 / 说明）。
+    /// 带**位置**（用于判断 `<script>` 的先后顺序）。
+    private static func matchesWithLocation(
+        in text: String, pattern: String
+    ) -> [(
+        text: String, location: Int
+    )] {
+        guard let re = try? NSRegularExpression(pattern: pattern) else { return [] }
+        let range = NSRange(text.startIndex..<text.endIndex, in: text)
+        return re.matches(in: text, range: range).compactMap { m in
+            guard let r = Range(m.range(at: 1), in: text) else { return nil }
+            return (String(text[r]), m.range.location)
+        }
     }
 
     /// 取第一个匹配的**两个捕获组**（文件名 / 说明）。
