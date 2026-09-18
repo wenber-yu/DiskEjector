@@ -275,6 +275,56 @@ struct DesignDraftIntegrityTests {
             """)
     }
 
+    /// CSS **变量**（自定义属性）的「用了没定义」 —— 此前一条守卫都没有。
+    ///
+    /// `var(--foo)` 拼错 / 定义被删 ⇒ 渲染出来是「**没这个样式**」，
+    /// 而「样式没生效」与「本来就没写样式」在界面上**逐字相同**（§8.52 那一向的理由）。
+    /// 本设计稿 **916 处** `var()` 引用，全靠这一条守。
+    ///
+    /// ⚠️ 变量有**页面作用域**：`06-states.html` 的 `<style>` 里定义的变量，
+    /// `01-main-window.html` **拿不到**。所以按**页**解析（`ds.css` ∪ 本页 `<style>`），
+    /// **不能**把所有页面的 `<style>` 汇总 —— 汇总会把跨页断链判成可达。
+    /// （本轮实测 9 个页面的 `<style>` 里**一个变量定义都没有**，两种口径目前同结果；
+    ///  按页写是为了将来有人加页面级变量时不至于静默放过 —— 变异 M21 钉的就是这条。）
+    ///
+    /// `var(--x, 兜底)` **不算断** —— 作者明说了「没有就用兜底值」。
+    /// 全库目前 0 处兜底写法，这条逻辑由变异 M22 的**绿**对照钉住。
+    @Test func 用了但没定义的CSS变量一个都不许有() throws {
+        let scan = try loadCSSVariables()
+
+        // 锚：定义侧与使用侧**都得扫到足够多**，否则「0 处断链」只是「两边都没扫到」。
+        #expect(scan.defined.count >= 60, "只解析到 \(scan.defined.count) 个变量定义 —— ds.css 没读到")
+        #expect(
+            scan.defined.contains("--fs-11") && scan.defined.contains("--text-3"),
+            "`--fs-11` / `--text-3` 不在定义集里 —— 定义侧的正则坏了")
+        #expect(scan.pages.count >= 9, "只扫到 \(scan.pages.count) 个页面 —— 逐页扫描坏了")
+        for p in scan.pages {
+            #expect(!p.used.isEmpty, "\(p.name) 一个 var() 都没扫到 —— 使用侧解析坏了（假绿）")
+        }
+        let occurrences = scan.pages.reduce(0) { $0 + $1.used.count }
+        #expect(occurrences >= 500, "只扫到 \(occurrences) 处 var() —— 量级不对（实际 900+ 处）")
+
+        for p in scan.pages where !p.missing.isEmpty {
+            #expect(
+                p.missing.isEmpty,
+                """
+                \(p.name) 用了这些**解析不到**的 CSS 变量：\(Set(p.missing).sorted().joined(separator: ", "))
+                `var(--x)` 拿不到值时**不报错**，只是那一处样式没了 ——
+                而「样式没了」和「这儿本来就没写样式」在界面上长得一模一样。
+                """)
+        }
+    }
+
+    /// **反向**（定义了但没人用）只记录，不报警 —— 与 §8.52.5 同一个判据：
+    /// 设计稿里的「存货」**多数是合理的**（备用令牌），删它会改变视觉。
+    @Test func 定义了但没用的CSS变量只记录不报警() throws {
+        let scan = try loadCSSVariables()
+        var used: Set<String> = []
+        for p in scan.pages { used.formUnion(p.used) }
+        let unused = scan.defined.subtracting(used).sorted()
+        print("[设计稿] 定义了但没用到的 CSS 变量：\(unused.count) 个 —— \(unused.joined(separator: ", "))")
+    }
+
     // MARK: 扫描
 
     private struct Scan {
@@ -400,6 +450,62 @@ struct DesignDraftIntegrityTests {
             sha.update(data: data)
         }
         return sha.finalize().map { String(format: "%02x", $0) }.joined()
+    }
+
+    // MARK: CSS 变量
+
+    private struct CSSVarPage {
+        let name: String
+        /// 出现次数（**含重复**）—— 用来判断「使用侧到底扫到多少」。
+        var used: [String] = []
+        /// 用了、**没写兜底**、且这一页解析不到的变量。
+        var missing: [String] = []
+    }
+
+    private struct CSSVarScan {
+        /// `ds.css` 里定义的（所有页面都引它，所以算全局可用）。
+        var defined: Set<String> = []
+        var pages: [CSSVarPage] = []
+    }
+
+    /// 变量**按页**解析：可用集 = `ds.css` ∪ **本页** `<style>`。
+    /// `ds.css` 自己也作为一个「页」参与（它内部也在用 `var()`）。
+    private func loadCSSVariables() throws -> CSSVarScan {
+        let cssURL = designRoot.appendingPathComponent("assets/ds.css")
+        let css = Self.stripCSSComments(try read(cssURL))
+        var scan = CSSVarScan()
+        scan.defined = Set(Self.matches(in: css, pattern: #"(--[\w-]+)\s*:"#))
+        scan.pages.append(Self.page(name: "assets/ds.css", text: css, available: scan.defined))
+
+        for url in try htmlFiles() {
+            let raw = try read(url)
+            let blocks = Self.styleBlocks(in: raw)
+            var own: Set<String> = []
+            for b in blocks {
+                own.formUnion(Self.matches(in: Self.stripCSSComments(b), pattern: #"(--[\w-]+)\s*:"#))
+            }
+            // 本页可见 = 全局 + 本页 <style>（**不含别的页面**）
+            let body =
+                Self.withoutStyleBlocks(raw) + "\n"
+                + blocks.map { Self.stripCSSComments($0) }.joined(separator: "\n")
+            scan.pages.append(
+                Self.page(
+                    name: url.lastPathComponent,
+                    text: body,
+                    available: scan.defined.union(own)))
+        }
+        return scan
+    }
+
+    private static func page(name: String, text: String, available: Set<String>) -> CSSVarPage {
+        // 带兜底的 `var(--x, …)`：作者明说了「没有就用兜底」，不算断链。
+        let withFallback = Set(matches(in: text, pattern: #"var\(\s*(--[\w-]+)\s*,"#))
+        var p = CSSVarPage(name: name)
+        for v in matches(in: text, pattern: #"var\(\s*(--[\w-]+)"#) {
+            p.used.append(v)
+            if !withFallback.contains(v) && !available.contains(v) { p.missing.append(v) }
+        }
+        return p
     }
 
     /// 取正则的第 1 捕获组。
