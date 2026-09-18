@@ -84,4 +84,22 @@ struct LocalizationCatalogTests {
             "「外置磁盘」分组标题已从菜单栏面板移除（它与应用名重复、白占一行高度），文案键不该再留着"
         )
     }
+
+    /// App Store 渠道的文案已删除（2026-09-18 决定：本应用不上架 MAS）。
+    ///
+    /// **为什么要把「不存在」钉成测试**：死文案和死代码一样会误导人 —— 下一轮有人看到
+    /// 「在 App Store 中查看」会以为还有个上架渠道要照顾，照着它把 MAS 分支加回来。
+    /// 而「文案还在但没人用」不会编译失败、也不会有任何告警。
+    ///
+    /// 两条键一并钉：`openInAppStore`（按钮标题）与 `updateChannelAppStore`（渠道显示名）。
+    @Test func 已删除的AppStore渠道文案不再存在() {
+        #expect(
+            L10n.Key(rawValue: "openInAppStore") == nil,
+            "本应用不上架 App Store，「在 App Store 中查看」按钮已删除，文案键不该再留着"
+        )
+        #expect(
+            L10n.Key(rawValue: "updateChannelAppStore") == nil,
+            "本应用不上架 App Store，「App Store 版」渠道名已删除，文案键不该再留着"
+        )
+    }
 }

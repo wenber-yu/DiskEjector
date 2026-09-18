@@ -268,7 +268,8 @@ struct ContentView: View {
 
     /// 把 FDA 授权状态同步到本地 `@State`，是横幅显示与否的**单一闸门**。
     ///
-    /// 沙盒版（MAS 分发）不需要 FDA 概念：沙盒里没有 TCC 拦截，`OccupancyResult` 直接走 `.unknown`；
+    /// 沙盒构建不需要 FDA 概念（本应用不上架 MAS，这是防御分支）：沙盒里没有 TCC 拦截，
+    /// `OccupancyResult` 直接走 `.unknown`；
     /// 此时让 `fdaAuthorized = true` 即可让未授权横幅永远不出现。
     ///
     /// **顺带驱动授权成功横幅**：从「本会话曾未授权」到「已授权」的跳变，

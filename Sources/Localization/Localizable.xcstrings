@@ -8,11 +8,39 @@
         "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "強調色" } }
       }
     },
+    "appLanguage" : {
+      "localizations" : {
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "语言" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Language" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "語言" } }
+      }
+    },
     "appName" : {
       "localizations" : {
         "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "磁盘推出助手" } },
         "en" : { "stringUnit" : { "state" : "translated", "value" : "DiskEjector" } },
         "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "磁碟推出助手" } }
+      }
+    },
+    "autoUpdate" : {
+      "localizations" : {
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "自动更新" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Automatically Update" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "自動更新" } }
+      }
+    },
+    "autoUpdateHint" : {
+      "localizations" : {
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "有新版本时自动下载，并在下次启动时安装。" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Downloads new versions in the background and installs them on the next launch." } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "有新版本時自動下載，並在下次啟動時安裝。" } }
+      }
+    },
+    "autoUpdateUnavailableHint" : {
+      "localizations" : {
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "当前构建未签名，系统不允许自动更新。" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "This build is not signed, so automatic updates are unavailable." } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "目前建置未簽章，系統不允許自動更新。" } }
       }
     },
     "cancel" : {
@@ -90,6 +118,34 @@
         "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "正在推出 %@" } },
         "en" : { "stringUnit" : { "state" : "translated", "value" : "Ejecting %@" } },
         "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "正在退出 %@" } }
+      }
+    },
+    "followSystemLanguage" : {
+      "localizations" : {
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "跟随系统" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Follow System" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "跟隨系統" } }
+      }
+    },
+    "languageFollowSystemHintFormat" : {
+      "localizations" : {
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "跟随系统语言（当前：%@）" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Follows the system language (currently: %@)" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "跟隨系統語言（目前：%@）" } }
+      }
+    },
+    "languageInEffectHintFormat" : {
+      "localizations" : {
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "当前：%@" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Currently: %@" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "目前：%@" } }
+      }
+    },
+    "languagePendingHintFormat" : {
+      "localizations" : {
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "将在重启后切换为 %@" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Will switch to %@ after restart" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "將在重新啟動後切換為 %@" } }
       }
     },
     "openMainWindow" : {
@@ -372,6 +428,13 @@
         "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "佔用程式:" } }
       }
     },
+    "restartNow" : {
+      "localizations" : {
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "立即重启" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Restart Now" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "立即重新啟動" } }
+      }
+    },
     "safeToEject" : {
       "localizations" : {
         "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "该硬盘可安全推出" } },
@@ -412,6 +475,13 @@
         "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "设置" } },
         "en" : { "stringUnit" : { "state" : "translated", "value" : "Settings" } },
         "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "設定" } }
+      }
+    },
+    "settingsGroupUpdates" : {
+      "localizations" : {
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "更新" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Updates" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "更新" } }
       }
     },
     "showDockIcon" : {
@@ -463,18 +533,165 @@
         "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "透明模式使用系統毛玻璃；色調模式使用固定的淺色背景。" } }
       }
     },
+    "updateAlertTitleFormat" : {
+      "localizations" : {
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "%@ %@ 已发布" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "%@ %@ Is Available" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "%@ %@ 已發佈" } }
+      }
+    },
+    "updateAlertVersionsFormat" : {
+      "localizations" : {
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "当前 %@（构建 %@）→ %@（构建 %@）" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Current %@ (build %@) → %@ (build %@)" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "目前 %@（組建 %@）→ %@（組建 %@）" } }
+      }
+    },
+    "updateAlertVersionsPlainFormat" : {
+      "localizations" : {
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "当前 %@ → %@" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Current %@ → %@" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "目前 %@ → %@" } }
+      }
+    },
+    "updateCallout" : {
+      "localizations" : {
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "点「后台更新并重启」后，应用会在后台下载并校验签名，完成后自动重启完成安装。正在推出的磁盘不会被打断。" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "After you choose “Update in Background & Restart”, the app downloads and verifies the update in the background, then restarts to finish installing. Disks that are being ejected are not interrupted." } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "按下「背景下載並重新啟動」後，應用程式會在背景下載並驗證簽章，完成後自動重新啟動以完成安裝。正在退出的磁碟不會被中斷。" } }
+      }
+    },
+    "updateChecking" : {
+      "localizations" : {
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "正在检查…" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Checking…" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "正在檢查…" } }
+      }
+    },
+    "updateDownloadingFormat" : {
+      "localizations" : {
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "正在后台下载 %@" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Downloading %@ in the background" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "正在背景下載 %@" } }
+      }
+    },
+    "updateEscHint" : {
+      "localizations" : {
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "Esc 稍后再提醒" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Esc to remind later" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "Esc 稍後再提醒" } }
+      }
+    },
+    "updateFailedFormat" : {
+      "localizations" : {
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "%@ 下载失败" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Failed to download %@" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "%@ 下載失敗" } }
+      }
+    },
+    "updateFailedHint" : {
+      "localizations" : {
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "网络不可用。下次启动会自动重试。" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "The network is unavailable. It will retry on next launch." } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "網路無法使用。下次啟動會自動重試。" } }
+      }
+    },
+    "updateFoundFormat" : {
+      "localizations" : {
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "发现 %@ · 上次检查：%@" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "%@ available · Last checked: %@" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "發現 %@ · 上次檢查：%@" } }
+      }
+    },
+    "updateFoundShortFormat" : {
+      "localizations" : {
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "发现 %@" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "%@ available" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "發現 %@" } }
+      }
+    },
+    "updateInstallAndRestart" : {
+      "localizations" : {
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "后台更新并重启" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Update in Background & Restart" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "背景下載並重新啟動" } }
+      }
+    },
+    "updateNeverChecked" : {
+      "localizations" : {
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "尚未检查" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Not checked yet" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "尚未檢查" } }
+      }
+    },
+    "updateReadyFormat" : {
+      "localizations" : {
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "%@ 已下载完成" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "%@ downloaded" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "%@ 已下載完成" } }
+      }
+    },
+    "updateReadyHint" : {
+      "localizations" : {
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "重启后完成安装；下次退出应用时也会自动安装。" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Installs after a restart; it also installs when you next quit the app." } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "重新啟動後完成安裝；下次結束應用程式時也會自動安裝。" } }
+      }
+    },
+    "updateSkipVersion" : {
+      "localizations" : {
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "跳过此版本" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Skip This Version" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "跳過此版本" } }
+      }
+    },
+    "updateSkippedFormat" : {
+      "localizations" : {
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "已跳过 %@ · 再点一次仍会检查并提示" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Skipped %@ · checking again still shows it" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "已跳過 %@ · 再點一次仍會檢查並提示" } }
+      }
+    },
+    "updateTryAgain" : {
+      "localizations" : {
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "重试" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Try Again" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "重試" } }
+      }
+    },
+    "updateUnknownVersion" : {
+      "localizations" : {
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "未知版本" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Unknown version" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "未知版本" } }
+      }
+    },
+    "updateUpToDateFormat" : {
+      "localizations" : {
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "上次检查：%@ · 已是最新版本" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Last checked: %@ · Up to date" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "上次檢查：%@ · 已是最新版本" } }
+      }
+    },
+    "updateView" : {
+      "localizations" : {
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "查看更新" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "View Update" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "檢視更新" } }
+      }
+    },
+    "updateWhatsNew" : {
+      "localizations" : {
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "本次更新" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "What's New" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "本次更新" } }
+      }
+    },
     "usagePercentFormat" : {
       "localizations" : {
         "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "已使用 %.0f%%" } },
         "en" : { "stringUnit" : { "state" : "translated", "value" : "%.0f%% used" } },
         "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "已使用 %.0f%%" } }
-      }
-    },
-    "openInAppStore" : {
-      "localizations" : {
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "在 App Store 中查看" } },
-        "en" : { "stringUnit" : { "state" : "translated", "value" : "View in App Store" } },
-        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "在 App Store 中查看" } }
       }
     },
     "checkForUpdates" : {
@@ -834,11 +1051,11 @@
         "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "使用狀況未知" } }
       }
     },
-    "updateChannelAppStore" : {
+    "updateChannelDevelopment" : {
       "localizations" : {
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "App Store 版" } },
-        "en" : { "stringUnit" : { "state" : "translated", "value" : "App Store build" } },
-        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "App Store 版" } }
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "开发版" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Development build" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "開發版" } }
       }
     },
     "updateChannelDirect" : {

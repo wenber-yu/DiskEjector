@@ -124,14 +124,28 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         //
         // **为什么离屏出图不够**：与主窗口同源 —— 设置窗口也是 `.fullSizeContentView`
         // + 透明标题栏，`NSHostingView` 会把「内容 566 + 标题栏安全区 32」当固有尺寸
-        // **回推给窗口**。离屏没有窗口就没有安全区，窗口也不会被回推（实测离屏恒为 566），
+        // **回推给窗口**。离屏没有窗口就没有安全区，窗口也不会被回推（实测离屏恒为设计稿高），
         // 所以「窗口高是不是设计稿的 566」「玻璃有没有连标题栏一起铺满」两件事离屏测不到。
         //
-        // 实测（2026-09-16 补齐前）：上屏后是 **440×598**，玻璃只拿到内容的 566，
+        // 实测（2026-09-16 补齐前）：上屏后是 **440×598**（当时尺寸），玻璃只拿到内容的 566，
         // 底部 32pt 露成平色；系统标题栏的「设置」还与面板头部的「设置」重复。
         let autoSettingsKeys = CommandLine.arguments.contains("--preview-settings-keys")
         if autoSettingsKeys || CommandLine.arguments.contains("--preview-settings") {
             delegate.runSettingsPreview(autoKeys: autoSettingsKeys)
+        }
+
+        // 更新弹窗预览：把「有新版本」弹窗**真的上屏**。
+        //
+        // **为什么离屏出图不够**：与推出弹窗同源 —— 弹窗是自绘的无边框窗口，
+        // 「能不能成为 key（决定回车/Esc/点击是否生效）」「有没有真的上屏」
+        // 「圆角与阴影对不对」这些问题离屏测不到（离屏渲染的是一张图，没有窗口）。
+        //
+        // 它比推出弹窗**更需要**真机自检，因为它多了一个设计稿点名要求的出口：
+        // **Esc = 稍后**（不占按钮）。而 Esc 在这条链上有两个入口 ——
+        // SwiftUI 的 key equivalent 与窗口的 `cancelOperation(_:)`，哪一条生效只有真机知道。
+        let autoUpdateKeys = CommandLine.arguments.contains("--preview-update-keys")
+        if autoUpdateKeys || CommandLine.arguments.contains("--preview-update") {
+            delegate.runUpdatePreview(autoKeys: autoUpdateKeys)
         }
 
         app.run()
@@ -141,7 +155,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     ///
     /// 预览模式下**跳过正常的启动引导**：否则 `maybeShowFDAOnboarding()` 会先弹一次，
     /// 预览里那次就成了「第二次展示」，`didShowFDAOnboarding` 也被写脏 —— 输出难以判读。
-    private static var isPreviewRun: Bool {
+    ///
+    /// 不只启动引导要用：**凡是要读宿主 bundle 真实身份的东西都该避开预览**
+    /// （Sparkle 的 updater 就是一例，见 `UpdateController`）——
+    /// 预览跑的是未签名的命令行产物，`Bundle.main` 不是合规的 app bundle。
+    static var isPreviewRun: Bool {
         CommandLine.arguments.contains { $0.hasPrefix("--preview-") }
     }
 
@@ -151,7 +169,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let disks = DiskService.shared.fetchExternalDisks()
 
         print("DiskEjector 诊断报告")
-        print("  沙盒状态: \(sandboxed ? "已启用（App Store 版本）" : "未启用（开发/直发版本）")")
+        // 沙盒 ≠ App Store：本应用不上架 MAS（2026-09-18 决定），
+        // 这里报的是**当前进程是否真的处于沙盒中**，不再把它解释成某个分发渠道。
+        print("  沙盒状态: \(sandboxed ? "已启用" : "未启用")")
         print("  占用检测: \(sandboxed ? "不可用，降级为「无法检测」" : "可用（lsof）")")
         print("  识别到的外置可推出卷: \(disks.count)")
         for disk in disks {
@@ -302,6 +322,59 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    /// 更新弹窗预览（`--preview-update` / `--preview-update-keys`）。
+    ///
+    /// 样本值取自设计稿 `08-update.html` 的 A 段（1.0.0 → 1.1.0、构建 42 → 58、
+    /// 2026-09-17、12.4 MB、三条更新）—— **不要换成别的样本**：
+    /// 走查图与设计稿并排比的时候，样本不同就没法比（同 §8.33 的磁盘/进程样本规则）。
+    ///
+    /// 自检两件事，都是离屏测不到的：
+    /// ① 弹窗能不能成为 key（决定回车 / Esc / 点击是否生效）；
+    /// ② **Esc 是不是真的等于「稍后」** —— 设计稿把这条写成了硬规则
+    ///   （「第三个出口不占按钮，但必须写在操作区左边」），而它在实现上有两个入口
+    ///   （SwiftUI 的 key equivalent 与窗口的 `cancelOperation(_:)`），只有真机知道哪条生效。
+    @MainActor
+    private func runUpdatePreview(autoKeys: Bool) {
+        let update = PendingUpdate(
+            version: "1.1.0", newBuild: "58",
+            currentVersion: "1.0.0", currentBuild: "42",
+            date: "2026-09-17", sizeBytes: 12_400_000,
+            notes: [
+                "设置里新增「自动更新」开关，可后台下载并在重启后安装",
+                "修复未插入磁盘时骨架层一直不消失的问题",
+                "推出失败弹窗新增「查看日志」直达入口",
+            ])
+        let model = UpdateAlertBuilder.model(for: update)
+
+        Task {
+            var mismatches: [String] = []
+
+            // A · 回车应落到主按钮「后台更新并重启」。
+            let a = await previewAlert(
+                model, label: "更新弹窗 · 回车", key: autoKeys ? .return : nil)
+            if autoKeys, a != .installAndRestart {
+                mismatches.append("回车应得 installAndRestart，实得 \(a)")
+            }
+
+            // B · Esc 应走「稍后」（那个不占按钮的第三个出口）。
+            let b = await previewAlert(
+                model, label: "更新弹窗 · Esc", key: autoKeys ? .escape : nil)
+            if autoKeys, b != .cancel {
+                mismatches.append("Esc 应得 cancel（稍后），实得 \(b)")
+            }
+
+            print("预览结束（未对任何真实版本执行下载或安装）")
+
+            guard autoKeys else { exit(0) }
+            if mismatches.isEmpty {
+                print("✅ 更新弹窗自检通过：回车 → 后台更新并重启，Esc → 稍后")
+                exit(0)
+            }
+            for line in mismatches { print("❌ \(line)") }
+            exit(1)
+        }
+    }
+
     /// 把一次完整的按键（down + up）投进应用自己的事件队列。
     ///
     /// **为什么 down 和 up 都要投**：AppKit 的按键处理挂在 `keyDown` 上，只投 `keyDown`
@@ -355,7 +428,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     /// 之后若用户仍未授权，主窗口顶部会留一条琥珀横幅（`NoticeBanner.warning`），
     /// 不再打断 —— 拒绝授权不等于功能失效，磁盘照样能推出，只是看不到占用者。
     ///
-    /// 沙箱版（App Store）跳过：沙箱里本来就没有 FDA 这回事。
+    /// 沙盒构建跳过：沙盒里本来就没有 FDA 这回事。
+    /// （本应用不上架 MAS，这条 `guard` 是防御分支，不是某个分发渠道的专属路径。）
     private func maybeShowFDAOnboarding() {
         guard !OccupancyDetector.isSandboxed, !AppSettings.didShowFDAOnboarding else { return }
         AppSettings.didShowFDAOnboarding = true
@@ -1382,10 +1456,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     ///
     /// **为什么需要它**：设置窗口与主窗口同源 —— `.fullSizeContentView` + 透明标题栏，
     /// `NSHostingView` 会把「内容 566 + 标题栏安全区 32」当固有尺寸**回推给窗口**。
-    /// 离屏没有窗口就没有安全区，窗口也不会被回推（实测离屏恒为 566）——
+    /// 离屏没有窗口就没有安全区，窗口也不会被回推（实测离屏恒为设计稿高）——
     /// 「窗口高是不是设计稿的 566」「玻璃有没有连标题栏一起铺满」两件事离屏测不到。
     ///
-    /// 实测（2026-09-16 补齐前）：上屏后是 **440×598**（多 32pt），玻璃只拿到内容的 566，
+    /// 实测（2026-09-16 补齐前）：上屏后是 **440×598**（当时尺寸，多 32pt），玻璃只拿到内容的 566，
     /// 底部露成平色；系统标题栏的「设置」还与面板头部的「设置」重复。
     /// 这几条当时**一个断言都没有** —— 改掉任何一条，测试与自检都不会红。
     ///
@@ -1419,7 +1493,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             guard autoKeys else {
                 print("人工核对模式：设置窗口已上屏（本模式不会改动任何设置）。")
                 print("  核对要点：")
-                print("    ① 窗口高应是 566（设计稿），不是 598；")
+                print(
+                    "    ① 窗口高应是 \(Int(DesignTokens.Size.settingsPanel.height))（设计稿），"
+                        + "不是 \(Int(DesignTokens.Size.settingsPanel.height) + 32)；")
                 print("    ② 标题栏那一条应与下方内容共用同一张玻璃，不是一块平色；")
                 print("    ③ 顶部只应有一个「设置」—— 系统标题栏那个应被隐藏；")
                 print("    ④ **不该看到任何红绿灯** —— 设计稿的 `.shead` 里只有「设置」+「完成」，")
@@ -1432,7 +1508,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             print("预览结束（未改动任何设置）")
             if mismatches.isEmpty {
                 print(
-                    "✅ 设置窗口真机自检通过：窗口 440×566、玻璃覆盖整窗（含标题栏）、"
+                    "✅ 设置窗口真机自检通过：窗口 "
+                        + "\(Int(DesignTokens.Size.settingsPanel.width))×"
+                        + "\(Int(DesignTokens.Size.settingsPanel.height))、玻璃覆盖整窗（含标题栏）、"
                         + "三个系统按钮都已隐藏（无红绿灯）")
                 exit(0)
             }
@@ -1444,8 +1522,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     /// 把设置窗口的状态打到终端，并就地核对。
     ///
     /// 四条断言各有明确后果：
-    /// 1. 窗口必须是设计稿的 **440 × 566**（`05-settings.html` 的 `.win--settings`）——
-    ///    这条抓的是「`NSHostingView` 把 566+32 的固有尺寸回推给窗口」（实测会撑到 598）；
+    /// 1. 窗口必须是设计稿的 **480 × 800**（`DesignTokens.Size.settingsPanel`）——
+    ///    这条抓的是「`NSHostingView` 把 800+32 的固有尺寸回推给窗口」（实测会撑到 832）；
     /// 2. **玻璃必须覆盖整个窗口内容区**（含 52pt 头部那一带）—— 与主窗口同款的露底捕手。
     ///    判据不是看颜色（离屏取不到桌面），而是问 AppKit 那块 `NSVisualEffectView`
     ///    在窗口里占多大：``GlassSurface`` 用的材质是 `.underWindowBackground`，
@@ -2177,7 +2255,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     ///
     /// | 缺的东西 | 后果 |
     /// |---|---|
-    /// | `safeAreaRegions = []` | **上屏前 440×566 → 上屏后 440×598**（多 32pt） |
+    /// | `safeAreaRegions = []` | **上屏前 480×800 → 上屏后 480×832**（多 32pt） |
     /// | `backgroundColor = .clear` + `isOpaque = false` | 窗口不透明 → `.underWindowBackground` 的毛玻璃**糊不到桌面**，看起来是平色块 |
     /// | `titleVisibility = .hidden` | 系统标题栏的「设置」与面板自己头部的「设置」**重复** |
     /// | `contentView.layer.cornerRadius` | 玻璃卡片是 12pt 圆角、窗口底角却是直角，两者不重合 |
@@ -2220,7 +2298,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // 独立窗口没有 SwiftUI 的 presentation 上下文，`@Environment(\.dismiss)`
         // 在这里是空操作 —— 必须由宿主把「完成」接到关窗上，否则按钮点了没反应。
         // `fillsHost: true` —— 独立窗口要「玻璃铺满整窗」。`false` 是给 `.sheet`
-        // 与离屏出图用的（它们要的是理想尺寸 440×566），详见 ``SettingsView/fillsHost``。
+        // 与离屏出图用的（它们要的是理想尺寸 480×800），详见 ``SettingsView/fillsHost``。
         let hosting = NSHostingView(
             rootView: SettingsView(onDone: { [weak win] in win?.close() }, fillsHost: true))
         // 与主窗口、引导面板同一句：`.fullSizeContentView` 会让 SwiftUI 把内容整体下推 32pt，

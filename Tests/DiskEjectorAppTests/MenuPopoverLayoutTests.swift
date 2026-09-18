@@ -97,7 +97,7 @@ struct MenuPopoverLayoutTests {
     ///
     /// 不是「约等于」：`NSPopover` 会按内容的 fitting size 定宽，
     /// 任何一处多了 1pt 内边距都会让它变成 361 —— 而 360 是设计稿里
-    /// 与主窗口 800、设置面板 440 并列的**第三个固定尺寸**。
+    /// 与主窗口 800、设置面板 480 并列的**第三个固定尺寸**。
     @Test func 面板宽度恰好三百六十() {
         let s = size(popover(disks: [disk(1)]))
         #expect(s.width == 360, "面板宽 \(s.width)pt，设计稿是 360pt")

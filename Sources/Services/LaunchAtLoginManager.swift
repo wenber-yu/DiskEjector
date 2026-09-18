@@ -58,12 +58,15 @@ enum LaunchAtLoginError: LocalizedError, Equatable {
 
 /// 开机自启动（登录项）管理。
 ///
-/// 基于 macOS 13+ 的 `SMAppService.mainApp` 将当前应用注册为登录项——这是目前
-/// **唯一**符合 Mac App Store 要求的登录项方案。
+/// 基于 macOS 13+ 的 `SMAppService.mainApp` 将当前应用注册为登录项——它是目前**唯一**
+/// 不依赖已废弃 API、也不需要内嵌 helper 的方案。
 ///
-/// **为什么不用别的方案**（三者都会在审核或运行时出问题）：
-/// - `LSSharedFileListInsertItemURL`：macOS 13 起已废弃，审核会拒。
-/// - 自己往 `~/Library/LaunchAgents` 写 plist：沙盒内没有写权限，且属于「自行维持驻留」，违反审核指南。
+/// > 「符合 Mac App Store 要求」曾经是选它的首要理由；本应用已决定不上架 MAS
+/// > （2026-09-18），那条理由作废，下面三条**运行时**理由依然成立，故选型不变。
+///
+/// **为什么不用别的方案**（另外三条都会在系统层出问题）：
+/// - `LSSharedFileListInsertItemURL`：macOS 13 起已废弃，不再可靠生效。
+/// - 自己往 `~/Library/LaunchAgents` 写 plist：沙盒内没有写权限。
 /// - 内嵌 Login Item helper app：可以用，但要求 helper 与主 app 双双签名并做 bundle 校验，
 ///   对于「仅开机启动主 app」这一需求属于过度设计，`SMAppService.mainApp` 已覆盖。
 @MainActor

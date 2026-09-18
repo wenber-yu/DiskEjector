@@ -27,8 +27,8 @@
 |---|--------|------|
 | F1 | 外置磁盘检测与列表 | 自动扫描并展示所有已挂载的外置/移动硬盘（非系统盘） |
 | F2 | 磁盘基本信息 | 每个磁盘旁显示：`名称` + 总容量 / 已用 / 剩余 |
-| F3 | 占用进程展示 | 列出当前正在读写该磁盘的所有进程（进程名 + PID）。**主分发渠道为官网直发（Developer ID，不开沙盒），lsof 可真实列出；若走 Mac App Store 沙盒则降级为「当前环境无法检测」** |
-| F4 | 一键安全推出 | 调用系统推出接口；磁盘被占用时返回「正被使用」并拒绝强卸（原「自动终止进程」方案已从 MAS 版本移除，见 §4.2） |
+| F3 | 占用进程展示 | 列出当前正在读写该磁盘的所有进程（进程名 + PID）。**分发渠道为官网直发（Developer ID，不开沙盒），`lsof` 可真实列出；若运行环境被沙盒限制（本应用不发布沙盒构建，仅作防御分支）则降级为「当前环境无法检测」** |
+| F4 | 一键安全推出 | 调用系统推出接口；磁盘被占用时返回「正被使用」并拒绝强卸（原「自动终止进程」方案已整体移除，见 §4.2） |
 | F5 | 确认对话框 | 点击推出前，弹窗列出将被终止的进程名称，用户点确认后才执行。**沙盒下无进程信息，已改为推出前确认** |
 | F6 | 卸载失败告警 | 卸载失败时弹出系统告警（NSAlert），并记录错误日志 |
 | F7 | 错误日志记录 | 将卸载失败信息写入本地日志文件（含时间戳、磁盘名、错误原因） |
@@ -105,9 +105,9 @@
 | UI | SwiftUI（支持 macOS 14+） |
 | 磁盘枚举/属性 | DiskArbitration.framework（`DADiskCopyDescription`） |
 | 推出执行 | `NSWorkspace.unmountAndEjectDevice(at:)` |
-| 进程查询 | 直发（非沙盒）构建：`lsof`；**App Store（沙盒）构建：不可用，降级** |
+| 进程查询 | 非沙盒构建（本应用唯一的发布形态）：`lsof`；**沙盒构建：不可用，降级**（沙盒形态不发布，代码里仅作防御分支） |
 | 日志 | `os.Logger` + 本地文件（FileHandle，带大小轮转） |
-| 打包 | SwiftPM + `build_app.sh` 生成 .app bundle（支持 `BUILD_CHANNEL=mas|direct`） |
+| 打包 | SwiftPM + `build_app.sh` 生成 .app bundle（渠道固定直发；再传 `BUILD_CHANNEL` 会报错退出） |
 
 ### 4.2 关键实现路径
 
@@ -119,12 +119,15 @@
    - **无物理设备属性的虚拟卷**（磁盘映像等）仅在系统明确标记 `DAMediaEjectable == true` 时列入，
      避免把 Xcode 模拟器映像、系统 cryptex 映像交给用户推出。
    - 网络卷（`DADeviceProtocol` 为 SMB/AFP/NFS 等）排除。
-2. **占用进程检测（核心价值，依赖分发渠道）**：列出「是谁占用磁盘」是本应用的核心价值。
-   但 App Sandbox 会封死进程枚举（实测矩阵见下），因此**主分发渠道改为官网直发
+2. **占用进程检测（核心价值，依赖运行环境）**：列出「是谁占用磁盘」是本应用的核心价值。
+   但 App Sandbox 会封死进程枚举（实测矩阵见下），因此**分发渠道定为官网直发
    （Developer ID，不开沙盒）**——`lsof` 在直发构建下可用，能真实列出占用进程名。
-   Mac App Store 版本因强制沙盒只能降级为「无法检测」，故 MAS 仅作为可选精简渠道。
 
-   | 能力 | 非沙盒（直发） | MAS 沙盒 |
+   > **2026-09-18：本应用不上架 Mac App Store**，不发布任何沙盒形态的构建。
+   > 下面这张矩阵保留，是为了解释**为什么**沙盒下会降级（它决定了「不开沙盒」这个前提），
+   > 不是因为还有一条 MAS 渠道在维护。
+
+   | 能力 | 非沙盒（直发，唯一发布形态） | 沙盒（不发布，仅实测记录） |
    |------|--------|----------|
    | `lsof` | 正常（列出进程名） | **输出 0 行** |
    | `proc_listallpids` | 正常 | **返回 0** |
@@ -132,8 +135,9 @@
 
    直发版未授予「完全磁盘访问」时，`lsof` 同样拿不到其他进程，此时检测返回
    `.needsFullDiskAccess` 并提示用户去系统设置授权——授权后恢复列出（`.occupied`）。
-   直发构建保留 `lsof -Fpcn0` 解析实现；`build_app.sh` 用 `BUILD_CHANNEL=direct` 切换，
-   对应 `DiskEjector.direct.entitlements`（无 sandbox）。
+   保留 `lsof -Fpcn0` 解析实现；`build_app.sh` 渠道固定为直发，
+   签名用 `DiskEjector.direct.entitlements`（无 sandbox），并在签名后**回读校验**
+   包里没有 `com.apple.security.app-sandbox`。
 3. **安全推出**：`NSWorkspace.unmountAndEjectDevice(at:)`（实测沙盒内可用）。
    **不再使用 `diskutil unmount force`**——force 会绕过「有进程占用就失败」这层系统保护，
    在磁盘正被写入时强行卸载，存在数据损坏风险。
@@ -188,8 +192,7 @@ DiskEjector/
 ├── Resources/
 │   ├── AppIcon.icns                 # 应用图标资产（由 scripts/build_icon.sh 生成）
 │   ├── AppIcon.png
-│   ├── DiskEjector.direct.entitlements # 直发版（无沙盒，可列出占用进程）
-│   └── DiskEjector.entitlements     # MAS 版（强制 App Sandbox）
+│   └── DiskEjector.direct.entitlements # 直发版（无沙盒，可列出占用进程；沙盒版 entitlements 已随不上架决定删除）
 ├── assets/icons/                    # 图标源图专用目录（放图后跑 scripts/build_icon.sh）
 ├── scripts/
 │   ├── build_icon.sh                # 源图 → AppIcon.icns（sips + iconutil）
@@ -211,7 +214,7 @@ DiskEjector/
 
 - [x] 能正确识别并列出所有已挂载外置磁盘（沙盒下已实测：wenbo-data + 测试映像正确识别，系统映像已过滤）
 - [x] 磁盘容量信息（总量/已用/剩余）显示正确
-- [x] 占用进程：**直发版本可列出进程名**（核心价值）；MAS 沙盒版本显示「当前环境无法检测」
+- [x] 占用进程：**直发版本可列出进程名**（核心价值）；沙盒环境显示「当前环境无法检测」
 - [ ] 点击"推出"弹出确认对话框
 - [x] 磁盘被占用时拒绝强卸，返回「正被使用」提示（沙盒下已实测 fBsyErr）
 - [x] 磁盘空闲时成功推出（沙盒下已实测成功）
@@ -240,9 +243,10 @@ DiskEjector/
 
 ### 6.2 开机自启
 
-使用 `SMAppService.mainApp`（macOS 13+），这是**唯一**符合 MAS 要求的登录项方案。
-不使用 `LSSharedFileList`（已废弃、审核会拒）、不自写 LaunchAgents plist（沙盒无权限、
-且属「自行维持驻留」）。
+使用 `SMAppService.mainApp`（macOS 13+）——目前唯一不依赖已废弃 API、也不需要内嵌
+helper 的登录项方案。（「符合 MAS 要求」这条理由随不上架决定作废，选型不变。）
+不使用 `LSSharedFileList`（macOS 13 起已废弃、不再可靠生效）、不自写 LaunchAgents plist
+（沙盒无写权限）。
 
 `SMAppServiceStatus` 的 `.requiresApproval` 必须显式处理：注册已提交但需用户到
 「系统设置 → 通用 → 登录项」手动开启。若只按 Bool 建模，UI 会显示「已开启」但实际不启动。
@@ -250,15 +254,62 @@ DiskEjector/
 
 ### 6.3 自动更新
 
-按分发渠道区分（渠道通过 App Store 收据 `Contents/_MASReceipt/receipt` 判定；无收据即直发/开发版）：
+> **2026-09-18 决定：本应用不上架 Mac App Store**，只走 Developer ID 直发。
+> 因此渠道只有两种（编译期区分，不再用 App Store 收据判定）：
+> `direct`（发布构建）/ `development`（`DEBUG` 构建）。
+> 原先 `.appStore` 分支（收据判定 / `appStoreID` / `macappstore://` / 「在 App Store 中查看」）
+> 及其两条本地化键已删除，并由 `UpdateServiceTests`、`LocalizationCatalogTests` 钉住「不存在」。
 
 | 渠道 | 更新方式 |
 |------|----------|
-| Mac App Store | 由 App Store 负责。**不使用 Sparkle**——自下载可执行代码违反审核指南 2.4.5，沙盒下也无法替换自身 |
-| Developer ID 直发（主渠道） | 当前降级为「打开下载页」（`downloadPageURL` 填 Releases 页即可）；接 Sparkle 时只需替换 `UpdateService.openUpdateSource()` 的直接分发分支 |
+| Developer ID 直发（唯一渠道） | **Sparkle 2**（SwiftPM 依赖，二进制 xcframework）：`UpdateController` 持有 `SPUUpdater`；`UpdateService.openUpdateSource()` 保留为「updater 起不来」时的退路 |
+| `DEBUG` 开发构建 | 同上，版本行显示「开发版」而非「官网直发版」（避免误判为可分发产物） |
 
-来源常量（`appStoreID` / `downloadPageURL`）为占位 `nil`，未配置时 UI 隐藏按钮，
-避免给出点了没反应的死入口。
+**feed 不是 GitHub 的 `/releases/latest`**：那是 HTML / atom 页面，Sparkle 解析不了
+（它要带 `sparkle:` 命名空间的 RSS）。`appcast.xml` 由 `scripts/make_appcast.sh`
+（内部调 `generate_appcast`）生成并提交进仓库，`SUFeedURL` 指向它的
+`raw.githubusercontent.com` 地址；真正的下载地址写在 appcast 的 enclosure 里，
+指向 `…/releases/download/v<TAG>/DiskEjector-<VERSION>.dmg`。
+
+打包时 `build_app.sh` 必须做三件事，少一件就是「构建成功、双击打不开」：
+① 把 `Sparkle.framework` 拷进 `Contents/Frameworks`；② 给可执行文件补
+`@executable_path/../Frameworks` 这条 rpath；③ entitlements 开
+`com.apple.security.cs.disable-library-validation`（Hardened Runtime 的库校验会拒绝
+没有 Team ID 的自签构建加载第三方 dylib）。三件事各配一条回读校验。
+
+**EdDSA 签名**：`SUPublicEDKey` 由 `SPARKLE_PUBLIC_ED_KEY` 注入；未设置时脚本会警告
+且**不写该键**（更新不验签）。私钥用 `generate_keys` 生成并存进钥匙串，
+CI 走 `SPARKLE_PRIVATE_KEY` 从 stdin 传入（不落盘）。
+
+**更新相关的界面只有两处**：
+
+| 位置 | 内容 |
+|------|------|
+| 设置面板「更新」组 | 自动更新开关（`automaticallyChecksForUpdates` + `automaticallyDownloadsUpdates`）+ 「检查更新」行 |
+| 新版本弹窗 | 当前 → 新版本、本次更新内容、「稍后」（Esc）/「跳过此版本」/「后台更新并重启」 |
+
+- **「检查更新」那一行是一个状态机，七种画法**（设计稿 `08-update.html` C 段矩阵）：
+  `尚未检查 / 已是最新 / 已跳过 / 发现新版本 / 后台下载中 / 已就绪 / 下载失败`。
+  判定是纯函数 `UpdateController.rowState(phase:skippedVersion:lastCheck:)`，
+  **优先级有语义**：进行中的四态 > 跳过 > 已是最新 > 尚未检查。
+  每种状态**能做的事不一样**，所以按钮也跟着状态走（查看更新 / 取消 / 立即重启 / 重试）。
+- **「已就绪」那一态不显示「检查更新」按钮**：Sparkle 正在等我们回答 `.install`
+  （`sessionInProgress` 为真），此时点「检查更新」没有反应
+  （`SPUUpdater.h` 明写）。给一个点了没反应的按钮，与「功能坏了」长得一模一样。
+- **「重启」不自动做，只提供入口**：下载可以完全后台，重启会关掉用户手上的一切。
+- **下载失败不染色**：琥珀只表示「磁盘被占用」、红只表示「破坏性动作」，失败两者都不是。
+- **用自定义 `SPUUserDriver`，不用 `SPUStandardUserDriver`**：① 设计稿的弹窗与标准弹窗
+  不是一回事；② **下载进度只在 user driver 里给**（`showDownloadDidReceiveData` 等），
+  而设计稿要把百分比画在设置行上。见 `UpdateUserDriver`。
+- **「检查更新」只有这一个入口**：关于行原先那个按钮已删除 —— 同一个动作有两个入口时，
+  用户会以为它们做的事不一样。
+- 开关在 `SPUUpdater.allowsAutomaticUpdates == false` 时**禁用并说明原因**（未签名构建会命中）。
+- **「跳过此版本」记的是版本号**（`AppSettings.Key.skippedVersion`），不是布尔 ——
+  布尔会在下个版本上继续沉默。手动点「检查更新」会清掉跳过标记。
+- **「自动更新」偏好不另存一份**：真相在 Sparkle 的 `SPUUpdaterSettings` 里，
+  再存一份就会有两个真相。
+- **改语言必须重启才生效**（macOS 只在启动时读 `AppleLanguages`）→ 设置里有「待重启」第三态，
+  且它是**派生**的（`LanguageManager.isRestartPending(preferred:active:)`），不是手动开关。
 
 ### 6.4 工程化
 
@@ -285,5 +336,4 @@ DiskEjector/
 
 - Finder 扩展右键菜单
 - 磁盘健康状态（SMART）监控
-- 直发渠道接入 Sparkle 自动更新
 - 主窗口 UI 的自动化测试（当前 UI 层无测试覆盖）

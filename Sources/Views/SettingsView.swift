@@ -3,7 +3,7 @@ import SwiftUI
 
 /// 设置面板（设计稿 `05-settings.html` / `.win--settings`）。
 ///
-/// **设计稿规格**：440 × 566，圆角 **12**（与主窗口同一个 `--r-window`），毛玻璃
+/// **设计稿规格**：480 × 800，圆角 **12**（与主窗口同一个 `--r-window`），毛玻璃
 /// （`.win` 规则：`--bg-glass` + `blur(30) saturate(180%)` + `0.5px var(--border-strong)`）；
 /// 头部 52（「设置」+「完成」）；四组内容：外观 / 通用 / 诊断 / 关于。
 ///
@@ -37,12 +37,12 @@ struct SettingsView: View {
     /// 统一打开同一个独立窗口（见 ``ContentView/openSettings()``）。
     var onDone: (() -> Void)?
 
-    /// 是否让**玻璃铺满宿主**（而不是刚好等于设计稿的 440×566）。
+    /// 是否让**玻璃铺满宿主**（而不是刚好等于设计稿的 480×800）。
     ///
     /// - `true`：**独立窗口**用（`AppDelegate.makeSettingsWindow()`）。窗口可能因为
     ///   标题栏安全区被撑高，玻璃必须跟着铺满 —— 否则多出来的那一条会露出桌面。
-    ///   实测（2026-09-16，补齐前）：窗口 598、玻璃只有 566，**上下各露 16pt**。
-    /// - `false`（默认）：离屏出图与单测用。这时要的正是**理想尺寸 440×566**。
+    ///   实测（2026-09-16，补齐前）：窗口 598、玻璃只有 566（当时的尺寸），**上下各露 16pt**。
+    /// - `false`（默认）：离屏出图与单测用。这时要的正是**理想尺寸 480×800**。
     ///   ⚠️ 这条路径**不能**开 `true` —— `.frame(maxHeight: .infinity)` 会让
     ///   `sizeThatFits(in: …greatestFiniteMagnitude)` 量出**无穷高**，
     ///   `writePNG` 里 `Int(∞ * 2)` 直接 SIGTRAP（快照那套代码的注释里记着这个坑）。
@@ -78,13 +78,13 @@ struct SettingsView: View {
         }
         // **两层 frame 分工不同，别合并成一层**（与 ``ContentView`` 同一处理，
         // 主窗口的「标题栏露底」就是这么来的）：
-        // - 内层 = **设计稿尺寸** 440×566，内容按它排版；
+        // - 内层 = **设计稿尺寸** 480×800，内容按它排版；
         // - 外层 = **填满宿主**（窗口），``GlassSurface`` 铺在这一层上。
         //   少了外层，「玻璃铺满整窗」就退化成依赖「窗口高恰好等于内容高」这个巧合 ——
         //   巧合一破（窗口被安全区撑到 598）就上下各露 16pt。
         //
         // 外层只在独立窗口里加：`maxWidth/maxHeight` 传 `nil` 是 no-op，
-        // 于是离屏出图与单测拿到的仍是理想尺寸 440×566（理由见 ``fillsHost``）。
+        // 于是离屏出图与单测拿到的仍是理想尺寸 480×800（理由见 ``fillsHost``）。
         .frame(
             width: DesignTokens.Size.settingsPanel.width,
             height: DesignTokens.Size.settingsPanel.height
@@ -255,10 +255,34 @@ struct SettingsSectionsColumn: View {
 
     @AppStorage(AppSettings.Key.visualStyle) private var visualStyleRaw = VisualStyle.default.rawValue
     @AppStorage(AppSettings.Key.accentColor) private var accentColorRaw = AccentColor.default.rawValue
+    @AppStorage(AppSettings.Key.appLanguage) private var appLanguageRaw = AppLanguage.default.rawValue
     @AppStorage(AppSettings.Key.showDockIcon) private var showDockIcon = false
     @State private var launchAtLogin = LaunchAtLoginManager.isEnabled
 
+    /// 用户本次拨动「自动更新」后的值；`nil` = 还没拨过，直接读 Sparkle。
+    ///
+    /// **为什么是「覆盖值」而不是一个镜像布尔**：镜像需要一个「加载完了吗」的位，
+    /// 否则首帧会把 Sparkle 的默认值（开）显示成关。这里反过来 —— 没拨过就读真值，
+    /// 永远不可能显示错的初始状态，也不需要那个位。
+    @State private var autoUpdateOverride: Bool?
+
+    /// 「更新」组要跟着 ``UpdateController/phase`` 变 —— 下载进度、已就绪、失败
+    /// 三个状态都是**别人推着走**的（Sparkle 的回调），不订阅就永远停在首帧那一态。
+    @ObservedObject private var updateController = UpdateController.shared
+
     private var accentColor: AccentColor { AccentColor(rawValue: accentColorRaw) ?? .default }
+
+    /// 用户选的语言（`@AppStorage` 侧）。
+    private var appLanguage: AppLanguage { AppLanguage.resolve(appLanguageRaw) }
+
+    /// 「改了语言但还没重启」的第三态。
+    ///
+    /// 判定走 ``LanguageManager/isRestartPending(preferred:active:)`` 这个纯函数，
+    /// 不读 ``LanguageManager/preferred`` —— 视图的值来自 `@AppStorage`，
+    /// 两者在刷新时序上可能差一帧，混用会出现「下拉已经变了、说明还是旧的」。
+    private var languageRestartPending: Bool {
+        LanguageManager.isRestartPending(preferred: appLanguage)
+    }
 
     // 这里**没有** `private var visualStyle` —— 它曾经存在且从未被使用（死代码）：
     // 本视图只需要把 raw 值交给分段控件，真正消费这个偏好的是 ``GlassSurface``
@@ -288,13 +312,269 @@ struct SettingsSectionsColumn: View {
         AppVersionInfo.build() ?? "1"
     }
 
-    /// 分发渠道显示名。**必须区分**：自签与 ad-hoc 构建无法公证、无法上架，
-    /// 一律写成「Developer ID」会让使用者误判自己已具备分发条件。
+    /// 分发渠道显示名。**必须区分**开发构建与正式直发构建：`DEBUG` 构建既没公证、
+    /// 也不代表可分发状态，一律写成「官网直发版」会让使用者误判自己拿到的是可分发产物。
+    ///
+    /// （`.appStore` 分支已随「不上架 MAS」删除——渠道不存在，就没有第三个名字要显示。）
     private var channelName: String {
-        UpdateService.channel == .appStore
-            ? L10n.tr(.updateChannelAppStore)
-            : L10n.tr(.updateChannelDirect)
+        switch UpdateService.channel {
+        case .direct:
+            return L10n.tr(.updateChannelDirect)
+        case .development:
+            return L10n.tr(.updateChannelDevelopment)
+        }
     }
+
+    // MARK: 「语言」行
+
+    /// 「语言」行的说明。
+    ///
+    /// 三态，**每一态都要有可见落点**：
+    /// - 跟随系统 → 「跟随系统语言（当前：简体中文）」；
+    /// - 选了某个具体语言且**已生效** → 「当前：English」；
+    /// - 选了但**还没重启** → 「将在重启后切换为 English」（并多出「立即重启」按钮）。
+    ///
+    /// 最后一态是必须的：macOS 只在启动时读 `AppleLanguages`，改完不可能当场生效。
+    /// 不写出来，用户无法分辨「本来就要等重启」和「这个功能坏了」
+    /// —— 与登录项「等待系统批准」、更新「已跳过 1.1.0」是同一类错误。
+    private var languageDescription: String {
+        if languageRestartPending {
+            return String(format: L10n.tr(.languagePendingHintFormat), appLanguage.displayName)
+        }
+        switch appLanguage {
+        case .system:
+            return String(
+                format: L10n.tr(.languageFollowSystemHintFormat),
+                LanguageManager.active.displayName)
+        default:
+            return String(format: L10n.tr(.languageInEffectHintFormat), appLanguage.displayName)
+        }
+    }
+
+    /// 「语言」行右侧的控件：下拉 + （待重启时）「立即重启」。
+    ///
+    /// **单独抽出来是为了让编译器喘口气**：整段塞在 `body` 里时，
+    /// `SettingsPopUp` 的泛型 + `Binding(get:set:)` + `if` 分支会让类型检查器放弃，
+    /// 报成 `failed to produce diagnostic for expression`（错误位置指在 `var body` 上）。
+    @ViewBuilder
+    private var languageControl: some View {
+        HStack(spacing: DesignTokens.Spacing.sm) {
+            SettingsPopUp(
+                items: AppLanguage.allCases,
+                title: { $0.displayName },
+                // 写回走 ``LanguageManager/apply(_:)`` —— 它同时更新 `appLanguage` 偏好
+                // 与 `AppleLanguages`（系统认得的那个键）。只写前者的话，
+                // 界面会显示「已选 English」而下次启动仍然是中文。
+                selection: Binding(
+                    get: { appLanguage },
+                    set: { LanguageManager.apply($0) }
+                ),
+                accessibilityLabel: L10n.tr(.appLanguage)
+            )
+            // 第三态才出现的「立即重启」：让这个状态**可立刻见效**，
+            // 而不是让人干等或去猜（设计稿 spec-note）。
+            if languageRestartPending {
+                ActionButton(
+                    title: L10n.tr(.restartNow),
+                    variant: .outline,
+                    size: .small,
+                    accent: accentColor,
+                    action: { LanguageManager.restart() }
+                )
+            }
+        }
+    }
+
+    // MARK: 「更新」组
+
+    /// 自动更新开关的当前值。
+    ///
+    /// **真值在 Sparkle 那边**（`SPUUpdaterSettings`，写进同一份 UserDefaults），
+    /// 这里不另存偏好 —— 见 ``AppSettings`` 顶部那段说明。
+    private var autoUpdateOn: Bool {
+        autoUpdateOverride ?? UpdateController.shared.automaticallyChecksForUpdates
+    }
+
+    /// 宿主是否允许自动更新（未正确签名时为假）。
+    private var canAutoUpdate: Bool { UpdateController.shared.allowsAutomaticUpdates }
+
+    /// 「自动更新」行的说明。不允许自动更新时**必须说明原因** ——
+    /// 否则用户看到的是一个拨不动的开关，却不知道为什么。
+    private var autoUpdateDescription: String {
+        canAutoUpdate ? L10n.tr(.autoUpdateHint) : L10n.tr(.autoUpdateUnavailableHint)
+    }
+
+    /// 拨动「自动更新」。
+    ///
+    /// **一个开关驱动 Sparkle 的两个标志**：Sparkle 把「检查」与「下载」分成两级
+    /// （`SUEnableAutomaticChecks` / `SUAutomaticallyUpdate`），而设计稿只有一个开关
+    /// —— 只开检查不开下载的话，用户开了「自动更新」却发现从没自动下载过，
+    /// 那不是他要的。关的时候两级一起关，避免留下一个半开的状态。
+    ///
+    /// ⚠️ **不碰 `SUAutomaticallyUpdate` 的「静默强装」语义**：Sparkle 只在应用**退出时**
+    /// 安装，不会在用户干活时重启（设计稿那句「并在下次启动时安装」说的就是这件事）。
+    private func toggleAutoUpdate() {
+        let newValue = !autoUpdateOn
+        UpdateController.shared.automaticallyChecksForUpdates = newValue
+        UpdateController.shared.automaticallyDownloadsUpdates = newValue
+        autoUpdateOverride = newValue
+    }
+
+    /// 「自动更新」那一行的点击动作；不允许自动更新时为 `nil`（整行不可点）。
+    private var autoUpdateTapAction: (() -> Void)? {
+        guard canAutoUpdate else { return nil }
+        return { toggleAutoUpdate() }
+    }
+
+    /// 「更新」组的第二行 —— **一个状态机，七种画法**（设计稿 `08-update.html` B 段 + C 段矩阵）。
+    ///
+    /// **为什么这一行不是「固定文案 + 固定按钮」**：设计稿把「发现新版本」「后台下载中」
+    /// 「已就绪」「下载失败」四种中间状态**全部就地画在这一行上** —— 不弹遮罩、不加横幅、
+    /// 不往主窗口塞东西。后台更新的全部意义就是别打扰用户。
+    /// 而每种状态下**能做的事不一样**（查看更新 / 取消 / 立即重启 / 重试），
+    /// 所以按钮也跟着状态走。
+    ///
+    /// **文案与判定都不在这里做**：判定是 ``UpdateController/rowState(phase:skippedVersion:lastCheck:)``
+    /// 这个纯函数（可以逐态断言），视图只负责把它翻译成人话。
+    /// 视图里 if/else 拼字符串就没法断言 —— 测试只能去比本地化的日期文本，
+    /// 换台机器或换个语言必红，且红的原因与被测代码无关。
+    ///
+    /// ⚠️ **`.ready` 那一态故意不再显示「检查更新」按钮**：Sparkle 正在等我们回答
+    /// `.install`（`sessionInProgress` 为真），此时点「检查更新」是**没有反应**的
+    /// （见 ``UpdateController/readyReply``）。给一个点了没反应的按钮，
+    /// 与「功能坏了」长得一模一样 —— 所以那一态换成「立即重启」。
+    @ViewBuilder
+    private var updateCheckLine: some View {
+        switch updateController.rowState {
+        case .neverChecked:
+            line(
+                label: L10n.tr(.checkForUpdates),
+                description: L10n.tr(.updateNeverChecked)
+            ) { checkForUpdatesButton }
+
+        case .upToDate(let date):
+            line(
+                label: L10n.tr(.checkForUpdates),
+                description: String(
+                    format: L10n.tr(.updateUpToDateFormat),
+                    Self.updateCheckDateFormatter.string(from: date))
+            ) { checkForUpdatesButton }
+
+        case .skipped(let version):
+            line(
+                label: L10n.tr(.checkForUpdates),
+                description: String(format: L10n.tr(.updateSkippedFormat), version)
+            ) { checkForUpdatesButton }
+
+        case .found(let version, let lastCheck):
+            line(
+                label: L10n.tr(.checkForUpdates),
+                description: foundDescription(version: version, lastCheck: lastCheck),
+                // 设计稿 B2 给这一行上了强调色：它是「有件事等你决定」，
+                // 而其余几态都只是在陈述事实。
+                descriptionAccent: true
+            ) { viewUpdateButton }
+
+        case .downloading(let version, let fraction):
+            line(
+                label: String(format: L10n.tr(.updateDownloadingFormat), version),
+                progress: fraction
+            ) { cancelUpdateButton }
+
+        case .ready(let version):
+            line(
+                label: String(format: L10n.tr(.updateReadyFormat), version),
+                description: L10n.tr(.updateReadyHint)
+            ) { restartUpdateButton }
+
+        case .failed(let version):
+            line(
+                label: String(format: L10n.tr(.updateFailedFormat), version),
+                description: L10n.tr(.updateFailedHint)
+            ) { retryUpdateButton }
+        }
+    }
+
+    /// 「发现新版本」那一行的说明（设计稿 B2：`发现 1.1.0 · 上次检查：今天 14:30`）。
+    ///
+    /// 上次检查时间缺失时退化成不带时间的写法 —— **不能显示成「上次检查：」后面空着**，
+    /// 那看起来像「时间没读出来」，而不是「还没检查过」。
+    private func foundDescription(version: String, lastCheck: Date?) -> String {
+        guard let lastCheck else {
+            return String(format: L10n.tr(.updateFoundShortFormat), version)
+        }
+        return String(
+            format: L10n.tr(.updateFoundFormat), version,
+            Self.updateCheckDateFormatter.string(from: lastCheck))
+    }
+
+    // MARK: 「更新」组的五个按钮（各自绑一个动作，不是同一段代码换标题）
+
+    private var checkForUpdatesButton: some View {
+        ActionButton(
+            title: L10n.tr(.checkForUpdates),
+            variant: .outline,
+            size: .small,
+            accent: accentColor,
+            // 走 Sparkle：由它负责下载与安装，UI 只负责发起。
+            // updater 起不来时 `checkForUpdates()` 内部会退回打开 Releases 页并记日志。
+            action: { UpdateController.shared.checkForUpdates() }
+        )
+    }
+
+    /// 「查看更新」是**主按钮**（设计稿 B2）：用户按过 Esc 之后，
+    /// 这一行是唯一能回到弹窗的入口，它必须比「检查更新」更显眼。
+    private var viewUpdateButton: some View {
+        ActionButton(
+            title: L10n.tr(.updateView),
+            variant: .primary,
+            size: .small,
+            accent: accentColor,
+            action: { UpdateController.shared.presentFoundUpdate() }
+        )
+    }
+
+    private var cancelUpdateButton: some View {
+        ActionButton(
+            title: L10n.tr(.cancel),
+            variant: .outline,
+            size: .small,
+            accent: accentColor,
+            action: { UpdateController.shared.cancelDownload() }
+        )
+    }
+
+    private var restartUpdateButton: some View {
+        ActionButton(
+            title: L10n.tr(.restartNow),
+            variant: .primary,
+            size: .small,
+            accent: accentColor,
+            action: { UpdateController.shared.installReadyUpdate() }
+        )
+    }
+
+    private var retryUpdateButton: some View {
+        ActionButton(
+            title: L10n.tr(.updateTryAgain),
+            variant: .outline,
+            size: .small,
+            accent: accentColor,
+            action: { UpdateController.shared.retryDownload() }
+        )
+    }
+
+    /// 「上次检查」的时间格式（设计稿是「今天 14:30」）。
+    ///
+    /// `doesRelativeDateFormatting` 负责把当天说成「今天」；**它跟随 `Locale.current`** ——
+    /// 所以断言不许比这个字符串（见 ``updateStatusDescription`` 的说明）。
+    private static let updateCheckDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .short
+        formatter.timeStyle = .short
+        formatter.doesRelativeDateFormatting = true
+        return formatter
+    }()
 
     var body: some View {
         VStack(alignment: .leading, spacing: SettingsMetrics.groupSpacing) {
@@ -320,14 +600,24 @@ struct SettingsSectionsColumn: View {
             }
             group(title: L10n.tr(.settingsGroupGeneral)) {
                 settingsCard {
+                    // 语言行是「通用」组的第一行（设计稿 `05-settings.html` 的位置）。
+                    // 顺序有理由：它是这一组里**唯一会「改了不立刻生效」**的一项，
+                    // 放在最前面，用户改完往下看时不会以为自己漏了什么。
+                    line(
+                        label: L10n.tr(.appLanguage),
+                        description: languageDescription,
+                        divider: false
+                    ) {
+                        languageControl
+                    }
+
                     // 设计稿这一行**只有标签、没有说明**（`.sline` 实测 44pt）。
                     // 曾给它加了一句「在 Dock 与 App 切换器中显示图标。」，
                     // 于是整行 44 → 59，四组内容比设计稿高出 15pt，
-                    // 566pt 的面板装不下，「关于」又被挤出滚动区。
+                    // 当时的面板（566pt）装不下，「关于」又被挤出滚动区。
                     // 「在 Dock 中显示图标」本身已经说清了后果，不需要再解释一遍。
                     line(
                         label: L10n.tr(.showDockIcon),
-                        divider: false,
                         onTap: { showDockIcon.toggle() },
                         accessibilityValue: L10n.tr(showDockIcon ? .on : .off)
                     ) {
@@ -363,6 +653,29 @@ struct SettingsSectionsColumn: View {
                             action: { LogService.shared.revealLogInFinder() }
                         )
                     }
+                }
+            }
+            group(title: L10n.tr(.settingsGroupUpdates)) {
+                settingsCard {
+                    line(
+                        label: L10n.tr(.autoUpdate),
+                        description: autoUpdateDescription,
+                        divider: false,
+                        // 不允许自动更新时**整行不可点** —— 否则用户点一下、
+                        // 开关动一下、实际什么都没发生（`allowsAutomaticUpdates` 为假时
+                        // Sparkle 不会启动更新器）。「设了没生效」与「没设」不能长得一样。
+                        //
+                        // ⚠️ 抽成属性而不是在这里写三元：`onTap` 的类型是 `(() -> Void)?`，
+                        // 三元的两个分支是「方法引用」与 `nil`，编译器推不出那个可选闭包的
+                        // 类型，于是整段 `body` 报 `failed to produce diagnostic for expression`
+                        // —— 错误位置指在 `var body` 上，与真正的病根隔着 200 行。
+                        onTap: autoUpdateTapAction,
+                        accessibilityValue: L10n.tr(autoUpdateOn ? .on : .off)
+                    ) {
+                        SettingsSwitch(isOn: autoUpdateOn, accent: accentColor)
+                    }
+                    // 第二行是**一个状态机**（七种画法），见 ``updateCheckLine``。
+                    updateCheckLine
                 }
             }
             aboutRow
@@ -430,10 +743,18 @@ struct SettingsSectionsColumn: View {
     /// 自己是 `accessibilityHidden`（它只是块视觉图形），不补这一句，
     /// VoiceOver 用户只会听到「显示 Dock 图标」而**永远不知道当前是开还是关** ——
     /// 看得见的人扫一眼就知道，看不见的人却拿不到这个信息。
+    ///
+    /// `progress` 给「后台下载中」那一行用（设计稿 B3）：说明位换成一个**固定 16pt 高**
+    /// 的行内进度条。**高度必须固定** —— 与说明行同高，下载中这一行就不会被撑高，
+    /// 于是整块面板在下载过程中不会跳一下。
+    ///
+    /// `descriptionAccent` 给「发现新版本」那一行用（设计稿 B2 的 `style="color:var(--accent)"`）。
     @ViewBuilder
     private func line<Control: View>(
         label: String,
         description: String? = nil,
+        progress: Double? = nil,
+        descriptionAccent: Bool = false,
         divider: Bool = true,
         onTap: (() -> Void)? = nil,
         accessibilityValue: String? = nil,
@@ -448,10 +769,16 @@ struct SettingsSectionsColumn: View {
                         DesignTokens.LineHeight.base, fontSize: DesignTokens.FontSize.body
                     )
                     .fixedSize(horizontal: false, vertical: true)
-                if let description {
+                if let progress {
+                    SettingsProgressLine(fraction: progress, accent: accentColor)
+                } else if let description {
                     Text(description)
                         .font(.system(size: DesignTokens.FontSize.footnote))
-                        .foregroundStyle(DesignTokens.Palette.mutedForeground)
+                        .foregroundStyle(
+                            descriptionAccent
+                                ? accentColor.swiftUIColor
+                                : DesignTokens.Palette.mutedForeground
+                        )
                         .designLineHeight(
                             DesignTokens.LineHeight.base, fontSize: DesignTokens.FontSize.footnote
                         )
@@ -535,7 +862,7 @@ struct SettingsSectionsColumn: View {
 
     /// 「关于」区：图标 + 名称/版本 + 更新按钮，**横向一行**。
     ///
-    /// 旧版是「居中大图标 + 竖排版本号」，高 206pt —— 在 566pt 的面板里它是最大的一块，
+    /// 旧版是「居中大图标 + 竖排版本号」，高 206pt —— 在当时的 566pt 面板里它是最大的一块，
     /// 却只承载三行静态文字。改为横向一行后降到 70pt，省下的空间留给了「诊断」分组。
     private var aboutRow: some View {
         HStack(spacing: 14) {
@@ -585,17 +912,16 @@ struct SettingsSectionsColumn: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
-            if UpdateService.canOpenUpdateSource {
-                ActionButton(
-                    title: UpdateService.channel == .appStore
-                        ? L10n.tr(.openInAppStore)
-                        : L10n.tr(.checkForUpdates),
-                    variant: .outline,
-                    size: .small,
-                    accent: accentColor,
-                    action: { UpdateService.openUpdateSource() }
-                )
-            }
+            // **这里曾经有一个「检查更新」按钮，2026-09-18 删掉了。**
+            //
+            // 设计稿 `05-settings.html` 规定「更新」组是这件事的**唯一入口**：
+            // 同一个动作有两个入口时，用户会以为它们做的事不一样
+            // （一个「检查」、一个「更新」，其实都只是问一句有没有新版本）。
+            // 何况关于行的按钮和「更新」组那颗在同一个面板里，相隔不到 200pt。
+            //
+            // ⚠️ 删掉之后 `UpdateService.canOpenUpdateSource` 只剩 `openUpdateSource()`
+            // 内部的失败兜底在用 —— 那是**另一条路**（updater 起不来时退回打开 Releases 页），
+            // 不是「第二个入口」。
         }
         .padding(.horizontal, SettingsTokens.aboutPaddingH)
         .padding(.vertical, SettingsTokens.aboutPaddingV)
@@ -729,6 +1055,166 @@ struct SettingsSegmentedControl: View {
                 .fill(DesignTokens.Palette.subtle)
         )
         .fixedSize()
+    }
+}
+
+// MARK: - 行内下载进度（设计稿 `.progressline`）
+
+/// 设置行里的行内下载进度（设计稿 `08-update.html` B3）。
+///
+/// **为什么只画百分比、不画「还需 1 分钟」**：下载有确定的字节数，进度条说的是实话；
+/// 而「还需 1 分钟」在任何网络下都是猜的。设计稿把这条写成了硬规则 ——
+/// 「百分比是真的，ETA 是编的」。（主窗口那条「推出中」不画进度，理由正好相反：
+/// 系统的推出接口不提供进度。）
+///
+/// **外层固定 16pt 高**：与说明行同高，于是这一行不会被撑高
+/// （见 ``DesignTokens/Size/settingsProgressLineHeight``）。
+///
+/// 与 ``StorageMeter`` 的差别只有两处：百分比**不固定宽**（设计稿给 `.progressline`
+/// 单独写了 `width: auto`），以及没有「高用量转琥珀」那套 ——
+/// 下载到 90% 不是预警，是快好了。
+struct SettingsProgressLine: View {
+
+    /// 0…1。
+    let fraction: Double
+    var accent: AccentColor = .default
+
+    var body: some View {
+        HStack(spacing: DesignTokens.Spacing.sm) {
+            GeometryReader { proxy in
+                ZStack(alignment: .leading) {
+                    Capsule(style: .continuous)
+                        .fill(DesignTokens.Palette.subtle)
+                    Capsule(style: .continuous)
+                        .fill(accent.swiftUIColor)
+                        .frame(width: clamped * proxy.size.width)
+                }
+            }
+            .frame(height: DesignTokens.Size.meterHeight)
+
+            Text(percentText)
+                .font(.system(size: DesignTokens.FontSize.groupTitle, weight: .medium))
+                .monospacedDigit()
+                .foregroundStyle(DesignTokens.Palette.mutedForeground)
+                .fixedSize()
+        }
+        .frame(height: DesignTokens.Size.settingsProgressLineHeight)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(String(format: L10n.tr(.usagePercentFormat), clamped * 100))
+    }
+
+    /// **夹到 0…1**：服务器给的总长可能偏小（`showDownloadDidReceiveExpectedContentLength`
+    /// 的文档明确说这个值可能不准），不夹的话填充宽度会超出轨道。
+    private var clamped: Double { min(max(fraction, 0), 1) }
+
+    private var percentText: String { String(format: "%.0f%%", clamped * 100) }
+}
+
+// MARK: - 下拉（设计稿 `.popup`）
+
+/// 设置面板里的下拉（设计稿 `.popup`：28pt 高、`--bg-subtle` 底 + 内缩发丝描边、11pt chevron）。
+///
+/// **为什么是手绘 + `popover`，而不是原生 `Menu` / `Picker(.menu)`**（2026-09-18 实测两次）：
+///
+/// | 写法 | 结果 |
+/// |---|---|
+/// | `Menu` + `.menuStyle(.borderlessButton)` | 标签被折成 `NSButton` 的 image+title，**箭头被挪到文字左边** |
+/// | `Menu` + 默认样式（去掉 `menuStyle`） | 箭头回到右边了，但**系统按钮外观盖掉自绘的底色与描边**（白底 + 系统描边） |
+///
+/// 两条都做不到「设计稿的样子」。这与 ``SettingsSegmentedControl`` 是同一个结论：
+/// 需要精确外观时，借系统的**行为**可以，借系统的**外观**不行 ——
+/// 所以这里 `popover` 借弹出行为，按钮与选项列表全部自绘。
+///
+/// ⚠️ **`popover` 的内容在离屏出图里不渲染**（没有窗口就没有弹出层）——
+/// 走查图只能核对闭合态。选项列表的样子要靠单测或真机看。
+///
+/// 非 `private`：`SettingsLayoutTests` 要单独量它的固有宽度 ——
+/// 与分段控件一样，它是行内**不可压缩**的元素，会挤同行的标签列。
+struct SettingsPopUp<Item: Hashable>: View {
+    let items: [Item]
+    let title: (Item) -> String
+    @Binding var selection: Item
+    let accessibilityLabel: String
+
+    @State private var isOpen = false
+
+    var body: some View {
+        Button {
+            isOpen.toggle()
+        } label: {
+            chrome
+        }
+        .buttonStyle(.plain)
+        .focusable(false)
+        .disableFocusRingIfAvailable()
+        // 宽度由**最长的那一项**决定，不许被同行标签列压缩 ——
+        // 压窄的结果是文字被截成「跟…」，用户看不出选了什么。
+        .fixedSize()
+        .accessibilityLabel(accessibilityLabel)
+        .accessibilityValue(title(selection))
+        .popover(isPresented: $isOpen, arrowEdge: .bottom) {
+            optionList
+        }
+    }
+
+    /// 闭合态：当前值 + chevron。
+    private var chrome: some View {
+        HStack(spacing: DesignTokens.Spacing.xs) {
+            Text(title(selection))
+                .font(.system(size: DesignTokens.FontSize.caption, weight: .medium))
+                .foregroundStyle(DesignTokens.Palette.foreground)
+                .lineLimit(1)
+            Image(systemName: "chevron.down")
+                .font(.system(size: 9, weight: .semibold))
+                .foregroundStyle(DesignTokens.Palette.mutedForeground)
+        }
+        .padding(.horizontal, DesignTokens.Spacing.sm)
+        .frame(height: DesignTokens.Size.popUpHeight)
+        .background(
+            RoundedRectangle(cornerRadius: DesignTokens.Radius.sm, style: .continuous)
+                .fill(DesignTokens.Palette.subtle)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: DesignTokens.Radius.sm, style: .continuous)
+                .strokeBorder(DesignTokens.Palette.border, lineWidth: 0.5)
+        )
+        .contentShape(Rectangle())
+    }
+
+    /// 展开态：选项列表，当前项打勾。
+    ///
+    /// **必须有选中记号**：不打勾的话用户得靠「记住刚才选了什么」来判断，
+    /// 而这里恰好有一个「选了但还没重启生效」的中间态 —— 记错就会以为没生效。
+    private var optionList: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(items, id: \.self) { item in
+                Button {
+                    selection = item
+                    isOpen = false
+                } label: {
+                    HStack(spacing: DesignTokens.Spacing.sm) {
+                        Text(title(item))
+                            .font(.system(size: DesignTokens.FontSize.caption))
+                            .foregroundStyle(DesignTokens.Palette.foreground)
+                            .lineLimit(1)
+                        Spacer(minLength: DesignTokens.Spacing.lg)
+                        if item == selection {
+                            Image(systemName: "checkmark")
+                                .font(.system(size: 10, weight: .semibold))
+                                .foregroundStyle(DesignTokens.Palette.foreground)
+                        }
+                    }
+                    .padding(.horizontal, DesignTokens.Spacing.sm)
+                    .frame(height: 24)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .focusable(false)
+                .disableFocusRingIfAvailable()
+            }
+        }
+        .padding(DesignTokens.Spacing.xs)
+        .frame(minWidth: 140)
     }
 }
 

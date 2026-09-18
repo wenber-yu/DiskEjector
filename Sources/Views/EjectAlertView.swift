@@ -12,7 +12,7 @@ import SwiftUI
 /// 「点了之后该干什么」（终止进程并重试 / 打开日志）留在 ``EjectUI``。
 /// 这样弹窗可以被离屏渲染、被测试驱动，而不会顺手触发真实的进程终止。
 enum EjectAlertChoice: Equatable {
-    /// 「取消」—— 放弃推出。
+    /// 「取消」—— 放弃推出；在更新弹窗里表示 **Esc / 关窗 = 稍后**。
     case cancel
     /// 「关闭并推出」—— 确认终止占用进程并重试。
     case closeAndEject
@@ -20,6 +20,10 @@ enum EjectAlertChoice: Equatable {
     case dismiss
     /// 「查看日志」—— 在访达中显示错误日志。
     case viewLog
+    /// 「跳过此版本」—— 只跳这一个版本，下个版本照常提醒。
+    case skipVersion
+    /// 「后台更新并重启」—— 后台下载，重启时安装。
+    case installAndRestart
 }
 
 /// 推出弹窗的内容模型（**纯数据，不依赖 SwiftUI / AppKit**）。
@@ -31,12 +35,19 @@ enum EjectAlertChoice: Equatable {
 /// 这些契约都能在**不渲染、不驱动窗口**的前提下被测试钉住。
 struct EjectAlertModel: Equatable {
 
-    /// 左上角图标容器的语义色调（设计稿 `.alert__icon--warn` / `--danger`）。
+    /// 左上角图标容器的语义色调（设计稿 `.alert__icon--warn` / `--danger` / `--info`）。
     enum IconKind: Equatable {
         /// 琥珀 —— 被占用。
         case warning
         /// 红 —— 失败。
         case danger
+        /// 强调色 + 自选图标 —— **信息态**（更新弹窗用）。
+        ///
+        /// **不是 `warning`**：设计稿 §2.1 把琥珀与红定成专义色
+        /// （琥珀只表示「磁盘被占用」、红只表示「破坏性动作」），
+        /// 「有新版本可用」两者都不是 —— 借一个已经承担了别的含义的颜色，
+        /// 比没有颜色更糟（用户会以为磁盘出了问题）。
+        case info(String)
     }
 
     /// 提示 / 警示块（设计稿 `.callout`）。
@@ -233,6 +244,7 @@ struct EjectAlertView: View {
         switch model.icon {
         case .warning: return .warning
         case .danger: return .danger
+        case .info(let symbol): return .accent(symbol)
         }
     }
 

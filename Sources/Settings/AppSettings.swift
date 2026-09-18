@@ -28,7 +28,7 @@ enum VisualStyle: String, CaseIterable, Sendable {
     /// **为什么必须与 `displayName` 分开**：分段控件的宽度**不可压缩** —— 标签换行会被
     /// SwiftUI 拒绝，它只会按固有宽度撑开，把同一行里 `maxWidth: .infinity` 的弹性列
     /// （也就是「视觉效果」标签列）挤到只剩一个字宽，渲染成竖排单字。
-    /// 实测：用长名时该行内容理想宽 745pt，而面板只有 440pt，溢出 305pt；
+    /// 实测（面板 440 时）：用长名时该行内容理想宽 745pt，溢出 305pt；
     /// 改用短标签后降到面板之内。
     /// 长名不删 —— 它是 VoiceOver 该念的完整表述，挂在这个控件的 accessibilityLabel 上。
     var shortName: String {
@@ -123,6 +123,10 @@ extension NSColor {
 /// 其中 `AppDelegate` 用 `UserDefaults.standard.string(forKey:)` 读取、`SettingsView` 用
 /// `@AppStorage` 写入——两端靠字符串字面量对齐，改一处忘一处就会出现「设置改了但菜单栏没变」。
 enum AppSettings {
+    /// ⚠️ **「自动更新」开关的偏好不在这里**：它的唯一真相是 Sparkle 的
+    /// `SPUUpdaterSettings.automaticallyChecksForUpdates`（写进同一个 UserDefaults 域）。
+    /// 在这里再存一份必然与 Sparkle 脱节 —— 用户若在别处改了它，我们这份不会知道，
+    /// 于是界面显示的开关位置与实际行为不一致（「设了没生效」与「没设」长得一模一样）。
     enum Key {
         static let visualStyle = "visualStyle"
         static let accentColor = "accentColor"
@@ -135,6 +139,18 @@ enum AppSettings {
         /// 直发（非沙盒）版依赖 lsof 列出占用进程，而这需要用户授权 FDA；
         /// 该标记避免每次启动都弹引导窗，仅首次未授权时提示一次。
         static let hasShownFDAOnboarding = "hasShownFDAOnboarding"
+
+        /// 界面语言偏好（``AppLanguage`` 的 rawValue；`"system"` = 跟随系统）。
+        ///
+        /// **不写 `AppleLanguages` 之外的第二份真相**：本键只记用户选了什么，
+        /// 「本次启动实际生效的是哪个语言」由 ``LanguageManager/active`` 从系统读。
+        static let appLanguage = "appLanguage"
+
+        /// 用户点过「跳过此版本」的那个版本号。
+        ///
+        /// **是版本号字符串，不是布尔**：布尔记不住「跳过的是哪一版」——
+        /// 下个版本发布后那个布尔还是 `true`，用户会被永久静音。
+        static let skippedVersion = "skippedVersion"
     }
 
     /// 从 UserDefaults 读取当前强调色，无值或损坏值时回退默认色。

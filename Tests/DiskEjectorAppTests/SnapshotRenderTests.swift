@@ -130,6 +130,21 @@ struct SnapshotRenderTests {
         pid: 39298, processName: "tail", displayName: "tail",
         executablePath: "/usr/bin/tail", path: "/Volumes/My Passport/clip.mp4")
 
+    /// 更新弹窗的样本值 —— **逐字取自设计稿 `08-update.html` A 段**
+    /// （1.0.0 → 1.1.0、构建 42 → 58、2026-09-17、12.4 MB、三条更新）。
+    ///
+    /// 走查图要和设计稿并排比，样本就得同源；换一组「看起来差不多」的值，
+    /// 比出来的差异分不清是实现的还是样本的（同 §8.33 的磁盘 / 进程样本规则）。
+    private static let designUpdateFixture = PendingUpdate(
+        version: "1.1.0", newBuild: "58",
+        currentVersion: "1.0.0", currentBuild: "42",
+        date: "2026-09-17", sizeBytes: 12_400_000,
+        notes: [
+            "设置里新增「自动更新」开关，可后台下载并在重启后安装",
+            "修复未插入磁盘时骨架层一直不消失的问题",
+            "推出失败弹窗新增「查看日志」直达入口",
+        ])
+
     /// `02-menu-bar.html` 里面板展示的那两块盘 —— 名称、容量、占用都与设计稿逐字一致。
     ///
     /// 出图用它而不是本机真实磁盘，理由见 ``导出设计快照()`` 里面板那一段的注释。
@@ -492,6 +507,15 @@ struct SnapshotRenderTests {
         try dumpAlert(failureModel, name: "alert-failure-dark", dark: true)
         // 无进程可列（未授予完全磁盘访问）—— 没有区块，只剩说明 + 警示。
         try dumpAlert(noProcessModel, name: "alert-busy-noprocess-light")
+
+        // ---- 更新弹窗（设计稿 08-update.html A 段）----
+        //
+        // ⚠️ **样本值必须与设计稿同源**（1.0.0 → 1.1.0、构建 42 → 58、2026-09-17、
+        // 12.4 MB、同样的三条更新）—— 拿从没在设计稿里出现过的样本去并排比，
+        // 本来就比不了（同 §8.33 的磁盘/进程样本规则）。
+        let updateModel = UpdateAlertBuilder.model(for: Self.designUpdateFixture)
+        try dumpAlert(updateModel, name: "update-dialog-light")
+        try dumpAlert(updateModel, name: "update-dialog-dark", dark: true)
 
         // ---- 深色对照（设计稿 07-dark.html）----
         try dump(

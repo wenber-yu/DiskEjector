@@ -181,11 +181,31 @@ enum DesignTokens {
         /// 历史值 520pt 装不下（实测内容 602pt），于是面板底部的「关于 / 更新」被
         /// 折叠线挡在滚动区外 —— 用户看到的就是「设置界面排版不好看」。
         ///
-        /// v2 重排后：关于区由居中竖排（206pt）改为横向一行（70pt），
-        /// 且四组内容按设计稿实测收敛到 566pt（设计稿 `05-settings.html` 的 `.win`
-        /// 实测 440×566，内容 514 + 头部 52）。
-        /// 改任何一段文案/内边距后，`SettingsLayoutTests` 会要求同步更新这个值。
-        static let settingsPanel = CGSize(width: 440, height: 566)
+        /// 演进（每一步都是**加内容**之后重新量的）：
+        /// `440×566`（v2 重排，四组：外观 / 通用 / 诊断 / 关于）
+        /// → `440×724`（加「更新」组：组标题 22 + 两行 59×2 + 组间距 20）
+        /// → `480×752`（**改宽**：英文在 440 宽下内容要 612.25pt，容器只有 566 —— 二分测得临界 477，
+        ///    取 480 后中英都装得下，高度**不用动**）
+        /// → `480×800`（「通用」组加「语言」行；高度按**英文** 782.6 + 余量 17.4 定）。
+        ///
+        /// ⚠️ **宽 480 与高 800 是两件事**，别把它们记成一次改动：
+        /// 宽度解决的是「英文放不下」，高度解决的是「多了一行」。
+        ///
+        /// ⚠️ **为什么不是设计稿写的 826**（2026-09-18 实测，别改回去）：
+        ///
+        /// | | 中文 | 英文 |
+        /// |---|---|---|
+        /// | 设计稿（Chrome/CSS 渲染） | 766.44 | 814.25 |
+        /// | 实现（SwiftUI 渲染） | 766.60 | **782.60** |
+        ///
+        /// 中文两边只差 **0.16pt** —— 说明结构是忠实的；英文差 31.65pt（≈2 行折行），
+        /// 来源是 CSS 与 CoreText 对英文断行的差异（本仓库已记为「已知不是 bug」）。
+        /// 设计稿的 826 = 它自己的英文 814.25 + 余量；而实现只需要 782.6，
+        /// 沿用 826 会在**中文**下留 59.4pt 空白带（≈1.4 行，肉眼可见）——
+        /// `SettingsLayoutTests/面板高度不留大片空白` 会直接把它判红。
+        ///
+        /// 改任何一段文案/内边距后，`SettingsLayoutTests` 会要求同步更新这两个数。
+        static let settingsPanel = CGSize(width: 480, height: 800)
 
         /// 菜单栏弹出面板宽度。
         static let menuPopoverWidth: CGFloat = 360
@@ -468,6 +488,15 @@ enum DesignTokens {
         /// 百分比标签固定宽（设计稿 34）—— 固定宽才能让多行百分比纵向对齐。
         static let meterPercentWidth: CGFloat = 34
 
+        /// 设置行里的**行内下载进度**（设计稿 `08-update.html` 的 `.progressline`）。
+        ///
+        /// **外层固定 16pt 高**，与说明行同高 —— 于是「后台下载中」那一行
+        /// 不会被进度条撑高，整块面板在下载过程中不会跳一下。
+        /// ⚠️ 这里的百分比**不是** `meterPercentWidth`：设计稿给 `.progressline` 里的
+        /// `.meter__pct` 单独写了 `width: auto`（进度条占满剩余宽度），
+        /// 与磁盘行那个固定 34 的口径不同。
+        static let settingsProgressLineHeight: CGFloat = 16
+
         /// 按钮高度：sm 26（行内）/ md 30（弹窗）/ lg 34（主行动）。
         static let buttonSmallHeight: CGFloat = 26
         static let buttonMediumHeight: CGFloat = 30
@@ -489,6 +518,13 @@ enum DesignTokens {
         static let switchTrackHeight: CGFloat = 22
         static let switchKnob: CGFloat = 18
         static let switchInset: CGFloat = 2
+
+        /// 设置面板里的下拉（设计稿 `.popup`）：**28pt 高**、11pt chevron。
+        ///
+        /// **高度比开关（22）高、比按钮（28）相同** —— 与设计稿一致。
+        /// 这个数同时决定「语言」那一行的高度：28 > 行内文字（13 + 11 + 2 = 26），
+        /// 所以加了下拉之后该行仍落在 `lineMinHeight` 之内，**不会把行撑高**。
+        static let popUpHeight: CGFloat = 28
 
         /// 强调色色板（设计稿 22 × 22 圆，选中态外描边偏移 4）。
         static let swatchSize: CGFloat = 22

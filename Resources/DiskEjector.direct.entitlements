@@ -1,5 +1,29 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
-<dict/>
+<dict>
+    <!-- 关闭 Hardened Runtime 的库校验（library validation）。
+
+         为什么必须开：本应用嵌入 Sparkle.framework（第三方动态库）。
+         Hardened Runtime 默认只放行「Apple 签发」或「与宿主同 Team ID」的库，
+         而开发期的自签 / ad-hoc 身份没有 Team ID，实测 dyld 直接拒绝加载：
+
+             Library not loaded: @rpath/Sparkle.framework/Versions/B/Sparkle
+             Reason: ... mapping process and mapped file (non-platform) have different Team IDs
+
+         对照实验（2026-09-18）：
+           1) 签名时不带 runtime 选项        → 能跑
+           2) 带 runtime 且加上本键         → 也能跑
+         = 根因是库校验，不是 rpath，也不是框架没嵌入。
+
+         正式分发（Developer ID，有 Team ID）时本键非必需：那时 Sparkle 会被同一身份
+         重签、Team ID 一致。但保留它的代价远小于「某些构建产出的 app 双击打不开」——
+         整包签名并公证后，替换 Contents/Frameworks 里的内容会破坏密封，风险可控。
+         将来若拿到 Developer ID 并想收紧：删掉本键后必须真机跑一遍再发布。
+
+         注意：XML 注释里不能出现连续两个连字符，所以上面的命令行选项都写成中文描述。
+    -->
+    <key>com.apple.security.cs.disable-library-validation</key>
+    <true/>
+</dict>
 </plist>
