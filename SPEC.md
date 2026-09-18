@@ -271,6 +271,16 @@ helper 的登录项方案。（「符合 MAS 要求」这条理由随不上架�
 `raw.githubusercontent.com` 地址；真正的下载地址写在 appcast 的 enclosure 里，
 指向 `…/releases/download/v<TAG>/DiskEjector-<VERSION>.dmg`。
 
+> **现状（2026-09-18 实测）**：`appcast.xml` 已生成并提交，线上
+> `raw.githubusercontent.com/…/master/appcast.xml` 返回 **200**，内容与仓库里那份逐字一致；
+> 产物 Info.plist 里 `SUFeedURL` 指向它（实测 200）、`SUPublicEDKey` **尚未写入**（不验签）、
+> `SUEnableAutomaticChecks=true`。
+> **唯一还差的一步**：`v2026.09.18.3` 这个 Release 还没建 → enclosure 现在 **404**。
+> 上传时**必须用** `dist/updates/DiskEjector-<VERSION>.dmg` 这个文件名（改名即 404，
+> 而 appcast 本身不报任何错）。`make_appcast.sh` 现在会打印该路径，并有一条守卫
+> 比对「enclosure 末段」与「待上传文件名」是否逐字相同 —— 这条守卫是补的，
+> 因为此前脚本的指引写的是 `DiskEjector.dmg`，与 enclosure 不一致。
+
 打包时 `build_app.sh` 必须做三件事，少一件就是「构建成功、双击打不开」：
 ① 把 `Sparkle.framework` 拷进 `Contents/Frameworks`；② 给可执行文件补
 `@executable_path/../Frameworks` 这条 rpath；③ entitlements 开
