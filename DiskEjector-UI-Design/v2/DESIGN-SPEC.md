@@ -5083,7 +5083,7 @@ Sparkle 会不会装上这次更新 —— 依据是 `showUpdateFound` 的文档
 > tag `v2026.09.18.4` 指向 `ccf505e`，**Release 已建**）。
 > §8.34.1 的教训在这里同样成立：**连「尚未做」都有保质期，记下时刻比记下结论更有用。**
 
-| # | 项 | 谁才能关 | 出处 | 现状（2026-09-19 00:05 核对） |
+| # | 项 | 谁才能关 | 出处 | 现状（2026-09-19 00:20 核对） |
 |---|---|---|---|---|
 | 1 | ~~EdDSA 签名~~（`generate_keys` → 公钥进 `SPARKLE_PUBLIC_ED_KEY`） | 已关闭 | §8.39.7 / §8.49 | ✅ 2026-09-18 20:39 生成密钥对（私钥进登录钥匙串，`acct=ed25519`）→ 公钥 `DZSAElJGUg13m+uorm7qlJhQKPyxk4D1DXMYGEOtbBs=` 烤进 Info.plist → appcast 带 `edSignature`；**独立验签**（OpenSSL）+ 篡改反证 + 从 Release 下载回来再验一遍，全过 |
 | 2 | ~~设计稿 `--h-settings` vs 实现 `480×800`~~ | 已关闭 | §8.43 | ✅ 拍板统一成 800，并由 `设计稿与实现的面板尺寸必须同数` 钉住 |
@@ -6412,6 +6412,75 @@ cp /tmp/x.bak 文件 && cmp -s 文件 /tmp/x.bak && echo "还原 OK"
    **越静默的失败越要守**，因为没人会去查。
 4. **声明集要算全**：设计稿的 `data-i18n` 可以引用 `xcstrings` 里的产品文案，
    只算 `i18n-extra.json` 会把 107 个引用全判成孤儿（**假阳性**）。
+
+---
+
+## §8.55 Swift 侧的 SF Symbol 名：写完错了不会有任何报错
+
+### §8.55.1 这一类为什么值得扫
+
+图标名是**字符串**：`Image(systemName: "externaldrive.fil")` 写错了
+Swift 不报警、构建不失败、测试也不红 —— 而它渲染出来**是空的**。
+于是界面上「**图标不显示**」与「这块本来就没放图标」**逐字相同**（§8.54 那一类）。
+
+上一轮（§8.54）刚立下「**反向那向常是静默失败，越静默越要守**」，
+这一类正是它在 **Swift 侧**的对应物 —— 设计稿侧那两条（图标表 / i18n 键）已经守了，
+Swift 侧此前**一条都没有**。
+
+### §8.55.2 ⚠️ 我的口径连漏两种写法（第三次同型坑）
+
+| # | 写法 | 第一版 | 修正 |
+|---|---|---|---|
+| 1 | `systemName: "x"` | ✅ 收 | — |
+| 2 | `systemImage: "x"` / `NSImage(systemSymbolName:)` / `icon: "x"` / `.info("x")` | ❌ 漏 | 补 4 种上下文 |
+| 3 | **三元**：`systemName: cond ? "a.fill" : "b"` | ❌ 漏 | 改成**行级**收集 |
+
+第一版只扫到 **9 个** / 17 处；修正后 **19 个** / 36 处 —— **漏了一半以上**。
+与 §8.48「本地化键有三种消费者形式」是同一个坑：**「紧跟冒号」的正则收不住
+中间夹了表达式的写法**。第三次踩，记法：**扫字符串字面量时按「行」收，不按「紧跟」收。**
+
+顺带：`icon:` / `.info(` 也会命中**中文日志文案** ⇒ 必须加形状过滤
+（`^[a-z][a-z0-9]*(\.[a-z0-9]+)*$`），否则 6 条日志会被当成符号名（假阳性）。
+
+### §8.55.3 结果：19 个全部解析成功
+
+`app` / `arrow.clockwise` / `arrow.down.circle` / `arrow.up.forward.square` /
+`checkmark` / `checkmark.circle` / `checkmark.shield` / `chevron.down` / `doc` /
+`eject.fill` / `exclamationmark.triangle` / `exclamationmark.triangle.fill` /
+`externaldrive` / `externaldrive.fill` / `gear` / `info.circle` / `lock` /
+`macwindow` / `power`
+
+### §8.55.4 ⚠️ 这条守卫的边界（写进文件头注释了）
+
+1. **只有假阴性，不会 flaky。** 机器系统较老而符号需要更新版本 ⇒ 报红，
+   **那个红是对的**（对老系统用户确实不显示）。
+2. **绿只证明「本机解析得到」**，**证明不了「部署目标 macOS 14 上也有」** ——
+   这个盲区无法用本机检查填，**改图标时仍要自己确认最低系统版本**。
+
+> 判据：一条守卫「**报红时是不是一定有问题**」比「会不会漏」更重要。
+> **报红一定有问题 ⇒ 可以进 CI**；**会因环境不同而摇摆 ⇒ 不行**（§「守卫别依赖环境」）。
+> 这条满足前者：它只会漏，不会假红。
+
+### §8.55.5 锚也要有牙
+
+除了「扫描器的锚」（必须扫到 `eject.fill`、必须扫到三元那个
+`exclamationmark.triangle.fill`），还多了一条 **探针的锚**：
+
+> 一个必然不存在的名字（`zz.probe.definitely.not.a.symbol`）**必须**解析失败。
+
+少了它，万一 `NSImage(systemSymbolName:)` 哪天对任何名字都返回非 nil，
+主断言会**永远绿** —— 而那种「通过」比不测更糟。
+
+变异 **M13 就是验这条的**：把锚里那个名字换成 `gear` ⇒ **变红**
+（`Self.exists("gear") → true) == false`）。
+
+### §8.55.6 变异 3 条
+
+| # | 变异 | 预期 | 实测 |
+|---|---|---|---|
+| M11 | `externaldrive` → `externaldrive.fil` | 红 | ✅ `broken → ["externaldrive.fil"]` |
+| M12 | 换成**合法**符号 `externaldrive.badge.xmark` | **绿** | 🟢（不是见新就红） |
+| M13 | 把「锚」里的假名字换成真名字 `gear` | 红 | ✅（锚自己有牙） |
 
 ---
 
