@@ -541,7 +541,21 @@ struct SettingsSectionsColumn: View {
                     progress: fraction
                 ) { cancelUpdateButton }
             } else {
-                line(label: String(format: L10n.tr(.updateDownloadingFormat), version)) {
+                // ⚠️ **这一支必须带一行说明，不能只有 label**（2026-09-19 实测，§8.82）：
+                // 面板是**固定高度**，而其余各态都有第二行（进度条 / 说明 / 上次检查）——
+                // 这一支既没有进度条也没有说明 ⇒ 实测比别态矮 **14.8pt**
+                // ⇒ 切到这一态时底部会多出一条空白带（「更新行各态渲染出来必须一样高」
+                // 就是这么抓到它的：走查图清单补上这一态之后立刻变红）。
+                //
+                // ⚠️ 这句说明必须对 `fraction == nil` 的**两种来源**都成立：
+                // ① 自动那条路（全程 nil，终点是「退出应用时安装」）；
+                // ② 手动那条路刚开始下载的那一瞬（随后有真进度，终点是「自动重启」）。
+                // 所以只能说两句共同的那一句「下载完成后会自动安装」，
+                // 不能写「退出时安装」—— 那对第 ② 种是假的。
+                line(
+                    label: String(format: L10n.tr(.updateDownloadingFormat), version),
+                    description: L10n.tr(.updateDownloadingHint)
+                ) {
                     EmptyView()
                 }
             }

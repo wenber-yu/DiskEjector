@@ -561,6 +561,13 @@
         "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "正在背景下載 %@" } }
       }
     },
+    "updateDownloadingHint" : {
+      "localizations" : {
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "下载完成后会自动安装，无需你再操作。" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "It installs automatically once the download finishes." } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "下載完成後會自動安裝，無需你再操作。" } }
+      }
+    },
     "updateEscHint" : {
       "localizations" : {
         "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "Esc 稍后再提醒" } },

@@ -250,6 +250,7 @@
               <div class="sline" data-page-node-id="lz8DJ55dxF9QbHgJ7OTLSu">
                 <div class="sline__text" data-page-node-id="Gl518OkeQXzeXx1hz9G85t">
                   <div class="sline__label" data-page-node-id="Qi09bJCK3Pklr8p6H1AQw2" data-i18n="ds.update.downloading">正在后台下载 1.1.0</div>
+                  <div class="sline__desc" data-i18n="updateDownloadingHint" data-page-node-id="Iqol3ZXhtGd0t16Ed0kSlp">下载完成后会自动安装，无需你再操作。</div>
                 </div>
               </div>
             </div>
@@ -263,6 +264,13 @@
           <b data-page-node-id="IYlcEfwK0DgEPlrPGnfeOB">不知道就别猜</b>）。同理，那条路也不给取消入口，于是这一态<b data-page-node-id="OsmqGLRhGopI6EwCZspRqv">右侧不放任何按钮</b>
           —— 放一个点了没反应的「取消」，与「功能坏了」长得一模一样。
           下载完成并校验签名后，这一行直接变成 4（已就绪）。
+          <b data-page-node-id="0MSQKHr3VravmhqQgHoknH">⚠️ 这一态反而<b data-page-node-id="2TmI5pGehD8B7bCVnipfJN">多了一行说明</b>（3 那一态是进度条占着这一行）：
+          面板是<b data-page-node-id="LngBRgzeYS1L5Kt7PuIr4r">固定高度</b>，其余各态都有第二行（进度条 / 说明 / 上次检查），
+          这一态若只有一句话，实测比别态<b data-page-node-id="oLduOWPVhViFm7DIydsTSt">矮 14.8pt</b>
+          ⇒ 切到它时底部会多出一条空白带。
+          这行说明必须对「百分比未知」的两种来源都成立（自动那条路的终点是「退出时安装」、
+          手动那条路刚起步那一瞬的终点是「自动重启」），所以只能写它们共同的那句
+          「下载完成后会自动安装」—— 写成「退出时安装」对后者就是假的。</b>
         </p>
       </div>
 

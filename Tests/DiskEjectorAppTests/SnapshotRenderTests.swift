@@ -532,7 +532,7 @@ struct SnapshotRenderTests {
         try dumpAlert(updateModel, name: "update-dialog-light")
         try dumpAlert(updateModel, name: "update-dialog-dark", dark: true)
 
-        // ---- 设置面板「更新」行：七态（设计稿 08-update.html 的 B / C 段）----
+        // ---- 设置面板「更新」行：八态（设计稿 08-update.html 的 B / C 段）----
         //
         // ⚠️ **状态必须经由生产那个纯函数得出**，不能手写 `.downloading(…)`：
         // 手写等于「夹具自己编了一个状态」，而
@@ -547,7 +547,7 @@ struct SnapshotRenderTests {
         let lastCheck = Self.designLastCheck
 
         // 「自动更新」那一行**按设计稿假设的环境**（允许 + 开）——
-        // 出图进程未签名，真实值恒为「不允许」，不注入的话七张图会全带着一个对不上的行。
+        // 出图进程未签名，真实值恒为「不允许」，不注入的话八张图会全带着一个对不上的行。
         let designAutoUpdate = AutoUpdateRowState(isOn: true, isAllowed: true)
         func row(_ phase: UpdatePhase, skipped: String? = nil) -> UpdateController.CheckRowState {
             UpdateController.rowState(phase: phase, skippedVersion: skipped, lastCheck: lastCheck)
@@ -558,6 +558,9 @@ struct SnapshotRenderTests {
             ("skipped", row(.idle, skipped: "1.1.0")),
             ("found", row(.found(version: "1.1.0"))),
             ("downloading", row(.downloading(version: "1.1.0", fraction: 0.42))),
+            // 2026-09-19 加的第八态（§8.81 / §8.82）：自动那条路的「后台下载中」。
+            // 与设计稿 B 段「3b」那一帧对应 —— 百分比无从得知 ⇒ 无进度条、无「取消」。
+            ("downloading-unknown", row(.downloading(version: "1.1.0", fraction: nil))),
             ("ready", row(.ready(version: "1.1.0"))),
             ("failed", row(.failed(version: "1.1.0"))),
         ]
@@ -571,8 +574,8 @@ struct SnapshotRenderTests {
 
         // ---- 「自动更新」那一行的三种形态（设计稿 08-update.html B 段）----
         //
-        // ⚠️ **七态图里那一行按设计稿假设的环境渲染**（允许 + 开）：出图跑在未签名的
-        // xctest 进程里 → 真实值恒为「不允许」→ 七张图会全都带着一个与设计稿对不上的行。
+        // ⚠️ **八态图里那一行按设计稿假设的环境渲染**（允许 + 开）：出图跑在未签名的
+        // xctest 进程里 → 真实值恒为「不允许」→ 八张图会全都带着一个与设计稿对不上的行。
         // 「不允许」那一态由下面的 `blocked` 单独覆盖，所以**不会因为「统一按设计稿口径」
         // 就把它丢掉** —— 那一态正是本机真实应用的样子（未授权 / 未签名时用户看到的）。
         let autoUpdateRows: [(String, AutoUpdateRowState)] = [

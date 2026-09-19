@@ -304,7 +304,7 @@ struct SettingsLayoutTests {
         #expect(en > zh, "英文（\(en)）没比中文（\(zh)）高 —— 检查 L10n.forcedLocale 是否还能传到渲染")
     }
 
-    /// 「更新」行**七态渲染出来必须一样高**。
+    /// 「更新」行**各态渲染出来必须一样高**。
     ///
     /// **为什么**：这一行是设置面板里**唯一**会在运行中换画法的行 ——
     /// 其余行的形态由偏好决定，只有它随事件（检查中 / 下载中 / 已就绪 / 失败…）变形。
@@ -312,9 +312,14 @@ struct SettingsLayoutTests {
     /// 要么把最后一行挤到折叠线外（历史上「关于」整段就是这样消失的，见文件头）。
     /// 「下载中」那一态尤其危险 —— 它多画了一条轨道 + 一个百分比。
     ///
-    /// ⚠️ 这条断言**与渲染机器无关**（只比七个高度互相相等，不比绝对值），所以能进 CI。
-    /// 七态的出图进不了 CI（`DE_SNAPSHOTS=1` 才跑）→ **光出图不补守卫等于没补**（§8.33）。
-    @Test func 更新行七态渲染出来必须一样高() {
+    /// ⚠️ 这条断言**与渲染机器无关**（只比各高度互相相等，不比绝对值），所以能进 CI。
+    /// 各态的出图进不了 CI（`DE_SNAPSHOTS=1` 才跑）→ **光出图不补守卫等于没补**（§8.33）。
+    ///
+    /// ⚠️ **名字里不写数字**（原叫「七态」）：状态数会随实现增长（2026-09-19 加了
+    /// 「下载中（无百分比）」那一态 ⇒ 八态），写死数字的名字**每加一态就变一次假话**，
+    /// 而它又是别的文档引用这个函数时的入口。数字型的名字会漂移，就说「各态」。
+    /// 同理下面打印/失败消息里也一律不写数字 —— 写数字的地方迟早与清单分叉。
+    @Test func 更新行各态渲染出来必须一样高() {
         let lastCheck = Date(timeIntervalSince1970: 1_789_000_000)
         func row(_ phase: UpdatePhase, skipped: String? = nil) -> UpdateController.CheckRowState {
             UpdateController.rowState(phase: phase, skippedVersion: skipped, lastCheck: lastCheck)
@@ -325,6 +330,12 @@ struct SettingsLayoutTests {
             ("已跳过", row(.idle, skipped: "1.1.0")),
             ("发现新版本", row(.found(version: "1.1.0"))),
             ("下载中", row(.downloading(version: "1.1.0", fraction: 0.42))),
+            // 2026-09-19 加的第八态（§8.81 / §8.82）：自动那条路的「后台下载中」。
+            // 百分比**无从得知**（`fraction: nil`）⇒ 不画进度条、不给「取消」。
+            // ⚠️ 它必须**与「下载中」并列**，不能顶掉它：那是两条不同的路
+            // （手动检查 vs 自动），画法也不同（有进度条 vs 没有）——
+            // 统一口径时把不方便的那一态删掉，就等于那一态再也没人看过（§8.33）。
+            ("下载中（无百分比）", row(.downloading(version: "1.1.0", fraction: nil))),
             ("已就绪", row(.ready(version: "1.1.0"))),
             ("失败", row(.failed(version: "1.1.0"))),
         ]
@@ -337,18 +348,18 @@ struct SettingsLayoutTests {
             heights.append((name, h))
         }
         let printed = heights.map { "\($0.0) \($0.1)" }.joined(separator: " ｜ ")
-        print("  [更新行七态] \(printed)")
+        print("  [更新行各态] \(printed)")
 
-        // 判据是「**七个互相相等**」，不是「等于某个数」—— 后者会把「整体挪了 1pt」
-        // 报成七条失败，而真正要防的是**某一态与别的不一样**。
+        // 判据是「**各态互相相等**」，不是「等于某个数」—— 后者会把「整体挪了 1pt」
+        // 报成每一态都失败，而真正要防的是**某一态与别的不一样**。
         let first = heights[0].1
         for (name, h) in heights.dropFirst() {
             #expect(
                 abs(h - first) <= 0.5,
                 """
-                「\(name)」渲染出来 \(h)pt，而「\(heights[0].0)」是 \(first)pt —— 七态必须一样高。
+                「\(name)」渲染出来 \(h)pt，而「\(heights[0].0)」是 \(first)pt —— 各态必须一样高。
                 设置面板是固定高度：某一态更高就会挤掉最后一行（或留出空白带）。
-                全部七态：\(printed)
+                全部各态：\(printed)
                 """
             )
         }

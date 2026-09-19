@@ -68,6 +68,21 @@ struct UpdateSettingsTests {
     ///
     /// ⚠️ 缩进敏感（`case` 固定 8 空格）。缩进被改时它会**找不到**并报红，
     /// 而不是静默变绿 —— 这正是想要的（同 §8.80.9：口径失效必须是红的）。
+    /// 取 `anchor` 之后、下一个 `stop` 之前的那一段。
+    ///
+    /// 用来从源码 / HTML 里**抠出一个值**（键名、属性值、某一帧），
+    /// 而不是 `contains` 一下就完事 —— `contains` 只能回答「在不在」，
+    /// 回答不了「两边是不是**同一个**」。
+    ///
+    /// ⚠️ 找不到就返回 `nil`（让调用方 `#require` 报红），**不静默返回空串**：
+    /// 空串会让「找不到」与「找到了一个空值」长得一样。
+    private func slice(after anchor: String, upTo stop: String, in text: String) -> String? {
+        guard let a = text.range(of: anchor) else { return nil }
+        let rest = text[a.upperBound...]
+        guard let b = rest.range(of: stop) else { return nil }
+        return String(rest[rest.startIndex..<b.lowerBound])
+    }
+
     private func caseBlock(_ header: String, in source: String) throws -> String {
         let start = try #require(
             source.range(of: header),
@@ -699,6 +714,55 @@ struct UpdateSettingsTests {
         #expect(
             elsePart.contains("updateDownloadingFormat"),
             "两种外观说的不是同一句话 —— 同一件事写在两处，迟早分叉。实得：\n\(elsePart)")
+    }
+
+    /// 设计稿 3b 那一帧与实现的「说明行」必须**用同一个文案键**（§8.82）。
+    ///
+    /// **为什么必须守这一条**：那一态的「第二行」不是装饰 —— 面板是**固定高度**，
+    /// 3b 只有一句话时实测比别态**矮 14.8pt**（切到它时底部多出一条空白带）。
+    /// 于是这一行是**等高的一部分**，而它写在两个地方：设计稿画着它、实现读着它。
+    ///
+    /// ⚠️ **实测过这条守卫的必要性**（变异 M238）：把设计稿 3b 的 `.sline__desc`
+    /// 整个删掉，**44 条设计稿守卫全绿、实现侧「各态一样高」也全绿** ——
+    /// 因为实现没跟着删，它自己并不矮。**两边从此分叉而 CI 毫无反应**，
+    /// 直到有人照着设计稿改实现，那时才矮下去（而那时已经没人记得为什么）。
+    /// ⇒ 这正是「A 与 B 必须一致要配守卫」：两边各写一句「记得同步」守不住
+    /// （面板尺寸就是这样分叉了一整轮，见 §8.43）。
+    ///
+    /// 判据取**键名同源**，不取文案内容：文案会改，键名是两边唯一的接缝。
+    @Test func 设计稿3b那一帧与实现用同一个说明键() throws {
+        let html = try contents("DiskEjector-UI-Design/v2/screens/08-update.html")
+        let frame = try #require(
+            slice(after: "3b · 后台下载中", upTo: "<!-- B4", in: html),
+            "找不到 3b 那一帧 —— 改了帧标题或注释就要同步这条断言（口径失效必须是红的）")
+
+        // 设计稿侧：那一帧里的说明行挂的是哪个键。
+        let draftKey = try #require(
+            slice(after: "class=\"sline__desc\" data-i18n=\"", upTo: "\"", in: frame),
+            """
+            3b 那一帧里没有 `.sline__desc`。那一态只有一句话会比别态**矮 14.8pt**
+            （面板固定高度 ⇒ 切到它时底部多出一条空白带），所以这一行不能删。实得：
+            \(frame)
+            """)
+
+        // 实现侧：`.downloading` 那一支的 else 半边用的是哪个键。
+        let view = try contents("Sources/Views/SettingsView.swift")
+        let block = codeOnly(
+            try caseBlock("case .downloading(let version, let fraction):", in: view))
+        let implKey = try #require(
+            slice(after: "description: L10n.tr(.", upTo: ")", in: block),
+            """
+            `.downloading` 那一支没有 `description:` —— 百分比未知时既没有进度条也没有说明，
+            实测矮 14.8pt。实得：
+            \(block)
+            """)
+
+        #expect(
+            draftKey == implKey,
+            """
+            设计稿 3b 画的说明键是 `\(draftKey)`，而实现用的是 `\(implKey)` ——
+            两边各写一句「记得同步」守不住（面板尺寸就是这样分叉了一整轮）。
+            """)
     }
 
     // MARK: - 语言

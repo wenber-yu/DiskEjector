@@ -5,7 +5,7 @@
    来源：Sources/Localization/Localizable.xcstrings
        + DiskEjector-UI-Design/v2/assets/i18n-extra.json
    ----------------------------------------------------------------------------
-   源指纹 5ff72b029de26c664d791e89233747f0c87edf1bdef7c4e7327ee52e6d7174a1
+   源指纹 a33ae98d2217734e8484265e3053fa08ac32ce2949400147b6d3b3824eed0358
      = sha256(xcstrings + extra + 本脚本) —— 任一方变了它就是旧的，
        由 DesignDraftIntegrityTests 拦下「改了源忘了重跑」。
    ----------------------------------------------------------------------------
@@ -214,6 +214,7 @@ window.DS_L10N = {
       "updateChannelDevelopment": "开发版",
       "updateChannelDirect": "官网直发版",
       "updateDownloadingFormat": "正在后台下载 %@",
+      "updateDownloadingHint": "下载完成后会自动安装，无需你再操作。",
       "updateEscHint": "Esc 稍后再提醒",
       "updateFailedFormat": "%@ 下载失败",
       "updateFailedHint": "网络不可用。下次启动会自动重试。",
@@ -419,6 +420,7 @@ window.DS_L10N = {
       "updateChannelDevelopment": "Development build",
       "updateChannelDirect": "Direct build",
       "updateDownloadingFormat": "Downloading %@ in the background",
+      "updateDownloadingHint": "It installs automatically once the download finishes.",
       "updateEscHint": "Esc to remind later",
       "updateFailedFormat": "Failed to download %@",
       "updateFailedHint": "The network is unavailable. It will retry on next launch.",
@@ -624,6 +626,7 @@ window.DS_L10N = {
       "updateChannelDevelopment": "開發版",
       "updateChannelDirect": "官網直發版",
       "updateDownloadingFormat": "正在背景下載 %@",
+      "updateDownloadingHint": "下載完成後會自動安裝，無需你再操作。",
       "updateEscHint": "Esc 稍後再提醒",
       "updateFailedFormat": "%@ 下載失敗",
       "updateFailedHint": "網路無法使用。下次啟動會自動重試。",
