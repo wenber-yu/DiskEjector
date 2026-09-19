@@ -440,6 +440,29 @@ final class UpdateController: NSObject, ObservableObject {
         return false
     }
 
+    /// 自动那条路进入「下载中」的判据（§8.83）。
+    ///
+    /// 弹窗那条路与自动那条路在 `SPUCoreBasedUpdateDriver.m:136` 之前是**同一条路**，
+    /// ⇒ `willDownloadUpdate` 两条路都会到。分流靠两件事：
+    ///
+    /// ① **`phase == .idle`**：弹窗那条路上 `showUpdateFound` 早已把 `phase` 设成 `.found`
+    ///    （顺序由 `SPUBasicUpdateDriver.m:164` → `SPUUIBasedUpdateDriver.m:244` 钉死），
+    ///    ⇒ `willDownloadUpdate` 到的时候 `phase` **还**是 `.idle` 就**只可能是自动那条路**
+    ///    —— 这是顺推，反过来也行：弹窗那条路走到这里时 `phase` **一定不是** `.idle`。
+    /// ② **`autoDownloads == true`**：`phase == .idle` 只说「没人说过话」，
+    ///    没说「我们正要静默下载」，所以还要判开关（与 `SPUUpdater.m:622` 选驱动
+    ///    用的是同一个属性）。
+    ///
+    /// 抽成纯函数是为了能断言它（**真机也构造不出**「`phase` 不是 `.idle` 又走到
+    /// `willDownloadUpdate`」的场景 —— `showUpdateFound` 永远先到，§8.81.4）。
+    /// 同项目既有惯例（`shouldPublishProgress` / `isDownloadFailure`）。
+    nonisolated static func shouldEnterBackgroundDownload(
+        phase: UpdatePhase, autoDownloads: Bool
+    ) -> Bool {
+        guard case .idle = phase else { return false }
+        return autoDownloads
+    }
+
     /// 手动「检查更新」时清掉跳过标记。
     ///
     /// **跳过必须可撤销**：不清的话用户点「检查更新」也看不到那个版本，
@@ -651,7 +674,14 @@ extension UpdateController: SPUUpdaterDelegate {
         willDownloadUpdate item: SUAppcastItem,
         with request: NSMutableURLRequest
     ) {
-        guard case .idle = phase, updater.automaticallyDownloadsUpdates else { return }
+        // 判据抽到 ``shouldEnterBackgroundDownload(phase:autoDownloads:)`` —— 见 §8.83：
+        // 那条路由 ``guard`` 改成调用一行更清晰，同时给「自动 vs 弹窗」分流
+        // 一个**能真正跑断言**的纯函数（真机也构造不出「phase 不是 .idle 又走到这里」）。
+        guard
+            Self.shouldEnterBackgroundDownload(
+                phase: phase, autoDownloads: updater.automaticallyDownloadsUpdates
+            )
+        else { return }
         Self.logger.info("自动更新开始后台下载：\(item.displayVersionString, privacy: .public)")
         phase = .downloading(version: item.displayVersionString, fraction: nil)
     }

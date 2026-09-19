@@ -580,24 +580,51 @@ struct UpdateSettingsTests {
     /// 见 `UpdateController` 里那段顺序论证）；② 还要判**开关开着**；
     /// ③ 百分比必须是 **`nil`**，不能猜成 `0` —— 那条路没有进度回调，
     /// 画一条停在 0% 的进度条比不画更让人怀疑。
+    ///
+    /// ⚠️ **2026-09-20 改写（§8.83）**：判据**抽到纯函数** ``shouldEnterBackgroundDownload(phase:autoDownloads:)``，
+    /// 守卫从「读 willDownloadUpdate 体的判据文本」改成「读**两个体** —— 纯函数体钉判据、
+    /// willDownloadUpdate 体钉**调用关系**」。两个一起钉才是真守卫：单钉任一个都是没牙的
+    /// —— 例如只钉 willDownloadUpdate 体里的 `shouldEnterBackgroundDownload(…)` 调用，但
+    /// 纯函数体的判据被改成「永远返回 true」，测试**照样绿**。
     @Test func 自动那条路的下载开始也由delegate送达() throws {
         let source = try contents("Sources/Services/UpdateController.swift")
-        let body = codeOnly(try functionBody("willDownloadUpdate item: SUAppcastItem,", in: source))
 
+        // ① 纯函数体：判据的两半（idle + autoDownloads）
+        let pureFn = codeOnly(
+            try functionBody(
+                "shouldEnterBackgroundDownload(\n        phase: UpdatePhase, autoDownloads: Bool",
+                in: source))
         #expect(
-            body.contains("guard case .idle = phase"),
+            pureFn.contains("guard case .idle = phase"),
             """
             分流判据不见了。自动那条路上 user driver **一条回调都不发**（§8.80），
             所以「`phase` 还是 `.idle`」就是「走的是自动那条路」——
             换成别的判据（例如另存一个「这次是后台检查」的位）会与真实情况脱节。实得：
+            \(pureFn)
+            """)
+        #expect(
+            pureFn.contains("autoDownloads"),
+            """
+            少了「开关开着」这一半：这一态要表达的是「**自动下载**正在进行」，
+            而 `phase == .idle` 只说「没人说过话」。判据要与 `SPUUpdater.m:622`
+            选驱动时用的是**同一个属性**。实得：
+            \(pureFn)
+            """)
+
+        // ② willDownloadUpdate 体：调了纯函数 + 传了开关值 + 不猜 0
+        let body = codeOnly(try functionBody("willDownloadUpdate item: SUAppcastItem,", in: source))
+        #expect(
+            body.contains("shouldEnterBackgroundDownload"),
+            """
+            willDownloadUpdate 没调纯函数（§8.83）。抽纯函数的目的是让它**真被调**，
+            而不是把判据藏在方法体里 —— 留在原位就是「源码文本守卫」的原状，
+            行为断言还是进不来。实得：
             \(body)
             """)
         #expect(
             body.contains("updater.automaticallyDownloadsUpdates"),
             """
-            少了「开关开着」这一半：这一态要表达的是「**自动下载**正在进行」，
-            而 `phase == .idle` 只说「没人说过话」。判据要与 `SPUUpdater.m:622`
-            选驱动时用的是**同一个属性**。实得：
+            纯函数没拿到开关值。实得：
             \(body)
             """)
         #expect(
@@ -647,6 +674,50 @@ struct UpdateSettingsTests {
             UpdateController 没有导出 updater:willDownloadUpdate:withRequest: ——
             选择器拼错时编译器只给 warning，运行期表现是「这一态永远不出现」。
             """)
+    }
+
+    /// `willDownloadUpdate` 的分流判据 **行为测试**（§8.83）。
+    ///
+    /// **为什么必须测它**：判据靠的是**顺序论证**（user driver 一声没吭 ⇒ 一定是
+    /// 自动那条路）—— 而**真机根本构造不出**「`phase` 不是 `.idle` 又走到
+    /// `willDownloadUpdate`」的场景（`showUpdateFound` 永远先到，§8.81.4）。
+    /// 所以判据抽出纯函数**不是性能优化，是为了让断言能跑到** —— 顺推要测，
+    /// **反向也要测**（防止有人把判据写成「只判开关」）。
+    @Test func shouldEnterBackgroundDownload的真值表() {
+        // 顺推：自动那条路（idle + 开）⇒ 进
+        #expect(
+            UpdateController.shouldEnterBackgroundDownload(
+                phase: .idle, autoDownloads: true),
+            "idle + 自动开 ⇒ 应进")
+
+        // 反向：弹窗那条路（phase 已被 showUpdateFound 设过）⇒ 挡掉
+        #expect(
+            !UpdateController.shouldEnterBackgroundDownload(
+                phase: .found(version: "1.1.0"), autoDownloads: true),
+            "found + 自动开 ⇒ 应挡（弹窗那条路）")
+        // 反向：哪怕 phase 已经是 downloading/ready/failed，也得挡掉
+        #expect(
+            !UpdateController.shouldEnterBackgroundDownload(
+                phase: .downloading(version: "1.1.0", fraction: 0.42), autoDownloads: true),
+            "downloading + 自动开 ⇒ 应挡（已经在下）")
+        #expect(
+            !UpdateController.shouldEnterBackgroundDownload(
+                phase: .ready(version: "1.1.0"), autoDownloads: true),
+            "ready + 自动开 ⇒ 应挡（已就绪）")
+        #expect(
+            !UpdateController.shouldEnterBackgroundDownload(
+                phase: .failed(version: "1.1.0"), autoDownloads: true),
+            "failed + 自动开 ⇒ 应挡（已失败）")
+
+        // 反向：开关关着 ⇒ 无论 phase 是什么都不进
+        #expect(
+            !UpdateController.shouldEnterBackgroundDownload(
+                phase: .idle, autoDownloads: false),
+            "idle + 自动关 ⇒ 应挡")
+        #expect(
+            !UpdateController.shouldEnterBackgroundDownload(
+                phase: .ready(version: "1.1.0"), autoDownloads: false),
+            "ready + 自动关 ⇒ 应挡")
     }
 
     /// **「百分比未知」与「0%」必须是两种状态。**

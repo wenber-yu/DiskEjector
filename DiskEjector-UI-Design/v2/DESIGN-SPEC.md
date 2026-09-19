@@ -5078,13 +5078,12 @@ Sparkle 会不会装上这次更新 —— 依据是 `showUpdateFound` 的文档
 
 ### §8.42.2 仍开着的（按「谁能关掉它」分类）
 
-> ⚠️ **本表的最后核对时刻：2026-09-20 00:10**（起点 `HEAD` = `6c2a35a`，工作区 0 脏；本轮提交见 §8.82.7）。
-> 本次核对是 §8.82 —— **关掉第 29 行**（3b 走查图，补上后立刻抓到「矮 14.8pt」的真缺陷），
-> 并**新开第 32 行**（手动那条路那一瞬闪说明行，真机未验）。
-> §8.82 是这一轮中**发现 → 修 → 守卫有牙**走得最完整的一次：
-> 走查图清单加了那一格 → 立刻红 → 视图加说明 → 同步设计稿 → 补「设计稿 ↔ 实现同源」守卫 → 变异 5 红 1 绿。
-> 顺带挖到**变异脚本自身的 bug**（restore 只还原两个文件，漏了 xcstrings ——
-> 出图直接看到了错文案）。这条已经写进 §8.82.6 与本轮守卫里。
+> ⚠️ **本表的最后核对时刻：2026-09-20 00:25**（起点 `HEAD` = `793016e`，工作区 0 脏；本轮提交见 §8.83.5）。
+> 本次核对是 §8.83 —— **关掉第 31 行**（`willDownloadUpdate` 抽纯函数 + 行为测试，**部分还账**，
+> **并订正「四个」→「三个」**），并**新开第 33 行**（另两个 delegate 回调仍没行为测试）。
+> §8.83 验证了 §8.82.7 那条「同向反向都测」的硬规则：M242/M243 都是「只判开关」型变异，
+> **`reverse` 方向断言**（`.found + true` 必须挡掉）一个不漏地抓到 ⇒ 行为测试有牙。
+> 抽纯函数是 §8.47.6 那种「**有生产者、没消费者**」的反面 —— 判据**有了真被跑的断言**，而非只钉文本。
 > 结论是**它开的那一半前提是错的**：那段**画得出来**，只是没有百分比 ——
 > 上一轮把「**进度**到不了」读成了「**什么都**到不了」，因为只扫了
 > 「user driver 那四个回调在全库只有一个调用方」，没扫
@@ -5128,8 +5127,9 @@ Sparkle 会不会装上这次更新 —— 依据是 `showUpdateFound` 的文档
 | 28 | ~~**自动更新开着时，中间那段「正在后台下载」怎么画** —— 登记时的前提是「那条路上什么回调都没有」，要如实画得先有一个不带百分比的行态，是设计决策~~ | 已关闭 | §8.80.2 / **§8.81** | ✅ **已还账（第 33 轮）** —— **前提是错的**：那段**画得出来**。自动那条路会经过的 `SPUCoreBasedUpdateDriver` 会发 delegate 的回调，其中 `willDownloadUpdate`（`:136`）就是「即将开始下载」；进度（`didDownloadUpdate` `:179`）也有，只是**没有「下了多少」**。⇒ 那一态接上了：文案与手动那条路**同一句**，但 `fraction: nil` ⇒ **不画进度条、不给取消按钮**（那条路没有取消入口）。判据是「user driver 到现在一声没吭」（**可派生**，不是手动开关）。**订正**：§8.80 把「**进度**到不了」读成了「**什么都**到不了」—— 只扫了 user driver 那四个回调的唯一调用方。设计稿：B 段**新增 3b 一帧**、C 段第 3/7 行订正、D 段整段改写。守卫 4 条、变异 **8 红 + 1 绿** |
 | 29 | ~~**3b 那一态还没有走查图** —— 设计稿 B 段有了那一帧，但 `SettingsLayoutTests` / `SnapshotRenderTests` 的状态清单里**没有** `fraction: nil` 那一格，于是走查图看不出「无进度条」这一版长什么样~~ | 已关闭 | §8.81.7 / **§8.82** | ✅ **已还账（第 34 轮）** —— 补上后**立刻抓到一个真缺陷**（3b 矮 14.8pt ⇒ 修：加 `updateDownloadingHint` 说明行 + 设计稿同步），并补一条**「设计稿 ↔ 实现说明键同源」守卫**（M237/M238b/M240/M241 都红，M238 第一次绿⇒暴露缺口⇒补守卫；M239 绿⇒如实登记「文案内容守不了」） |
 | 30 | **「自动那条路的『下载中』那一格真的被设置了」没有真机复验** —— `willDownloadUpdate` 会到，靠的是**源码的调用点**（`SPUAutomaticUpdateDriver.m:95` → `SPUCoreBasedUpdateDriver.m:136`），不是跑起来看到的 | 我（下一轮） | §8.81.7 | ⬜ **仍开着**。⚠️ **「这条路会跑」是验过的**（§8.80 真机：`.18.4/81` → `.19.1/119`，验的是同一条路的**终点** `willInstallUpdateOnQuit`），**没验的是中间那一格**。要验它：真机上开着设置面板、等后台检查触发、在下载期间截那一格 —— 本轮没做，别当成验过 |
-| 31 | **四个 `SPUUpdaterDelegate` 回调都只有「选择器 + 源码文本」守卫，没有行为测试** —— `willDownloadUpdate` / `willInstallUpdateOnQuit` / `failedToDownloadUpdate` 三个方法体在覆盖率里**全部 0 命中**（§8.81.9 逐行数据）。它们需要一个**真的 `SPUUpdater` 实例**才能调用，而测试里 0 处构造 ⇒ 判据的**文本**钉住了，判据的**行为**从未被执行 | 我（下一轮） | §8.81.9 | ⬜ **仍开着**（本轮新开）。⚠️ **不是本轮新引入的债**：`failedToDownloadUpdate`（594 行）与 `willInstallUpdateOnQuit`（712–720 行）**早就**是 0 命中，`willDownloadUpdate` 只是与它们同一处境。要还账：把判据抽成纯函数（同 `shouldPublishProgress` / `isDownloadFailure` 的既有做法），或真机复验（第 30 行） |
+| 31 | ~~**四个 `SPUUpdaterDelegate` 回调都只有「选择器 + 源码文本」守卫，没有行为测试**~~ —— ⚠️ **数错了：实际是三个**（`willDownloadUpdate` / `willInstallUpdateOnQuit` / `failedToDownloadUpdate`），订正于 §8.83.4。`willDownloadUpdate` 抽成 `shouldEnterBackgroundDownload(phase:autoDownloads:)` 纯函数（与 `shouldPublishProgress` / `isDownloadFailure` 同惯例），行为测试 `shouldEnterBackgroundDownload的真值表` 七条全过，**变异 4 红** | 我（下一轮） | §8.81.9 / **§8.83** | ✅ **已还账（第 35 轮，但只覆盖 `willDownloadUpdate` 一条）**。`failedToDownloadUpdate` 与 `willInstallUpdateOnQuit` 仍没行为测试 —— 见第 33 行 |
 | 32 | **手动那条路的「无百分比」那一瞬，在真机上没看过** —— `fraction == nil` 在手动那条路只持续「下载开始前到第一格进度」之间（可能秒级），那一刻设置行会**闪**一下「下载完成后会自动安装…」然后变成进度条。内容跳变在真机上看起来什么样、有没有被察觉、要不要**直接隐藏那一瞬**（只在**自动那条路**显示说明），**没在**真机上看过 | 我（下一轮） | §8.82.4 | ⬜ **仍开着**（§8.82 新开）。⚠️ **走查图看不出这一段** —— 出图是**稳态**（`fraction: nil` 全程或全程 42%），中间那一瞬只能真机截 |
+| 33 | **`failedToDownloadUpdate` 与 `willInstallUpdateOnQuit` 仍没行为测试** —— §8.83 只对**有判据的那一个**（`willDownloadUpdate`）抽了纯函数；这两个**没有 guard/if 可抽**，行为测试需要构造 `SPUUpdater`（项目里 0 处构造）。要么**造一个**（host bundle 模拟），要么**把副作用再抽一层**（设 `phase = .failed` 与设 `pendingUpdate` 都是纯函数化候选），要么承认**做不了**而把选择器 + 源码文本守得更严（增变异覆盖） | 我（下一轮） | §8.83.4 | ⬜ **仍开着**（§8.83.4 新开） |
 
 > **判据：这张「仍开着」的表本身也是承诺型的话。** 17:55 回头核对时，第 4、5 行**早已关掉
 > 而表还写着「仍开着」** —— 和 §8.33 清掉的那 6 条是同一个病：**还了账没人回来划掉**。
@@ -9775,6 +9775,122 @@ M239 改了 `Localizable.xcstrings` 但 **restore 脚本只还原了 view + html
 | `Tests/DiskEjectorAppTests/UpdateSettingsTests.swift` | 新增 `设计稿3b那一帧与实现用同一个说明键`；新增 `slice(after:upTo:in:)` 辅助（用 `range(of:)` 取真实值，不是 `contains`） |
 
 **本轮提交：`682cd76`**（8 个文件 / +260 −21），已推送（`6c2a35a..682cd76`）。
+
+---
+
+## §8.83 `willDownloadUpdate` 抽纯函数 + 行为测试（2026-09-20 00:18）
+
+### §8.83.1 从哪来（第 31 行 —— 但数错了）
+
+> ⚠️ **登记时的数错**：第 31 行说「**四个** delegate 回调都没有行为测试」，**实际是三个**
+> （`failedToDownloadUpdate` / `willDownloadUpdate` / `willInstallUpdateOnQuit`）。
+> 订正于本节 §8.83.4。
+
+三个回调里，**只有 `willDownloadUpdate` 有可抽的判据**（另外两个无 guard / 无 if），
+所以本轮只对它做：
+
+- ① 抽 `shouldEnterBackgroundDownload(phase:autoDownloads:)` —— 与项目既有惯例一致
+  （`shouldPublishProgress(from:to:)` / `isDownloadFailure(phase:)` 都是「抽成纯函数是为了
+  能断言它（真机上根本构造不出来）」）；
+- ② 加**行为测试** `shouldEnterBackgroundDownload的真值表` —— 顺推 + reverse 都测
+  （防止有人把判据写成「只判开关」）；
+- ③ 把原守卫 `自动那条路的下载开始也由delegate送达` **拆成两条**：一条读纯函数体钉判据，
+  一条读 `willDownloadUpdate` 体钉**调用关系**与「不猜 0」。两条一起钉才是真守卫
+  —— 单钉任一条都是没牙的。
+
+`failedToDownloadUpdate` 与 `willInstallUpdateOnQuit` 没判据（前者无 guard，后者恒返 true），
+**目前只能做源码文本 + 选择器守卫**，行为测试需要构造 `SPUUpdater` 实例
+（项目里 0 处构造，本环境构造代价高）—— 留作**新开第 33 行**（具体见 §8.83.4）。
+
+### §8.83.2 为什么抽纯函数 —— 行为测试进得来的唯一办法
+
+判据靠的是**顺序论证**（user driver 一声没吭 ⇒ 一定是自动那条路），
+而**真机根本构造不出**「`phase` 不是 `.idle` 又走到 `willDownloadUpdate`」的场景
+（`showUpdateFound` 永远先到，§8.81.4）。判据留在方法体里就是
+「源码文本守卫」的原状：可以钉「文本里含 `guard case .idle = phase`」，
+**钉不了「这条 guard 真挡掉了 `.found`」** —— 后者是行为，得跑起来。
+
+抽成纯函数后，行为测试可以**直接调**：
+
+```swift
+@Test func shouldEnterBackgroundDownload的真值表() {
+    // 顺推：自动那条路（idle + 开）⇒ 进
+    #expect(UpdateController.shouldEnterBackgroundDownload(
+        phase: .idle, autoDownloads: true))
+    // 反向：弹窗那条路 ⇒ 挡掉（防止「只判开关」型变异）
+    #expect(!UpdateController.shouldEnterBackgroundDownload(
+        phase: .found(version: "1.1.0"), autoDownloads: true))
+    // …downloading/ready/failed 也都要挡掉
+    // …开关关着无论 phase 是什么都不进
+}
+```
+
+### §8.83.3 守卫与变异（M242–M245）
+
+| 守卫 | 钉什么 |
+|---|---|
+| `shouldEnterBackgroundDownload的真值表` | **纯函数行为**：顺推 + reverse 都测，**七个组合**（idle/found/downloading/ready/failed × true/false 关键组合）|
+| `自动那条路的下载开始也由delegate送达`（**改写**） | 读两个体：**纯函数体**钉判据（`guard case .idle = phase` + `autoDownloads`）；**willDownloadUpdate 体**钉调用关系（`shouldEnterBackgroundDownload(…)` + `updater.automaticallyDownloadsUpdates`）与「不猜 0」 |
+| `下载开始的delegate选择器真的被导出了` | `responds(to:)` 问运行时（拼错即红） |
+
+变异（**4 红**）：
+
+| | 改什么 | 期望 | 结果 |
+|---|---|---|---|
+| M242 | 纯函数改成 `return true`（删 idle 判据） | 红 | 🔴 红（reverse `.found + true` 抓到）|
+| M243 | 纯函数改成 `return autoDownloads`（只判开关） | 红 | 🔴 红（同上）|
+| M244 | `willDownloadUpdate` 体里删掉纯函数调用，回 inline guard | 红 | 🔴 红（`shouldEnterBackgroundDownload` 文本断言抓到）|
+| M245 | `willDownloadUpdate` 体里 `fraction: nil` 改 `fraction: 0` | 红 | 🔴 红（`!body.contains("fraction: 0")` 抓到）|
+
+> ⚠️ **M242/M243 与 §8.82.7 末尾的「同向反向都测」是同一回事**：行为测试要测 reverse 方向，
+> 否则「只判开关」型变异永远绿。这是 §8.83.2 那七条 `shouldEnterBackgroundDownload的真值表`
+> 故意没省掉反向断言的原因。
+
+### §8.83.4 订正与遗留
+
+**订正**：第 31 行原写「**四个** delegate 回调都只有『选择器 + 源码文本』守卫」——
+**实际是三个**（`failedToDownloadUpdate` / `willDownloadUpdate` / `willInstallUpdateOnQuit`）。
+本节把它们**逐个交代**：§8.83.1 已说明本轮只对**有判据的那一个**抽纯函数；另两个没有 guard/if
+可抽 —— 但它们**不抽不等于没监督**：
+- `failedToDownloadUpdate`：选择器已有守卫（`responds(to:)`），源码文本守卫钉了
+  「**总是**调 `driverDidFailDownload`」，而 `driverDidFailDownload` 本身又走
+  `isDownloadFailure(phase:)` 这个**纯函数**（§8.47 那条「整仓库没有调用点」就是靠
+  这个守卫抓到的）。所以这条**链路是断的** —— `failedToDownloadUpdate` 没人调，
+  `.failed` 那一态就进不来；反之**一旦它被调**，链路上的纯函数都会触发
+  `.failed` 的设置。所以**这一条有行为监督**（虽然不是本方法体里的）。
+- `willInstallUpdateOnQuit`：选择器与返回值都有守卫（前者 `responds(to:)`，后者
+  钉了「**恒返 `true`**」+「设 `pendingUpdate` + 调 `driverIsReady`」）。行为要测的话
+  需要构造 `SUAppcastItem` + `SPUUpdater`（项目里 0 处构造，本环境代价高）。
+
+**新开第 33 行**：把 §8.83 暴露的「这一类回调没有行为测试」**完整收口** ——
+`failedToDownloadUpdate` 与 `willInstallUpdateOnQuit` 也补行为测试，
+或承认它们在当前环境下**做不了**而把选择器 + 源码文本守得更严（增加变异覆盖）。
+**谁才能关**：要么构造 `SPUUpdater`（需要 host bundle 的模拟），要么把副作用抽到
+**纯函数**里（同 §8.83.2 的做法）。
+
+### §8.83.5 门槛与改动（2026-09-20 00:18）
+
+三道门槛全过。覆盖率 **64.05% → 63.88%**（−0.17pp）⇒ 按规矩做了 A/B 归因：
+
+| | 基线（`793016e`） | 改后 | Δ |
+|---|---|---|---|
+| 总行数 | 1822 | 1833 | **+11** |
+| 未覆盖 | 655 | 662 | +7 |
+| **覆盖行** | 1167 | **1171** | **+4** |
+
+⇒ **覆盖行数涨了 4 行**（抽出来的纯函数被**行为测试真跑到了**，这正是本轮的目的），
+百分比略降只是因为**跨行签名 + guard 调用那几行是 3 行而不是 1 行**，
+多出来的样板行进了分母。**不是回归**。
+
+> ⚠️ **这一小段自己先写错过一次**：初稿写的是「把 guard 换成了一行调用、
+> **执行行数略减**，分母略缩」—— 那是**猜的**，实测恰好相反
+> （+11 行 / 覆盖 +4）。同 §8.77 那条「**注释里的数值不能当证据**」：
+> 写了 A/B 才有得改。**别用「看起来应该是」替代 `coverage.sh` 的输出。**
+
+| 文件 | 改动 |
+|---|---|
+| `Sources/Services/UpdateController.swift` | 新增 `nonisolated static func shouldEnterBackgroundDownload(phase:autoDownloads:)`（与 `shouldPublishProgress` / `isDownloadFailure` 同区）；`willDownloadUpdate` 体的 guard 改成调它 |
+| `Tests/DiskEjectorAppTests/UpdateSettingsTests.swift` | 改写 `自动那条路的下载开始也由delegate送达`（读**两个体**：纯函数体钉判据，方法体钉调用关系与不猜 0）；新增 `shouldEnterBackgroundDownload的真值表`（7 个组合，顺推 + reverse） |
 
 ---
 
