@@ -4,23 +4,30 @@ import Testing
 
 @testable import DiskEjectorApp
 
-/// 设计稿（HTML 原型）自身的**完整性**守卫，两个维度：
+/// 设计稿（HTML 原型）自身的**完整性**守卫，三个维度：
 ///
 /// 1. **CSS 类**：「用了但没有定义」必须登记（拼错类名 / 删了 CSS 忘了改 HTML）。
 /// 2. **i18n 键**：`i18n-extra.json` 里声明的键必须**有页面在用**（否则是死文案）。
+/// 3. **`ds.js` 运行时创建的类**：必须在设计稿里有 CSS 定义（否则建出来的元素裸奔）。
 ///
-/// 这两个都属于「**有声明、没有消费者**」—— Swift 侧已经在 §8.50 钉住了
+/// 前两个都属于「**有声明、没有消费者**」—— Swift 侧已经在 §8.50 钉住了
 /// （`DeclarationConsumerTests`），设计稿侧此前**一条都没有**。
 /// 而 §8.51 刚证明设计稿是「唯一真相」的来源：**它腐化了，同源守卫全会被误导**。
 ///
-/// **为什么守这一向，不守另一向**：设计稿里「定义了但没元素用」的类**多数是合理的**
-/// （备用样式、无障碍 `.sr-only`、文档样例）—— §8.52.5 记过：**零消费者 ≠ 可删**，
-/// 删设计稿的类会改变视觉。所以那一向只**打印**，不报警。
+/// **为什么「用了但没定义」报警、「定义了但没用」只记账**：设计稿里「定义了但没元素用」
+/// 的类**多数是合理的**（备用样式、无障碍 `.sr-only`、文档样例）—— §8.52.5 记过：
+/// **零消费者 ≠ 可删**，删设计稿的类会改变视觉。但「不删」不等于「不记账」：
+/// 那一向此前只 `print`，于是手写清单烂了三处没人知道（§8.76）。现在改成**三张账本**
+/// （`runtimeCreatedClasses` / `pageLocalUnused` / `spareUnused`）——
+/// **成因不同判据不同**，混在一起数就会算错账。
 ///
 /// 反过来，「用了但没定义」**一定是问题**：要么是类名拼错（`.aboutroww`），
 /// 要么是删了 CSS 忘了改 HTML。它的症状是「样式没生效」——
 /// 而**「样式没生效」与「本来就没写样式」在界面上逐字相同**，读代码看不出来。
 /// 这一条负责把两者分开。
+///
+/// 第 3 向的症状与第 1 向**逐字相同**，但第 1 向**查不到它** —— 见 §8.76：
+/// 它扫的是 HTML 的 `class` 属性，而 JS 建出来的类名根本不在 HTML 里。
 ///
 /// **定义源有两个，别漏**（§8.52.1）：主 CSS `assets/ds.css` **加上每个 HTML 的 `<style>` 块**
 /// —— 实测 9 个页面共 225 行 `<style>`，`.aboutrow` 的样式就在那里，只扫主 CSS 会误报。
@@ -53,6 +60,60 @@ struct DesignDraftIntegrityTests {
         "row__evid": "完整行的「证据区」容器，样式走 `.evid*`，本身无规则",
         "spec": "index.html 的规格表容器",
         "state-tbl": "状态矩阵表格（样式写在 `06-states.html` 的 `<style>` 里，见 `table.state-tbl`）",
+    ]
+
+    // MARK: 反向的账本（定义了但没元素用）
+
+    /// 反向（定义了但没元素用）**不能只打印** —— §8.52.5 那张手写表就是这么烂掉的：
+    /// 标题写「18 个」、表里只列了 15 行、而 `meter--high` 那一行在 `5df286f`（§8.74）
+    /// 给它补上样本之后**没人回来划掉**。只打印 + 两条极松边界 = 数字变了也没人知道。
+    ///
+    /// ⚠️ **成因不同，判据不同** —— 这是本轮最贵的一条。把三种成因混在一起数，账就是错的
+    /// （`18 / 17 / 15` 三个数字就是这么来的）：
+    ///
+    /// | 成因 | 有消费者吗 | 判据 |
+    /// |---|---|---|
+    /// | `runtimeCreatedClasses` | **有**（在 `ds.js` 里），只是消费者不在 HTML 里 | 必须在设计稿里有定义（否则运行时建出来**裸奔**） |
+    /// | `pageLocalUnused` | 没有 | 必须真的「只在某页 `<style>` 里定义」 |
+    /// | `spareUnused` | 没有 | 必须真的「纯 `ds.css` 定义、`ds.js` 也不建」 |
+    ///
+    /// **为什么不删**：§8.52.5 的判据仍然成立 —— 设计稿是规范文档，删类会改变视觉，
+    /// 零消费者只说明「现在没用到」。所以这三张表是**账本**，不是**待删清单**。
+    /// 唯一的例外见 `statusline--unknown` 那条。
+
+    /// `ds.js` 运行时创建的类。**它们有消费者**（在 JS 里），所以**不是**零消费者。
+    private static let runtimeCreatedClasses: [String: String] = [
+        "langbar": "语言切换条（`ds.js:218` `bar.className = 'langbar'`），插在每个页面顶部",
+        "langbar__label": "同上，语言条里的「语言」标签（`ds.js:221`）",
+        "langbar__hint": "同上，语言条里的提示（`ds.js:237`）",
+        "pill": "同上，语言条里的语言按钮（`ds.js:227` `b.className = 'pill'`）",
+    ]
+
+    /// 只在某个页面的 `<style>` 里定义、未启用（页面级备用样式）。
+    private static let pageLocalUnused: [String: String] = [
+        "kbd": "键盘按键样式，写在 `01-main-window.html` 的 `<style>` 里；该页的按键说明用的是 `.note-list code` ⇒ 写好了没启用",
+        "zoomwrap": "`transform-origin: top left`，写在 `01-main-window.html` 的 `<style>` 里；页面里没有元素用它（缩放包裹层未启用）",
+    ]
+
+    /// 纯 `ds.css` 定义、静态无消费者、`ds.js` 也不建。
+    ///
+    /// 多数是**备用样式 / 工具类**（§8.52.5：零消费者 ≠ 可删）。唯一的例外是
+    /// `statusline--unknown` —— 它**不是备用，是真缺口**，见下表。
+    private static let spareUnused: [String: String] = [
+        "appicon--doc":
+            "`.appicon` 定义了 8 个分类底色，页面只画了 5 个（finder / photo / code / backup / music）。**实现侧不按分类着色** —— `ProcessChip` 画的是真应用图标（`ProcessAppResolver.icon`）⇒ 备用样式",
+        "appicon--sync": "同上",
+        "appicon--term": "同上",
+        "callout--warn":
+            "琥珀警示块。**实现侧没有这个语义** —— `AlertCallout.Kind` 只有 `{danger, info}`（`DesignSystemComponents.swift:299`）⇒ 备用样式",
+        "chip--plain": "无图标 chip 变体。实现侧溢出用的是 `.chip--more`（`ProcessChipOverflow`）⇒ 备用样式",
+        "glass": "毛玻璃工具类（`ds.css` 第 3 节）。设计稿的页面里没有元素用它（玻璃面由 `.win` / `.wallpaper` 承载）⇒ 工具类，备用",
+        "glass-thick": "同上（加厚版）",
+        "grid4": "四列网格。**同族的 `grid2` 有 15 个样本、`grid3` 有 4 个，只有 `grid4` 是 0** ⇒ 备用",
+        "iconbtn--lg": "32×32 大号图标按钮。`iconbtn` 有 13 个样本，**没有一个是 32**（实现侧也没有这个尺寸）⇒ 备用",
+        "sr-only": "**无障碍**工具类（仅供屏幕阅读器），**有意保留** —— 见 §8.52.5",
+        "statusline--unknown":
+            "⚠️ **这一条不是备用，是真缺口** —— 实现侧 `MenuBarDiskRow.statusLine` 有 `.unknown` 态（未授权 FDA 时显示「占用情况未知」），而设计稿的 `.statusline` 只画了 `--safe`。与 `.mrow__occ` 缺 `--unknown` 同族（§8.75.7 已记，**仍未补样本**）",
     ]
 
     // MARK: 守卫
@@ -113,14 +174,145 @@ struct DesignDraftIntegrityTests {
         )
     }
 
-    /// 反向（定义了但没元素用）**只打印不报警** —— §8.52.5：零消费者 ≠ 可删。
-    @Test func 反向扫描只记录不报警() throws {
+    /// 反向（定义了但没元素用）的账本**第一向**：新出现的零消费者必须登记在案。
+    ///
+    /// 这一向此前**只打印**（§8.52.5 判据：零消费者 ≠ 可删）—— 但「不删」不等于「不记账」。
+    /// 实测代价：手写清单三处不一致（§8.52.5 标题 18 / 表里 15 行 / §8.75.7 的 17），
+    /// 而且 `meter--high` 那一行过期了整整一轮没人发现。
+    @Test func 零消费者的类必须全在账本里() throws {
         let scan = try load()
+
+        // 解析器的**锚**：下面几条不成立，说明扫描逻辑退化了，
+        // 而那种情况下 `unused` 会**空着** —— 通过得毫无意义。
+        #expect(scan.defined.count > 150, "只解析到 \(scan.defined.count) 个类 —— 定义那一向没扫到")
+        #expect(scan.used.contains("btn"), "`.btn` 有 60+ 处消费者却没收集到 —— 使用那一向没扫到")
+        #expect(
+            scan.runtimeCreated.contains("pill"),
+            "`ds.js` 的 `className = 'pill'` 没解析到 —— 运行时那一向没扫到（本轮修的就是这一步）")
+        #expect(
+            scan.pageLocal.contains("kbd"),
+            "`.kbd` 只在 `01-main-window.html` 的 `<style>` 里定义，没识别出来 —— 「定义源有两个」漏了第二个")
+
         let unused = scan.defined.subtracting(scan.used).sorted()
+        let ledger = Set(Self.pageLocalUnused.keys).union(Self.spareUnused.keys)
+        let unregistered = Set(unused).subtracting(ledger).sorted()
+
         print("  [设计稿] 定义了但没元素用：\(unused.count) 个 —— \(unused.joined(separator: ", "))")
-        // 只留一条极松的自检：数字不该是 0（那说明「定义」没扫到），也不该接近全部
-        #expect(!unused.isEmpty, "一个零消费者都没有 —— 「定义」那一向多半没扫到")
-        #expect(unused.count < scan.defined.count / 2, "零消费者超过一半 —— 解析多半出了问题")
+
+        #expect(
+            unregistered.isEmpty,
+            """
+            设计稿里这些类**定义了但没有任何元素在用**，且不在账本里：
+            \(unregistered.joined(separator: ", "))
+            要么把它用起来，要么加进 `pageLocalUnused` / `spareUnused` 并写清定性
+            —— 但**不要**为了让它消失就删掉：设计稿是规范文档，删类会改变视觉（§8.52.5）。
+            若它是 `ds.js` 运行时创建的（消费者不在 HTML 里），应记进 `runtimeCreatedClasses`。
+            """)
+    }
+
+    /// 账本**第二向**：登记的类如果已经有人用了 / 已经不存在了，要回来划掉。
+    ///
+    /// 两个方向都查，否则这张表会像 §8.33 那 6 条一样越积越不可信 ——
+    /// `meter--high` 就是这么过期的：`5df286f` 给它补了样本，`06-states.html` 里
+    /// 从此有元素用它，而 §8.52.5 的表里那一行**一直留着**。
+    @Test func 账本里的类不许过期() throws {
+        let scan = try load()
+        let ledger = Set(Self.pageLocalUnused.keys).union(Self.spareUnused.keys)
+
+        let nowUsed = ledger.intersection(scan.used).sorted()
+        #expect(
+            nowUsed.isEmpty,
+            """
+            这些类登记为「没有元素用」，但**现在已经有元素在用了**：\(nowUsed.joined(separator: ", "))
+            还了账就回来划掉 —— 否则这张表会像 §8.33 那 6 条一样越积越不可信。
+            （`meter--high` 就是这么过期的：补了样本，清单没改。）
+            """)
+
+        let gone = ledger.subtracting(scan.defined).sorted()
+        #expect(
+            gone.isEmpty,
+            """
+            这些类登记在账本里，但**设计稿里已经没有任何定义了**：\(gone.joined(separator: ", "))
+            定义都删了，这一条永远不会被任何断言碰到，只会安静地烂在表里 —— 划掉它。
+            """)
+    }
+
+    /// 账本**第三向**：成因分类必须与实扫一致 —— 这是本轮最贵的一条判据。
+    ///
+    /// 三种成因的**消费者位置**不同，混在一起数就会算错账。实测三处数字打架
+    /// （`18 / 17 / 15`）的根源就是没分：`langbar*` / `pill` 的消费者在 JS 里，
+    /// 被当成「没人用」；`kbd` / `zoomwrap` 的消费者本该在页面里但没有；
+    /// `sr-only` 是**有意**没有消费者。
+    @Test func 账本的成因分类必须与实扫一致() throws {
+        let scan = try load()
+
+        // ① 「页面级备用」必须真的只在某页的 `<style>` 里定义
+        for name in Self.pageLocalUnused.keys {
+            #expect(
+                scan.pageLocal.contains(name),
+                "`\(name)` 记成「页面级备用」，但它不在「仅 `<style>` 定义」那一批里 —— 成因标错了")
+        }
+
+        // ② 「纯 ds.css 备用」不许是运行时创建、也不许只在 `<style>` 里
+        for name in Self.spareUnused.keys {
+            #expect(
+                !scan.runtimeCreated.contains(name),
+                "`\(name)` 记成「纯 ds.css 备用」，但 `ds.js` 会在运行时创建它 —— 那它**有消费者**，不该在这张表里")
+            #expect(
+                !scan.pageLocal.contains(name),
+                "`\(name)` 记成「纯 ds.css 备用」，但它只在某个页面的 `<style>` 里定义 —— 应记进 `pageLocalUnused`")
+        }
+
+        // ③ 「运行时创建」那批必须**真的被算成消费者**
+        //
+        // ⚠️ 这条是**负向锚**：`load()` 若退回只认双引号（本轮修掉的那个病），
+        // 这 4 个类会立刻掉进 `unused` —— 那时这条与上一条会一起红。
+        for name in Self.runtimeCreatedClasses.keys {
+            #expect(scan.runtimeCreated.contains(name), "`\(name)` 没被识别成「运行时创建」")
+            #expect(
+                scan.used.contains(name),
+                "`\(name)` 由 `ds.js` 在运行时创建，却**没被算成消费者** —— `load()` 第 ③ 步又断了（本轮修的正是这一步）")
+            #expect(
+                !Self.pageLocalUnused.keys.contains(name) && !Self.spareUnused.keys.contains(name),
+                "`\(name)` 有消费者（`ds.js` 运行时创建），却被同时记进「零消费者」表 —— 两处口径串了")
+        }
+    }
+
+    /// **新的一向**：`ds.js` 运行时创建的类必须在设计稿里有 CSS 定义。
+    ///
+    /// 这一向此前**没有任何守卫**，而它的症状是最难发现的那种：
+    /// JS 建出来的元素类名**不在任何 HTML 里**，所以「用了但没定义」那一向
+    /// （扫 `class="…"`）**永远看不见它** —— 元素会**裸奔**，
+    /// 而「样式丢了」与「本来就没写样式」在渲染结果上逐字相同。
+    ///
+    /// 实测：`ds.css` 里 `.pill` 曾有过一条关键注释（2026-09-16 补的
+    /// 「`ds.js` 水合出来的 `<svg>` 没有内联宽高，没有这条规则时计算尺寸是 `0×0`」）
+    /// —— 那正是这一向的病例。
+    @Test func ds_js运行时创建的类必须在设计稿里有定义() throws {
+        let scan = try load()
+
+        // 锚：解析器坏了会让 `runtimeCreated` 空着，下面的差集会空着通过
+        #expect(scan.runtimeCreated.count >= 4, "只解析到 \(scan.runtimeCreated.count) 个运行时类 —— JS 没读到")
+
+        let ledger = Set(Self.runtimeCreatedClasses.keys)
+        #expect(
+            scan.runtimeCreated == ledger,
+            """
+            `ds.js` 运行时创建的类与账本不一致：
+              实扫到而账本没有：\(scan.runtimeCreated.subtracting(ledger).sorted().joined(separator: ", "))
+              账本有而实扫没有：\(ledger.subtracting(scan.runtimeCreated).sorted().joined(separator: ", "))
+            两边都要对上 —— 少一边就会把「有消费者的类」当成「没人用」。
+            """)
+
+        let undefine = scan.runtimeCreated.subtracting(scan.defined).sorted()
+        #expect(
+            undefine.isEmpty,
+            """
+            `ds.js` 会在运行时创建这些类，但设计稿里**没有任何 CSS 定义**：
+            \(undefine.joined(separator: ", "))
+            建出来的元素会**裸奔**。注意「用了但没定义」那一向**查不到这个** ——
+            它扫的是 HTML 的 `class` 属性，而这些类名根本不在 HTML 里。
+            """)
     }
 
     // MARK: 图标
@@ -1959,6 +2151,14 @@ struct DesignDraftIntegrityTests {
     private struct Scan {
         var defined: Set<String> = []
         var used: Set<String> = []
+        /// **只在某个页面的 `<style>` 里定义**、`ds.css` 里没有的类（页面级备用样式）。
+        var pageLocal: Set<String> = []
+        /// `ds.js` 在**运行时**创建出来的类名。
+        ///
+        /// ⚠️ 它**不是**「用了但没定义」那一向的消费者，也**不该**被算成「零消费者」——
+        /// 它的类名根本不出现在任何 HTML 的 `class` 属性里（是 JS 建的元素），
+        /// 所以必须单独收一份，否则会得出「没人用」的错账。
+        var runtimeCreated: Set<String> = []
     }
 
     private func load() throws -> Scan {
@@ -1967,23 +2167,36 @@ struct DesignDraftIntegrityTests {
 
         // ① 主 CSS
         let cssURL = designRoot.appendingPathComponent("assets/ds.css")
-        scan.defined.formUnion(Self.selectorClasses(in: Self.stripCSSComments(try read(cssURL))))
+        let mainCSS = Self.selectorClasses(in: Self.stripCSSComments(try read(cssURL)))
+        scan.defined.formUnion(mainCSS)
 
         // ② 每个 HTML：`<style>` 进「定义」，body 的 class 进「使用」
         let htmls = try htmlFiles()
         #expect(htmls.count >= 8, "只找到 \(htmls.count) 个 HTML —— 设计稿目录不对")
         for url in htmls {
             let raw = try read(url)
+            var local: Set<String> = []
             for block in Self.styleBlocks(in: raw) {
-                scan.defined.formUnion(Self.selectorClasses(in: Self.stripCSSComments(block)))
+                local.formUnion(Self.selectorClasses(in: Self.stripCSSComments(block)))
             }
+            scan.defined.formUnion(local)
+            scan.pageLocal.formUnion(local.subtracting(mainCSS))
             scan.used.formUnion(Self.classAttributes(in: Self.withoutStyleBlocks(raw)))
         }
 
-        // ③ ds.js 动态注入的类也算消费者
+        // ③ `ds.js` 运行时创建的类也算消费者。
+        //
+        // ⚠️ **不能**用 `classAttributes` 去读它：那个函数只认双引号 `class="…"`，
+        // 而 `ds.js` 用的是单引号 `className = '…'`。2026-09-19 实测：`ds.js` 里
+        // `class="` 出现 **0 次** ⇒ 这一步此前**一个类都没收进来**，是死代码。
+        // 症状是 `langbar` / `langbar__label` / `langbar__hint` / `pill` 被算成「零消费者」，
+        // 而这一行的注释说它们已被算作消费者 —— **注释与代码相反**，
+        // 而「零消费者」这一向当时只打印、不报警，所以没人发现（见 §8.76）。
         let jsURL = designRoot.appendingPathComponent("assets/ds.js")
         if fm.fileExists(atPath: jsURL.path) {
-            scan.used.formUnion(Self.classAttributes(in: try read(jsURL)))
+            let runtime = Self.runtimeClasses(in: try read(jsURL))
+            scan.runtimeCreated = runtime
+            scan.used.formUnion(runtime)
         }
         return scan
     }
@@ -2286,6 +2499,42 @@ struct DesignDraftIntegrityTests {
         for m in re.matches(in: html, range: range) {
             guard let r = Range(m.range(at: 1), in: html) else { continue }
             out.formUnion(String(html[r]).split(separator: " ").map(String.init))
+        }
+        return out
+    }
+
+    /// `ds.js` **运行时创建**的类名 —— 只认三种「类列表字面量」的写法：
+    ///
+    /// - `className = '…'`（`ds.js` 用的是这一种）
+    /// - `classList.add/toggle/remove('…')`
+    /// - `class="…"`（模板串，将来可能用）
+    ///
+    /// ⚠️ **口径必须是「类列表字面量」，不能是「字符串里出现过这个类名」**。
+    /// 宽松口径（`'…'` 里含类名即算）实测会把 14 个类判成「运行时创建」，其中
+    /// **`btn`（63 处消费者）、`row`（10 处）、`ds`、`switch`** 全是假命中 ——
+    /// 病根是 `\bglass\b` 会命中 `'glass-thick'` 这类**别的类的名字**，
+    /// 以及 `i18n.js` 的正文里出现 `glass`（「frosted glass」）。
+    /// 假命中的后果不是报错，而是**把一个有 63 处消费者的类算成「运行时创建」** ——
+    /// 于是它会从「零消费者」账本里消失，账本看起来更干净，实际更错。
+    private static func runtimeClasses(in js: String) -> Set<String> {
+        let patterns = [
+            #"className\s*=\s*['"]([^'"]*)['"]"#,
+            #"class\s*=\s*['"]([^'"]*)['"]"#,
+            #"classList\.(?:add|toggle|remove)\(([^)]*)\)"#,
+        ]
+        var out: Set<String> = []
+        for pattern in patterns {
+            guard let re = try? NSRegularExpression(pattern: pattern) else { continue }
+            let range = NSRange(js.startIndex..<js.endIndex, in: js)
+            for m in re.matches(in: js, range: range) {
+                guard let r = Range(m.range(at: 1), in: js) else { continue }
+                for token in String(js[r]).split(separator: " ") {
+                    let name = token.trimmingCharacters(in: CharacterSet(charactersIn: "'\""))
+                    // 插值 / 变量一律跳过：`${x}`、`foo` 不是类名
+                    guard !name.isEmpty, !name.contains("${"), !name.contains("$") else { continue }
+                    out.insert(name)
+                }
+            }
         }
         return out
     }
