@@ -5078,18 +5078,17 @@ Sparkle 会不会装上这次更新 —— 依据是 `showUpdateFound` 的文档
 
 ### §8.42.2 仍开着的（按「谁能关掉它」分类）
 
-> ⚠️ **本表的最后核对时刻：2026-09-19 19:13**（起点 `HEAD` = `efb5240`，工作区 0 脏；本轮提交见 §8.78.8）。
-> 本次核对是 §8.78 的改动 —— `MarkdownCopy.swift`（**新增**：共享渲染器）
-> + `NoticeBanner.message` 的**类型** `String` → `Text`
-> + `ContentView` / `OnboardingView` / `SnapshotRenderTests` 的调用点
-> + `MarkdownCopyTests.swift`（**新增**：3 条守卫）。**没有动设计稿的 HTML / CSS / JS**。
+> ⚠️ **本表的最后核对时刻：2026-09-19 20:40**（起点 `HEAD` = `cf5b306`，工作区 0 脏；本轮提交见 §8.79.8）。
+> 本次核对是 §8.79 —— **关掉第 3 行**（真机实验：两条路各测一次，都装上了）、
+> **加第 27 行**（读 Sparkle 源码新看出的一条），并把 `UpdateController.automaticallyDownloadsUpdates`
+> 上一处**说反了**的注释订正。**没有动设计稿的 HTML / CSS / JS**，也**没有动任何测试**。
 > §8.34.1 的教训在这里同样成立：**连「尚未做」都有保质期，记下时刻比记下结论更有用。**
 
 | # | 项 | 谁才能关 | 出处 | 现状（2026-09-19 19:13 核对） |
 |---|---|---|---|---|
 | 1 | ~~EdDSA 签名~~（`generate_keys` → 公钥进 `SPARKLE_PUBLIC_ED_KEY`） | 已关闭 | §8.39.7 / §8.49 | ✅ 2026-09-18 20:39 生成密钥对（私钥进登录钥匙串，`acct=ed25519`）→ 公钥 `DZSAElJGUg13m+uorm7qlJhQKPyxk4D1DXMYGEOtbBs=` 烤进 Info.plist → appcast 带 `edSignature`；**独立验签**（OpenSSL）+ 篡改反证 + 从 Release 下载回来再验一遍，全过 |
 | 2 | ~~设计稿 `--h-settings` vs 实现 `480×800`~~ | 已关闭 | §8.43 | ✅ 拍板统一成 800，并由 `DesignSizeParityTests.设计稿与实现的尺寸必须同数` 钉住（§8.71；旧守卫在 `SettingsLayoutTests`，已迁入同源表） |
-| 3 | 「退出应用时 Sparkle 会不会自己装上」这条**未核实的假设** | 真发一版才能验 | §8.41.4 | ⬜ **仍开着** |
+| 3 | ~~「退出应用时 Sparkle 会不会自己装上」这条**未核实的假设**~~ | 已关闭 | §8.41.4 / **§8.79** | ✅ **已还账（第 31 轮）** —— 实测**会装**，两条路各测一次都从 `.18.4/81` 变成 `.19.1/119`：① **自动那条**（`SUAutomaticallyUpdate=true`，不弹窗）：退出前 10s `Autoupdate` 就已就位，退出 **0.25s**；② **弹窗那条**（默认配置）：弹窗机器确认上屏（`layer=8` `400×315`）→ 真实 HID 回车点「后台更新并重启」→ **新** `Autoupdate` 就位（= `.ready`，应用**全程攥着 reply 从不回答**）→ 发 quit（**真实 Apple Event**，没用 SIGTERM）→ 版本变了。机制是**安装器工具自己**盯目标进程退出（`AppInstaller.m:392-412`），与应用回不回答 `showReady` 无关。⚠️ 拆假读数花了比实验更多的时间（4 个静默：`isTerminated` 不翻真 / 沙箱里 Apple Event 发不出而 `terminate()` 仍返回 true / `pgrep` 抓到上一轮残留 / `sed` 解析失败被报成「弹窗没上屏」），见 §8.79.4 |
 | 4 | ~~设置行七态的走查图~~（下载中 / 已就绪 / 失败…） | 已关闭 | §8.44 / §8.45 | ✅ 七态 + 三态共 11 张图，各配一条机器无关守卫 |
 | 5 | ~~48 项改动未提交~~（见 §8.42.3） | 已关闭 | §8.42.3 | ✅ 分三个提交推上去，tag `v2026.09.18.1/.2/.3` |
 | 6 | ~~`v2026.09.18.4` 的 GitHub Release~~（→ enclosure 404） | 已关闭 | §8.46.3 / §8.49 | ✅ **由我建的**（`gh` 本机可用，见 §8.49.1）—— tag `v2026.09.18.4`、资产 `DiskEjector-2026.09.18.4.dmg`（2,701,324 B，**名字没改**）+ `.zip`；enclosure 实测 **200**、`content-length` 一致 |
@@ -5113,6 +5112,7 @@ Sparkle 会不会装上这次更新 —— 依据是 `showUpdateFound` 的文档
 | 24 | ~~设计稿「定义了但没元素用」这一向**只打印不报警** —— 于是手写清单烂了三处（`§8.52` 标题 `18` / `§8.52.5` 表里 15 行 / `§8.75.7` 的 `17`）；且 `load()` 第 ③ 步号称把 `ds.js` 建的类算作消费者，实际**一个都没收**（`classAttributes` 只认双引号，而 `ds.js` 用单引号 `className = '…'`）⇒ 4 个**有消费者**的类被算成「零消费者」~~ | ~~要核实「17 个」是否都该保留~~ | §8.75.7 / **§8.76** | ✅ **已还账（第 28 轮）** —— ① 修 `load()`：新增 `runtimeClasses(in:)`，口径钉成「**类列表字面量**」（`className = '…'` / `classList.add('…')` / `class="…"` 再分词），**不是**「字符串里出现过」（后者会把 `btn`（**63 处消费者**）、`row`（10）等 10 个类判成「运行时创建」—— 错误不报警，只会让账本变干净）；② 零消费者 **17 → 13**（`langbar` / `langbar__hint` / `langbar__label` / `pill` 退出）；③ 三张账本按**成因**分（R 运行时 4 / S 仅页面 `<style>` 2 / D 纯 `ds.css` 11），四条判据三向查；④ **新开一向**：`ds.js` 运行时创建的类必须在设计稿里有定义（「用了但没定义」那一向**查不到**它 —— 它扫 HTML 的 `class` 属性，而这些类名不在 HTML 里）。变异 **10 红 + 3 绿**（含回归针 M186「退回只认双引号」、反向变异 M185、绿对照 M187/M188/M192）。⚠️ **仍没守**：`statusline--unknown` 仍未补样本，见 §8.76.7 |
 | 25 | ~~`DesignTokens.swift` 文件头写着「与 `ds.css` **两边数值必须一致**」，而**颜色轴 0 条守卫** —— `border` / `borderStrong` / `hairline` 的**深色侧**借了文字族的 `ink`（`rgba(235,235,245,·)`），设计稿里是**纯白**；`borderStrong` 的注释**自己写着正确的值**，而没有任何东西会红~~ | ~~逐个补断言~~ | §8.57.6 #1 / **§8.77** | ✅ **已还账（第 29 轮）** —— 铺成**同源表 26 项 × 明暗两侧**（照 §8.71 / §8.72 的房式）＋ 3 条差集守卫（新声明要登记 / 登记了却没了要划掉 / 豁免表不是垃圾桶）＋ 1 条「钉不住的要写明理由」（强调色明暗不分）。新增 `edge(_:)` helper 修掉 3 处深色侧偏差。变异 **17 红 + 7 绿**（含 3 条**修前回归针** M193–M195、反向变异 M196「只改 helper 不改调用点」、绿对照 M213「**两边同时改 ⇒ 仍绿**」、以及必须成对读的 M208/M208b）。⚠️ **仍没守**：`edge(_:)` 的**视觉效果未复核**（只证了数值同源）；强调色缺深色值（**要设计决策**）；`accentSoft`/`accentRing` 的两侧只实测未进守卫 —— 见 §8.77.7 |
 | 26 | ~~`fdaBannerLead` 的值带 `**`，而 `NoticeBanner.message` 是 `String` + 内部 `Text(message)` ⇒ **主窗口那条 FDA 横幅画出裸星号**（未授权用户都会看到）；设计稿侧是对的（`md_bold` → `<b>`），**两边各自的逻辑都自洽，错在接缝**；且**走查图夹具也传裸 `String`** ⇒ 图里看不出线上的问题~~ | ~~补一条类级守卫~~ | §8.69 / **§8.78** | ✅ **已还账（第 30 轮）** —— 把 `OnboardingView` 的私有 `markdownText(_:)` 提升为共享 `MarkdownCopy.text(_:)`；`NoticeBanner.message` 类型 `String` → **`Text`**（逼调用方做一次显式选择）；3 条守卫（**口径锚**「星号真的占宽度 289.0 vs 265.0」/ **类级网**「值带 `**` 的键其消费文件必须调用渲染器」＋ 范围锚 ＋ 键扫描口径锚 / **夹具与生产逐字一致**）。变异 **6 红 + 3 绿**（含回归针 M215、范围锚 M219、键扫描口径锚 M220、以及必须成对读的 M217/M220b 与 M218/M218b）。⚠️ **仍没守**：`SettingsView` 的 `Alert` 是**同类路径**（`Alert` 的 `message` 也是 `Text`）—— 已实扫「那些键目前不带 `**`」，但**没有守卫**拦将来有人加；`MarkdownCopy` 对**不成对标记**的兜底没守卫；走查图**没有**「裸星号」那一态的对照图 —— 见 §8.78.7 |
+| 27 | **「自动更新开着时，设置行那行『正在后台下载 xx%』到底画不画得出来」未核实** —— 源码上可疑：那条路（**定时**检查 + `SUAutomaticallyUpdate=true`）由 `SPUUpdater.m:622` 选到 `SPUAutomaticUpdateDriver`，而它**不回调 user driver**（`SPUAutomaticUpdateDriver.m:42` 自己写着「The user driver is only used for a termination callback」）⇒ 应用侧 `phase` 可能一直停在 `.idle`，`SettingsView` 里 `case .downloading` 那一行画不出来。而设计稿 C 段与 `UpdateUserDriver.swift:19-22` 的注释（「开关开着就静默下载（**设置行显示进度**）」）都以为它会显示 | 真机走一次「自动更新开着 + 定时检查」，再打开设置面板看那一行 | §8.79.2 / §8.79.7 | ⬜ **仍开着（未实测）**。⚠️ 边界：**用户主动点「检查更新」那条能画出进度**（走 `SPUUserInitiatedUpdateDriver` ⇒ 会调 `showUpdateFound`），所以**不是整行不可达**，只是「定时 / 后台」这一条不可达 |
 
 > **判据：这张「仍开着」的表本身也是承诺型的话。** 17:55 回头核对时，第 4、5 行**早已关掉
 > 而表还写着「仍开着」** —— 和 §8.33 清掉的那 6 条是同一个病：**还了账没人回来划掉**。
@@ -5121,6 +5121,13 @@ Sparkle 会不会装上这次更新 —— 依据是 `showUpdateFound` 的文档
 > 构造一次真失败下载）；**9、11、12 是 19:15 之后这一轮新查出来又当场关掉的**
 > —— 9 由头是 §8.47 那个 bug 的形状（**「有声明、没生产者」要实扫，不能靠读代码发现**），
 > 11、12 由头是「**重打之前先比对构建提交**」。
+>
+> ⚠️ **上面这一段自己也过期了（20:40 订正）**：现在真正「不在我这边」的只剩
+> **第 10 行**（要构造一次**真的下载失败**）与第 14 行（已知限制）。
+> 1、6 早已关掉；**3 也不需要「真发一版」** —— 一份**旧版 bundle ＋ 现成的 appcast**
+> 就够了（§8.79 就是这么测的）。⇒ 这句「谁才能关」和第 4、5 行那个病同源：
+> **还了账没人回来划掉**，只是它划的是**前提**而不是结论。
+> **27 是这一轮读 Sparkle 源码新看出来的**（有出处，但**未实测**，所以只登记、不下结论）。
 > **20 是 2026-09-19 11:57 关掉的**（第 21 轮）。拍板之前先量化（35 处、三类、每类的代价），
 > 拍的是**混合方案**（图标拆层 / 强调补进值），不是三选一 —— 单一方案都会在某一类上别扭。
 > **21 是 2026-09-19 13:19 关掉的**（第 23 轮）。它与 #16 那笔是**同一类病的两种形状**：
@@ -9020,6 +9027,137 @@ M220b 只塞注释、不动代码 ⇒ **仍绿**（证明注释也不会**误伤
 
 ⇒ ① 前半**完全相同** ⇒ 改动**只**影响带标记的那一段；
 ② 后半密度上升 ⇒ **粗体真的生效**（不是「星号没了、粗体也没上」）。
+
+---
+
+## §8.79 「退出应用时 Sparkle 会不会自己装上」—— 实测（2026-09-19 20:40）
+
+> 关掉「仍开着」表**第 3 行**。这一条挂了整整一天，起因是它**两头都不是实测**：
+> 一头是 Sparkle 头文件的一句英文注释，另一头是**我们自己的文案**。
+> 本轮把它做成了可复现的实验，并顺手订正了一处**说反了**的注释。
+>
+> 核对时刻：**2026-09-19 20:40**（起点 `HEAD` = `cf5b306`，动手前工作区 **0 脏**）。
+
+### §8.79.1 这条假设从哪来（两处出处，都不是实测）
+
+| 出处 | 原话 |
+|---|---|
+| `SPUUserDriver.h:214`（`.install`） | 「If the application terminates on its own, Sparkle will **attempt to automatically install** the update.」 |
+| `SPUUserDriver.h:216`（`.dismiss`） | 「Note the update **may still be installed automatically** after the application terminates.」 |
+| 应用文案 `updateReadyHint`（三语都有） | 「重启后完成安装；**下次退出应用时也会自动安装。**」 |
+
+`updateReadyHint` 只在 **`.ready`** 那一态显示（`SettingsView.swift:540`）——
+也就是**更新已下载、应用攥着 Sparkle 的 reply 不回答**的那一刻。
+
+### §8.79.2 源码实扫：机制到底在哪（读的是 `checkouts/Sparkle` 里的真源码）
+
+| 事实 | 出处 |
+|---|---|
+| `automaticallyDownloadsUpdates` = `allowsAutomaticUpdates` **且** `SUAutomaticallyUpdate` | `SPUUpdaterSettings.m:327` |
+| **只有**它为真时才选 `SPUAutomaticUpdateDriver`（静默下载那条）；否则走 `SPUScheduledUpdateDriver` → `SPUUIBasedUpdateDriver`（弹窗那条） | `SPUUpdater.m:622` |
+| 自动那条：`installerDidFinishPreparationAndWillInstallImmediately:` → `willInstallUpdateOnQuit`，并写着「**The installer tool will keep the installation alive**」 | `SPUAutomaticUpdateDriver.m:104-129` |
+| 弹窗那条：`finishInstallationWithResponse:` 的**唯一触发源是 `showReady` 的 reply**（整段里没有任何退出观察者） | `SPUUIBasedUpdateDriver.m:417-426` |
+| **真正的机制**：安装器工具（`Autoupdate`）自己 `listenForTerminationWithCompletion`，目标进程一退出且 `_performedStage1Installation` 为真就 `finishInstallationAfterHostTermination` | `AppInstaller.m:392-412` |
+| 它观察的是 `NSRunningApplication.isTerminated`（KVO） | `InstallerProgressAppController.m:332-354` |
+| ⚠️ 参数名骗人：`willInstallImmediately` 的**实参是 `hasTargetTerminated`** | `SPUInstallerDriver.m:335-340` |
+
+⇒ **推论（本轮被实测证实）**：stage 1 的准备发生在 `showReady` **之前**，
+所以安装器工具在「应用还攥着 reply」时**就已经活着并盯着退出**了。
+「退出时装上」与应用回不回答那个 reply **无关** —— 这也正好解释了头文件里
+`.install` 与 `.dismiss` **两种回答下都写着「退出时可能仍会自动安装」**。
+
+### §8.79.3 实验：两条路各测一次
+
+两次实验的观察面是**同一套三条互相独立**的证据：
+① 安装器进程（`Autoupdate`）在**退出之前**有没有就位；② 退出是否真的达成；
+③ **退出后 bundle 的版本号**（唯一不会撒谎的那条）。
+
+| | 自动那条（`SUAutomaticallyUpdate=true`） | 弹窗那条（**默认**：检查开、自动下载关） |
+|---|---|---|
+| 脚本 | `.build/probe/round30/install_on_quit2.sh` | `.build/probe/round30/ui_path4.sh` |
+| 弹窗 | 无（静默） | ✅ 机器确认在屏上（`layer=8`，`400×315` @ `(664,211)`） |
+| 触发下载 | 定时检查自己下 | **真实 HID 回车**点主按钮「后台更新并重启」→ 窗口数归零 |
+| 安装器就位 | +10s `Autoupdate` 已起 | +20s **新** `Autoupdate`（pid 65537；基线为空） |
+| 应用侧状态 | 无 UI | **`.ready`** —— 攥着 reply，**全程从不回答** |
+| 退出方式 | `terminate()` → **0.25s** | `terminate()` → **0.26s**（**真实 Apple Event，没用 SIGTERM**） |
+| 装前 → 装后 | `2026.09.18.4` / 81 → **`2026.09.19.1` / 119** | `2026.09.18.4` / 81 → **`2026.09.19.1` / 119** |
+
+**结论：那句文案是真的。** 而且**默认配置**（用户什么都没点、只是退出）就会装上 ——
+这正是文案描述的那个处境。
+
+### §8.79.4 为什么前面几轮没测出来：四个「静默」，一个比一个像
+
+这一轮真正花时间的不是实验本身，是**把假读数一个个拆掉**。四个都记下来：
+
+| # | 假读数 | 真相 | 教训 |
+|---|---|---|---|
+| 1 | 「`terminate()` 返回 true 但 10s 内没退出」（第 30 轮 `install_on_quit.sh`） | 内核视角：**0.25s 就退了**。`NSRunningApplication.isTerminated` 在这个场景下没有如实翻真 | **判据要取内核视角**（`sysctl(KERN_PROC_PID)` 的 `p_stat`）。`kill(pid,0)` 不够 —— 对**僵尸**照样返回 0，而这里的目标是 shell 的子进程 |
+| 2 | 「应用退不掉」（矩阵 4/4 用例） | 沙箱里 `terminate()` **发不出 Apple Event**，却**照样返回 `true`**。四次运行里凡输出带 `⚠️ Sandbox bypassed` 的都秒退，不带的全「退不掉」 | **`terminate()` 的返回值只证明「发了」**，不证明「收到了」。实验装置要把「沙箱是否生效」也当变量 |
+| 3 | 「安装器已就位」 | `pgrep -f Autoupdate` 抓到的是**上一轮残留**的进程（pid 63398 跨了三轮还活着） | 判据必须是「**新出现的** pid」（先记基线再比差集）。同名进程的「存在」不等于「刚起来」 |
+| 4 | 「弹窗没上屏」 | 窗口数其实 = 1，是我 `sed` 里多写了一个 `\)` 导致解析恒失败 | 两种完全不同的原因输出同一句话 ⇒ **必须分开报**（现在会打印「窗口数=1 但我解析失败」） |
+
+### §8.79.5 判据与结论
+
+| 判据 | 值 |
+|---|---|
+| 自动那条退出后版本 | `2026.09.19.1` / 119（装前 `2026.09.18.4` / 81） |
+| 弹窗那条退出后版本 | `2026.09.19.1` / 119（装前 `2026.09.18.4` / 81） |
+| 弹窗那条的退出方式 | 真实 Apple Event（`quitprobe` 内核确认 0.26s 内 `已不存在`）——**不是** SIGTERM 兜底 |
+| 弹窗那条有没有回答 `showReady` | **没有**（应用侧从未调用 `readyReply`） |
+
+**顺带订正一处「注释与代码相反」**（本仓库第 3 次）：`UpdateController.automaticallyDownloadsUpdates`
+原来的注释写「`SUAutomaticallyUpdate` 保持默认的 `NO`（不静默强装），
+于是 Sparkle **只后台下载**、等应用退出时再装」——**说反了**。
+实测（两条路各跑一遍）：`NO`（默认）⇒ **弹窗**；`YES` ⇒ 静默后台下载。
+已按 `SPUUpdaterSettings.m:327` / `SPUUpdater.m:622` 订正，并把「退出时再装两设置下都成立」写进注释。
+⚠️ **行为本身早就有守卫**（`UpdateSettingsTests.弹窗只在自动更新关掉时出现`），
+所以这次动的**只是注释**，没有任何测试因此变红或变绿。
+
+### §8.79.6 记法
+
+1. **「库的注释」不算证据，`库的源码`才算。** 头文件那句英文是对的，但它描述的是**另一种处境**
+   （用户回答了 `.install` 之后）；照它去推断「我们攥着 reply 时会怎样」就错了。
+   ⇒ 读第三方库要先定位**分支条件**（这里是 `SPUUpdater.m:622`），再谈行为。
+2. **一个参数名可能和它的实参完全无关**（`willInstallImmediately` ← `hasTargetTerminated`）。
+   名字骗人的时候，**只有调用点能作证**。
+3. **实验装置的每一个「不生效」都要先怀疑装置自己。** 本轮 4 个假读数里 **3 个**是装置的病
+   （探针判据、沙箱、残留进程），只有 1 个是解析写错。
+   ⇒ 老规矩的加强版：**先给装置加自证字段，再读结论**。
+4. **「A 与 B 无关」也要用实验证明，不能只靠读代码**。本节结论之所以值得写下来，
+   正因为它在源码上**两条路说法相反**（`SPUUIBasedUpdateDriver` 说 reply 是唯一闸门；
+   `AppInstaller` 说自己盯着退出）—— 光读源码会得出错的答案。
+
+### §8.79.7 本轮明确**没**守的（记下来，不是「忘了」）
+
+| 项 | 现状（核对时刻 2026-09-19 20:40） |
+|---|---|
+| 「自动更新**开着**时，设置行的『正在后台下载 xx%』到底画不画得出来」 | **未实测**。源码上可疑：那条路走 `SPUAutomaticUpdateDriver`，而它**不回调 user driver**（`SPUAutomaticUpdateDriver.m:42` 自己写着「The user driver is only used for a termination callback」）⇒ 应用侧 `phase` 可能一直停在 `.idle`，那一行画不出来。而 `UpdateUserDriver.swift:19-22` 的注释与设计稿 C 段都以为它会显示。**登记为「仍开着」表第 27 行** |
+| 「退出时装上」这件事**没有守卫** | 它依赖的是第三方库的行为 + 真机网络，**进不了 CI**。所以本节只留下**可复现的实验脚本**（`.build/probe/round30/`，`build/` 不入库）与这段记录 |
+| `updateReadyHint` 的**文案**与 `autoUpdateHint`（「并在**下次启动**时安装」）的措辞差 | 一个说「退出时装」、一个说「下次启动时装」。实测是**退出时装、下次启动生效**，两句都不算错但口径不齐。**没动**（要设计决策） |
+| 实验只覆盖 **`.app` 原地更新** | `.dmg` / `.pkg` 安装包（`SPUInstallationType`）走的是另一条（要提权）。本应用发的是 `.dmg`，所以这条**没测** |
+
+### §8.79.8 门槛与改动（2026-09-19 20:40）
+
+三道门槛（`PREFLIGHT_FAIL_TAIL=0 DISABLE_SANDBOX=1 ./scripts/preflight.sh --with-tests`）：
+
+| 门槛 | 结果 |
+|---|---|
+| 1 构建（`-warnings-as-errors`，含测试目标） | ✓ 通过 |
+| 2 格式（`swift-format lint --strict`） | ✓ 通过 |
+| 3 测试与覆盖率（≥40%） | ✓ 通过，行覆盖率 **64.18%** |
+
+改动清单：
+
+| 文件 | 改动 |
+|---|---|
+| `Sources/Services/UpdateController.swift` | **只有注释**：订正 `automaticallyDownloadsUpdates` 上一处**说反了**的说明，补上源码出处与本节实验结论 |
+| `DiskEjector-UI-Design/v2/DESIGN-SPEC.md` | 新增 §8.79；关掉「仍开着」表第 3 行、加第 27 行、刷新核对时刻 |
+
+⚠️ **`.build/probe/round30/` 的探针脚本不入库**（`.build/` 已被忽略）。
+其中值得留下来复用的四个：`quitprobe.swift`（内核视角问「退了没」）、
+`windows_probe.swift`（机器可读的「弹窗在不在屏上 / 谁在最前面」）、
+`hid_key.swift` / `hid_click.swift`（真实 HID 触发主按钮）、
+`ui_path4.sh`（弹窗路径的完整链路）。教训已写进 `sparkle-appcast-release` 技能。
 
 ---
 

@@ -236,9 +236,24 @@ final class UpdateController: NSObject, ObservableObject {
 
     /// 是否自动下载更新。
     ///
-    /// 与设计稿那句「有新版本时自动下载，并在下次启动时安装」是同一件事：
-    /// `SUAutomaticallyUpdate` 保持默认的 `NO`（不静默强装），
-    /// 于是 Sparkle 只后台下载、等应用退出时再装 —— 不会在用户干活时重启。
+    /// 与设计稿那句「有新版本时自动下载，并在下次启动时安装」是同一件事。
+    ///
+    /// ⚠️ **2026-09-19 订正**：这里原来写的是「`SUAutomaticallyUpdate` 保持默认的 `NO`
+    /// （不静默强装），于是 Sparkle 只后台下载、等应用退出时再装」—— **反了**。
+    /// 实测（把开关置 `true`／`false` 各跑一遍，见 `DESIGN-SPEC.md` §8.79）：
+    ///
+    /// - `SUAutomaticallyUpdate = NO`（**默认**）⇒ 发现新版本时**弹窗**（不自动下载）。
+    /// - `SUAutomaticallyUpdate = YES` ⇒ 后台静默下载，全程没有界面。
+    ///
+    /// 依据是 Sparkle 源码而不是文档措辞：`SPUUpdaterSettings.m:327` 把它算成
+    /// `_allowsAutomaticUpdates && [_host boolForKey:SUAutomaticallyUpdateKey]`，
+    /// 而 `SPUUpdater.m:622` 只在它为真时才选 `SPUAutomaticUpdateDriver`（静默下载那条），
+    /// 否则走 `SPUScheduledUpdateDriver` → `SPUUIBasedUpdateDriver` → 弹窗。
+    ///
+    /// 「等应用退出时再装」这一半**两种设置下都成立**（同样 §8.79 实测：
+    /// `.18.4/81` 退出后变成 `.19.1/119`）—— 因为它是**安装器工具自己**在
+    /// `AppInstaller.m:392-412` 里盯着目标进程退出后接着装，
+    /// 与应用回不回答 `showReady` 的 reply 无关。
     var automaticallyDownloadsUpdates: Bool {
         get { settings.automaticallyDownloadsUpdates }
         set { settings.automaticallyDownloadsUpdates = newValue }
