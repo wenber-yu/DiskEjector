@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<html lang="zh-CN" data-theme="light" data-accent="blue">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<html lang="zh-CN" data-theme="light" data-accent="blue" data-page-node-id="lgJcPqKhs1k994I6F3UGsD">
+<head data-page-node-id="kP1ic0vsksLCrhoh7vMIIm">
+<meta charset="UTF-8" data-page-node-id="d9fzD5MqudaF4XN0xcObDN">
+<meta name="viewport" content="width=device-width, initial-scale=1.0" data-page-node-id="9tx2mU7lmBNKw07HSC2zju">
 <title>版本更新 · DiskEjector UI v2</title>
-<link rel="stylesheet" href="../assets/ds.css">
+<link rel="stylesheet" href="../assets/ds.css" data-page-node-id="E6jQxe1R2CGtCnxFueNMvD">
 <style>
   .note-list { margin: 0; padding-left: 18px; font-size: var(--fs-12); color: var(--text-2); line-height: 1.7; }
   .note-list li { margin-bottom: 6px; }
@@ -43,83 +43,83 @@
   .progressline .meter__pct { width: auto; }
 </style>
 </head>
-<body class="ds">
-<div class="wallpaper">
-<div class="doc">
+<body class="ds" data-page-node-id="o1nvfKTnPjxNlbWUxboR25">
+<div class="wallpaper" data-page-node-id="5Wj2FtywTrV33FF77hB504">
+<div class="doc" data-page-node-id="JzFhh5jWcYjQIt5cOJ5rty">
 
-  <nav class="doc__nav">
-    <a href="../index.html">设计规范总览</a>
-    <a href="01-main-window.html">主窗口</a>
-    <a href="02-menu-bar.html">菜单栏面板</a>
-    <a href="03-eject-flow.html">推出流程弹窗</a>
-    <a href="04-onboarding.html">授权引导</a>
-    <a href="05-settings.html">设置面板</a>
-    <a href="06-states.html">状态矩阵</a>
-    <a href="07-dark.html">深色模式</a>
-    <a href="08-update.html" aria-current="page">版本更新</a>
+  <nav class="doc__nav" data-page-node-id="fxSDwsvfiSHFoSgOilXgIO">
+    <a href="../index.html" data-page-node-id="VGcrYVomqaPWJFBHt1jujy">设计规范总览</a>
+    <a href="01-main-window.html" data-page-node-id="i8KPWHWlSkrhp6fydPFRjW">主窗口</a>
+    <a href="02-menu-bar.html" data-page-node-id="HkjDvQpFGPAmHXQgmnQzr0">菜单栏面板</a>
+    <a href="03-eject-flow.html" data-page-node-id="mkFjpeooC5YQVOU9EH9mxB">推出流程弹窗</a>
+    <a href="04-onboarding.html" data-page-node-id="lOzXGqU9AZYixFsC2fESrC">授权引导</a>
+    <a href="05-settings.html" data-page-node-id="i6rBtDen1gk1wEyD52HSnL">设置面板</a>
+    <a href="06-states.html" data-page-node-id="rCGMSRUWLumQDndBoQjHJh">状态矩阵</a>
+    <a href="07-dark.html" data-page-node-id="tBtJF2SjylyzfSgKDRfdCQ">深色模式</a>
+    <a href="08-update.html" aria-current="page" data-page-node-id="QGQGWEVjbw2LYpwDRm7sKK">版本更新</a>
   </nav>
 
-  <p class="doc__eyebrow">Screen 08 · Update</p>
-  <h1 class="doc__title">版本更新</h1>
-  <p class="doc__lede">
-    更新只有两个问题：<strong>「会不会自己更新」</strong>（设置里的一个开关）和
-    <strong>「现在要不要装」</strong>（一个弹窗）。弹窗<strong>只在自动更新关掉时才会出现</strong>——
+  <p class="doc__eyebrow" data-page-node-id="HC1xSMUlG7hJV7a2yqlbCH">Screen 08 · Update</p>
+  <h1 class="doc__title" data-page-node-id="o9zF0pgTvrYVav32Wd2SoW">版本更新</h1>
+  <p class="doc__lede" data-page-node-id="nnwzDCcwsQ72DOOdX5D4xI">
+    更新只有两个问题：<strong data-page-node-id="TvYu0DlIfo1OGK4c34gdZ1">「会不会自己更新」</strong>（设置里的一个开关）和
+    <strong data-page-node-id="rBymZxUJu49fTO3Lg2puhW">「现在要不要装」</strong>（一个弹窗）。弹窗<strong data-page-node-id="DmsqeUoGjz4QiY07YovGTH">只在自动更新关掉时才会出现</strong>——
     开着的时候用户什么都不用做，这正是「后台更新」这个词的含义。
     因此这一页里，弹窗和设置行是同一个状态机的两个出口，不是两件独立的事。
   </p>
 
-  <!-- ===================== A. 有新版本弹窗 ===================== -->
-  <div class="doc__section" style="margin-top:0">
-    <h2 class="doc__h2">A · 有新版本 <em>New version</em></h2>
-    <p class="doc__h2desc">
-      应用<strong>不上架 App Store</strong>，只走 Developer ID 直发 —— 所以「能不能替换自身」这件事
+  <!-- ===================== data-page-node-id="fj8Ez5YQim1JGtBE9T3ShU" A. 有新版本弹窗 ===================== -->
+  <div class="doc__section" style="margin-top:0" data-page-node-id="5Bu9nP2tNNo8PzFy6OhUk4">
+    <h2 class="doc__h2" data-page-node-id="AvYhgRNQD5fcmqB6IGp70Z">A · 有新版本 <em data-page-node-id="ZGBfnxChVeOQbtwYfHFTad">New version</em></h2>
+    <p class="doc__h2desc" data-page-node-id="IXICyyLgHZtbsfwOc8cpav">
+      应用<strong data-page-node-id="qgGSvCTuUZI7yO15MAt6iK">不上架 App Store</strong>，只走 Developer ID 直发 —— 所以「能不能替换自身」这件事
       没有分叉：能，直接画。弹窗只有这一版：主按钮「后台更新并重启」、次按钮「跳过此版本」，
-      操作区左边再留一个<strong>不占按钮</strong>的出口（Esc = 稍后）。
+      操作区左边再留一个<strong data-page-node-id="wB4t11u4QbbIrWcSiqopi3">不占按钮</strong>的出口（Esc = 稍后）。
     </p>
 
-    <div class="artboard">
+    <div class="artboard" data-page-node-id="CND8pKWEfGZshE0PIWiURR">
 
-      <!-- 新版本弹窗（唯一一版：应用不上架，没有渠道分叉） -->
-      <div class="frame">
-        <div class="frame__label">新版本弹窗 · 400 × 320（探针实测）</div>
-        <div class="dim">
-          <div class="alert" role="alertdialog" aria-label="磁盘推出助手 1.1.0 已发布" data-i18n-attr="aria-label:ds.alert.updateTitle">
-            <div class="alert__body">
-              <div class="alert__head">
-                <div class="alert__icon alert__icon--info"><i data-i="down"></i></div>
-                <div style="min-width:0">
-                  <div class="alert__title" data-i18n="ds.alert.updateTitle">磁盘推出助手 1.1.0 已发布</div>
-                  <div class="alert__sub" data-i18n="ds.alert.updateSub">
-                    当前 1.0.0（构建 42）→ 1.1.0（构建 58）<br>
+      <!-- 新版本弹窗（唯一一版：应用不上架，没有渠道分叉） data-page-node-id="6rnEsYYQXMQplCHvrka1vs" -->
+      <div class="frame" data-page-node-id="LiNIoCQvsjReX630eRXYqi">
+        <div class="frame__label" data-page-node-id="kpFIdpcq4TlWMh82K0w7EW">新版本弹窗 · 400 × 320（探针实测）</div>
+        <div class="dim" data-page-node-id="URHUXIZR55qraJTfTvOAQJ">
+          <div class="alert" role="alertdialog" aria-label="磁盘推出助手 1.1.0 已发布" data-i18n-attr="aria-label:ds.alert.updateTitle" data-page-node-id="9wt6qtCqBsY0W2rs0RGWUD">
+            <div class="alert__body" data-page-node-id="SCQjiLr3s12BlHAHUSRYLp">
+              <div class="alert__head" data-page-node-id="TcQ7XIlkuCxPuAr7tRR0OX">
+                <div class="alert__icon alert__icon--info" data-page-node-id="WcvGYZHTsWInmrj996HrER"><i data-i="down" data-page-node-id="lBObzC0vvknAoGCjCEjgpa"></i></div>
+                <div style="min-width:0" data-page-node-id="CuAoNy6vWLFzVJe4cGLPjB">
+                  <div class="alert__title" data-i18n="ds.alert.updateTitle" data-page-node-id="Ec7QbvF7u4Zk77GIj0JfFS">磁盘推出助手 1.1.0 已发布</div>
+                  <div class="alert__sub" data-i18n="ds.alert.updateSub" data-page-node-id="3y9zPlngGJ1V6olBZK5gBV">
+                    当前 1.0.0（构建 42）→ 1.1.0（构建 58）<br data-page-node-id="dePetCwiyXjudvst24fuFh">
                     2026-09-17 · 12.4 MB
                   </div>
                 </div>
               </div>
 
-              <div class="alert__section">
-                <div class="alert__label" data-i18n="updateWhatsNew">本次更新</div>
-                <div class="changelog">
-                  <div><span>·</span><span data-i18n="ds.alert.change1">设置里新增<b>「自动更新」</b>开关，可后台下载并在重启后安装</span></div>
-                  <div><span>·</span><span data-i18n="ds.alert.change2">修复未插入磁盘时骨架层一直不消失的问题</span></div>
-                  <div><span>·</span><span data-i18n="ds.alert.change3">推出失败弹窗新增<b>「查看日志」</b>直达入口</span></div>
+              <div class="alert__section" data-page-node-id="s8IVCBFvfD5KJiGV2f296P">
+                <div class="alert__label" data-i18n="updateWhatsNew" data-page-node-id="3E4vGeF5iLBHbyUXzzZJht">本次更新</div>
+                <div class="changelog" data-page-node-id="WoC4ku2BqGJb4Teyf9dHEO">
+                  <div data-page-node-id="Rmz2nOHSymy70JskAsju6W"><span data-page-node-id="HsC5ZRGtU6KYnLNHfaEe6m">·</span><span data-i18n="ds.alert.change1" data-page-node-id="rrktKT8hlTuqaBQ5xO1Tmd">设置里新增<b data-page-node-id="nBG4bObQ3CMWIjyqoCMKed">「自动更新」</b>开关，可后台下载并在重启后安装</span></div>
+                  <div data-page-node-id="0DeqSCBH9AxxYggSMjQ0lb"><span data-page-node-id="Z00YcpmfSmgzfSmeXfPJBL">·</span><span data-i18n="ds.alert.change2" data-page-node-id="NzFCcPTf4mDtwcvLSg9GG2">修复未插入磁盘时骨架层一直不消失的问题</span></div>
+                  <div data-page-node-id="AF0NGJ6q7ozI5FzFwFebmg"><span data-page-node-id="DoJzCPmTlYAdDjLnRJHuB7">·</span><span data-i18n="ds.alert.change3" data-page-node-id="8YbC8GCrzqrjAp129h3SVQ">推出失败弹窗新增<b data-page-node-id="y3Y4nOfBqpKnTJBPcstktc">「查看日志」</b>直达入口</span></div>
                 </div>
               </div>
 
-              <div class="callout callout--info">
-                <i data-i="info"></i>
-                <span data-i18n="updateCallout">点「后台更新并重启」后，应用会在后台下载并校验签名，完成后自动重启完成安装。正在推出的磁盘不会被打断。</span>
+              <div class="callout callout--info" data-page-node-id="pOadz1NtjdoukkppqPiFz6">
+                <i data-i="info" data-page-node-id="oBKf1p8gPbv6vYHXnuKNKv"></i>
+                <span data-i18n="updateCallout" data-page-node-id="U9jN6YPAA5Rgvtt7PUlJVA">点「后台更新并重启」后，应用会在后台下载并校验签名，完成后自动重启完成安装。正在推出的磁盘不会被打断。</span>
               </div>
             </div>
 
-            <div class="alert__foot">
-              <span class="alert__foot-note" data-i18n="updateEscHint">Esc 稍后再提醒</span>
-              <button class="btn btn--outline" data-i18n="updateSkipVersion">跳过此版本</button>
-              <button class="btn btn--primary" data-i18n="updateInstallAndRestart">后台更新并重启</button>
+            <div class="alert__foot" data-page-node-id="5rhnNrFizLpSkAyD4C7MZK">
+              <span class="alert__foot-note" data-i18n="updateEscHint" data-page-node-id="jA20XgmZjPzlzAYS3aG8XV">Esc 稍后再提醒</span>
+              <button class="btn btn--outline" data-i18n="updateSkipVersion" data-page-node-id="LhRWvz1AZlT56QjHEf020G">跳过此版本</button>
+              <button class="btn btn--primary" data-i18n="updateInstallAndRestart" data-page-node-id="KnOsFf2ANPFCpgMfk0K0RJ">后台更新并重启</button>
             </div>
           </div>
         </div>
-        <p class="spec-note" style="max-width:400px">
-          <b>「跳过此版本」和「后台更新并重启」之外，第三个出口是 Esc。</b>
+        <p class="spec-note" style="max-width:400px" data-page-node-id="oBbM4fE3W3n0vsdeQXOWyE">
+          <b data-page-node-id="tsAqhSUuN0Y1DkxlsWGvGt">「跳过此版本」和「后台更新并重启」之外，第三个出口是 Esc。</b>
           只有这两个按钮时，用户被逼着在「永久跳过这个版本」和「现在就重启」之间二选一 ——
           而多数人真正想说的是「现在不方便」。Esc / 关窗 = 稍后再提醒，
           这个出口不占按钮，但必须写在操作区左边，否则用户不知道它存在。
@@ -129,366 +129,409 @@
     </div>
   </div>
 
-  <!-- ===================== B. 更新分组 ===================== -->
-  <div class="doc__section">
-    <h2 class="doc__h2">B · 设置里的「更新」组 <em>States</em></h2>
-    <p class="doc__h2desc">
+  <!-- ===================== data-page-node-id="alYFlp7Phvik5H2CEiSnKX" B. 更新分组 ===================== -->
+  <div class="doc__section" data-page-node-id="B5wpPNQvUXxJW1k7KRvnXl">
+    <h2 class="doc__h2" data-page-node-id="HMubDsctqyvWmMHmprnGO4">B · 设置里的「更新」组 <em data-page-node-id="byP2yVS45q5Q8UL6EUXRWa">States</em></h2>
+    <p class="doc__h2desc" data-page-node-id="saSgseY7kUaefuDBaLVCGZ">
       弹窗关掉之后，状态必须有落点，否则用户无法判断「刚才那下到底生效没有」。
-      所有中间状态都<strong>就地画在设置这一行上</strong>：不弹遮罩、不加横幅、
+      所有中间状态都<strong data-page-node-id="hgz7yw2k1Sep6OmJahtkYT">就地画在设置这一行上</strong>：不弹遮罩、不加横幅、
       不往主窗口塞东西 —— 后台更新的全部意义就是别打扰用户。
     </p>
 
-    <div class="artboard" style="gap:32px">
+    <div class="artboard" style="gap:32px" data-page-node-id="6zGX6FUXBKeARSt0BPHe6S">
 
-      <!-- B1 默认 -->
-      <div class="frame">
-        <div class="frame__label">1 · 默认 · 自动更新开 · 已是最新</div>
-        <div class="setmock">
-          <div class="sgroup">
-            <div class="sgroup__title" data-i18n="settingsGroupUpdates">更新</div>
-            <div class="scard">
-              <div class="sline">
-                <div class="sline__text">
-                  <div class="sline__label" data-i18n="autoUpdate">自动更新</div>
-                  <div class="sline__desc" data-i18n="autoUpdateHint">有新版本时自动下载，并在下次启动时安装。</div>
+      <!-- B1 data-page-node-id="H8VwGwCqRxCduk2HzEM48Z" 默认 -->
+      <div class="frame" data-page-node-id="OWK5cGFKy2mM3AGUqGwJ6R">
+        <div class="frame__label" data-page-node-id="2MIgRjZhsu67woXru82JmM">1 · 默认 · 自动更新开 · 已是最新</div>
+        <div class="setmock" data-page-node-id="yuE0KkdwOwxOq45D67f9Gz">
+          <div class="sgroup" data-page-node-id="E1tUGAdtBFyFJ5fUPIjiEw">
+            <div class="sgroup__title" data-i18n="settingsGroupUpdates" data-page-node-id="Q3L8Lp2d3NhjEAfchsRFFd">更新</div>
+            <div class="scard" data-page-node-id="uyvFMTaAeLIDvWrccp3jLk">
+              <div class="sline" data-page-node-id="1JmFw7HGMcEUjwC7br4Ux3">
+                <div class="sline__text" data-page-node-id="8LD7SmRso1LGE7LGek4fds">
+                  <div class="sline__label" data-i18n="autoUpdate" data-page-node-id="VN8vl6fWygBBrOiBECzxOE">自动更新</div>
+                  <div class="sline__desc" data-i18n="autoUpdateHint" data-page-node-id="I2tYc2UfHANBPNHoBaBoFp">有新版本时自动下载，并在下次启动时安装。</div>
                 </div>
-                <div class="sline__control">
-                  <button class="switch" role="switch" aria-checked="true" aria-label="自动更新" data-i18n-attr="aria-label:autoUpdate"></button>
+                <div class="sline__control" data-page-node-id="yFNMPAXFdIM6JDKct6iG3x">
+                  <button class="switch" role="switch" aria-checked="true" aria-label="自动更新" data-i18n-attr="aria-label:autoUpdate" data-page-node-id="kQpxSYGB6zlHuyFh1v184i"></button>
                 </div>
               </div>
-              <div class="sline">
-                <div class="sline__text">
-                  <div class="sline__label" data-i18n="checkForUpdates">检查更新</div>
-                  <div class="sline__desc" data-i18n="ds.update.upToDate">上次检查：今天 14:30 · 已是最新版本</div>
+              <div class="sline" data-page-node-id="ebvxmn9me6IZ6uwtt3DiMy">
+                <div class="sline__text" data-page-node-id="3BeX4HrlEQUskKD2kxJ2eY">
+                  <div class="sline__label" data-i18n="checkForUpdates" data-page-node-id="BZLrwRUIpFmTPFffu2dYdw">检查更新</div>
+                  <div class="sline__desc" data-i18n="ds.update.upToDate" data-page-node-id="PDqbH7AwGShWjfPa1BPLxr">上次检查：今天 14:30 · 已是最新版本</div>
                 </div>
-                <div class="sline__control">
-                  <button class="btn btn--outline btn--sm" data-i18n="checkForUpdates">检查更新</button>
+                <div class="sline__control" data-page-node-id="9ZooB5AmrltDgqh1V6Ugp0">
+                  <button class="btn btn--outline btn--sm" data-i18n="checkForUpdates" data-page-node-id="R78mznfrAGCvmoE7PSAeDs">检查更新</button>
                 </div>
               </div>
             </div>
           </div>
         </div>
-        <p class="spec-note" style="max-width:400px">
-          与 <a href="05-settings.html" style="color:var(--accent)">设置面板</a> 里的那一组逐字相同。
-          开关默认<b>开</b>：更新是安全修复的通道，默认关掉会让大多数人永远停在旧版本上。
+        <p class="spec-note" style="max-width:400px" data-page-node-id="tuJ26w2re1wNYZyAV5ZoVg">
+          与 <a href="05-settings.html" style="color:var(--accent)" data-page-node-id="eOEMFaU82Mof5sGf8M1c1G">设置面板</a> 里的那一组逐字相同。
+          开关默认<b data-page-node-id="1p9A6IGjSxdV0tmHj2lklY">开</b>：更新是安全修复的通道，默认关掉会让大多数人永远停在旧版本上。
         </p>
       </div>
 
-      <!-- B2 有新版本 -->
-      <div class="frame">
-        <div class="frame__label">2 · 自动更新关 · 发现新版本（Esc 之后）</div>
-        <div class="setmock">
-          <div class="sgroup">
-            <div class="sgroup__title" data-i18n="settingsGroupUpdates">更新</div>
-            <div class="scard">
-              <div class="sline">
-                <div class="sline__text">
-                  <div class="sline__label" data-i18n="autoUpdate">自动更新</div>
-                  <div class="sline__desc" data-i18n="autoUpdateHint">有新版本时自动下载，并在下次启动时安装。</div>
+      <!-- B2 data-page-node-id="Lg7cUKfv8SlRrbV2KFnZih" 有新版本 -->
+      <div class="frame" data-page-node-id="QN1BCFSuyu30GDyQ67FK1W">
+        <div class="frame__label" data-page-node-id="kG1ASBQCPqaKCByQipMvHC">2 · 自动更新关 · 发现新版本（Esc 之后）</div>
+        <div class="setmock" data-page-node-id="51ce5ZKypQK7G7MHfVetAs">
+          <div class="sgroup" data-page-node-id="hgh0Adxja90gB6BEPxA7Ti">
+            <div class="sgroup__title" data-i18n="settingsGroupUpdates" data-page-node-id="LLBDQBDiiKewKfjE3NjfRz">更新</div>
+            <div class="scard" data-page-node-id="FTee8DJc1HYbKK1JFsDXnK">
+              <div class="sline" data-page-node-id="8Sqhp0RVKmjiW8t5ld3HZi">
+                <div class="sline__text" data-page-node-id="S0YaWjzKyC88hm2ndQP4ep">
+                  <div class="sline__label" data-i18n="autoUpdate" data-page-node-id="sRgyiDdfdFzKGJffpA823N">自动更新</div>
+                  <div class="sline__desc" data-i18n="autoUpdateHint" data-page-node-id="NwNKc5qi7jyKiYSe5xp924">有新版本时自动下载，并在下次启动时安装。</div>
                 </div>
-                <div class="sline__control">
-                  <button class="switch" role="switch" aria-checked="false" aria-label="自动更新" data-i18n-attr="aria-label:autoUpdate"></button>
+                <div class="sline__control" data-page-node-id="a95YLXZjOcMzCxdPpM98Ew">
+                  <button class="switch" role="switch" aria-checked="false" aria-label="自动更新" data-i18n-attr="aria-label:autoUpdate" data-page-node-id="yEDNebkIPJAzdHkSxpZOlW"></button>
                 </div>
               </div>
-              <div class="sline">
-                <div class="sline__text">
-                  <div class="sline__label" data-i18n="checkForUpdates">检查更新</div>
-                  <div class="sline__desc" style="color:var(--accent)" data-i18n="ds.update.found">发现 1.1.0 · 上次检查：今天 14:30</div>
+              <div class="sline" data-page-node-id="zcYONyLoc8m7yGV2GJS3w2">
+                <div class="sline__text" data-page-node-id="DYG8HzlFbu5R5oijNAvb6g">
+                  <div class="sline__label" data-i18n="checkForUpdates" data-page-node-id="uIyzNeDxTTtc9AZle1yCOf">检查更新</div>
+                  <div class="sline__desc" style="color:var(--accent)" data-i18n="ds.update.found" data-page-node-id="DrTaOWBF8iBs8H0jqbOZ8Y">发现 1.1.0 · 上次检查：今天 14:30</div>
                 </div>
-                <div class="sline__control">
-                  <button class="btn btn--primary btn--sm" data-i18n="updateView">查看更新</button>
+                <div class="sline__control" data-page-node-id="iscmXcTe1Ww9grCIOrB2d4">
+                  <button class="btn btn--primary btn--sm" data-i18n="updateView" data-page-node-id="IpliO9fkXHmhLKEUCz3Lpq">查看更新</button>
                 </div>
               </div>
             </div>
           </div>
         </div>
-        <p class="spec-note" style="max-width:400px">
-          <b>「稍后」也必须有落点。</b>用户按了 Esc，弹窗消失、什么都没留下的话，
+        <p class="spec-note" style="max-width:400px" data-page-node-id="Z5uXlGb06E5CTUeHCWAY2L">
+          <b data-page-node-id="RDKjpMGOWZyOCAV3pNHhvr">「稍后」也必须有落点。</b>用户按了 Esc，弹窗消失、什么都没留下的话，
           他既不知道有新版本、也没有再打开的入口 —— 只能等下次启动。
           这一行把「有新版本」这件事留住，并把按钮从「检查更新」换成「查看更新」（主按钮），
           让用户随时能回到那个弹窗。
         </p>
       </div>
 
-      <!-- B3 下载中 -->
-      <div class="frame">
-        <div class="frame__label">3 · 后台下载中 · 行内进度，不打断</div>
-        <div class="setmock">
-          <div class="sgroup">
-            <div class="sgroup__title" data-i18n="settingsGroupUpdates">更新</div>
-            <div class="scard">
-              <div class="sline">
-                <div class="sline__text">
-                  <div class="sline__label" data-i18n="ds.update.downloading">正在后台下载 1.1.0</div>
-                  <div class="progressline">
-                    <div class="meter__track"><div class="meter__fill" style="width:42%"></div></div>
-                    <span class="meter__pct">42%</span>
+      <!-- B3 data-page-node-id="SOHN5wXzRHfjh1Nxvsa5wA" 下载中 -->
+      <div class="frame" data-page-node-id="WiREr7SNbHd9dX4NCu1a3m">
+        <div class="frame__label" data-page-node-id="hXCeuNw1XEvy6NNgwqNNAg">3 · 后台下载中 · 行内进度，不打断</div>
+        <div class="setmock" data-page-node-id="49dnZ718HL9fekDuwENxb5">
+          <div class="sgroup" data-page-node-id="Yl7J5OLaz0NWmNikfs4b9b">
+            <div class="sgroup__title" data-i18n="settingsGroupUpdates" data-page-node-id="VgOuPNASjDPowquJE5Ja9M">更新</div>
+            <div class="scard" data-page-node-id="bq3dclKk8cw7gnB6fj9bJG">
+              <div class="sline" data-page-node-id="cc0mqga3Eg28bJkN4gK6uY">
+                <div class="sline__text" data-page-node-id="rM60DebINEkyNic6FYHrKf">
+                  <div class="sline__label" data-i18n="ds.update.downloading" data-page-node-id="HSox1NNirYPfTCDi0tTV1t">正在后台下载 1.1.0</div>
+                  <div class="progressline" data-page-node-id="ykMjeLFVAjMUGtHGc081D4">
+                    <div class="meter__track" data-page-node-id="TidStGDD35lWBT2uGQGBjo"><div class="meter__fill" style="width:42%" data-page-node-id="lI3FGBs9U8UiSS1oyzv8RN"></div></div>
+                    <span class="meter__pct" data-page-node-id="EsDzjtFqXr8CQBNEccg9un">42%</span>
                   </div>
                 </div>
-                <div class="sline__control">
-                  <button class="btn btn--outline btn--sm" data-i18n="cancel">取消</button>
+                <div class="sline__control" data-page-node-id="CNxDGmCS27he87hKi7E55l">
+                  <button class="btn btn--outline btn--sm" data-i18n="cancel" data-page-node-id="wjwOEjnQuocbcAaBwb6s25">取消</button>
                 </div>
               </div>
             </div>
           </div>
         </div>
-        <p class="spec-note" style="max-width:400px">
-          <b>百分比是真的，ETA 是编的 —— 所以只画百分比。</b>下载有确定的字节数，进度条说的是实话；
+        <p class="spec-note" style="max-width:400px" data-page-node-id="TX96quN5EmuEehLdnMjowk">
+          <b data-page-node-id="YA6uT57ssFJhW4ooiLjogY">百分比是真的，ETA 是编的 —— 所以只画百分比。</b>下载有确定的字节数，进度条说的是实话；
           而「还需 1 分钟」在任何网络下都是猜的。（主窗口那条「推出中」不画进度，
           理由正好相反：系统的推出接口不提供进度。）
-          进度条外层固定 <code>16pt</code>，与说明行同高，<b>下载中这一行不会被撑高</b>。
+          进度条外层固定 <code data-page-node-id="srSXPpAtmwH5JMihC88rTh">16pt</code>，与说明行同高，<b data-page-node-id="zwB52qpPeB5PfX3e1IoAXf">下载中这一行不会被撑高</b>。
         </p>
       </div>
 
-      <!-- B4 已就绪 -->
-      <div class="frame">
-        <div class="frame__label">4 · 已就绪 · 待重启安装</div>
-        <div class="setmock">
-          <div class="sgroup">
-            <div class="sgroup__title" data-i18n="settingsGroupUpdates">更新</div>
-            <div class="scard">
-              <div class="sline">
-                <div class="sline__text">
-                  <div class="sline__label" data-i18n="ds.update.ready">1.1.0 已下载完成</div>
-                  <div class="sline__desc" data-i18n="updateReadyHint">重启后完成安装；下次退出应用时也会自动安装。</div>
-                </div>
-                <div class="sline__control">
-                  <button class="btn btn--primary btn--sm" data-i18n="restartNow">立即重启</button>
+      <!-- B3b data-page-node-id="8oR0ERGEkvxfvZtYa4qINI" 下载中（自动更新那条路：没有百分比、没有按钮） -->
+      <div class="frame" data-page-node-id="TrVYYTpBgPte2WRDV4gox5">
+        <div class="frame__label" data-page-node-id="7KLjHOBQGQIZQOdYzIhbjI">3b · 后台下载中 · 自动更新那条路（无百分比）</div>
+        <div class="setmock" data-page-node-id="WwZOopIfMxifiLkT1jt5N2">
+          <div class="sgroup" data-page-node-id="Wtv9PIdWR1pYFEYmYOEzUW">
+            <div class="sgroup__title" data-page-node-id="WUzl86ZdosV4zekKHYX3a6" data-i18n="settingsGroupUpdates">更新</div>
+            <div class="scard" data-page-node-id="hISEMHTwHGeC81cXQFMZMY">
+              <div class="sline" data-page-node-id="lz8DJ55dxF9QbHgJ7OTLSu">
+                <div class="sline__text" data-page-node-id="Gl518OkeQXzeXx1hz9G85t">
+                  <div class="sline__label" data-page-node-id="Qi09bJCK3Pklr8p6H1AQw2" data-i18n="ds.update.downloading">正在后台下载 1.1.0</div>
                 </div>
               </div>
             </div>
           </div>
         </div>
-        <p class="spec-note" style="max-width:400px">
-          <b>「重启」不自动做，只提供入口。</b>下载可以完全后台，但重启会关掉用户手上的一切 ——
-          所以「后台更新并重启」的真实语义是<b>「后台下载，重启时安装」</b>：
+        <p class="spec-note" data-page-node-id="Ru1xsSNo3p1I7gtLeZlDmB" style="max-width:400px">
+          <b data-page-node-id="fQzSysedDdMUJpLfYHU6kK">与 3 说的是同一句话，但没有进度条、也没有「取消」。</b>
+          「自动更新」开着时 Sparkle 走的是另一条路，那一条路<u data-page-node-id="tiCW5Zk0wgAyNg3yGkeY2I">不提供任何进度回调</u>，
+          所以百分比无从得知 —— 画一条停在 <code data-page-node-id="qjyEhTsiwBhU50EJaZjpwb">0%</code> 的进度条，
+          用户会盯着它判断「是不是卡住了」（这正是 3 那条「百分比是真的，ETA 是编的」的另一面：
+          <b data-page-node-id="IYlcEfwK0DgEPlrPGnfeOB">不知道就别猜</b>）。同理，那条路也不给取消入口，于是这一态<b data-page-node-id="OsmqGLRhGopI6EwCZspRqv">右侧不放任何按钮</b>
+          —— 放一个点了没反应的「取消」，与「功能坏了」长得一模一样。
+          下载完成并校验签名后，这一行直接变成 4（已就绪）。
+        </p>
+      </div>
+
+      <!-- B4 data-page-node-id="zOF6JlRk9GJa9sUHppMrOI" 已就绪 -->
+      <div class="frame" data-page-node-id="doYqedIXQOohEJrjuBjESK">
+        <div class="frame__label" data-page-node-id="sLODNGbFFTd2hCeiyCNJNx">4 · 已就绪 · 待重启安装</div>
+        <div class="setmock" data-page-node-id="tstJ6u44sAmNm5G3JZvpOP">
+          <div class="sgroup" data-page-node-id="MCwNGUk69aYmIOB92LBI6T">
+            <div class="sgroup__title" data-i18n="settingsGroupUpdates" data-page-node-id="51DjIAhuabEkQmQD9m2M4k">更新</div>
+            <div class="scard" data-page-node-id="S5qtvq7hSTyENslFj4h3NX">
+              <div class="sline" data-page-node-id="2PRaz9iTXXzsw5YYVcAm0v">
+                <div class="sline__text" data-page-node-id="CDk83aKP6uucW9zMmJbNBY">
+                  <div class="sline__label" data-i18n="ds.update.ready" data-page-node-id="1NCljnS8eO4FJgLvC2BJDs">1.1.0 已下载完成</div>
+                  <div class="sline__desc" data-i18n="updateReadyHint" data-page-node-id="vzx6z6yTl3BsMZXjWAEJ6e">重启后完成安装；下次退出应用时也会自动安装。</div>
+                </div>
+                <div class="sline__control" data-page-node-id="AfXOVI7nGN1oXS0lJdB0Ay">
+                  <button class="btn btn--primary btn--sm" data-i18n="restartNow" data-page-node-id="zU8HFOpYUiHVXCshIDL1ml">立即重启</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <p class="spec-note" style="max-width:400px" data-page-node-id="UFaSzfuUY233vBsOxF6rfT">
+          <b data-page-node-id="NHvUCEhKcHebIHAEYw0rHW">「重启」不自动做，只提供入口。</b>下载可以完全后台，但重启会关掉用户手上的一切 ——
+          所以「后台更新并重启」的真实语义是<b data-page-node-id="FI8hBXHM0aYFjiZQhlRdpH">「后台下载，重启时安装」</b>：
           下次退出时静默装上，用户想立刻用新版本再点「立即重启」。
         </p>
       </div>
 
-      <!-- B5 已跳过 -->
-      <div class="frame">
-        <div class="frame__label">5 · 已跳过 1.1.0 · 第三态</div>
-        <div class="setmock">
-          <div class="sgroup">
-            <div class="sgroup__title" data-i18n="settingsGroupUpdates">更新</div>
-            <div class="scard">
-              <div class="sline">
-                <div class="sline__text">
-                  <div class="sline__label" data-i18n="autoUpdate">自动更新</div>
-                  <div class="sline__desc" data-i18n="autoUpdateHint">有新版本时自动下载，并在下次启动时安装。</div>
+      <!-- B5 data-page-node-id="DvHRUA8RQXQk6Ihb4x3hpp" 已跳过 -->
+      <div class="frame" data-page-node-id="65NhCx45Vr8ha3AMyM8YLV">
+        <div class="frame__label" data-page-node-id="lutMQcXAsWwLxk5QfJXJSK">5 · 已跳过 1.1.0 · 第三态</div>
+        <div class="setmock" data-page-node-id="wFD2AQCIrPnK0lL16q7fTR">
+          <div class="sgroup" data-page-node-id="LfYfo0PF85w4BkAyudERSY">
+            <div class="sgroup__title" data-i18n="settingsGroupUpdates" data-page-node-id="IVwk6AeTEMxevVl4oqcPSV">更新</div>
+            <div class="scard" data-page-node-id="wsbVCYNtTrmjk4WizFSg0Q">
+              <div class="sline" data-page-node-id="YBBRWwETQHPramg5DvlNeh">
+                <div class="sline__text" data-page-node-id="iHTQwONE8OLvylBb2MCCjI">
+                  <div class="sline__label" data-i18n="autoUpdate" data-page-node-id="61HlV3EcGV8w05qP30tg40">自动更新</div>
+                  <div class="sline__desc" data-i18n="autoUpdateHint" data-page-node-id="tOnIgliAKQFMBZqq8MbVlO">有新版本时自动下载，并在下次启动时安装。</div>
                 </div>
-                <div class="sline__control">
-                  <button class="switch" role="switch" aria-checked="false" aria-label="自动更新" data-i18n-attr="aria-label:autoUpdate"></button>
+                <div class="sline__control" data-page-node-id="QtPJjRSHE0r63IQ396ElGv">
+                  <button class="switch" role="switch" aria-checked="false" aria-label="自动更新" data-i18n-attr="aria-label:autoUpdate" data-page-node-id="8iLsuoljVKQ0XYm7lHwrVQ"></button>
                 </div>
               </div>
-              <div class="sline">
-                <div class="sline__text">
-                  <div class="sline__label" data-i18n="checkForUpdates">检查更新</div>
-                  <div class="sline__desc" data-i18n="ds.update.skipped">已跳过 1.1.0 · 再点一次仍会检查并提示</div>
+              <div class="sline" data-page-node-id="dcAwehsWplF9MiRs6MnzWl">
+                <div class="sline__text" data-page-node-id="jbvGy6oAgDjhWg2m3EAaDM">
+                  <div class="sline__label" data-i18n="checkForUpdates" data-page-node-id="ZZMiPHF1bvimc0tpzQV7Q1">检查更新</div>
+                  <div class="sline__desc" data-i18n="ds.update.skipped" data-page-node-id="lSPL0qtYVZWun8qO7zYD9i">已跳过 1.1.0 · 再点一次仍会检查并提示</div>
                 </div>
-                <div class="sline__control">
-                  <button class="btn btn--outline btn--sm" data-i18n="checkForUpdates">检查更新</button>
+                <div class="sline__control" data-page-node-id="Cc1XupqNBj3EE01iLQzje1">
+                  <button class="btn btn--outline btn--sm" data-i18n="checkForUpdates" data-page-node-id="LsCz8WfXY70VzpD3XE6TqN">检查更新</button>
                 </div>
               </div>
             </div>
           </div>
         </div>
-        <p class="spec-note" style="max-width:400px">
-          <b>跳过是一个状态，不是一个动作，所以必须画出来。</b>不写这一行，
+        <p class="spec-note" style="max-width:400px" data-page-node-id="CrAz72SGprA9Y2Hu4GCMOY">
+          <b data-page-node-id="17aZvy2a04byIYOJm6K2w6">跳过是一个状态，不是一个动作，所以必须画出来。</b>不写这一行，
           「点了跳过 → 下次启动没弹窗」与「检查更新坏了」在界面上长得一模一样 ——
           与登录项的「等待系统批准」是同一类错误。
-          <b>而且它必须可撤销</b>：手动点「检查更新」会清掉跳过标记并重新弹窗，
+          <b data-page-node-id="HvowgIcXkDu02g735UhFaD">而且它必须可撤销</b>：手动点「检查更新」会清掉跳过标记并重新弹窗，
           否则用户只能去改偏好文件才能反悔。
         </p>
       </div>
 
-      <!-- B6 失败 -->
-      <div class="frame">
-        <div class="frame__label">6 · 下载失败 · 不用琥珀也不用红</div>
-        <div class="setmock">
-          <div class="sgroup">
-            <div class="sgroup__title" data-i18n="settingsGroupUpdates">更新</div>
-            <div class="scard">
-              <div class="sline">
-                <div class="sline__text">
-                  <div class="sline__label" data-i18n="ds.update.failed">1.1.0 下载失败</div>
-                  <div class="sline__desc" data-i18n="updateFailedHint">网络不可用。下次启动会自动重试。</div>
+      <!-- B6 data-page-node-id="ugV3qQdE9CbudGad7tgPJp" 失败 -->
+      <div class="frame" data-page-node-id="hVahxd1RTYImAZaRBMhJXq">
+        <div class="frame__label" data-page-node-id="T9iciLFGvQj6gADm5QisIJ">6 · 下载失败 · 不用琥珀也不用红</div>
+        <div class="setmock" data-page-node-id="YbUyuAUN0aEyzrdrPVgiMQ">
+          <div class="sgroup" data-page-node-id="Vei5YjUoTrrqtaoamW1eYC">
+            <div class="sgroup__title" data-i18n="settingsGroupUpdates" data-page-node-id="7xFfqrJTQU7rAeABvlYVvq">更新</div>
+            <div class="scard" data-page-node-id="pCSnOLtDeYmxoSxBH7GbJ4">
+              <div class="sline" data-page-node-id="6Wly7vWdj88JtJgHFiGVTX">
+                <div class="sline__text" data-page-node-id="QTWRDvfnGvsrYtIFUnwlF1">
+                  <div class="sline__label" data-i18n="ds.update.failed" data-page-node-id="KqGwCM3YyDr2UAKfb5fYtN">1.1.0 下载失败</div>
+                  <div class="sline__desc" data-i18n="updateFailedHint" data-page-node-id="C02yz1R6cakih0DIHJqZI6">网络不可用。下次启动会自动重试。</div>
                 </div>
-                <div class="sline__control">
-                  <button class="btn btn--outline btn--sm" data-i18n="updateTryAgain">重试</button>
+                <div class="sline__control" data-page-node-id="YNaLLrcVkS51mUUQHMqpnu">
+                  <button class="btn btn--outline btn--sm" data-i18n="updateTryAgain" data-page-node-id="t4tvB93GxF9SLYlRvDytJD">重试</button>
                 </div>
               </div>
             </div>
           </div>
         </div>
-        <p class="spec-note" style="max-width:400px">
-          <b>这一行不染色。</b>本应用的琥珀只表示「磁盘被占用」、红只表示「破坏性动作」；
+        <p class="spec-note" style="max-width:400px" data-page-node-id="ovuJiKfug3rMh8BCsqEIi7">
+          <b data-page-node-id="YglbFRhNpeOz6Szunt1dwk">这一行不染色。</b>本应用的琥珀只表示「磁盘被占用」、红只表示「破坏性动作」；
           下载失败两者都不是。借一个已经承担了别的含义的颜色，比没有颜色更糟 ——
-          用户会以为磁盘出了问题。失败靠<b>文字 + 一个「重试」按钮</b>表达。
+          用户会以为磁盘出了问题。失败靠<b data-page-node-id="kkVm1o5xjBXCvEBDIilgBZ">文字 + 一个「重试」按钮</b>表达。
         </p>
       </div>
 
     </div>
   </div>
 
-  <!-- ===================== C. 状态矩阵 ===================== -->
-  <div class="doc__section">
-    <h2 class="doc__h2">C · 状态矩阵 <em>Matrix</em></h2>
-    <p class="doc__h2desc">
-      一行一个状态。<strong>「弹窗」与「设置行」是同一个状态的两个出口</strong>——
+  <!-- ===================== data-page-node-id="btWiG3MiupUbnFHLNVA4kw" C. 状态矩阵 ===================== -->
+  <div class="doc__section" data-page-node-id="lEqgJBc8rOthpMKP0p44VF">
+    <h2 class="doc__h2" data-page-node-id="r3UudXmXxXn5Q3dXCMdURD">C · 状态矩阵 <em data-page-node-id="RnTUipHRnQVMhA2XMRySYx">Matrix</em></h2>
+    <p class="doc__h2desc" data-page-node-id="cPmAlLNU6MST6eMDK21Kkg">
+      一行一个状态。<strong data-page-node-id="EfAWa1S0N9BwZVXsRsX0ev">「弹窗」与「设置行」是同一个状态的两个出口</strong>——
       任何时候这两列都必须自洽，不允许出现「设置里写着已是最新、却弹了更新窗」。
     </p>
 
-    <div class="panel">
-      <table class="state-tbl">
-        <thead>
-          <tr>
-            <th style="width:150px">状态</th>
-            <th style="width:190px">触发条件</th>
-            <th style="width:130px">弹窗</th>
-            <th>设置 · 更新组</th>
+    <div class="panel" data-page-node-id="l2hsI1gcRqYJiQiVxh1zE2">
+      <table class="state-tbl" data-page-node-id="nNdnYEE0Qm36ZaCJmuhdKJ">
+        <thead data-page-node-id="v5cDSNSzv8WfqQ7IUrLmEH">
+          <tr data-page-node-id="UCIfACnsPBC9hXUgfERT08">
+            <th style="width:150px" data-page-node-id="sPtWr2pHnnkHhDqdnvLw9C">状态</th>
+            <th style="width:190px" data-page-node-id="4kzlkj1oelphd6zgmNzJDv">触发条件</th>
+            <th style="width:130px" data-page-node-id="OC119D8vfsU6VmgQEsnLDe">弹窗</th>
+            <th data-page-node-id="CCW3aewdFsCD45DWeBTvYK">设置 · 更新组</th>
           </tr>
         </thead>
-        <tbody>
-          <tr>
-            <td><b data-i18n="updateNeverChecked">尚未检查</b></td>
-            <td>刚启动，第一次检查还没跑完</td>
-            <td>不弹</td>
-            <td><code data-i18n="updateNeverChecked">尚未检查</code> —— <b>不能写「已是最新版本」</b></td>
+        <tbody data-page-node-id="nxyFvk9DcCHzwaKTAMekJm">
+          <tr data-page-node-id="wC5MjLdjxrNptKycL9iuVH">
+            <td data-page-node-id="zYk0kwWg98smEDw2nrZUim"><b data-i18n="updateNeverChecked" data-page-node-id="oxDZ3oA16FQ3fUSvgOSK50">尚未检查</b></td>
+            <td data-page-node-id="63LA44s1PAyzXDW5nxm7II">刚启动，第一次检查还没跑完</td>
+            <td data-page-node-id="XHWpiod3rEJlV8aV1nLaGi">不弹</td>
+            <td data-page-node-id="EMgFhYST6SInDAkFPfBuGJ"><code data-i18n="updateNeverChecked" data-page-node-id="9d3vVahjk3bC9vdGEdpZDd">尚未检查</code> —— <b data-page-node-id="cZwC1KpWWiqeNoDp4xi5xg">不能写「已是最新版本」</b></td>
           </tr>
-          <tr>
-            <td><b>已是最新</b></td>
-            <td>检查完成，无更高版本</td>
-            <td>不弹</td>
-            <td>检查更新行：<code>上次检查：今天 14:30 · 已是最新版本</code></td>
+          <tr data-page-node-id="PCoHq58JWMeK3NRSV7s1Js">
+            <td data-page-node-id="gUvybIsmeMB15szkofgDst"><b data-page-node-id="6vmwKeWE0RmNoBbJsnaDGg">已是最新</b></td>
+            <td data-page-node-id="cDWPTle1IQUCjz6S4TjiM8">检查完成，无更高版本</td>
+            <td data-page-node-id="JQtnHYib0sWCyxkcZlzRkx">不弹</td>
+            <td data-page-node-id="fhnu2fTD0VPR6llTlXYcHG">检查更新行：<code data-page-node-id="LekFUPlppLX4XJoAXNrmMh">上次检查：今天 14:30 · 已是最新版本</code></td>
           </tr>
-          <tr>
-            <td><b>有新版本 · 自动更新开</b></td>
-            <td>检查到更高版本</td>
-            <td><b>不弹</b>（这就是开关的意义）</td>
-            <td><b>应用侧收不到任何回调</b> —— 这条走 <code>SPUAutomaticUpdateDriver</code>，
-              它不回调 user driver，所以<b>没有「下载中」那一段</b>；
-              下载完成后由 delegate 的钩子<b>直接进入「已就绪」</b>（见下方说明）</td>
+          <tr data-page-node-id="Pff8oAneFeAFpvEGQGaXBZ">
+            <td data-page-node-id="okAgWN4xaoDmhNEd3iTmJq"><b data-page-node-id="BDVHX5DvL6JHKuQkwOa11S">有新版本 · 自动更新开</b></td>
+            <td data-page-node-id="pKX217kBgOR0g84ETJo9mE">检查到更高版本</td>
+            <td data-page-node-id="bDZDdN5qykpndnacMJQzZn"><b data-page-node-id="czD9q767ee4bEZWgETHDBX">不弹</b>（这就是开关的意义）</td>
+            <td data-page-node-id="Lo6tvW3EraeGKHk42oQoQr">user driver <b data-page-node-id="CwBfiDlcOH7acTaOKKfGLA">一个回调都不收</b> —— 这条走 <code data-page-node-id="uC48FXknGIxoewlW0AOMu9">SPUAutomaticUpdateDriver</code>。
+              「后台下载中」由 <b data-page-node-id="HZgEu0FJxBqVl4LCj6kRBb">delegate</b> 的 <code data-page-node-id="aGqRO2LJvLVSq0IY6if48B">willDownloadUpdate</code> 送达：
+              那一态<b data-page-node-id="jeuhS92AsjXB8PqYiz72ls">有，但不带百分比、也没有取消入口</b>（见 B 段 <b data-page-node-id="7MjcRXrm0FhnQeZ858tarS">3b</b>）；
+              下载完成并校验签名后由 delegate 的 <code data-page-node-id="6SEAIIQY8GRKUO94mJZcgU">willInstallUpdateOnQuit</code>
+              <b data-page-node-id="NhT1YIx2vk2DhelD7UFoDJ">进入「已就绪」</b>（见下方说明）</td>
           </tr>
-          <tr>
-            <td><b>有新版本 · 自动更新关</b></td>
-            <td>检查到更高版本</td>
-            <td><b>弹窗 A</b></td>
-            <td>检查更新行：<code>发现 1.1.0</code> + 主按钮「查看更新」</td>
+          <tr data-page-node-id="7C5mjgVppTAozp764wET0G">
+            <td data-page-node-id="UcKfuaz0xCBkg5Ug7xzDUa"><b data-page-node-id="LT9TCICqd5tKdkoGDVBEya">有新版本 · 自动更新关</b></td>
+            <td data-page-node-id="XL1KkFIMC83VGN3n6EQf7D">检查到更高版本</td>
+            <td data-page-node-id="FA26UGVDYfSGoS2WpXqNP5"><b data-page-node-id="R9nx04Qd6giWWLVsSpqBFG">弹窗 A</b></td>
+            <td data-page-node-id="gMKkH9ws17JKkeCAmekLmp">检查更新行：<code data-page-node-id="F8b042V5W9jGbXn52AsK1k">发现 1.1.0</code> + 主按钮「查看更新」</td>
           </tr>
-          <tr>
-            <td><b>稍后</b>（Esc / 关窗）</td>
-            <td>弹窗被关闭</td>
-            <td>本次不再弹</td>
-            <td>与上一行相同 —— 状态留在界面上</td>
+          <tr data-page-node-id="uULvwuVxR3iQ0HDhpAcStI">
+            <td data-page-node-id="olkhTo7RmFMf6r455KLBXx"><b data-page-node-id="NHqOVcSbTYf05PBuO9gQ0S">稍后</b>（Esc / 关窗）</td>
+            <td data-page-node-id="EkSf2TZUqm2JAsQFLXyiLB">弹窗被关闭</td>
+            <td data-page-node-id="4iCCeLnKpFXkNXAlsttemt">本次不再弹</td>
+            <td data-page-node-id="OELVsAt6SJfzmhRgdAfhcZ">与上一行相同 —— 状态留在界面上</td>
           </tr>
-          <tr>
-            <td><b>已跳过</b></td>
-            <td>点了「跳过此版本」</td>
-            <td>该版本不再弹（下次启动也不弹）</td>
-            <td>检查更新行：<code>已跳过 1.1.0</code>；手动检查可撤销</td>
+          <tr data-page-node-id="tyxv48mTn7NwoweBw7uCUp">
+            <td data-page-node-id="fSEM4RSQbe9kvIvIQ6QNVe"><b data-page-node-id="f6KGd5zGAgoGBFBtDAncTn">已跳过</b></td>
+            <td data-page-node-id="vI0wxFQT7GcXrzfpESyG76">点了「跳过此版本」</td>
+            <td data-page-node-id="q1CBHQUF4UzndU1HBVUOh4">该版本不再弹（下次启动也不弹）</td>
+            <td data-page-node-id="4uMadNIjIAQU0MdSuzCBR0">检查更新行：<code data-page-node-id="IUsKsry8xECF3DoiQLDHP9">已跳过 1.1.0</code>；手动检查可撤销</td>
           </tr>
-          <tr>
-            <td><b>后台下载中</b></td>
-            <td>点了「后台更新并重启」，或<b>开着开关时手动点「检查更新」</b>
-              <br>（<b>不含</b>「自动更新开」—— 那条路上没有进度回调，见下方说明）</td>
-            <td>不弹（弹窗已关）</td>
-            <td>行内进度条 + 百分比 + 「取消」</td>
+          <tr data-page-node-id="QSgxUGjcsKIyJADAPOCEIJ">
+            <td data-page-node-id="eGsd7uBM6JcpHbhTC1Crl4"><b data-page-node-id="Jxb44P5gQr241pG7XccTpA">后台下载中</b></td>
+            <td data-page-node-id="a0rwio8FOd3jLjbPWCejQq">点了「后台更新并重启」，或<b data-page-node-id="XRCSfwhLFzY4vIj1Cy18CW">开着开关时手动点「检查更新」</b>
+              <br data-page-node-id="G5CP1nRJ7sYTZfS7HGYBWL">（<b data-page-node-id="JZLj0zr92NGqPQUjJGluRs">第三种</b>：「自动更新开」时的后台检查 —— 那一态<b data-page-node-id="xODJTOtAuMHHSKuVMfEk1Y">没有百分比</b>，见 B 段 3b）</td>
+            <td data-page-node-id="vHtQC6xX5ZOQFaTi7TsUkh">不弹（弹窗已关）</td>
+            <td data-page-node-id="sO0PJl1RPuABMmc8oJJIL1">行内进度条 + 百分比 + 「取消」
+              <br data-page-node-id="zXk2QpVb7nRd4LmWcJ8fTa">（<b data-page-node-id="Qn7wYsKp2vBj9HtRgMf4Ld">上面第三种改成：只有那句话，<u data-page-node-id="Wm3yTzNq6kLp8XvCdRb5Hs">没有进度条、没有按钮</u></b> —— 见 B 段 3b）</td>
           </tr>
-          <tr>
-            <td><b>已就绪</b></td>
-            <td>下载并校验签名完成（自动那条路由 delegate 的
-              <code>willInstallUpdateOnQuit</code> 送达 —— 它一到达就已经是这一步了）</td>
-            <td>不弹</td>
-            <td><code>1.1.0 已下载完成</code> + 「立即重启」</td>
+          <tr data-page-node-id="vZtJqCbuJaV9GKDgLGhpsK">
+            <td data-page-node-id="eDewAlHYokjQ5HxyB5k2BI"><b data-page-node-id="JtH6Tc2vYLl0atvZdqLTXH">已就绪</b></td>
+            <td data-page-node-id="ZbcqPEYZdHiiGt8pHxd1oO">下载并校验签名完成（自动那条路由 delegate 的
+              <code data-page-node-id="nMGHalGyIayiOubxtKkHHt">willInstallUpdateOnQuit</code> 送达 —— 它一到达就已经是这一步了）</td>
+            <td data-page-node-id="fszOJEwmLYMx4gcINQtwrs">不弹</td>
+            <td data-page-node-id="YTzWC4anE3qr9XN0WqLryG"><code data-page-node-id="inJSuQWc3SiYAa1zf9jzDp">1.1.0 已下载完成</code> + 「立即重启」</td>
           </tr>
-          <tr>
-            <td><b>下载失败</b></td>
-            <td>网络不可用 / 签名校验不通过</td>
-            <td>不弹</td>
-            <td><code>1.1.0 下载失败</code> + 「重试」</td>
+          <tr data-page-node-id="QV3aKMn32VxYLAiJ12VHoM">
+            <td data-page-node-id="ga6IPzy730MHfOhCOsqs7m"><b data-page-node-id="4r6eOKK07Ne8RSQQbNf7fA">下载失败</b></td>
+            <td data-page-node-id="AQY675j7MOr4Q8HNHarob8">网络不可用 / 签名校验不通过</td>
+            <td data-page-node-id="HwEe8rD6ecdeiUkDcNDa3I">不弹</td>
+            <td data-page-node-id="iuFcATmga2Wi3Yx0WGEIZk"><code data-page-node-id="KxHioWsdp3YIKFENPwmWqe">1.1.0 下载失败</code> + 「重试」</td>
           </tr>
         </tbody>
       </table>
     </div>
   </div>
 
-  <!-- ===================== D. 说明 ===================== -->
-  <div class="doc__section">
-    <h2 class="doc__h2">设计说明 <em>Rationale</em></h2>
-    <div class="grid2">
-      <div class="panel">
-        <h3 class="doc__h3" style="margin-top:0">文案原则</h3>
-        <ul class="note-list">
-          <li><b>标题写版本号，不写「发现新版本」。</b>用户要判断的是「值不值得为它重启一次」，
+  <!-- ===================== data-page-node-id="aKZitLCyhoujN0elfS5ak9" D. 说明 ===================== -->
+  <div class="doc__section" data-page-node-id="nvD0qjdkLQ03R9F5q2HF1L">
+    <h2 class="doc__h2" data-page-node-id="jDa4AYF2Uet0yoRCAlP4tX">设计说明 <em data-page-node-id="mks6jYz9IBMYtSuy6NhEyN">Rationale</em></h2>
+    <div class="grid2" data-page-node-id="svhntws3YAqbmjJfGJW4Zq">
+      <div class="panel" data-page-node-id="n5dBGpXrTKf9OoudR1FlNB">
+        <h3 class="doc__h3" style="margin-top:0" data-page-node-id="wzVyLE5yiL2zIcRjjvz7eb">文案原则</h3>
+        <ul class="note-list" data-page-node-id="IRVPvR21mX4DCYKHDlnmhf">
+          <li data-page-node-id="UHDBea9Z2dJnlNszcn6EyB"><b data-page-node-id="hf9Gm1klCtYtxR5MU5d0H0">标题写版本号，不写「发现新版本」。</b>用户要判断的是「值不值得为它重启一次」，
             所以版本号、当前版本、体积、日期四样都要在首屏给全 —— 与推出弹窗「标题带磁盘名」同一条规则。</li>
-          <li><b>按钮用动词，且两个按钮都要能单独读懂。</b>「后台更新并重启」而不是「确定」；
+          <li data-page-node-id="JeJwJUA6uDGA65bh3stAKj"><b data-page-node-id="w9fyoBIY4rvQZvwlcvESGD">按钮用动词，且两个按钮都要能单独读懂。</b>「后台更新并重启」而不是「确定」；
             「跳过此版本」而不是「忽略」——「忽略」读不出是忽略这一次还是永远。</li>
-          <li><b>说清代价与不代价。</b>「正在推出的磁盘不会被打断」这句是必需的：
+          <li data-page-node-id="XgbzFTKytvfWHgdpoq5TBc"><b data-page-node-id="huIKEUtXxgtKScdy4MD3Wq">说清代价与不代价。</b>「正在推出的磁盘不会被打断」这句是必需的：
             用户按下更新前最怕的就是「会不会把我正在拷的东西弄坏」。</li>
-          <li><b>「跳过」要说清跳过的范围。</b>「跳过此版本」= 只跳这一个版本，下个版本照常提醒。
+          <li data-page-node-id="aA0pxepWpYZug3NgBDuNvK"><b data-page-node-id="Fll9ugmCgTrEH5p1Mj0Tg4">「跳过」要说清跳过的范围。</b>「跳过此版本」= 只跳这一个版本，下个版本照常提醒。
             设置行里也照写「已跳过 1.1.0」，带上版本号，避免被读成「关掉了更新」。</li>
         </ul>
       </div>
 
-      <div class="panel">
-        <h3 class="doc__h3" style="margin-top:0">规格 Handoff</h3>
-        <ul class="note-list">
-          <li>弹窗沿用 <code>.alert</code>：宽 <code>400</code>、圆角 <code>14</code>、材质 <code>blur(34) saturate(180)</code></li>
-          <li>图标容器 <code>38 × 38</code>，用 <code>--accent-soft</code>（信息态，不是警告态）</li>
-          <li>更新日志：<code>12 / 400</code>，行高 <code>1.55</code>，项目间距 <code>6</code>，项目符号 <code>·</code></li>
-          <li>提示块沿用 <code>.callout--info</code>：圆角 <code>6</code>、内边距 <code>9 / 11</code></li>
-          <li>操作区：提示文案 <code>11 / --text-3</code> 靠左，按钮靠右、间距 <code>8</code></li>
-          <li>设置行内进度条：外层固定 <code>16</code> 高，轨道 <code>5</code>、圆角 <code>999</code>，与磁盘行共用 <code>.meter</code></li>
-          <li>更新组在设置面板中排第 4 组（诊断之后、关于之前），面板 <code>480 × 800</code></li>
+      <div class="panel" data-page-node-id="9MEWpoeo3AfDmh9317CRnn">
+        <h3 class="doc__h3" style="margin-top:0" data-page-node-id="Iq1NfDwpQHm6baLC84K4qo">规格 Handoff</h3>
+        <ul class="note-list" data-page-node-id="UQEV0nZiBGTQMGxLREHMG6">
+          <li data-page-node-id="CPmtSqcxyAInBjRdYYCn0u">弹窗沿用 <code data-page-node-id="gXDfUWDkHlODD9mOgeLZ4D">.alert</code>：宽 <code data-page-node-id="O5EAvTrp5t7lqwTGz7yIso">400</code>、圆角 <code data-page-node-id="cCYqK3aN2eV3JLOKhjzc6u">14</code>、材质 <code data-page-node-id="YJRAWOgqnE9VBiMY1SZyTB">blur(34) saturate(180)</code></li>
+          <li data-page-node-id="VVXod3X737nXBTyiLeHINu">图标容器 <code data-page-node-id="kSY7975ETLZ8hBODMrPbKQ">38 × 38</code>，用 <code data-page-node-id="7dGGVATLrtcCTPLzJIuWyL">--accent-soft</code>（信息态，不是警告态）</li>
+          <li data-page-node-id="ZMkn3tD2hEwLVj1xhcPOxg">更新日志：<code data-page-node-id="nlGcHsAApyayZdh9IDDOka">12 / 400</code>，行高 <code data-page-node-id="EMFTSWoVXWHEMaDtpzEHb8">1.55</code>，项目间距 <code data-page-node-id="Kpn7BseGhhGz1egJAp1wKM">6</code>，项目符号 <code data-page-node-id="6QzHMIbjHFl4ZrgCcUHU3Z">·</code></li>
+          <li data-page-node-id="TpeFJx0FfaDHCFzRGwpHAp">提示块沿用 <code data-page-node-id="mtESTGzsF2aj60MPsHf2lH">.callout--info</code>：圆角 <code data-page-node-id="CmfwbQEWpfpBgUIZxoJBr5">6</code>、内边距 <code data-page-node-id="V74bdi2Zq2EbfPPCYW9bbM">9 / 11</code></li>
+          <li data-page-node-id="kn344rwvNkALr9t0Eyh2fM">操作区：提示文案 <code data-page-node-id="DWKzGdpMPFR4AeRBsNFne2">11 / --text-3</code> 靠左，按钮靠右、间距 <code data-page-node-id="6CHDYFkzrj2mvGvhfVOONU">8</code></li>
+          <li data-page-node-id="7b4A10bmIImaXdBcXx6Tx7">设置行内进度条：外层固定 <code data-page-node-id="iODYMgdhPWWoOBlbSjWeqj">16</code> 高，轨道 <code data-page-node-id="HRvreD0bJdds6poHKBiZFA">5</code>、圆角 <code data-page-node-id="iOO2kJ6rWKiZoGaM8pA8hh">999</code>，与磁盘行共用 <code data-page-node-id="VbW74L4BjhcyfxNdcCOQt5">.meter</code></li>
+          <li data-page-node-id="NMpNEzfUqreiDFwVSGsCQ4">更新组在设置面板中排第 4 组（诊断之后、关于之前），面板 <code data-page-node-id="HTBgX7H4AehhyOmvh0xSPq">480 × 800</code></li>
         </ul>
       </div>
     </div>
 
-    <div class="panel" style="margin-top:16px">
-      <h3 class="doc__h3" style="margin-top:0">这一页对实现提出的要求（不是设计稿能自己满足的）</h3>
-      <div class="grid2">
-        <ul class="note-list">
-          <li><b>「后台更新并重启」需要一个真正的更新器。</b>当前 <code>UpdateService</code> 只做
-            「打开下载页」，<u>没有任何下载与安装代码</u>。要落地本页 B 段的第 3–4 帧（后台下载中 / 已就绪），
+    <div class="panel" style="margin-top:16px" data-page-node-id="jii8t2apfSlFk86qsstFn6">
+      <h3 class="doc__h3" style="margin-top:0" data-page-node-id="qxaDoBGBb50YZVjHaDxFTv">这一页对实现提出的要求（不是设计稿能自己满足的）</h3>
+      <div class="grid2" data-page-node-id="uWHJwSUVXKaOzMcupErABt">
+        <ul class="note-list" data-page-node-id="9XB174Sa4pm0E0xDaPdasV">
+          <li data-page-node-id="Etb5DEuNwakRpfoHmRmDBD"><b data-page-node-id="hsBFoPaRUwojZVWgDZyENZ">「后台更新并重启」需要一个真正的更新器。</b>当前 <code data-page-node-id="rVOFqPAIF3VzDjRn0zr3px">UpdateService</code> 只做
+            「打开下载页」，<u data-page-node-id="I9YCTw18NfXNlKCZZka0jQ">没有任何下载与安装代码</u>。要落地本页 B 段的第 3–4 帧（后台下载中 / 已就绪），
             必须先有：下载 + 签名校验 + 替换 bundle + 重启。
             两条路：引入 Sparkle（多一个 SPM 依赖、EdDSA 密钥、appcast 托管），
-            或自写下载 + 校验。<b>在更新器落地之前，弹窗的主按钮只能退回「打开下载页」</b>
-            （<code>UpdateService.openUpdateSource()</code> 现在做的就是打开 GitHub Releases）——
+            或自写下载 + 校验。<b data-page-node-id="cv14HfNKLaXpBfEWu9poZW">在更新器落地之前，弹窗的主按钮只能退回「打开下载页」</b>
+            （<code data-page-node-id="kqiX3crxSqmDm5yT5ru1cK">UpdateService.openUpdateSource()</code> 现在做的就是打开 GitHub Releases）——
             先画上「后台更新并重启」再补实现，用户会点到一个什么都不做的按钮。</li>
-          <li><b>「已跳过 1.1.0」需要一个新的持久化键</b>（版本号字符串，不是布尔）。
+          <li data-page-node-id="WFy7GcJdzoucj9Kg6wonhi"><b data-page-node-id="7Kr46Pf2CO0mJqlmBv6gII">「已跳过 1.1.0」需要一个新的持久化键</b>（版本号字符串，不是布尔）。
             布尔量表达不了「跳过了哪一个」，而按版本号存才能在 1.2.0 时自动恢复提醒。</li>
         </ul>
-        <ul class="note-list">
-          <li><b>「有新版本」是第三种状态，不能用布尔量建模。</b>
+        <ul class="note-list" data-page-node-id="JZQi2IpvJUAOmCUmO9hb9S">
+          <li data-page-node-id="H9GsN21LMGxQSgRDwu2siC"><b data-page-node-id="WE9G4n6CWgbuRR40KLkMbT">「有新版本」是第三种状态，不能用布尔量建模。</b>
             「检查完了但没有新版本」与「还没检查过」在界面上都是「没有新版本」，
-            但它们该显示的文字不同（<code>已是最新版本</code> vs <code data-i18n="updateNeverChecked">尚未检查</code>）——
+            但它们该显示的文字不同（<code data-page-node-id="ApdI0SRCzIrNlvd7xzs4KJ">已是最新版本</code> vs <code data-i18n="updateNeverChecked" data-page-node-id="Ccyw3A3vBVCOSC57M90FEV">尚未检查</code>）——
             必须另有一个「检查是否完成 / 上次检查时间」的位。</li>
-          <li><b>「不上架」这个决定把一批渠道分支变成了死代码 —— 已于 2026-09-18 删除。</b>
-            <code>UpdateService.channel</code> 的 <code>.appStore</code> 分支
-            （App Store 收据判定、<code>appStoreID</code>、<code>macappstore://</code> 链接、
+          <li data-page-node-id="3XucUHxqGhdsG31kYGGvuO"><b data-page-node-id="zKKMMr7ZGSPx4d6DCuEcys">「不上架」这个决定把一批渠道分支变成了死代码 —— 已于 2026-09-18 删除。</b>
+            <code data-page-node-id="2cnrQZgiVKAGgdxWJD1xkz">UpdateService.channel</code> 的 <code data-page-node-id="43kOAiVDZTq373w36LtSyT">.appStore</code> 分支
+            （App Store 收据判定、<code data-page-node-id="MDEwNDyAjpIYuv6zWYIsd1">appStoreID</code>、<code data-page-node-id="lEfNCa84sky4KB6Xn0TSkN">macappstore://</code> 链接、
             「在 App Store 中查看」文案）连同两条本地化键一并移除，渠道只剩
-            <code>.direct</code> / <code>.development</code> 两种。
-            <b>「不存在」这件事本身钉了两个测试</b>：
-            <code>UpdateServiceTests/不存在AppStore渠道</code> 从枚举反查 <code>appStore</code>，
-            <code>LocalizationCatalogTests/已删除的AppStore渠道文案不再存在</code> 反查两条文案键 ——
-            谁加回来谁红。删掉而不是「留作防御」的理由：防御的前提是那条路<b>可能存在</b>，
+            <code data-page-node-id="OfBWMWmgjAXG8omZ3w9HaU">.direct</code> / <code data-page-node-id="nppdbUBiXmayuLBfMR0IbY">.development</code> 两种。
+            <b data-page-node-id="JsGoPteuOWbN0I9L9clvYy">「不存在」这件事本身钉了两个测试</b>：
+            <code data-page-node-id="Aearf5fkgL2aTbw5f4CXy0">UpdateServiceTests/不存在AppStore渠道</code> 从枚举反查 <code data-page-node-id="ccAn6evgRP7j0S5OExYD5a">appStore</code>，
+            <code data-page-node-id="xn1unG1KSgK99BVpYGjRcX">LocalizationCatalogTests/已删除的AppStore渠道文案不再存在</code> 反查两条文案键 ——
+            谁加回来谁红。删掉而不是「留作防御」的理由：防御的前提是那条路<b data-page-node-id="WYwfAMDV0fNccxPjhDBiqw">可能存在</b>，
             而 MAS 渠道已经不存在了。</li>
-          <li><b>「自动更新」开着时，中间那一段「后台下载中」<u>画不出来</u>（2026-09-19 定案）。</b>
-            Sparkle 在自动下载那条路上选的是 <code>SPUAutomaticUpdateDriver</code>，而它
-            <b>一个 user driver 回调都不发</b>：<code>showUpdateFound</code> /
-            <code>showDownloadInitiated</code> / <code>showDownloadDidReceiveData</code> /
-            <code>showReadyToInstallAndRelaunch</code> 这四个回调在全库里只有
-            <code>SPUUIBasedUpdateDriver</code> 一个调用方，而自动那条路不经过它。
-            既没有「开始下载」、也没有进度 —— <b>百分比无从得知</b>，画一条停在 0% 的进度条
-            比不画更让人怀疑（同 B3 那条「猜出来的百分比会在中途倒退」）。
-            所以 C 段第 3 行改成了「行保持原样」，第 7 行的触发条件去掉了「自动更新开」。
-            自动那条路能给出的落点只有一个：delegate 的 <code>willInstallUpdateOnQuit</code>
-            —— 它一到达就已经是「下载完成、等退出时装」。<b>已接上</b>，于是「已就绪」
-            在自动那条路上是<b>可达的</b>（在此之前它一直停在「已是最新版本」，
-            而更新其实已经躺在磁盘上等退出 —— 界面在说谎）。
-            想如实画出中间那一段，得先有一个<b>不带百分比</b>的行态：那是设计决策，尚未拍板。</li>
+          <li data-page-node-id="SYqdUnNJo2fdnBwSJ8DVFC"><b data-page-node-id="OIZYmmf3ukOxAf3euW7BNQ">「自动更新」开着时，中间那一段「后台下载中」<u data-page-node-id="kZzRubQXkGwUsb2JwI1ocS">画得出来</u>，但<u data-page-node-id="u1gvWEVLMklAzlW44HzEvs">不带百分比</u>（2026-09-19 <b data-page-node-id="xPyKYqSWWy7q94wRwKRsNH">订正</b>）。</b>
+            Sparkle 在自动下载那条路上选的是 <code data-page-node-id="DQ8ibs4yaCFR1MlvKaBr3R">SPUAutomaticUpdateDriver</code>，而它
+            <b data-page-node-id="WTB3D7Wmymrvol40FaZYsZ">一个 user driver 回调都不发</b>：<code data-page-node-id="tygJrfRzGZMLg0ehCxaUyY">showUpdateFound</code> /
+            <code data-page-node-id="0yN7gV5tNLb8AUZb7E6c2O">showDownloadInitiated</code> / <code data-page-node-id="tYdK65QDxEvLteytLz4LJv">showDownloadDidReceiveData</code> /
+            <code data-page-node-id="Xny4UHH152TYu61YnHVzaT">showReadyToInstallAndRelaunch</code> 这四个回调在全库里只有
+            <code data-page-node-id="bUJoq4L9KWTscgUWhQigQW">SPUUIBasedUpdateDriver</code> 一个调用方，而自动那条路不经过它。
+            ⚠️ <b data-page-node-id="jVYOuvwB3ZlnPsu4GwPU1P">这条当天被订正过一次</b>：最早写的是「画不出来」，那是<b data-page-node-id="wKYDvRjcW5cNYZdk3c3YT8">只扫了一半</b>的结论 ——
+            当时只查了「那四个 user driver 回调在全库只有一个调用方」，没查
+            「自动那条路会经过的类<b data-page-node-id="l9FZZYbjivo8CNJVCAkGwl">还会发哪些 delegate 回调</b>」，
+            于是把「<b data-page-node-id="oPjq8qZLyYrGvAqm0BicVM">进度</b>到不了」读成了「<b data-page-node-id="6iTjXa1WtZ14KgRFRDN6gc">什么都</b>到不了」。真正的事实是：
+            <code data-page-node-id="cORitTVrBiH7B28rwbZa0i">SPUAutomaticUpdateDriver</code> 下载时调的是
+            <code data-page-node-id="GV76m67fZaH92jl2arssS4">SPUCoreBasedUpdateDriver</code>（两条路都经过它），而后者会发 delegate 的
+            <code data-page-node-id="ZcclMR4HCxgjHheBYeQE67">willDownloadUpdate</code>（即将开始下载）与 <code data-page-node-id="DH9Vuig5vFFvmXPbVUhndH">didDownloadUpdate</code>。
+            ⇒ 「下载开始了」<b data-page-node-id="mNTSZiP8WFszGExhfWMWqR">有落点</b>，只是「下了多少」没有 ——
+            <b data-page-node-id="ajHm7IovdBdKt8oyxkYLx4">百分比无从得知</b>。
+            分流判据是「user driver 到现在一声没吭」：弹窗那条路上
+            <code data-page-node-id="zjZ0eJbcCVQyuEMUoAjwnU">showUpdateFound</code> 一定<b data-page-node-id="6HMjA5LdMvFhOLqqSUKrXm">更早</b>到达，
+            所以走到下载时状态还是「初始」的，只可能是自动那条路 —— 可派生，
+            不必另存一个「这次是后台检查」的位（那种位会与真实情况脱节）。<br data-page-node-id="UhxhQZfRsOgsOtsp2dsXXk">
+            ⇒ 那一态<b data-page-node-id="XC0Cwftnh1EAZHr17WVgYA">画出来了</b>（B 段 3b）：<u data-page-node-id="xqBaKD3K9kQvj3MvGaeAG8">不画进度条</u>（画一条停在 0% 的进度条
+            比不画更让人怀疑 —— 同 B3 那条「百分比是真的，ETA 是编的」的另一面：<b data-page-node-id="qIEOwzHzwWtVnhgI9GydjV">不知道就别猜</b>）；
+            那条路也不给取消入口，于是<u data-page-node-id="6abcOxhw9yAIgFFIzHQOR9">右侧不放按钮</u>（放一个点了没反应的「取消」，
+            与「功能坏了」长得一模一样）。C 段第 3 行与第 7 行已按这条订正。
+            另一头（下载完成、等退出时装）由 delegate 的
+            <code data-page-node-id="tWWHMtdYJTqadzKVKU4UYv">willInstallUpdateOnQuit</code> 送达，
+            <b data-page-node-id="IptKCrlsBl4ehhWZJLqMeG">已接上</b> —— 于是「已就绪」在自动那条路上是
+            <b data-page-node-id="ovjG5F51wntHr78LQGmYvR">可达的</b>（在此之前它一直停在「已是最新版本」，
+            而更新其实已经躺在磁盘上等退出 —— 界面在说谎）。</li>
         </ul>
       </div>
     </div>

@@ -5078,17 +5078,23 @@ Sparkle 会不会装上这次更新 —— 依据是 `showUpdateFound` 的文档
 
 ### §8.42.2 仍开着的（按「谁能关掉它」分类）
 
-> ⚠️ **本表的最后核对时刻：2026-09-19 21:20**（起点 `HEAD` = `3ae3951`，工作区 0 脏；本轮提交见 §8.80.8）。
-> 本次核对是 §8.80 —— **关掉第 27 行**（上一轮登记时写的是「未实测」，本轮的结论
-> **比登记时想的更难看**：不是「进度条画不出来」，是**设置行在说假话**）、
-> **新增第 28 行**（27 修掉之后剩下的那一半，要设计决策），并订正了
-> **两处与源码相反的注释**（`allowsAutomaticUpdates` 的「未正确签名时为 `false`」、
-> `UpdateUserDriver` 那句「开关开着就静默下载（设置行显示进度）」）与
-> **三处与源码相反的设计稿断言**（`08-update.html` C 段第 3、7、8 行）。
-> 加上 §8.79 订正的那处，**这一片代码连着两轮共订正了 3 处「与源码相反」的注释**。
-> §8.34.1 的教训在这里同样成立：**连「尚未做」都有保质期，记下时刻比记下结论更有用。**
+> ⚠️ **本表的最后核对时刻：2026-09-19 23:40**（起点 `HEAD` = `ba8e48b`，工作区 0 脏；本轮提交见 §8.81.8）。
+> 本次核对是 §8.81 —— **关掉第 28 行**（上一轮刚开、标着「要设计决策」的那条）；
+> **23:40 补记**：归因覆盖率时**新开第 31 行**（四个 delegate 回调都没有行为测试）。
+> 另⚠️ 同一次归因挖出**门槛本身会读到陈旧 profdata**（`coverage.sh` 取的是 `find` 的
+> 第一份，而 `.build/` 里有三份）⇒ 已修 + 两层自证，见 **§8.81.9**。
+> 结论是**它开的那一半前提是错的**：那段**画得出来**，只是没有百分比 ——
+> 上一轮把「**进度**到不了」读成了「**什么都**到不了」，因为只扫了
+> 「user driver 那四个回调在全库只有一个调用方」，没扫
+> 「自动那条路会经过的类**还会发哪些 delegate 回调**」（`SPUCoreBasedUpdateDriver` 会发 6 个）。
+> ⇒ 顺带**订正 §8.80 的两处结论**：`08-update.html` C 段第 3 行（「没有『下载中』那一段」）、
+> 第 7 行（「不含『自动更新开』」）与 D 段那条整段（「**画不出来**」→「画得出来，但**不带百分比**」）。
+> 设计稿侧新增 **B 段 3b 一帧**承载那一态；实现侧把 `UpdatePhase.downloading` 的百分比
+> 变成 `Double?`（`nil` = 无从得知），接上那条路上唯一的落点 `willDownloadUpdate`。
+> §8.34.1 的教训在这里**又成立了一次**：**连「要设计决策」都有保质期** ——
+> 上一轮要是多扫一眼 delegate 侧，这一行根本不会开。
 
-| # | 项 | 谁才能关 | 出处 | 现状（2026-09-19 19:13 核对） |
+| # | 项 | 谁才能关 | 出处 | 现状（2026-09-19 23:10 核对） |
 |---|---|---|---|---|
 | 1 | ~~EdDSA 签名~~（`generate_keys` → 公钥进 `SPARKLE_PUBLIC_ED_KEY`） | 已关闭 | §8.39.7 / §8.49 | ✅ 2026-09-18 20:39 生成密钥对（私钥进登录钥匙串，`acct=ed25519`）→ 公钥 `DZSAElJGUg13m+uorm7qlJhQKPyxk4D1DXMYGEOtbBs=` 烤进 Info.plist → appcast 带 `edSignature`；**独立验签**（OpenSSL）+ 篡改反证 + 从 Release 下载回来再验一遍，全过 |
 | 2 | ~~设计稿 `--h-settings` vs 实现 `480×800`~~ | 已关闭 | §8.43 | ✅ 拍板统一成 800，并由 `DesignSizeParityTests.设计稿与实现的尺寸必须同数` 钉住（§8.71；旧守卫在 `SettingsLayoutTests`，已迁入同源表） |
@@ -5117,7 +5123,10 @@ Sparkle 会不会装上这次更新 —— 依据是 `showUpdateFound` 的文档
 | 25 | ~~`DesignTokens.swift` 文件头写着「与 `ds.css` **两边数值必须一致**」，而**颜色轴 0 条守卫** —— `border` / `borderStrong` / `hairline` 的**深色侧**借了文字族的 `ink`（`rgba(235,235,245,·)`），设计稿里是**纯白**；`borderStrong` 的注释**自己写着正确的值**，而没有任何东西会红~~ | ~~逐个补断言~~ | §8.57.6 #1 / **§8.77** | ✅ **已还账（第 29 轮）** —— 铺成**同源表 26 项 × 明暗两侧**（照 §8.71 / §8.72 的房式）＋ 3 条差集守卫（新声明要登记 / 登记了却没了要划掉 / 豁免表不是垃圾桶）＋ 1 条「钉不住的要写明理由」（强调色明暗不分）。新增 `edge(_:)` helper 修掉 3 处深色侧偏差。变异 **17 红 + 7 绿**（含 3 条**修前回归针** M193–M195、反向变异 M196「只改 helper 不改调用点」、绿对照 M213「**两边同时改 ⇒ 仍绿**」、以及必须成对读的 M208/M208b）。⚠️ **仍没守**：`edge(_:)` 的**视觉效果未复核**（只证了数值同源）；强调色缺深色值（**要设计决策**）；`accentSoft`/`accentRing` 的两侧只实测未进守卫 —— 见 §8.77.7 |
 | 26 | ~~`fdaBannerLead` 的值带 `**`，而 `NoticeBanner.message` 是 `String` + 内部 `Text(message)` ⇒ **主窗口那条 FDA 横幅画出裸星号**（未授权用户都会看到）；设计稿侧是对的（`md_bold` → `<b>`），**两边各自的逻辑都自洽，错在接缝**；且**走查图夹具也传裸 `String`** ⇒ 图里看不出线上的问题~~ | ~~补一条类级守卫~~ | §8.69 / **§8.78** | ✅ **已还账（第 30 轮）** —— 把 `OnboardingView` 的私有 `markdownText(_:)` 提升为共享 `MarkdownCopy.text(_:)`；`NoticeBanner.message` 类型 `String` → **`Text`**（逼调用方做一次显式选择）；3 条守卫（**口径锚**「星号真的占宽度 289.0 vs 265.0」/ **类级网**「值带 `**` 的键其消费文件必须调用渲染器」＋ 范围锚 ＋ 键扫描口径锚 / **夹具与生产逐字一致**）。变异 **6 红 + 3 绿**（含回归针 M215、范围锚 M219、键扫描口径锚 M220、以及必须成对读的 M217/M220b 与 M218/M218b）。⚠️ **仍没守**：`SettingsView` 的 `Alert` 是**同类路径**（`Alert` 的 `message` 也是 `Text`）—— 已实扫「那些键目前不带 `**`」，但**没有守卫**拦将来有人加；`MarkdownCopy` 对**不成对标记**的兜底没守卫；走查图**没有**「裸星号」那一态的对照图 —— 见 §8.78.7 |
 | 27 | ~~「自动更新开着时，设置行那行『正在后台下载 xx%』到底画不画得出来」未核实~~ | 已关闭 | §8.79.2 / **§8.80** | ✅ **已还账（第 32 轮）** —— 结论**比问题更难看**：不是「进度条画不出来」，是**设置行在说假话**。自动那条路（`SPUAutomaticUpdateDriver`）**一个 user driver 回调都不发**：`showUpdateFound` / `showDownloadInitiated` / `showDownloadDidReceiveData` / `showReadyToInstallAndRelaunch` 四个回调在全库里**只有 `SPUUIBasedUpdateDriver` 一个调用方**（`:244/:359/:369/:420`），而自动那条路不经过它 —— 它自己的 `_userDriver` 赋值后**从未被读**（`:31` 声明、`:43` 赋值，注释「The user driver is only used for a termination callback」是**字面意思**）。⇒ 整条自动路径上 `phase` 停在 `.idle`，设置行写「已是最新版本 · 上次检查：…」，**而新版本已经下载完、验过签、安装器已就位、退出就装**。**修**：接上那条路上唯一的钩子 `updater(_:willInstallUpdateOnQuit:immediateInstallationBlock:)` 并返回 `true`（返回 `false` 会留下一个点了没反应的「立即重启」）⇒「已就绪」在自动路上**变得可达**；真机复验「退出仍装」（`2026.09.18.4/81` → **`2026.09.19.1/119`**）。守卫 4 条、变异 **6 红 + 1 绿**。⚠️ 边界：**用户手动点「检查更新」那条能画出进度**（走 `SPUUIBasedUpdateDriver`），**不是整行不可达** |
-| 28 | **自动更新开着时，中间那段「正在后台下载」怎么画** —— 那条路上「有新版本」这一刻**有**钩子（`updater(_:didFindValidUpdate:)`，由 `SPUBasicUpdateDriver.m:164` 调用），但**没有进度**（`showDownloadDidReceiveData` 同样只由 `SPUUIBasedUpdateDriver` 调用）。画一条停在 0% 的进度条比不画更让人怀疑（同 B3 那条「猜出来的百分比会在中途倒退」）；要如实画，得先有**一个不带百分比的行态** —— 那一行写什么、取消按钮还给不给，是设计决策 | **要设计决策** | §8.80.2 / §8.80.7 | ⬜ **仍开着**。现状是「从『已是最新』直接跳到『已就绪』」—— **如实但不完整**：用户看不出「正在下」还是「没在下」。⚠️ 设计稿 C 段第 7 行的触发条件已按本轮结论订正（去掉了「自动更新开」），第 3 行改成「应用侧收不到任何回调」 |
+| 28 | ~~**自动更新开着时，中间那段「正在后台下载」怎么画** —— 登记时的前提是「那条路上什么回调都没有」，要如实画得先有一个不带百分比的行态，是设计决策~~ | 已关闭 | §8.80.2 / **§8.81** | ✅ **已还账（第 33 轮）** —— **前提是错的**：那段**画得出来**。自动那条路会经过的 `SPUCoreBasedUpdateDriver` 会发 delegate 的回调，其中 `willDownloadUpdate`（`:136`）就是「即将开始下载」；进度（`didDownloadUpdate` `:179`）也有，只是**没有「下了多少」**。⇒ 那一态接上了：文案与手动那条路**同一句**，但 `fraction: nil` ⇒ **不画进度条、不给取消按钮**（那条路没有取消入口）。判据是「user driver 到现在一声没吭」（**可派生**，不是手动开关）。**订正**：§8.80 把「**进度**到不了」读成了「**什么都**到不了」—— 只扫了 user driver 那四个回调的唯一调用方。设计稿：B 段**新增 3b 一帧**、C 段第 3/7 行订正、D 段整段改写。守卫 4 条、变异 **8 红 + 1 绿** |
+| 29 | **3b 那一态还没有走查图** —— 设计稿 B 段有了那一帧，但 `SettingsLayoutTests` / `SnapshotRenderTests` 的状态清单里**没有** `fraction: nil` 那一格，于是走查图看不出「无进度条」这一版长什么样 | 我（下一轮） | §8.81.7 | ⬜ **仍开着**。本轮刻意没动那两张出图清单（它们会改走查图产物，且可能牵动按状态计数的守卫），先登记。⚠️ 实现行为本身**已有守卫**（§8.81.6 第 4 条读视图源码），缺的是**出图** |
+| 30 | **「自动那条路的『下载中』那一格真的被设置了」没有真机复验** —— `willDownloadUpdate` 会到，靠的是**源码的调用点**（`SPUAutomaticUpdateDriver.m:95` → `SPUCoreBasedUpdateDriver.m:136`），不是跑起来看到的 | 我（下一轮） | §8.81.7 | ⬜ **仍开着**。⚠️ **「这条路会跑」是验过的**（§8.80 真机：`.18.4/81` → `.19.1/119`，验的是同一条路的**终点** `willInstallUpdateOnQuit`），**没验的是中间那一格**。要验它：真机上开着设置面板、等后台检查触发、在下载期间截那一格 —— 本轮没做，别当成验过 |
+| 31 | **四个 `SPUUpdaterDelegate` 回调都只有「选择器 + 源码文本」守卫，没有行为测试** —— `willDownloadUpdate` / `willInstallUpdateOnQuit` / `failedToDownloadUpdate` 三个方法体在覆盖率里**全部 0 命中**（§8.81.9 逐行数据）。它们需要一个**真的 `SPUUpdater` 实例**才能调用，而测试里 0 处构造 ⇒ 判据的**文本**钉住了，判据的**行为**从未被执行 | 我（下一轮） | §8.81.9 | ⬜ **仍开着**（本轮新开）。⚠️ **不是本轮新引入的债**：`failedToDownloadUpdate`（594 行）与 `willInstallUpdateOnQuit`（712–720 行）**早就**是 0 命中，`willDownloadUpdate` 只是与它们同一处境。要还账：把判据抽成纯函数（同 `shouldPublishProgress` / `isDownloadFailure` 的既有做法），或真机复验（第 30 行） |
 
 > **判据：这张「仍开着」的表本身也是承诺型的话。** 17:55 回头核对时，第 4、5 行**早已关掉
 > 而表还写着「仍开着」** —— 和 §8.33 清掉的那 6 条是同一个病：**还了账没人回来划掉**。
@@ -5127,9 +5136,13 @@ Sparkle 会不会装上这次更新 —— 依据是 `showUpdateFound` 的文档
 > —— 9 由头是 §8.47 那个 bug 的形状（**「有声明、没生产者」要实扫，不能靠读代码发现**），
 > 11、12 由头是「**重打之前先比对构建提交**」。
 >
-> ⚠️ **上面这一段自己也过期了（21:20 订正）**：现在真正「不在我这边」的只剩
+> ⚠️ **上面这一段自己也过期了（23:10 再订正）**：现在真正「不在我这边」的只剩
 > **第 10 行**（要构造一次**真的下载失败**）与第 14 行（已知限制）；
-> **第 28 行**在**你**那边（要设计决策，不是我这边）。
+> 上一轮那句「**第 28 行在你那边**」**同样不成立** —— 它这轮被关掉了，
+> 而且关掉的方式**不是「拍板一个设计」**，是**发现它问的那个前提根本不存在**（§8.81：
+> 那段画得出来，只是没有百分比）。⇒ **「要设计决策」也要带时刻与出处**：
+> 决策的前提可能已经被一轮源码实扫推翻了。
+> 现在唯一「在我这边、但还没做」的是新开的**第 29 行**（3b 缺走查图）。
 > 1、6 早已关掉；**3 也不需要「真发一版」** —— 一份**旧版 bundle ＋ 现成的 appcast**
 > 就够了（§8.79 就是这么测的）。⇒ 这句「谁才能关」和第 4、5 行那个病同源：
 > **还了账没人回来划掉**，只是它划的是**前提**而不是结论。
@@ -9419,6 +9432,216 @@ stash 前后用 `git diff | shasum` 核对指纹，确认改动完整还原。
 ⚠️ 修法就是把它加回去（`---` + 空行 + `## 9. 文件清单` + 空行），回读确认
 `^## ` 标题列表末尾恢复为 `§8.79` → `§8.80` → `## 9. 文件清单`，且 `git diff -U0`
 里**再无**任何提到「文件清单」的增删行（改动归零 = 没动它）。
+
+---
+
+## §8.81 「后台下载中」在自动那条路上**画得出来** —— 只是没有百分比（2026-09-19 23:10）
+
+### §8.81.1 这条从哪来（第 28 行 —— 而它开的那个前提是错的）
+
+上一轮（§8.80）关掉第 27 行之后新开了第 28 行，标着「**要设计决策**」：
+
+> 「自动更新开着时，中间那段『正在后台下载』怎么画」—— 那条路上「有新版本」这一刻**有**钩子
+> （`didFindValidUpdate`），但**没有进度**；要如实画，得先有一个**不带百分比**的行态。
+
+本轮把它关掉了，**但不是靠拍板一个设计**：去接它的前提——「那条路上什么回调都没有」——
+**不成立**。自动那条路会经过的 `SPUCoreBasedUpdateDriver` 会发 **6 个** delegate 回调，
+其中 `willDownloadUpdate` 就是「**即将开始下载**」。⇒ 那一态**画得出来**，
+只是百分比仍然无从得知。
+
+### §8.81.2 源码实扫：自动那条路会经过的类，还会发哪些 delegate 回调
+
+`SPUAutomaticUpdateDriver` 下载时调的是 `[_coreDriver downloadUpdateFromAppcastItem:…]`
+（`SPUAutomaticUpdateDriver.m:95`），而那个 `_coreDriver` 是 `SPUCoreBasedUpdateDriver`
+（`:45` 建的）—— **两条路都经过它**。它发给 `SPUUpdaterDelegate` 的回调：
+
+| 回调 | 出处 | 本轮用不用 |
+|---|---|---|
+| `updater(_:didFindValidUpdate:)` | `SPUBasicUpdateDriver.m:164` | 不用 —— 那一刻下载还没开始，行态不该变 |
+| **`updater(_:willDownloadUpdate:withRequest:)`** | `SPUCoreBasedUpdateDriver.m:136` | ✅ **接上了** —— 进入「后台下载中（**无百分比**）」 |
+| `updater(_:didDownloadUpdate:)` | `:179` | 不用 —— 行态不变（还是同一句话） |
+| `updater(_:willExtractUpdate:)` | `:226` | 不用 —— 行态不变 |
+| `updater(_:didExtractUpdate:)` | `:250` | 不用 —— 行态不变 |
+| `updater(_:failedToDownloadUpdate:error:)` | `:273` | 已由 §8.47.6 接上（→ `.failed`） |
+| `updater(_:willInstallUpdate:)` | `:329` | 不用 —— 行态不变 |
+| `updater(_:willInstallUpdateOnQuit:immediateInstallationBlock:)` | `SPUAutomaticUpdateDriver.m:113` | 已由 §8.80 接上（→ `.ready`） |
+
+⇒ 自动那条路上**至少 8 个落点**，本轮只新增 1 个。其余 5 个接了就是**死代码**：
+它们不改变行态，而「有生产者、没消费者」的东西在界面上与「已经支持了」长得一模一样
+（§8.47.6 的教训）。
+
+### §8.81.3 订正：上一轮把「**进度**到不了」读成了「**什么都**到不了」
+
+§8.80 的结论本身没错——**user driver 那四个回调确实一个都不来**。错的是**范围**：
+当时只扫了「那四个回调在全库只有一个调用方」，没扫「自动那条路**会经过的类**还会发什么」。
+
+⇒ **读第三方库时，「谁在调 X」只回答了 X 那一条路。要回答「这条路能知道什么」，
+得把这条路**经过的所有类**各扫一遍**。（已写进 `sparkle-appcast-release` 技能第 11 节。）
+
+受影响的三处已全部订正：`08-update.html` C 段第 3 行（「没有『下载中』那一段」）、
+第 7 行（「**不含**『自动更新开』」）、D 段那条整段（「**画不出来**」→「画得出来，但**不带百分比**」）。
+`UpdateController` 里 `willInstallUpdateOnQuit` 的那段 doc comment 也加了订正说明
+（连它自己的「为什么漏」一起写下来了 —— 那是下一轮最该看的一句）。
+
+### §8.81.4 分流判据：为什么是「user driver 到现在一声没吭」
+
+`willDownloadUpdate` **两条路都会到**（同一个 `SPUCoreBasedUpdateDriver` 发的），
+所以光接它不够 —— 弹窗那条路上它会**抢在**对应回调之前到达，把行态设错。
+
+顺序是**确定的**，而且是两条路共同的顺序：
+
+1. `SPUBasicUpdateDriver.m:164` 发 `didFindValidUpdate`（delegate）；
+2. 紧接着 `:168` 才把「找到更新」交给驱动 —— **弹窗那条**于是进 `SPUUIBasedUpdateDriver`，
+   `showUpdateFound`（`:244`）把 `phase` 设成非 `.idle`；
+3. 下载开始时 `willDownloadUpdate`（delegate，`:136`）**早于** user driver 的
+   `showDownloadInitiated`（`:359`）。
+
+⇒ 走到第 3 步 `phase` 还是 `.idle`，**只可能**是「user driver 一条回调都没来过」，
+也就是自动那条路。**可派生**，不需要另存一个「这次是后台检查」的位
+（那种位会与真实情况脱节 —— 用户可能在检查途中关掉开关；同 `isDownloadFailure(phase:)` 那条判据）。
+
+另外补一个 `updater.automaticallyDownloadsUpdates`：`.idle` 只说「没人说过话」，
+而这一态要表达的是「**自动下载**正在进行」，判据要与 `SPUUpdater.m:622`
+选驱动时用的是**同一个属性**。
+
+⚠️ **一个不会咬人的分支**：`SPUAutomaticUpdateDriver.m:82-85` 的
+`SPUUpdateRequiresUserAttentionBeforeDownloading`（信息类更新 / 大版本 / 验签失败）
+会 `deferInformationalUpdate` + `abortUpdate` ⇒ **根本不会下载** ⇒ `willDownloadUpdate` 不发
+⇒ 我们不会误设那一态；那条路随后转给 UI，`showUpdateFound` 照常到达。
+
+### §8.81.5 定案：三种触发、两种外观
+
+| 触发 | 走哪个驱动 | 行态 | 外观 |
+|---|---|---|---|
+| 点了「后台更新并重启」 | `SPUUIBasedUpdateDriver` | `.downloading(fraction: 0→…)` | 进度条 + 百分比 + 「取消」 |
+| 开关开着 + 手动点「检查更新」 | `SPUUserInitiatedUpdateDriver` | `.downloading(fraction: nil)` → 第一格进度后变成有值 | 先无条，后有条 |
+| **开关开着 + 后台检查** | **`SPUAutomaticUpdateDriver`** | `.downloading(fraction: nil)` **全程** | **只有那句话，无进度条、无按钮**（B 段 3b） |
+
+两种外观**说同一句话**（同一个文案键 `updateDownloadingFormat`），差别只在
+「有没有进度条」和「有没有按钮」。判据：
+
+- **不画进度条**：百分比无从得知。画一条停在 `0%` 的进度条比不画更让人怀疑 ——
+  用户会盯着那个 0% 判断「是不是卡住了」。这是 B3 那句「**百分比是真的，ETA 是编的**」
+  的另一面：**不知道就别猜**。
+- **不给按钮**：那条路不提供取消入口（`showDownloadInitiatedWithCancellation:` 由
+  `SPUUIBasedUpdateDriver` 发出）。给一个点了没反应的「取消」，与「功能坏了」长得一模一样。
+
+⇒ `UpdatePhase.downloading` 的百分比从 `Double` 变成 **`Double?`**：
+`nil` = **无从得知**，与 `0` 是**两种状态**（`shouldPublishProgress(from: nil, …)` 恒为真，
+所以第一格进度一定发得出去 ⇒ 手动那条路的进度条不会因此永远不出现）。
+
+### §8.81.6 判据与守卫（4 条）+ 变异 8 红 1 绿
+
+| 守卫 | 钉什么 |
+|---|---|
+| `自动那条路的下载开始也由delegate送达` | 读源码：`willDownloadUpdate` 方法体必须含 `guard case .idle = phase` / `updater.automaticallyDownloadsUpdates` / `fraction: nil`，且**不含** `fraction: 0`；`driverDidFindUpdate` 那一处同样必须是 `nil` |
+| `下载开始的delegate选择器真的被导出了` | `responds(to:)` 问**运行时**（拼错只出 warning，编译照过） |
+| `百分比未知与零是两种状态` | 两者**不相等**；`rowState` 不把 `nil` 折成 `0`；`shouldPublishProgress(from: nil, …)` 恒为真 |
+| `未知百分比那一态不画进度条也不给取消` | 读视图源码：`case .downloading` 那一支必须 `if let fraction`；`else` 那一半**不许**有 `progress:`、必须是 `EmptyView()`、且**说同一个文案键** |
+
+变异（`.build/probe/round32/mutate.py`，逐条还原 + 回读校验）：
+
+| 变异 | 改了什么 | 期望 | 实得 |
+|---|---|---|---|
+| M228 | 分流判据改成 `phase` 是 `.ready` | 红 | ✅ 红 |
+| M229 | 去掉「开关开着」这一半判据 | 红 | ✅ 红 |
+| M230 | 自动那条路的百分比猜成 `0` | 红 | ✅ 红 |
+| M231 | 「上一格未知」时反而不发进度 | 红 | ✅ 红 |
+| M232 | 视图删掉「百分比未知」那一支 | 红 | ✅ 红 |
+| M233 | 未知那一支给了「取消」按钮 | 红 | ✅ 红 |
+| M234 | 选择器少一个字母（only warning） | 红 | ✅ 红（两条） |
+| M235 | 「开关开着 + 手动检查」那条路的百分比猜成 `0` | 红 | ✅ 红 |
+| M236 | **只改一句日志文案**（不该误报） | 绿 | ✅ 绿 |
+
+顺带：上一轮那条 `appcast条目的翻译只有一处` 在这次实现**中途报了一次红**
+（`appcastItem:` 构造点从 2 处变 3 处）—— 而真因是我在 `willDownloadUpdate` 里设了
+`pendingUpdate`，**那条路上没有人读它**（不弹窗 ⇒ 没有 `alertReply`）⇒ 是死状态。
+**删掉那个赋值**比把守卫的数字改成 3 更正确（数字型的锚会让人只去改大它，
+那时它就再也不是判据了）。
+
+### §8.81.7 本轮明确**没**守的（记下来，不是「忘了」）
+
+1. **没有真机复验**（新开第 30 行 —— 见 §8.42.2）。「`willDownloadUpdate` 在自动那条路上会到」
+   目前靠**源码的调用点**证明（`SPUAutomaticUpdateDriver.m:95` → `SPUCoreBasedUpdateDriver.m:136`），
+   **没有**把应用跑起来看那一态真的出现。上一次真机（§8.80）验的是**同一条路的终点**
+   （`willInstallUpdateOnQuit` → `.ready`），所以「这条路会跑」是验过的，
+   但「**中间那一格**真的被设置了」没有。要验它得在真机上开着设置面板等后台检查，再截图那一格。
+2. **走查图没有 `fraction: nil` 那一格**（新开第 29 行）：`SettingsLayoutTests` /
+   `SnapshotRenderTests` 的状态清单没动，于是走查图看不出「无进度条」这一版长什么样。
+3. `didDownloadUpdate` → `willInstallUpdateOnQuit` 之间（解压 + 验签）**仍然不单独成态**：
+   设计稿在这段只承诺一句话，且它是秒级的 —— 与 `driverDidFinishDownload` 的处理一致。
+4. 「信息类更新 / 大版本 / 验签失败」那条子分支**没实测**：它按源码应当转给 UI，
+   但本环境构造不出这种 appcast 条目。
+
+### §8.81.8 门槛与改动（2026-09-19 23:10）
+
+三道门槛（`PREFLIGHT_FAIL_TAIL=0 DISABLE_SANDBOX=1 ./scripts/preflight.sh --with-tests`）：
+构建（`-warnings-as-errors`）✓ / `swift-format lint --strict` ✓ / 测试与覆盖率 ✓。
+
+| 文件 | 改动 |
+|---|---|
+| `Sources/Services/UpdateController.swift` | 新增 `updater(_:willDownloadUpdate:with:)`（自动那条路上「后台下载中」的唯一来源）；`UpdatePhase.downloading` 的百分比 `Double` → **`Double?`**（`nil` = 无从得知）；`shouldPublishProgress` 接受 `Double?`；`driverDidFindUpdate` 的自动分支改成 `nil`；订正 `willInstallUpdateOnQuit` 那段「中间那段画不出来」的结论（连「为什么漏」一起写下来） |
+| `Sources/Views/SettingsView.swift` | `.downloading` 那一支按 `fraction` 分岔：有值画进度条 + 「取消」；`nil` 只有那句话 + `EmptyView()` |
+| `Tests/DiskEjectorAppTests/UpdateSettingsTests.swift` | 新增 4 条守卫（25 → **29** 条）；新增 `caseBlock(_:in:)` 辅助（取 `switch` 里某一个 `case` 的整段） |
+| `DiskEjector-UI-Design/v2/screens/08-update.html` | **B 段新增 3b 一帧**（自动那条路的外观）；C 段第 3、7 行订正；D 段那条整段改写（「画不出来」→「画得出来，但不带百分比」） |
+| `DiskEjector-UI-Design/v2/DESIGN-SPEC.md` | 新增 §8.81；关掉「仍开着」表第 28 行、新开第 29/30/31 行；刷新核对时刻与表末那段 |
+| `scripts/coverage.sh` | **修一个「门槛本身是假的」的 bug**（§8.81.9）：原来用 `find -print -quit` 取 profdata，稳定取到陈旧的那份 ⇒ 覆盖率被系统性低估且零警告 |
+
+### §8.81.9 覆盖率掉了 0.33pp —— 归因，以及**修掉一个「门槛本身是假的」的 bug**（2026-09-19 23:40 补记）
+
+门槛三道全过（构建 ✓ / `swift-format --strict` ✓ / 测试与覆盖率 ✓，412 个测试）。
+覆盖率 **64.05%**（门槛 40%）。上一轮是 64.38% ⇒ **−0.33pp**。按规矩归因，
+**不看百分比，看绝对值**：
+
+| | 基线（`ba8e48b`） | 改后 | Δ |
+|---|---|---|---|
+| 总行数 | 1811 | 1822 | **+11** |
+| 未覆盖行 | 645 | 655 | **+10** |
+| **覆盖行** | **1166** | **1167** | **+1** |
+
+⇒ **不是丢了覆盖，是分母涨了**（新增 11 行里 10 行没被测到）。
+
+**哪 10 行**（`llvm-cov show` 逐行，不是猜）：
+
+- `UpdateController.swift:425` `guard let old else { return true }` → **7 次命中** ✅
+  （`shouldPublishProgress(from: nil, …)` 那条守的是它）
+- `UpdateController.swift:654/655/656` → **0 命中** ❌ —— 就是新增的
+  `updater(_:willDownloadUpdate:with:)` 整个方法（含跨行签名的那几行）
+
+**为什么它测不到**：它是 `SPUUpdaterDelegate` 回调，调用需要一个**真的 `SPUUpdater`
+实例**，而测试里 `SPUUpdater(` 出现 **0 次** —— 于是既有手段只有两条：
+`responds(to:)` 问**运行时**（选择器拼错即红）+ 读源码钉判据文本。
+
+⚠️ **这不是本轮新引入的债**，这一点是实测出来的，不是推断：既有的
+`failedToDownloadUpdate`（594 行）与 `willInstallUpdateOnQuit`（712–720 行）
+**同样全部 0 命中**。`willDownloadUpdate` 只是进了同一个坑 —— 已登记为**第 31 行**。
+
+**顺带挖出一个更要紧的问题：门槛读的可能是假数据。**
+
+`coverage.sh` 原来写的是 `find .build -name 'default.profdata' -print -quit`
+（取 find 返回的**第一份**）。而 `.build/` 里同时存在**三份** —— 其中两份是
+2026-09-18 的覆盖率取证探针留在 `.build/cov-forensics/{now,base}/` 里的。
+`find` 的返回顺序**稳定** ⇒ 门槛**一直**在读那一份陈旧的：
+
+- 行数 / 未覆盖行数来自**二进制** ⇒ 这部分是准的；
+- 但**命中计数**来自那份陈旧 profdata ⇒ 它里面没有的函数被读成 0 命中
+  ⇒ **覆盖率被系统性低估，而输出看起来完全正常**。
+
+实测（同一份二进制，只换 profdata）：新鲜报 **64.38%**，陈旧那份报 **63.61%**
+—— **差 0.77pp，零警告**。也就是说：本轮门槛先报的那个「63.06%」里，
+有相当一部分是**陈旧数据的产物**，不是真实变化。
+
+修法两条，且都带自证：
+
+1. 取**最新改动**的那份（`swift test --enable-code-coverage` 刚刚写过它），不再取「第一份」；
+2. **自证一**：打印用的是哪一份（路径 + 时间）——「读到了陈旧数据」与「覆盖率真的掉了」
+   在报告里**逐字相同**，不打印下一次的人根本无从分辨；
+   **自证二**：profdata 必须**不比二进制旧**（正常顺序是「先构建、再跑、最后写 profdata」），
+   更旧就直接红 —— 宁可红，也不要给一个看起来正常的假数字。
+
+> 这条与 §8.81 的主题无关，但它是**本轮归因时才暴露的**：
+> 「覆盖率掉了」这个信号本身可信与否，取决于门槛读的是哪份数据 ——
+> **在怀疑被测对象之前，先怀疑量它的尺子。**
 
 ---
 

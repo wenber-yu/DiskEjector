@@ -66,11 +66,34 @@ sed 's/^/     /' "$TEST_LOG" | tail -3
 # `-111`（"三个执行位都要有"）语义清晰且被所有版本接受。
 # 这个 `-perm` 不只是过滤可执行文件：`.dSYM` 子目录也嵌在 `Contents/MacOS/` 下，
 # 不加它会把 DWARF 调试文件当成测试二进制。
-PROFDATA="$(find .build -name 'default.profdata' -print -quit 2>/dev/null || true)"
+#
+# ⚠️ **2026-09-19 修**：这里原来写的是 `-print -quit`（取 find 返回的第一份）。
+# `.build/` 里可能同时存在**多份** `default.profdata` —— 例如某个覆盖率取证探针留下的
+# `.build/cov-forensics/{now,base}/default.profdata`。而 find 的返回顺序是**稳定**的，
+# 于是门槛会**一直**读那一份陈旧的：
+#   - 行数 / 未覆盖行数来自**二进制**（这部分是准的）；
+#   - 但**命中计数**来自那份陈旧 profdata ⇒ 它里面没有的函数被读成 0 命中
+#     ⇒ **覆盖率被系统性低估**，而输出看起来完全正常。
+# 实测（同一份二进制）：新鲜 profdata 报 64.38%，陈旧那份报 63.61% —— **差 0.77pp、零警告**。
+# 修法：取**最新改动**的那一份（`swift test --enable-code-coverage` 刚刚写过它）。
+PROFDATA="$(find .build -name 'default.profdata' -print0 2>/dev/null \
+    | xargs -0 ls -t 2>/dev/null | head -1)"
 BINARY="$(find .build -path '*PackageTests.xctest/Contents/MacOS/*' -type f -perm -111 -print -quit 2>/dev/null || true)"
 
 if [[ -z "$PROFDATA" || -z "$BINARY" ]]; then
     echo "✗ 找不到覆盖率产物（profdata='$PROFDATA', binary='$BINARY'）" >&2
+    exit 1
+fi
+
+# **自证一：打印用的是哪一份。** 「读到了陈旧数据」与「覆盖率真的掉了」在报告里
+# 逐字相同 —— 不打印路径，下一次的人根本无从分辨。
+echo "   覆盖率数据：${PROFDATA#$PWD/}（$(date -r "$PROFDATA" '+%Y-%m-%d %H:%M:%S')）"
+
+# **自证二：profdata 必须不比二进制旧。** `swift test` 的顺序是「先构建、再跑、最后写
+# profdata」，所以正常情况 profdata 一定更新。若它更旧，说明读到了上一次（或某个探针）
+# 留下的东西 —— 这时候下面所有数字都是假的，宁可红。
+if [[ "$PROFDATA" -ot "$BINARY" ]]; then
+    echo "✗ 覆盖率数据（${PROFDATA#$PWD/}）比测试二进制还旧 —— 读到了陈旧数据，数字不可信" >&2
     exit 1
 fi
 

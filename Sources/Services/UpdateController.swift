@@ -18,7 +18,15 @@ enum UpdatePhase: Equatable {
     /// 发现新版本，等用户决定（弹窗开着，或用户按了 Esc 之后留在设置行上）。
     case found(version: String)
     /// 正在后台下载。
-    case downloading(version: String, fraction: Double)
+    ///
+    /// `fraction` 为 `nil` 表示**百分比无从得知**，与 `0` 是**两种不同的状态**：
+    /// 「自动更新」开着时走的那条路（`SPUAutomaticUpdateDriver`）不提供任何进度回调，
+    /// 所以只能知道「在下载」而不知道「下了多少」（§8.81）。
+    ///
+    /// **为什么要分成两种**：画一条停在 0% 的进度条比不画更让人怀疑 —— 用户会盯着
+    /// 那个 0% 判断「是不是卡住了」。设计稿 B3 那句「百分比是真的，ETA 是编的」
+    /// 反过来就是这一条：**不知道就别猜**。
+    case downloading(version: String, fraction: Double?)
     /// 下载并校验完成，等重启安装。
     case ready(version: String)
     /// 下载失败。
@@ -335,8 +343,8 @@ final class UpdateController: NSObject, ObservableObject {
         case skipped(version: String)
         /// 发现了新版本，等用户决定。
         case found(version: String, lastCheck: Date?)
-        /// 正在后台下载。
-        case downloading(version: String, fraction: Double)
+        /// 正在后台下载。`fraction` 为 `nil` = 百分比无从得知（见 ``UpdatePhase/downloading(version:fraction:)``）。
+        case downloading(version: String, fraction: Double?)
         /// 已下载完成，等重启安装。
         case ready(version: String)
         /// 下载失败。
@@ -409,8 +417,13 @@ final class UpdateController: NSObject, ObservableObject {
     ///
     /// 抽成纯函数是为了能断言它（「42.1% → 42.9% 不该发」这种边界，
     /// 在真机上根本构造不出来）。
-    nonisolated static func shouldPublishProgress(from old: Double, to new: Double) -> Bool {
-        Int(old * 100) != Int(new * 100)
+    ///
+    /// `old` 为 `nil`（上一格还不知道百分比）时**一定发**：那正是「第一次拿到进度」这一刻，
+    /// 同时是「进度条该出现了」这一刻 —— 不发的话进度条永远不出现（自动更新那条路
+    /// 进来时就是 `nil`，见 §8.81）。
+    nonisolated static func shouldPublishProgress(from old: Double?, to new: Double) -> Bool {
+        guard let old else { return true }
+        return Int(old * 100) != Int(new * 100)
     }
 
     /// 这次报错该不该算成「下载失败」。
@@ -455,7 +468,11 @@ extension UpdateController {
         alertReply = reply
         if autoDownloads {
             // 设计稿：「开着的时候用户什么都不用做，这正是『后台更新』这个词的含义」。
-            phase = .downloading(version: update.version, fraction: 0)
+            //
+            // `fraction: nil` 而不是 `0`：**这一刻下载还没开始**，百分比无从得知。
+            // 进度会由 `driverDidStartDownload`（`showDownloadInitiated` 那条）补上 ——
+            // 而 `shouldPublishProgress(from: nil, …)` 恒为真，所以第一格一定发得出去。
+            phase = .downloading(version: update.version, fraction: nil)
             return false
         }
         phase = .found(version: update.version)
@@ -469,6 +486,9 @@ extension UpdateController {
     }
 
     /// 下载进度。
+    ///
+    /// **这一刻也是进度条第一次出现的那一刻**：`fraction` 从 `nil`（百分比未知）
+    /// 变成具体数值，设置行才开始画进度条（见 ``shouldPublishProgress(from:to:)``）。
     func driverDidUpdateProgress(_ fraction: Double) {
         guard case .downloading(let version, let old) = phase else { return }
         guard Self.shouldPublishProgress(from: old, to: fraction) else { return }
@@ -576,6 +596,66 @@ extension UpdateController: SPUUpdaterDelegate {
         driverDidFailDownload(version: item.displayVersionString)
     }
 
+    /// 下载**即将开始** —— 自动更新那条路上「后台下载中」那一态的唯一来源（2026-09-19，§8.81）。
+    ///
+    /// ## 这条为什么能到、而 user driver 那两条到不了
+    ///
+    /// 它由 `SPUCoreBasedUpdateDriver.m:136` 发出，而**两条路都经过那个类**：
+    /// 自动那条是 `SPUAutomaticUpdateDriver` 自己调
+    /// `[_coreDriver downloadUpdateFromAppcastItem:…]`（`SPUAutomaticUpdateDriver.m:95`），
+    /// 弹窗那条也走同一个下载器。所以它**不是**自动那条路专有的 ——
+    /// 下面那个守卫才是真正的分流判据。
+    ///
+    /// ## 判据：为什么是「user driver 到现在一声没吭」，而不是「有没有后台检查过」
+    ///
+    /// 顺序是**确定的**，而且是**两条路共同的顺序**：
+    ///
+    /// 1. `SPUBasicUpdateDriver.m:164` 发 `didFindValidUpdate`（delegate）；
+    /// 2. 紧接着 `:168` 才把「找到更新」交给驱动 —— **弹窗那条**于是进
+    ///    `SPUUIBasedUpdateDriver`，`showUpdateFound`（`:244`）把 `phase` 设成非 `.idle`；
+    /// 3. 下载开始时 `willDownloadUpdate`（delegate，`SPUCoreBasedUpdateDriver.m:136`）
+    ///    **早于** user driver 的 `showDownloadInitiated`（`:359`）。
+    ///
+    /// ⇒ 走到这里 `phase` 还是 `.idle`，**只可能**是「user driver 一条回调都没来过」，
+    /// 也就是自动那条路。反过来，弹窗那条路上 `phase` 早已不是 `.idle`。
+    ///
+    /// **为什么不另存一个「这次是后台检查」的位**：那是「手动开关」，会与真实情况脱节
+    /// （用户可能在检查途中关掉开关）。能派生就别用「手动开关」
+    /// —— 同 ``isDownloadFailure(phase:)`` 那条判据。
+    ///
+    /// ## 为什么还要判开关
+    ///
+    /// `phase == .idle` 只说「没人说过话」，没说「我们正要静默下载」。而这一态要表达的
+    /// 正是「**自动下载**正在进行」，所以补上 `updater.automaticallyDownloadsUpdates` ——
+    /// 与 `SPUUpdater.m:622` 选驱动时用的是**同一个属性**（那行还要求
+    /// `!installerIsRunning && _resumableUpdate == nil`，但那两条不成立时根本不会有下载，
+    /// 所以这里不必重复）。
+    ///
+    /// ## 为什么只接这一条，不接 `didDownloadUpdate` / `willExtractUpdate` / …
+    ///
+    /// 那几条**在自动那条路上同样会到**（同一个类发的），但它们**不会改变行态**：
+    /// 设计稿在这一段只承诺「正在后台下载」一句，到 `willInstallUpdateOnQuit` 才变「已就绪」。
+    /// 接了却什么都不做 = 死代码（同 §8.47.6 的教训：**有定义、没消费者**的东西
+    /// 在界面上与「已经支持了」长得一模一样）。
+    ///
+    /// ⚠️ **这一态里百分比是 `nil`，不是 `0`**：这条路**没有任何进度回调**
+    /// （`showDownloadDidReceiveData` 全库只有 `SPUUIBasedUpdateDriver.m:369` 一个调用方）。
+    /// 画一条停在 0% 的进度条，用户会盯着它判断「是不是卡住了」。
+    ///
+    /// ⚠️ **这里故意不设 `pendingUpdate`**：那条路**不会弹窗**（没有 `alertReply`），
+    /// 而 `pendingUpdate` 的消费者只有弹窗与 `driverDidFailDownload` 的兜底版本号 ——
+    /// 后者本来就会拿到 `item.displayVersionString`。设了却没人读，就是死状态
+    /// （同 §8.47.6：**有生产者、没消费者**的东西在界面上与「已经支持了」长得一样）。
+    func updater(
+        _ updater: SPUUpdater,
+        willDownloadUpdate item: SUAppcastItem,
+        with request: NSMutableURLRequest
+    ) {
+        guard case .idle = phase, updater.automaticallyDownloadsUpdates else { return }
+        Self.logger.info("自动更新开始后台下载：\(item.displayVersionString, privacy: .public)")
+        phase = .downloading(version: item.displayVersionString, fraction: nil)
+    }
+
     /// 「更新已下载完成，等退出时安装」—— **自动更新开着时，应用侧唯一会到的落点**。
     ///
     /// ## 为什么必须实现它（2026-09-19，SPEC §8.80）
@@ -614,12 +694,17 @@ extension UpdateController: SPUUpdaterDelegate {
     /// 「立即重启」或退出应用。所以 `.ready` 那一态下设置行不再显示「检查更新」
     /// （改显示「立即重启」）—— 与弹窗那条路**同一套理由**，见 ``readyReply`` 的说明。
     ///
-    /// ## 这一态与「后台下载中」的关系
+    /// ## 这一态与「后台下载中」的关系（2026-09-19 订正）
     ///
-    /// 自动那条路上**没有**「后台下载中」：那条路既没有 `showDownloadInitiated`、
-    /// 也没有 `showDownloadDidReceiveData`，进度**无从得知**。所以应用侧是
-    /// 「从『已是最新』直接跳到『已就绪』」的。要如实画出中间那段，得先有一个
-    /// **不带百分比**的行态 —— 那是设计决策，已登记（§8.80.7）。
+    /// 这里原来写的是「自动那条路上**没有**『后台下载中』……应用侧是从『已是最新』
+    /// 直接跳到『已就绪』的」—— **只对了半句**。那条路确实**没有进度**
+    /// （`showDownloadDidReceiveData` 到不了），但「**下载开始了**」这件事有落点：
+    /// delegate 的 ``updater(_:willDownloadUpdate:with:)``。于是中间那段**画得出来**，
+    /// 只是不带百分比 —— 见 ``UpdatePhase/downloading(version:fraction:)`` 与 §8.81。
+    ///
+    /// ⚠️ 上一轮漏掉它的原因值得留着：当时只扫了「**user driver** 那四个回调的唯一调用方」，
+    /// 没扫「自动那条路会经过的类**还会发哪些 delegate 回调**」——
+    /// 于是把「**进度**到不了」读成了「**什么都**到不了」。
     func updater(
         _ updater: SPUUpdater,
         willInstallUpdateOnQuit item: SUAppcastItem,

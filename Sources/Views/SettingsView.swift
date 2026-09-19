@@ -529,10 +529,22 @@ struct SettingsSectionsColumn: View {
             ) { viewUpdateButton }
 
         case .downloading(let version, let fraction):
-            line(
-                label: String(format: L10n.tr(.updateDownloadingFormat), version),
-                progress: fraction
-            ) { cancelUpdateButton }
+            // `fraction == nil` = **百分比无从得知**（自动更新开着时那条路，§8.81）：
+            // 那条路既不提供进度、也不提供取消入口
+            // （`showDownloadInitiatedWithCancellation:` 由 `SPUUIBasedUpdateDriver` 发出，
+            // 而自动那条路不经过它）。所以这一态**不画进度条、也不给「取消」** ——
+            // 画一条停在 0% 的进度条、或给一个点了没反应的「取消」，
+            // 都比什么都不画更让人怀疑（设计稿 B3 那条「百分比是真的，ETA 是编的」）。
+            if let fraction {
+                line(
+                    label: String(format: L10n.tr(.updateDownloadingFormat), version),
+                    progress: fraction
+                ) { cancelUpdateButton }
+            } else {
+                line(label: String(format: L10n.tr(.updateDownloadingFormat), version)) {
+                    EmptyView()
+                }
+            }
 
         case .ready(let version):
             line(

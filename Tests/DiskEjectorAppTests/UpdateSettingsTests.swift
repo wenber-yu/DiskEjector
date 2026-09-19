@@ -60,6 +60,23 @@ struct UpdateSettingsTests {
             .joined(separator: "\n")
     }
 
+    /// 取 `switch` 里某一个 `case` 的整段（到下一个**同缩进**的 `case` 之前）。
+    ///
+    /// **为什么需要它**：`updateCheckLine` 那七个分支写在同一个 `switch` 里，
+    /// 对整份 `SettingsView.swift` 做 `contains` 的话，断言会被**另一个分支**满足
+    /// —— 与 `functionBody` 那条理由一样：要钉的是「这一段里有什么」。
+    ///
+    /// ⚠️ 缩进敏感（`case` 固定 8 空格）。缩进被改时它会**找不到**并报红，
+    /// 而不是静默变绿 —— 这正是想要的（同 §8.80.9：口径失效必须是红的）。
+    private func caseBlock(_ header: String, in source: String) throws -> String {
+        let start = try #require(
+            source.range(of: header),
+            "找不到 \(header) —— 改了 case 的写法就要同步这条断言")
+        let rest = source[start.upperBound...]
+        let end = rest.range(of: "\n        case ")?.lowerBound ?? rest.endIndex
+        return String(rest[rest.startIndex..<end])
+    }
+
     // MARK: - 「检查更新」行的状态
 
     /// **优先级**：进行中的态 > 跳过 > 已是最新 > 从未检查。
@@ -538,6 +555,150 @@ struct UpdateSettingsTests {
             \(handWritten.map { "\($0.file): \($0.snippet)" }.joined(separator: "\n"))
             """
         )
+    }
+
+    // MARK: - 自动那条路的「下载中」：唯一来源是 delegate（§8.81）
+
+    /// 自动那条路上「后台下载中」那一态只能由 delegate 的 `willDownloadUpdate` 设。
+    ///
+    /// 钉三件事：① 分流判据是 **`phase == .idle`**（= user driver 一声没吭 ⇒ 自动那条路，
+    /// 见 `UpdateController` 里那段顺序论证）；② 还要判**开关开着**；
+    /// ③ 百分比必须是 **`nil`**，不能猜成 `0` —— 那条路没有进度回调，
+    /// 画一条停在 0% 的进度条比不画更让人怀疑。
+    @Test func 自动那条路的下载开始也由delegate送达() throws {
+        let source = try contents("Sources/Services/UpdateController.swift")
+        let body = codeOnly(try functionBody("willDownloadUpdate item: SUAppcastItem,", in: source))
+
+        #expect(
+            body.contains("guard case .idle = phase"),
+            """
+            分流判据不见了。自动那条路上 user driver **一条回调都不发**（§8.80），
+            所以「`phase` 还是 `.idle`」就是「走的是自动那条路」——
+            换成别的判据（例如另存一个「这次是后台检查」的位）会与真实情况脱节。实得：
+            \(body)
+            """)
+        #expect(
+            body.contains("updater.automaticallyDownloadsUpdates"),
+            """
+            少了「开关开着」这一半：这一态要表达的是「**自动下载**正在进行」，
+            而 `phase == .idle` 只说「没人说过话」。判据要与 `SPUUpdater.m:622`
+            选驱动时用的是**同一个属性**。实得：
+            \(body)
+            """)
+        #expect(
+            body.contains("fraction: nil"),
+            """
+            百分比不是 `nil` 了。这条路**没有任何进度回调**
+            （`showDownloadDidReceiveData` 全库只有 `SPUUIBasedUpdateDriver.m:369` 一个调用方），
+            猜一个数字出来就是设计稿点名不许的「编出来的百分比」。实得：
+            \(body)
+            """)
+        #expect(
+            !body.contains("fraction: 0"),
+            """
+            百分比被写成了 `0` —— 那会让设置行画出一条**停在 0% 的进度条**，
+            用户会盯着它判断「是不是卡住了」。`nil`（不知道）与 `0`（真的一格都没下完）
+            必须是两种状态。实得：
+            \(body)
+            """)
+
+        // 同一判据也适用于「开关开着 + 用户手动点检查」那条路
+        // （`showUpdateFound` → `driverDidFindUpdate(autoDownloads: true)`）：
+        // **那一刻下载同样还没开始**，所以也必须是 `nil`；真进度由
+        // `driverDidStartDownload`（`showDownloadInitiated`）补上，
+        // 而 `shouldPublishProgress(from: nil, …)` 恒为真 ⇒ 第一格一定发得出去。
+        let foundBody = codeOnly(try functionBody("func driverDidFindUpdate(", in: source))
+        #expect(
+            foundBody.contains("fraction: nil"),
+            "「开关开着 + 手动检查」那条路把百分比猜成了别的值 —— 那一刻下载还没开始。实得：\n\(foundBody)")
+        #expect(
+            !foundBody.contains("fraction: 0"),
+            "「开关开着 + 手动检查」那条路又把百分比写成了 `0`（会画出一条停在 0% 的进度条）。实得：\n\(foundBody)")
+    }
+
+    /// `willDownloadUpdate` 的选择器必须与 ObjC 侧逐字对上。
+    ///
+    /// **与另两条同一个理由**（`failedToDownloadUpdate` / `willInstallUpdateOnQuit`）：
+    /// 拼错一个字母**编译照过、测试全绿、什么都不崩**，编译器只给一条
+    /// `nearly matches optional requirement` 的 warning —— 而 warning 在构建日志里
+    /// 和噪音没有区别。真正的后果是方法还在、却永远不会被调：
+    /// 与「这个方法根本没写」逐字相同（那条路于是又回到「设置行说已是最新」）。
+    @MainActor
+    @Test func 下载开始的delegate选择器真的被导出了() {
+        #expect(
+            UpdateController.shared.responds(
+                to: NSSelectorFromString("updater:willDownloadUpdate:withRequest:")),
+            """
+            UpdateController 没有导出 updater:willDownloadUpdate:withRequest: ——
+            选择器拼错时编译器只给 warning，运行期表现是「这一态永远不出现」。
+            """)
+    }
+
+    /// **「百分比未知」与「0%」必须是两种状态。**
+    ///
+    /// 这条是本轮的核心判据：两者如果相等，自动那条路就会画出停在 0% 的进度条 ——
+    /// 而那个 0% 是**编的**（设计稿 B3：「百分比是真的，ETA 是编的」的另一面）。
+    @Test func 百分比未知与零是两种状态() {
+        #expect(
+            UpdatePhase.downloading(version: "1.1.0", fraction: nil)
+                != .downloading(version: "1.1.0", fraction: 0),
+            "「不知道下了多少」与「一格都没下完」被当成同一态了 —— 界面于是只能画 0%")
+
+        // 行态原样透传，不把 `nil` 折成 `0`。
+        #expect(
+            UpdateController.rowState(
+                phase: .downloading(version: "1.1.0", fraction: nil),
+                skippedVersion: nil, lastCheck: nil)
+                == .downloading(version: "1.1.0", fraction: nil),
+            "`rowState` 把 `fraction: nil` 折成了别的值 —— 视图再也分不出「未知」")
+
+        // 第一格进度**一定**发得出去，否则进度条永远不出现
+        // （自动那条路进来时是 `nil`，下一格才是真数值）。
+        #expect(
+            UpdateController.shouldPublishProgress(from: nil, to: 0),
+            "从「未知」到 0% 被去重掉了 —— 进度条会一直不出现")
+        #expect(
+            UpdateController.shouldPublishProgress(from: nil, to: 0.42),
+            "从「未知」到 42% 被去重掉了")
+    }
+
+    /// 视图侧：百分比未知时**不画进度条、也不给「取消」**，且**说同一句话**。
+    ///
+    /// 为什么必须守这一段：`fraction` 变成可选之后，视图里只要漏掉那个分支，
+    /// 编译**照样过**（`if let` 少写一个 `else` 在 SwiftUI 里是合法的）——
+    /// 而后果是「自动那条路什么都不画」，与「那一态还没实现」逐字相同。
+    @Test func 未知百分比那一态不画进度条也不给取消() throws {
+        let source = try contents("Sources/Views/SettingsView.swift")
+        let block = codeOnly(
+            try caseBlock("case .downloading(let version, let fraction):", in: source))
+
+        #expect(
+            block.contains("if let fraction {"),
+            "`.downloading` 那一支没有按 `fraction` 分岔 —— 两种外观被画成一种。实得：\n\(block)")
+        #expect(
+            block.contains("progress: fraction"),
+            "有百分比时不画进度条了（手动检查那条路会看不到进度）。实得：\n\(block)")
+
+        // `else` 那一半：不许有进度条、不许有按钮。
+        let elsePart = block.components(separatedBy: "} else {").last ?? ""
+        #expect(
+            !elsePart.contains("progress:"),
+            """
+            百分比未知时仍然画了进度条 —— 它会停在 0%（`SettingsProgressLine` 收到 nil
+            是画不出来的，所以这一支根本不该有 `progress:`）。实得：
+            \(elsePart)
+            """)
+        #expect(
+            elsePart.contains("EmptyView()"),
+            """
+            百分比未知时给了按钮。那条路**不提供取消入口**
+            （`showDownloadInitiatedWithCancellation:` 由 `SPUUIBasedUpdateDriver` 发出），
+            给一个点了没反应的「取消」正是设计稿点名不许的。实得：
+            \(elsePart)
+            """)
+        #expect(
+            elsePart.contains("updateDownloadingFormat"),
+            "两种外观说的不是同一句话 —— 同一件事写在两处，迟早分叉。实得：\n\(elsePart)")
     }
 
     // MARK: - 语言
