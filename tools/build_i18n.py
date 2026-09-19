@@ -56,6 +56,13 @@ def md_bold(s):
     # ⚠️ 只动成对的 `**X**`；孤立的星号（产品名 `DiskEjector*` 之类的）保留。
     return re.sub(r'\*\*([^*]+)\*\*', r'<b>\1</b>', s)
 
+def nl2br(s):
+    # 值里的换行（`\n`）在 SwiftUI 里就是换行；但设计稿是 **innerHTML 回填**，
+    # HTML 会把裸 `\n` 折叠成一个空格 ⇒ 那一段会悄悄变成一行（§8.69.5）。
+    # ⚠️ 只改**生成物**：xcstrings / extra 里存的仍是 `\n`（App 侧照旧）。
+    return s.replace('\n', '<br>')
+
+
 def read_xcstrings():
     d = json.load(open(XCS, encoding='utf-8'))
     out = {}
@@ -66,7 +73,7 @@ def read_xcstrings():
             unit = (loc.get(src) or {}).get('stringUnit') or {}
             val = unit.get('value')
             if val:
-                row[code] = md_bold(val)
+                row[code] = nl2br(md_bold(val))
         if row:
             out[k] = row
     return out
@@ -80,7 +87,7 @@ def read_extra():
             continue
         assert isinstance(v, list) and len(v) == len(LANGS), \
             '%s 的值必须是 [%s] 三个一组的数组' % (k, ', '.join(c for c, _, _ in LANGS))
-        out[k] = {code: val for (code, _, _), val in zip(LANGS, v)}
+        out[k] = {code: nl2br(val) for (code, _, _), val in zip(LANGS, v)}
     return out
 
 

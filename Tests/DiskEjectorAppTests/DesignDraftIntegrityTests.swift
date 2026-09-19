@@ -751,7 +751,20 @@ struct DesignDraftIntegrityTests {
                     if let last = stack.indices.last { stack[last].descWired = stack[last].descWired || wired }
                     continue
                 }
-                if !selfClosing, !voids.contains(name), !name.isEmpty {
+                // ⚠️ 空元素**永不关闭** ⇒ 它不会走上面的「后代关闭时往上送」那条路，
+                // 标签名就**永远进不了**父元素的 `childTags` —— 必须当场送（首版整段跳过
+                // ⇒ `<br>` 从不参与判定：值里有 `<br>` 而源码没有也扫不出来，守卫 60 对
+                // 换行**完全失效**）。
+                // ⚠️ 只送**可能出现在文案值里**的那几个（`br`）：`voids` 里还有
+                // `path`/`circle` 这些内联 SVG 标签 —— 它们进 `childTags` 会让守卫 59
+                // 满屏假红（值里当然没有 `<path>`）。
+                if !selfClosing, voids.contains(name) {
+                    if let last = stack.indices.last, Self.allowedValueTags.contains(name) {
+                        stack[last].childTags.insert(name)
+                    }
+                    continue
+                }
+                if !selfClosing, !name.isEmpty {
                     var attrs: [String: String] = [:]
                     for pair in Self.attrPairs(in: inner) { attrs[pair.0] = pair.1 }
                     stack.append(Node(tag: name, attrs: attrs))
@@ -918,9 +931,10 @@ struct DesignDraftIntegrityTests {
 
     /// 已接线元素**内部的子标签**，语言包的值里必须也有 —— 否则回填时会被整块覆盖掉。
     ///
-    /// ⚠️ **只记录不报警**（§8.69.5）：修法（补结构进语言包 / 改回填机制 / 拆 DOM）
-    /// 是**设计决策**，本轮不擅改。这里先给一条**上限锚**钉住基线：不许再变多。
-    /// 实测：修好 `ds.js` 让 i18n 第一次真跑起来后，01-main-window 的图标 **23 → 15**、
+    /// 修法（§8.69.5 拍板）：`<i data-i>` 图标**拆成兄弟节点**（`<span data-i18n>` 只包文字），
+    /// `<b>` / `<br>` 这类**强调与换行补进语言包的值**。基线 35 处（2026-09-18 实测）
+    /// 已清零 ⇒ 从「只记录 + 上限锚」升级成**硬断言**。
+    /// 实测（修好 `ds.js` 让 i18n 第一次真跑起来后）：01-main-window 的图标 **23 → 15**、
     /// `<b>` **21 → 11**、按钮 **6 → 5**。
     @Test func 已接线元素里的子标签必须在语言包值里出现() throws {
         let dir = designRoot.appendingPathComponent("screens")
@@ -938,13 +952,69 @@ struct DesignDraftIntegrityTests {
                 rows.append("\(name)：\(key) → 值里没有 \(missing.joined(separator: "/"))")
             }
         }
-        print("  [设计稿] 接线元素内的子标签在值里缺失：\(rows.count) 处（只记录，待设计决策）")
-        for row in rows.prefix(8) { print("      \(row)") }
-        // 上限锚：**不许比基线更多** —— 新增接线时别再引入新的结构丢失。
-        // （基线 35 = 2026-09-18 实测；等 §8.69.5 的设计决策落地后改成 `isEmpty` 硬断言。）
+        // 锚：`childTags` 恒为空时这条守卫**也是绿的**（0 处）⇒ 必须证明它扫到了东西。
+        // 实测扫到的已接线元素 ≥ 150 个。
+        var scanned = 0
+        for name in try screenFiles() {
+            scanned +=
+                elementTexts(in: try read(dir.appendingPathComponent(name)))
+                .filter { $0.key != nil && zh[$0.key!] != nil }.count
+        }
+        #expect(scanned >= 150, "只扫到 \(scanned) 个已接线元素 —— 解析口径失效")
         #expect(
-            rows.count <= 35,
-            "缺失从基线 35 涨到了 \(rows.count) 处 —— 新接线又引入了结构丢失（§8.69.5）")
+            rows.isEmpty,
+            """
+            接线元素内的子标签在语言包的值里没有（\(rows.count) 处）：
+            \(rows.joined(separator: "\n  "))
+            回填是 `innerHTML = t(…)` **整块覆盖** ⇒ 值里没有的标签会被静默丢掉。
+            修法（§8.69.5）：图标拆成兄弟节点；`<b>`/`<br>` 补进语言包的值。
+            """)
+    }
+
+    /// 语言包**值里有**的标签，源码快照里必须也有 —— 守卫 59 的**反方向**。
+    ///
+    /// 源码快照是**中文兜底**：JS 没跑 / 语言包没加载时看到的就是它。值里有 `<b>` 而源码
+    /// 没有 ⇒ 加载前后**长得不一样**（加载前不粗、加载后变粗），而两边都没报错。
+    ///
+    /// ⚠️ 只有这个方向能抓到 `<bg>` 那类**笔误**：`<b>` 打成 `<bg>` 时浏览器把 `<bg>` 当
+    /// 未知元素照常渲染 ⇒ 页面**看不出来**；而 `</b>` 因为 `<bg>` 没闭合而永远不匹配，
+    /// `bg` 也就**永远传不到**父元素的 `childTags` ⇒ 守卫 59 同样是绿的。
+    /// 实测：`<bg>` 3 处（01 ×1、04 ×2），只有本条抓得到。
+    ///
+    /// ⚠️ 只比 **zh-Hans**：源码快照是中文，跟中文值比才有意义。别的语言值里多一个
+    /// `<b>` 是**加分**不是丢失（切过去不会少东西），由守卫 59 那一侧管。
+    @Test func 语言包值里的标签必须在源码快照里出现() throws {
+        let dir = designRoot.appendingPathComponent("screens")
+        guard let zh = try loadLanguagePack()["zh-Hans"] else {
+            Issue.record("语言包里没有 zh-Hans 列")
+            return
+        }
+        var rows: [String] = []
+        var tagged = 0
+        for name in try screenFiles() {
+            for element in elementTexts(in: try read(dir.appendingPathComponent(name))) {
+                guard let key = element.key, let value = zh[key] else { continue }
+                let valueTags = Set(tags(in: value).map { $0.name })
+                    .intersection(Self.allowedValueTags)
+                guard !valueTags.isEmpty else { continue }
+                // 锚：**值里带标签**的元素得有一批 —— 否则「0 处」只是「一条都没比」。
+                // ⚠️ 另一个隐形前提是 `<br>` 这类**空元素**的标签也进得了 `childTags`：
+                // 空元素永不关闭，不走「后代关闭时往上送」那条路（实测 M108 证明）。
+                tagged += 1
+                let missing = valueTags.subtracting(element.childTags).sorted()
+                guard !missing.isEmpty else { continue }
+                rows.append("\(name)：\(key) → 源码快照里没有 \(missing.joined(separator: "/"))")
+            }
+        }
+        #expect(tagged >= 5, "值里带标签的已接线元素只有 \(tagged) 个 —— 解析口径失效")
+        #expect(
+            rows.isEmpty,
+            """
+            语言包的值里有、但源码快照里没有的标签（\(rows.count) 处）：
+            \(rows.joined(separator: "\n  "))
+            源码快照是**中文兜底**（JS 没跑时看到的就是它）⇒ 两边必须长得一样。
+            要么把标签补进源码快照，要么别把它写进值（§8.69.5）。
+            """)
     }
 
     /// 取 `ds.js` 里 `t(…)` **调用**的两个实参（排除 `function t(lang, key)` 这个定义）。

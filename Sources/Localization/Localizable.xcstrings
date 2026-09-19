@@ -948,9 +948,9 @@
     },
     "fdaBannerLead" : {
       "localizations" : {
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "需要「完全磁盘访问」才能看到是谁占用了磁盘" } },
-        "en" : { "stringUnit" : { "state" : "translated", "value" : "Full Disk Access is needed to see what's using a disk" } },
-        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "需要「完全磁碟存取權」才能看到是誰佔用了磁碟" } }
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "需要「完全磁盘访问」才能看到**是谁占用了磁盘**" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Full Disk Access is needed to see **what's using a disk**" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "需要「完全磁碟存取權」才能看到**是誰佔用了磁碟**" } }
       }
     },
     "fdaGrantedBanner" : {

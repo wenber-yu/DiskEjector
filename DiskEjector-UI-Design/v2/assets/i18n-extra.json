@@ -87,19 +87,19 @@
     "6 台"
   ],
   "ds.sample.cap.usedFreeA": [
-    "已用 300 GB · 剩余 700 GB",
-    "300 GB used · 700 GB free",
-    "已用 300 GB · 剩餘 700 GB"
+    "已用 <b>300 GB</b> · 剩余 <b>700 GB</b>",
+    "<b>300 GB</b> used · <b>700 GB</b> free",
+    "已用 <b>300 GB</b> · 剩餘 <b>700 GB</b>"
   ],
   "ds.sample.cap.usedFreeB": [
-    "已用 120 GB · 剩余 380 GB",
-    "120 GB used · 380 GB free",
-    "已用 120 GB · 剩餘 380 GB"
+    "已用 <b>120 GB</b> · 剩余 <b>380 GB</b>",
+    "<b>120 GB</b> used · <b>380 GB</b> free",
+    "已用 <b>120 GB</b> · 剩餘 <b>380 GB</b>"
   ],
   "ds.sample.cap.usedFreeC": [
-    "已用 1.4 TB · 剩余 600 GB",
-    "1.4 TB used · 600 GB free",
-    "已用 1.4 TB · 剩餘 600 GB"
+    "已用 <b>1.4 TB</b> · 剩余 <b>600 GB</b>",
+    "<b>1.4 TB</b> used · <b>600 GB</b> free",
+    "已用 <b>1.4 TB</b> · 剩餘 <b>600 GB</b>"
   ],
   "ds.sample.cap.compactA": [
     "1 TB · 已用 300 GB · 剩余 700 GB",
@@ -187,14 +187,14 @@
     "插入行動硬碟或 USB 隨身碟後，會自動出現在這裡"
   ],
   "ds.empty.hintLong": [
-    "插入移动硬盘或 U 盘后，会自动出现在这里。 系统盘与网络卷不会被列出。",
-    "Plug in a drive or USB stick and it shows up here. Startup disks and network volumes aren’t listed.",
-    "插入行動硬碟或 USB 隨身碟後，會自動出現在這裡。系統碟與網路磁碟區不會被列出。"
+    "插入移动硬盘或 U 盘后，会自动出现在这里。<br>系统盘与网络卷不会被列出。",
+    "Plug in a drive or USB stick and it shows up here.<br>Startup disks and network volumes aren’t listed.",
+    "插入行動硬碟或 USB 隨身碟後，會自動出現在這裡。<br>系統碟與網路磁碟區不會被列出。"
   ],
   "ds.onboarding.notListed": [
-    "若不在列表中，点左下角 ＋ 从「应用程序」添加",
-    "If it’s not listed, click ＋ at the bottom left and add it from Applications",
-    "若不在清單中，點左下角 ＋ 從「應用程式」加入"
+    "若不在列表中，点左下角",
+    "If it’s not listed, click",
+    "若不在清單中，點左下角"
   ],
   "ds.loginItem.awaiting": [
     "等待系统批准",
@@ -240,5 +240,10 @@
     "将在重启后切换为 English",
     "Will switch to English after restart",
     "將在重新啟動後切換為 English"
+  ],
+  "ds.onboarding.notListedTail": [
+    "从「应用程序」添加",
+    "at the bottom left and add it from Applications",
+    "從「應用程式」加入"
   ]
 }
