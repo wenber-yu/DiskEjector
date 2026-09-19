@@ -311,9 +311,50 @@
         </ul>
         <ul class="note-list" data-page-node-id="mLLLYSAkDl4hOWipHmkTWl">
           <li data-page-node-id="Sj3997HISoZyEJI6KuKCii"><b data-page-node-id="3zZjDxiKGQ9zr7fCdNXPSA">琥珀只表示「被占用」，红色只表示「破坏性」。</b>磁盘快写满、容量告警等其他语义
-            一律不使用这两种颜色，避免同一颜色在同一界面里承担两种含义。</li>
+            一律不使用这两种颜色，避免同一颜色在同一界面里承担两种含义。
+            <br><b>唯一例外（2026-09-19 拍板）：容量条用量 ≥ 90%（<code>.meter--high</code>）。</b>
+            这里复用同一支暖色只为提醒「快满」，<b>不改变语义</b> —— 不参与「能否推出」的判定，
+            也不表示「被占用」。阈值 0.9 的可视依据见本节 <b>E · 容量条用量三档</b>。</li>
         </ul>
       </div>
+    </div>
+  </div>
+
+  <!-- ===================== E. 容量条用量三档 ===================== -->
+  <!-- ⚠️ `data-meter-high` 是**手写的机器可读声明**（同 `data-theme` / `data-accent-btn` 那一类），
+       给 `MeterThresholdParityTests` 读：实现侧 `DesignTokens.Threshold.meterHigh` 必须等于它。
+       改这里的数就同时改了「设计稿的阈值」——下面那三根条与正文里的百分比都要跟着改。 -->
+  <div class="doc__section" data-meter-high="0.9">
+    <h2 class="doc__h2">E · 容量条用量三档 <em>Thresholds</em></h2>
+    <p class="doc__h2desc">
+      容量条只有<b>一档</b>视觉变化：用量 ≥ 90% 时切琥珀（<code>.meter--high</code>）。
+      这一档的<b>可视依据</b>就在下面这三根条上 —— <b>70% 不亮、95% 亮</b>，中间没有别的档位。
+      阈值本身声明在<b>本节根节点</b>上（<code>data-meter-high</code>），
+      实现侧的同源常量是 <code>DesignTokens.Threshold.meterHigh</code> ——
+      <b>这两处由 CI 盯着，别只改一边</b>。
+    </p>
+
+    <div class="panel">
+      <div style="display:flex;flex-direction:column;gap:14px;max-width:340px">
+        <div class="meter">
+          <div class="meter__track"><div class="meter__fill" style="width:30%"></div></div>
+          <span class="meter__pct">30%</span>
+        </div>
+        <div class="meter">
+          <div class="meter__track"><div class="meter__fill" style="width:70%"></div></div>
+          <span class="meter__pct">70%</span>
+        </div>
+        <div class="meter meter--high">
+          <div class="meter__track"><div class="meter__fill" style="width:95%"></div></div>
+          <span class="meter__pct">95%</span>
+        </div>
+      </div>
+
+      <ul class="note-list" style="margin-top:16px">
+        <li><b>30% / 70%：常态。</b>填充用当前强调色，百分比数字用次级文字色 —— 三档里只有最下面那根不同。</li>
+        <li><b>95%：切琥珀。</b>填充 <code>var(--warn)</code>、百分比数字 <code>var(--warn-text)</code>（<code>ds.css</code> 的 <code>.meter--high</code>）。这是「琥珀只表示被占用」的<b>唯一例外</b>，且<b>不改变语义</b> —— 它不参与「能否推出」的判定，见 D 节那条硬规则。</li>
+        <li><b>阈值为什么是 90 而不是 80。</b>70% 之后还有一段正常使用区间（系统更新、临时文件），过早变琥珀会让这个颜色退化成「常态噪声」；到 90% 时剩余空间已经装不下一次大更新，才值得提醒。</li>
+      </ul>
     </div>
   </div>
 

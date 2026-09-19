@@ -690,8 +690,11 @@ struct ProcessChipOverflow: View {
 //
 // 设计稿 `.meter`：轨道高 5 全圆角，右侧百分比**固定宽 34** —— 固定宽才能让
 // 多行磁盘的百分比数字纵向对齐（数字用 `tabular-nums` 等宽）。
-// 用量超过 90% 时切琥珀（`.meter--high`），但**不改变语义**：琥珀仍只表示「被占用」，
-// 这里只是复用同一支暖色表达「注意」，不参与「能否推出」的判定。
+// 用量达到 ``DesignTokens/Threshold/meterHigh``（90%）时切琥珀（`.meter--high`），
+// 但**不改变语义**：琥珀仍只表示「被占用」，这里只是复用同一支暖色表达「注意」，
+// 不参与「能否推出」的判定。
+// ⚠️ 设计稿 `06-states.html` D 节写着「琥珀只表示被占用」，并把这一处列为**唯一例外**
+// —— 改动这一档之前先读那一节（两边是配套的：一边是规则，一边是例外）。
 
 struct StorageMeter: View {
     let ratio: Double
@@ -699,17 +702,17 @@ struct StorageMeter: View {
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    /// 高用量阈值。
+    /// 这一档的用量算不算「高」。
     ///
-    /// ⚠️ **2026-09-18 实扫：`.meter--high` 这条规则在设计稿里是「有定义、没元素用」**
-    /// （`ds.css` 定义了它，但 9 个 HTML 里**没有一个**元素带这个类），
-    /// 而且设计稿里**所有容量条的样本都不到 90%**（实测最高 70%）——
-    /// 也就是说 **`0.9` 这个阈值在设计稿里没有可视依据**，目前它是实现侧自己定的数。
-    /// 原先这里写「（设计稿 `.meter--high`）」，读的人会以为设计稿画过这一态 —— **没有**。
-    /// 要给它一个出处，得先在设计稿的状态矩阵里补一个 ≥90% 的样本（已登记为待办）。
-    private let highThreshold = 0.9
-
-    private var isHigh: Bool { ratio >= highThreshold }
+    /// **阈值与判定都在 ``DesignTokens/Threshold``**，出处是设计稿 `06-states.html` 的
+    /// `E · 容量条用量三档`（`data-meter-high="0.9"` + 30/70/95 三根条）。
+    ///
+    /// ⚠️ 这里**不写数字、也不写比较符**：原先这里是 `private let highThreshold = 0.9`
+    /// 加一句 `ratio >= highThreshold` —— 注释还写着「设计稿 `.meter--high`」，而
+    /// 2026-09-18 实扫发现设计稿里**一根 ≥90% 的条都没有**，那句注释是假的（§8.52.4）；
+    /// 而且比较符落在视图里，`>=` 与 `>` 的差别**只有渲染才测得到**。
+    /// 现在值由 `MeterThresholdParityTests` 双向盯着，等号由 ``DesignTokens/Threshold/meterIsHigh(_:)`` 自己承担。
+    private var isHigh: Bool { DesignTokens.Threshold.meterIsHigh(ratio) }
 
     var body: some View {
         HStack(spacing: DesignTokens.Spacing.sm) {
