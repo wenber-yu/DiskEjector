@@ -376,6 +376,50 @@ struct UpdateSettingsTests {
         )
     }
 
+    /// 钉 `failedToDownloadUpdate` 方法体的关键副作用（§8.84）。
+    ///
+    /// **为什么**：上一条钉的是 user driver 那条路（`showUpdaterError`），
+    /// 这一条钉 **delegate 那条路**（`failedToDownloadUpdate`）。
+    /// 两条路**谁先到**是 §8.47.6 的「未核实」项 —— 钉住任意一条**不等于**钉住另一条：
+    /// 「只钉 user driver」⇒ 真机只走 delegate 那条路的话**又没生产者**，
+    /// 「只钉 delegate」⇒ 同理。两条都接、且都钉，才不依赖那个假设。
+    ///
+    /// ⚠️ 这条**没有行为测试**（§8.83.4 第 33 行）：需要构造 `SPUUpdater` 实例，
+    /// 项目里 0 处构造。能做的只有**源码文本守卫** —— 即 §8.83.4 第三选项
+    /// 「**承认做不了**而把现有监督守得更严」。变异验证见 §8.84.2。
+    @Test func failedToDownloadUpdate必须真的接通delegate那条路() throws {
+        let source = try contents("Sources/Services/UpdateController.swift")
+        let body = codeOnly(
+            try functionBody(
+                "func updater(_ updater: SPUUpdater, failedToDownloadUpdate item: SUAppcastItem, error: Error)",
+                in: source))
+
+        #expect(
+            body.contains("driverDidFailDownload(version: item.displayVersionString)"),
+            """
+            `failedToDownloadUpdate` 没有把下载失败传到 `.failed` 那一态。
+            delegate 那条路如果真到了（§8.47.6「未核实」），**这一态就画不出来**，
+            表现与「没实现这个钩子」逐字相同。实得：
+            \(body)
+            """)
+        #expect(
+            body.contains("Self.logger.error"),
+            """
+            error 被吞了 —— 用户不知道为什么失败，「重试」按钮按下去还是会失败。
+            `error` 进来**就该往日志里写**。实得：
+            \(body)
+            """)
+        // 防一种绕过：把整个方法体 catch 起来静默掉。
+        // （`SPUUpdaterDelegate` 直接传 `Error`，不抛，不需要 catch —— 加 catch
+        // 是想吞掉，那一律不准。）
+        #expect(
+            !body.contains("catch"),
+            """
+            delegate 直接拿 `Error`，不该自己 try/catch 吞掉。实得：
+            \(body)
+            """)
+    }
+
     /// **选择器签名要与 ObjC 侧逐字对上，而写错只出 warning、不会编译失败。**
     ///
     /// `SPUUpdaterDelegate` 的方法是 `@objc optional`：签名差一个词（比如把
