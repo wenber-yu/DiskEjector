@@ -480,11 +480,12 @@ enum DesignTokens {
         /// `MenuDiskRowLayoutTests/三种行的琥珀条各用自己那组的规格` 钉住（量像素）。
         static let rowBusyBarWidth: CGFloat = 3
         static let rowBusyBarInset: CGFloat = 10
-        /// ⚠️ **2.5 落不了地**：2026-09-18 把 `BusyBar` 的修饰符链原样搬到隔离容器实测，
-        /// `.frame(width: 2.5)` 在行首（x 为整数）渲染出来是 **3.0pt**（6px）——
-        /// 与 2.6 / 3.0 / 3.4 逐像素相同（2.4 → 2.0、5.0 → 5.0）。机制未核实。
-        /// 也就是说菜单行的琥珀条**实际就是 3pt**，与另外两种行一样宽；
-        /// 这里保留 2.5 是为了记住设计稿的原值，别把它当成「实现已经做到 2.5」。
+        /// ✅ **2.5 现在落得了地**（2026-09-20，§8.87）。
+        /// 之前落不了：2026-09-18 实测 `.frame(width: 2.5)` 渲染成 **3.0pt**（6px），
+        /// 与 2.6 / 3.0 / 3.4 逐像素相同。机制**已核实** —— SwiftUI 传给 `path(in:)` 的
+        /// `rect` **已经被对齐到整点**，所以「用 `rect.width` 画」的形状只能落整点宽。
+        /// `BusyBarShape` 改成用自己的 `width` 属性（绝对坐标）后，2.5pt 就落下来了
+        /// （菜单行实测 5px = 2.5pt，由 `三种行的琥珀条各用自己那组的规格` 双侧钉住）。
         static let menuBusyBarWidth: CGFloat = 2.5
         static let menuBusyBarInset: CGFloat = 7
         static let compactBusyBarWidth: CGFloat = 3

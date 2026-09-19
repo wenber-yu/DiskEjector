@@ -29,23 +29,64 @@ import SwiftUI
 // 琥珀条的左端会缩进行内 1.5pt，与行的左边缘之间露出一小段背景色 ——
 // 3pt 宽的东西上这点差异在 2x 屏上就是 3 个物理像素的缺口，放大看很明显。
 
+/// 琥珀条的形状：**只圆右端**，且**宽度走自己的属性，不用 `path(in:)` 给的那个 `rect.width`**。
+///
+/// ## 为什么必须自己画（2026-09-20，SPEC §8.87）
+///
+/// 之前用 `UnevenRoundedRectangle` —— 而它**渲染不出 2.5pt**：2x 实测
+/// `.frame(width: 2.5)` 一律渲染成 **3.0pt（6px）**，2.4 → 2.0pt、5.0 → 5.0pt。
+/// ⚠️ **与圆角无关**：无圆角的 `Rectangle` 同样落 3.0pt（排除「圆角放不下被撑开」这个猜想）。
+///
+/// **机制（实测确立，不是猜）**：SwiftUI 传给 `path(in:)` 的 `rect` **已经被对齐到整点**，
+/// 于是**任何「用 `rect.width` 画」的形状都只能落整点宽** —— 自定义 `Shape` 也一样。
+/// ⇒ 只要 path 用**绝对坐标**（这里就是 `self.width`），小数宽度就落得下来。
+///
+/// 另一条能落 2.5pt 的路是 `scaleEffect(x: 0.5)`（画 5pt 再缩一半）—— **没用它**：
+/// 那会把右端圆角压成**椭圆**（x 半径 2 / y 半径 4），与设计稿 `0 2px 2px 0` 的**圆**角不符。
+private struct BusyBarShape: Shape {
+    let width: CGFloat
+    let radius: CGFloat
+
+    func path(in rect: CGRect) -> Path {
+        let w = width
+        let h = rect.height
+        let r = min(radius, w, h / 2)
+        var p = Path()
+        p.move(to: CGPoint(x: 0, y: 0))
+        p.addLine(to: CGPoint(x: w - r, y: 0))
+        p.addArc(
+            center: CGPoint(x: w - r, y: r),
+            radius: r,
+            startAngle: .degrees(-90),
+            endAngle: .degrees(0),
+            clockwise: false)
+        p.addLine(to: CGPoint(x: w, y: h - r))
+        p.addArc(
+            center: CGPoint(x: w - r, y: h - r),
+            radius: r,
+            startAngle: .degrees(0),
+            endAngle: .degrees(90),
+            clockwise: false)
+        p.addLine(to: CGPoint(x: 0, y: h))
+        p.closeSubpath()
+        return p
+    }
+}
+
 /// 被占用行左侧的琥珀判定条。只圆右端，左端贴齐行的左边缘。
+///
+/// 宽与上下内缩由调用方给（三种行各有自己的一组 `*BusyBar*` 令牌）。
+/// 形状本身见 ``BusyBarShape`` —— 那里解释了为什么不能用现成的圆角矩形。
 private struct BusyBar: View {
     let width: CGFloat
     let verticalInset: CGFloat
 
     var body: some View {
-        UnevenRoundedRectangle(
-            topLeadingRadius: 0,
-            bottomLeadingRadius: 0,
-            bottomTrailingRadius: DesignTokens.Size.busyBarRadius,
-            topTrailingRadius: DesignTokens.Size.busyBarRadius,
-            style: .continuous
-        )
-        .fill(DesignTokens.Palette.warning)
-        .frame(width: width)
-        .padding(.vertical, verticalInset)
-        .accessibilityHidden(true)
+        BusyBarShape(width: width, radius: DesignTokens.Size.busyBarRadius)
+            .fill(DesignTokens.Palette.warning)
+            .frame(width: width)
+            .padding(.vertical, verticalInset)
+            .accessibilityHidden(true)
     }
 }
 

@@ -508,21 +508,20 @@ struct MenuDiskRowLayoutTests {
     /// 错的是「哪一行用了它」。所以这里**量像素**，且期望值取**设计稿的字面值** ——
     /// 令牌被改坏时这条也会红。
     ///
-    /// ## ⚠️ 宽度那一轴只能守上限（实测：2.5pt 落不了地）
+    /// ## 宽度那一轴现在两侧都守（2026-09-20 修正，§8.87）
     ///
-    /// 把 `BusyBar` 的修饰符链原样搬到隔离容器里实测（2026-09-18，2x、浅色、行首对齐）：
+    /// 之前只守上限，因为**当时 2.5pt 真的落不了地**：把 `BusyBar` 的修饰符链原样搬到
+    /// 隔离容器里实测（2026-09-18，2x、浅色、行首对齐），老的 `UnevenRoundedRectangle`
+    /// 画法是 2.4→2.0pt、**2.5→3.0pt**、2.6/3.0/3.4→3.0pt、5.0→5.0pt。
     ///
-    /// | `.frame(width:)` | 渲染出的琥珀宽 |
-    /// |---|---|
-    /// | 2.4 | 2.0pt（4px） |
-    /// | **2.5** | **3.0pt（6px）** |
-    /// | 2.6 / 3.0 / 3.4 | 3.0pt（6px） |
-    /// | 5.0 | 5.0pt（10px） |
+    /// **机制已实测确立**：SwiftUI 传给 `path(in:)` 的 `rect` **已经被对齐到整点**，
+    /// 于是「用 `rect.width` 画」的形状一律只能落整点宽（与圆角无关 —— 无圆角 `Rectangle`
+    /// 同样落 3.0pt）。`BusyBarShape` 因此**不用 `rect.width`、改用自己的 `width` 属性**
+    /// （绝对坐标），2.5pt 就落得下来了。
     ///
-    /// 也就是说**菜单行的 2.5pt 在这条画法下渲染成 3.0pt** —— 与完整行、紧凑行的 3pt
-    /// **逐像素相同**。机制未核实（怀疑是形状 rect 被对齐到整点），但结论是硬的：
-    /// 宽度这一轴在 0.5pt 的尺度上**不可观测**，所以这里只守「不比设计稿宽出 0.5pt 以上」
-    /// （能抓住「接成 5pt」这类粗错）。**能守的是内缩** —— 见下面的段长断言。
+    /// ⇒ 宽度轴**重新可观测**，守卫改成双侧、容差半个物理像素（0.25pt）。
+    /// **这条有变异测试背书**：把 `BusyBarShape` 改回用 `rect.width`，实测回到 3.0pt、本条变红。
+    /// 段长（内缩）那条照旧 —— 见下面。
     @Test func 三种行的琥珀条各用自己那组的规格() {
         let busy = OccupancyResult.occupied(sampleProcesses)
         let cases: [(tag: String, view: AnyView, width: CGFloat, barWidth: CGFloat, inset: CGFloat)] = [
@@ -537,11 +536,17 @@ struct MenuDiskRowLayoutTests {
                 )
                 continue
             }
+            // ⚠️ **两侧都守**，容差「半个物理像素」（2x 下 0.25pt）。
+            // 之前只守上限（`<= 规定 + 0.5`），而 `UnevenRoundedRectangle` 把 2.5pt
+            // 渲染成 3.0pt 时 **照样绿** —— 那版守卫对这次的偏差是没牙的（§8.87）。
+            // 容差不能再松：3.0 与 2.5 差 0.5pt，松到 0.5 就又分不开了。
             #expect(
-                m.barWidth <= c.barWidth + 0.5,
+                abs(m.barWidth - c.barWidth) <= 0.26,
                 """
                 \(c.tag)的琥珀条宽实测 \(m.barWidth)pt，设计稿规定 \(c.barWidth)pt —— \
-                多半是接错了另一组 `*BusyBar*` 令牌（三组：3/10、3/8、2.5/7）。
+                多半是接错了另一组 `*BusyBar*` 令牌（三组：3/10、3/8、2.5/7）；\
+                若实测是 \(c.barWidth.rounded(.up))pt 而规定是 \(c.barWidth)pt，\
+                则是形状又把小数宽对齐到整点了（见 `BusyBarShape` 的文档）。
                 """
             )
             let expected = m.rowHeight - 2 * c.inset
