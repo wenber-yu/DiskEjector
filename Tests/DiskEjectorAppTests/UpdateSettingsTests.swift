@@ -368,6 +368,178 @@ struct UpdateSettingsTests {
         )
     }
 
+    // MARK: - 自动更新那条路：唯一的落点是 delegate（§8.80）
+
+    /// **自动更新开着时，user driver 一个回调都收不到** —— 于是 delegate 的
+    /// `willInstallUpdateOnQuit` 是那条路上**唯一**的落点。
+    ///
+    /// 2026-09-19 读 Sparkle 源码确认（§8.80）：`SPUUpdater.m:622` 在
+    /// `automaticallyDownloadsUpdates == YES` 时选 `SPUAutomaticUpdateDriver`，
+    /// 而它**不经过** `SPUUIBasedUpdateDriver` —— 后者是 `showUpdateFound` /
+    /// `showDownloadInitiated` / `showDownloadDidReceiveData` /
+    /// `showReadyToInstallAndRelaunch` 这四个回调在全库**唯一**的调用方
+    /// （`SPUUIBasedUpdateDriver.m:244/359/369/420`）。
+    ///
+    /// 不实现这个钩子的话，自动那条路上 `phase` 会一直停在 `.idle`，设置行于是显示
+    /// 「已是最新版本 · 上次检查：…」—— **而新版本其实已经下载好、正等着退出时装**。
+    /// 这正是设计稿 C 段开头那条自洽性判据要防的反例（它只防了「已是最新 + 弹窗」）。
+    ///
+    /// 这条读源码（同 `下载失败必须真的接到界面那一态` 的理由：接线断掉**不会编译失败、
+    /// 不会崩、也不会有别的断言变红**，只有真机等一整天再退出才看得出来）。
+    @Test func 自动更新那条路唯一的落点是delegate() throws {
+        let source = try contents("Sources/Services/UpdateController.swift")
+        let body = codeOnly(
+            try functionBody("willInstallUpdateOnQuit item: SUAppcastItem,", in: source))
+
+        #expect(
+            body.contains("driverIsReady(version:"),
+            """
+            willInstallUpdateOnQuit 没有把状态推进到「已就绪」。
+            自动那条路上这是**唯一**会到的落点 —— 不推进的话设置行会一直显示
+            「已是最新版本」，而更新其实已经下载好、正等着退出时装。
+            """
+        )
+        #expect(
+            body.contains("PendingUpdate(appcastItem: item)"),
+            "必须把条目翻成 PendingUpdate —— 否则「已就绪」只有版本号，行上的说明是空的"
+        )
+        #expect(
+            body.contains("immediateInstallHandler()"),
+            """
+            拿到 immediateInstallationBlock 却没调它 —— 那设置行的「立即重启」
+            就是个点了没反应的按钮（设计稿点名不许：「先画上『后台更新并重启』再补实现，
+            用户会点到一个什么都不做的按钮」）。
+            """
+        )
+        #expect(
+            body.contains("return true"),
+            """
+            willInstallUpdateOnQuit 必须返回 true。
+            返回 false 时 Sparkle 会 abortUpdate，而 immediateInstallationBlock
+            **只在返回 true 时才可用**（`SPUUpdaterDelegate.h:437`）——
+            界面上于是留下一个永远点不动的「立即重启」。
+            """
+        )
+        #expect(
+            !body.contains("return false"),
+            "这条路上没有该返回 false 的分支 —— 见上一条说明。"
+        )
+    }
+
+    /// **选择器要与 ObjC 侧逐字对上** —— 差一个词只出 warning、不会编译失败。
+    ///
+    /// 与 `下载失败的delegate选择器真的被导出了` 同一条判据、同一个理由：
+    /// `@objc optional` 的方法拼错时，编译器只给一条
+    /// `nearly matches optional requirement` 的 warning，而 warning 在构建日志里
+    /// 与噪音没有区别。后果是方法还在、却**永远不会被调**：与「根本没写」逐字相同。
+    /// 用 `responds(to:)` 问运行时，而不是读源码猜。
+    @MainActor
+    @Test func 退出时安装的delegate选择器真的被导出了() {
+        #expect(
+            UpdateController.shared.responds(
+                to: NSSelectorFromString("updater:willInstallUpdateOnQuit:immediateInstallationBlock:")),
+            """
+            UpdateController 没有导出 updater:willInstallUpdateOnQuit:immediateInstallationBlock:。
+            多半是签名与 SPUUpdaterDelegate 对不上了（少一个词、参数类型不精确）——
+            这种错**不会编译失败**，只会让方法静默不被调用。
+            而它是自动更新开着时**唯一**会到的落点：不导出 ⇒ 设置行永远显示「已是最新版本」。
+            """
+        )
+    }
+
+    /// 「立即重启」把控制交回**那条路给的东西**，而且**只交一次**。
+    ///
+    /// 自动那条路交回的是 `immediateInstallationBlock`（`() -> Void`），弹窗那条交回的是
+    /// `.install` choice —— 两条路共用 `installReadyUpdate()` 一处实现（见 `readyReply`）。
+    /// 这条从外部驱动：`driverIsReady` 是内部方法，传一个计数闭包进去，
+    /// 看它会不会被调、被调几次。
+    ///
+    /// **整段是同步的、且都在主 actor 上**（没有 `await` ⇒ 不会与别的用例交错），
+    /// 结束时立刻还原成 `.idle` —— `rowState` 读 `phase`，留着会污染别的断言。
+    @MainActor
+    @Test func 立即重启把控制交回那个闭包且只交一次() {
+        let controller = UpdateController.shared
+        defer { controller.driverDidReset() }
+
+        var calls = 0
+        controller.driverIsReady(version: "1.1.0") { _ in calls += 1 }
+        #expect(controller.phase == .ready(version: "1.1.0"))
+
+        controller.installReadyUpdate()
+        #expect(
+            calls == 1,
+            "「立即重启」必须真的把控制交回去 —— 自动那条路交回的就是 immediateInstallationBlock"
+        )
+
+        controller.installReadyUpdate()
+        #expect(calls == 1, "第二次点不该重复回答：回答前必须清空 readyReply")
+    }
+
+    /// `SUAppcastItem` → `PendingUpdate` 的翻译**只有一处**。
+    ///
+    /// 同一个条目会从**两条路**到达应用：user driver 的 `showUpdateFound`（弹窗那条）
+    /// 与 delegate 的 `willInstallUpdateOnQuit`（自动那条）。两处各写一遍的话，
+    /// 「显示版本号 / 体积 / 更新条目」这些字段迟早会在两条路上不一致 ——
+    /// 而两条路各画各的，**没有任何东西会红**：用户看到的只是「自动更新时弹窗里少了体积」
+    /// 这种没人会去比对的现象。
+    ///
+    /// ⚠️ **例外只有一处、且必须登记**：`DiskEjectorApp.swift` 里 `--preview-update` 的
+    /// 样本是**逐个字段手写**的 —— 它**故意**不来自 appcast，因为走查图要与设计稿并排比，
+    /// 样本必须逐字取自设计稿 A 段。这条断言把它钉成**唯一的**例外：
+    /// 再冒出一处手写构造就红。
+    @Test func appcast条目的翻译只有一处() throws {
+        let sourcesRoot = repoRoot.appendingPathComponent("Sources")
+        guard
+            let walker = FileManager.default.enumerator(
+                at: sourcesRoot, includingPropertiesForKeys: nil)
+        else {
+            Issue.record("枚举不到 \(sourcesRoot.path)")
+            return
+        }
+
+        var fileCount = 0
+        var hits: [(file: String, snippet: String)] = []
+        for case let url as URL in walker where url.pathExtension == "swift" {
+            fileCount += 1
+            let lines = codeOnly(try String(contentsOf: url, encoding: .utf8))
+                .split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+            for (index, line) in lines.enumerated() where line.contains("PendingUpdate(") {
+                // 连取后两行：构造点的实参常写在下一行（`--preview-update` 那处就是），
+                // 只留一行的话看不出它到底传了什么。
+                let snippet = lines[index..<min(index + 3, lines.count)]
+                    .map { $0.trimmingCharacters(in: .whitespaces) }
+                    .joined(separator: " ⏎ ")
+                hits.append((url.lastPathComponent, snippet))
+            }
+        }
+
+        // 范围锚：路径写错时 fileCount 会掉到 0，下面的断言于是变成空转（假绿）。
+        #expect(fileCount >= 30, "只扫到 \(fileCount) 个 .swift —— 路径错了（假绿）")
+
+        let fromAppcast = hits.filter { $0.snippet.contains("appcastItem:") }
+        let handWritten = hits.filter { !$0.snippet.contains("appcastItem:") }
+
+        #expect(
+            fromAppcast.count == 2,
+            """
+            从 appcast 条目构造 PendingUpdate 的地方有 \(fromAppcast.count) 处（期望 2）。
+            两条路（user driver 的 showUpdateFound / delegate 的 willInstallUpdateOnQuit）
+            必须都走 `PendingUpdate(appcastItem:)`，否则字段会静默分叉。实得：
+            \(hits.map { "\($0.file): \($0.snippet)" }.joined(separator: "\n"))
+            """
+        )
+        #expect(
+            handWritten.count == 1 && handWritten[0].file == "DiskEjectorApp.swift"
+                && handWritten[0].snippet.contains("version: \"1.1.0\""),
+            """
+            逐个字段手写 PendingUpdate 的地方不是「--preview-update 的设计稿样本」那一处。
+            从 appcast 来的数据一律走 PendingUpdate(appcastItem:)；那个样本是**故意**手写的
+            （走查图要与设计稿并排比，样本必须逐字取自设计稿 A 段）。实得：
+            \(handWritten.map { "\($0.file): \($0.snippet)" }.joined(separator: "\n"))
+            """
+        )
+    }
+
     // MARK: - 语言
 
     /// 「待重启」判定：**只看「选的语言」与「生效的语言」是否相同**。

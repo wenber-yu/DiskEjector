@@ -46,6 +46,32 @@ struct PendingUpdate: Equatable {
     let notes: [String]
 }
 
+extension PendingUpdate {
+
+    /// 从 Sparkle 的 appcast 条目翻译过来。
+    ///
+    /// **只有这一处知道怎么翻译**：同一个 `SUAppcastItem` 会从**两条不同的路**到达应用 ——
+    ///
+    /// - 弹窗那条：user driver 的 ``UpdateUserDriver/showUpdateFound(with:state:reply:)``；
+    /// - 自动那条（`SUAutomaticallyUpdate` 开着 + 后台检查）：delegate 的
+    ///   ``UpdateController/updater(_:willInstallUpdateOnQuit:immediateInstallationBlock:)``。
+    ///   那条路**一个 user driver 回调都不发**，所以 delegate 是它唯一的入口（见 §8.80）。
+    ///
+    /// 两处各写一遍的话，「显示版本号 / 体积 / 更新条目」这些字段迟早会在两条路上不一致
+    /// —— 而**没有任何东西会红**：两条路各画各的，用户看到的只是「自动更新时弹窗里少了体积」
+    /// 这种没人会去比对的现象。
+    init(appcastItem: SUAppcastItem) {
+        self.init(
+            version: appcastItem.displayVersionString,
+            newBuild: appcastItem.versionString,
+            currentVersion: AppVersionInfo.shortVersion() ?? L10n.tr(.updateUnknownVersion),
+            currentBuild: AppVersionInfo.build(),
+            date: appcastItem.dateString,
+            sizeBytes: appcastItem.contentLength,
+            notes: UpdateReleaseNotes.lines(fromHTML: appcastItem.itemDescription))
+    }
+}
+
 /// Sparkle 自更新的**唯一持有者**。
 ///
 /// ## 为什么单开一个类，不塞进 `UpdateService`
@@ -106,6 +132,15 @@ final class UpdateController: NSObject, ObservableObject {
     /// 而攥着 reply 就等于会话没结束。所以处于「已就绪」时点「检查更新」是**没有反应**的 ——
     /// 这就是为什么这一态下设置行不再显示「检查更新」按钮（改显示「立即重启」），
     /// 否则就会出现「按钮点了没反应，而用户无从分辨原因」。
+    ///
+    /// ## 两个来源，两种形状（2026-09-19）
+    ///
+    /// - **弹窗那条**：`showReady` 给的 `(SPUUserUpdateChoice) -> Void`，答 `.install`。
+    /// - **自动那条**：`updater(_:willInstallUpdateOnQuit:immediateInstallationBlock:)`
+    ///   给的 `() -> Void`，包成 `{ _ in block() }` —— 那个 block 就是「现在装」。
+    ///
+    /// 两者都塞进这一个字段，是为了让「立即重启」只有 `installReadyUpdate()` **一处实现**
+    /// （两条路各写一份的话，「回答前先清空」这类细节迟早只在一条路上生效）。
     private var readyReply: ((SPUUserUpdateChoice) -> Void)?
 
     /// 「发现新版本」时弹窗要回答的那个 reply。
@@ -200,7 +235,11 @@ final class UpdateController: NSObject, ObservableObject {
         Task { await showUpdateAlertIfNeeded() }
     }
 
-    /// 「立即重启」：回答 Sparkle 的 `.install`，它会装完并重新拉起应用。
+    /// 「立即重启」：把控制交回 Sparkle 让它**现在就装**，装完重新拉起应用。
+    ///
+    /// 两条路共用这一处（见 ``readyReply``）：弹窗那条回答 `.install`，
+    /// 自动那条调用 `immediateInstallationBlock`。**回答之前先清空**，
+    /// 否则第二次点会重复回答同一个 reply。
     func installReadyUpdate() {
         guard let reply = readyReply else { return }
         readyReply = nil
@@ -259,10 +298,18 @@ final class UpdateController: NSObject, ObservableObject {
         set { settings.automaticallyDownloadsUpdates = newValue }
     }
 
-    /// 宿主是否**允许**自动更新（未正确签名时为 `false`）。
+    /// 宿主是否**允许**自动更新（为 `false` 时开关应当禁用）。
     ///
-    /// 为 `false` 时开关应当禁用并说明原因，而不是让用户开了一个永远不生效的开关
-    /// （判据同登录项第三态：**「设了没生效」和「功能坏了」在界面上不能长得一样**）。
+    /// ⚠️ **2026-09-19 订正**：这里原来写的是「未正确签名时为 `false`」—— **没有这回事**。
+    /// `SPUUpdaterSettings.m:314-317` 算的是
+    /// `allowsAutomaticUpdatesOption ?? automaticallyChecksForUpdates`，而前者读的是
+    /// Info.plist 里的 `SUAllowsAutomaticUpdates`（`SPUUpdaterSettings.h:54` 也这么写）。
+    /// **与代码签名、与卷的读写权限都无关**（在 Sparkle 2.10.0 里搜不到任何这类判断）。
+    ///
+    /// 对本应用来说 `SUAllowsAutomaticUpdates` 没写 ⇒ 这一项**恒等于
+    /// `automaticallyChecksForUpdates`**，也就是「自动检查」开着时它必然为真。
+    /// 保留这个计算属性仍然有意义：它是**设计稿 B 段那个开关的禁用条件**，
+    /// 而「设了没生效」和「功能坏了」在界面上不能长得一样（判据同登录项第三态）。
     var allowsAutomaticUpdates: Bool { settings.allowsAutomaticUpdates }
 
     /// 上次检查的时间（设置行里显示「上次检查：…」用；未启动时为 `nil`）。
@@ -496,6 +543,9 @@ extension UpdateController {
 //
 // `SPUUpdaterDelegate` 在头文件里标了 `NS_SWIFT_UI_ACTOR`，所以它到 Swift 侧就是
 // `@MainActor` 协议 —— 这个类本身也是 `@MainActor`，实现起来不需要跳线程。
+//
+// ⚠️ 但这里**不全是兜底**：`willInstallUpdateOnQuit` 在自动更新开着时是**唯一**会到的落点
+// （那条路一个 user driver 回调都不发）。两者的区别见它自己的说明。
 
 extension UpdateController: SPUUpdaterDelegate {
 
@@ -524,5 +574,63 @@ extension UpdateController: SPUUpdaterDelegate {
     func updater(_ updater: SPUUpdater, failedToDownloadUpdate item: SUAppcastItem, error: Error) {
         Self.logger.error("下载失败：\(error.localizedDescription, privacy: .public)")
         driverDidFailDownload(version: item.displayVersionString)
+    }
+
+    /// 「更新已下载完成，等退出时安装」—— **自动更新开着时，应用侧唯一会到的落点**。
+    ///
+    /// ## 为什么必须实现它（2026-09-19，SPEC §8.80）
+    ///
+    /// 自动更新开着时，`SPUUpdater` 会选 `SPUAutomaticUpdateDriver`（`SPUUpdater.m:622`），
+    /// 而它**一个 user driver 回调都不发**：`SPUAutomaticUpdateDriver.m:42` 那句
+    /// 「The user driver is only used for a termination callback」是**字面意思** ——
+    /// 全文只在初始化时给 `_userDriver` 赋了值，**再没读过**；而
+    /// `showUpdateFound` / `showDownloadInitiated` / `showDownloadDidReceiveData` /
+    /// `showReadyToInstallAndRelaunch` 这四个回调在全库里**只有
+    /// `SPUUIBasedUpdateDriver.m` 一个调用方**（`:244` / `:359` / `:369` / `:420`），
+    /// 自动那条路不经过它。
+    ///
+    /// ⇒ 不实现这个方法的话，整条自动路径上应用侧**收不到任何回调**：`phase` 停在 `.idle`，
+    /// 设置行于是显示「已是最新版本 · 上次检查：…」——**而新版本其实已经下载好、
+    /// 正等着退出时装**。这正是设计稿 C 段开头那条自洽性判据要防的反例
+    /// （它只防了「设置里写着已是最新、却弹了更新窗」，漏了「已是最新 + 已下载待装」）。
+    ///
+    /// ## 为什么返回 `true`
+    ///
+    /// 返回 `true` = 「这次安装由我们接管」：Sparkle **不结束**这一轮更新周期
+    /// （`SPUAutomaticUpdateDriver.m:104-129` 只在返回 `NO` 时才 `abortUpdate`），
+    /// 并把 `immediateInstallationBlock` 交给我们 —— 它就是设置行「立即重启」的实现。
+    /// 返回 `NO` 的话那个 block **不可用**（`SPUUpdaterDelegate.h:437` 写明
+    /// 「This handler can only be used if `YES` is returned」），界面上于是会出现一个
+    /// 点了没反应的「立即重启」—— 正是设计稿点名不许的那种按钮
+    /// （「先画上『后台更新并重启』再补实现，用户会点到一个什么都不做的按钮」）。
+    ///
+    /// ⚠️ **不牺牲「退出时装」**：`SPUUpdaterDelegate.h:433` 在两种返回值下都写着
+    /// 「Sparkle will always attempt to install the update when the app terminates」，
+    /// 而机制在**安装器工具自己**那边（`AppInstaller.m:392-412` 盯着目标进程退出后接着装）。
+    /// 这一条**已真机复验**（§8.80.4：新代码 + 旧版本号打包 → 退出后版本真的变了）——
+    /// 因为「库的注释不算证据」这条判据同样适用于**有利**的那句注释。
+    ///
+    /// ⚠️ **代价**：这一轮周期会一直开着（`sessionInProgress == YES`），直到用户点
+    /// 「立即重启」或退出应用。所以 `.ready` 那一态下设置行不再显示「检查更新」
+    /// （改显示「立即重启」）—— 与弹窗那条路**同一套理由**，见 ``readyReply`` 的说明。
+    ///
+    /// ## 这一态与「后台下载中」的关系
+    ///
+    /// 自动那条路上**没有**「后台下载中」：那条路既没有 `showDownloadInitiated`、
+    /// 也没有 `showDownloadDidReceiveData`，进度**无从得知**。所以应用侧是
+    /// 「从『已是最新』直接跳到『已就绪』」的。要如实画出中间那段，得先有一个
+    /// **不带百分比**的行态 —— 那是设计决策，已登记（§8.80.7）。
+    func updater(
+        _ updater: SPUUpdater,
+        willInstallUpdateOnQuit item: SUAppcastItem,
+        immediateInstallationBlock immediateInstallHandler: @escaping () -> Void
+    ) -> Bool {
+        Self.logger.info("自动更新已就绪（等退出时装）：\(item.displayVersionString, privacy: .public)")
+        pendingUpdate = PendingUpdate(appcastItem: item)
+        // 把 block 包成与 `showReady` 那条路**同一个** reply 形状 ——
+        // 于是两条路的「立即重启」共用 `installReadyUpdate()` 一处实现，
+        // 不会出现「自动那条路的立即重启忘了清 readyReply」这种只在一条路上发生的漏。
+        driverIsReady(version: item.displayVersionString) { _ in immediateInstallHandler() }
+        return true
     }
 }

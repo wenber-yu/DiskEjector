@@ -367,7 +367,9 @@
             <td><b>有新版本 · 自动更新开</b></td>
             <td>检查到更高版本</td>
             <td><b>不弹</b>（这就是开关的意义）</td>
-            <td>直接进入「后台下载中」</td>
+            <td><b>应用侧收不到任何回调</b> —— 这条走 <code>SPUAutomaticUpdateDriver</code>，
+              它不回调 user driver，所以<b>没有「下载中」那一段</b>；
+              下载完成后由 delegate 的钩子<b>直接进入「已就绪」</b>（见下方说明）</td>
           </tr>
           <tr>
             <td><b>有新版本 · 自动更新关</b></td>
@@ -389,13 +391,15 @@
           </tr>
           <tr>
             <td><b>后台下载中</b></td>
-            <td>自动更新开，或点了「后台更新并重启」</td>
+            <td>点了「后台更新并重启」，或<b>开着开关时手动点「检查更新」</b>
+              <br>（<b>不含</b>「自动更新开」—— 那条路上没有进度回调，见下方说明）</td>
             <td>不弹（弹窗已关）</td>
             <td>行内进度条 + 百分比 + 「取消」</td>
           </tr>
           <tr>
             <td><b>已就绪</b></td>
-            <td>下载并校验签名完成</td>
+            <td>下载并校验签名完成（自动那条路由 delegate 的
+              <code>willInstallUpdateOnQuit</code> 送达 —— 它一到达就已经是这一步了）</td>
             <td>不弹</td>
             <td><code>1.1.0 已下载完成</code> + 「立即重启」</td>
           </tr>
@@ -471,6 +475,20 @@
             <code>LocalizationCatalogTests/已删除的AppStore渠道文案不再存在</code> 反查两条文案键 ——
             谁加回来谁红。删掉而不是「留作防御」的理由：防御的前提是那条路<b>可能存在</b>，
             而 MAS 渠道已经不存在了。</li>
+          <li><b>「自动更新」开着时，中间那一段「后台下载中」<u>画不出来</u>（2026-09-19 定案）。</b>
+            Sparkle 在自动下载那条路上选的是 <code>SPUAutomaticUpdateDriver</code>，而它
+            <b>一个 user driver 回调都不发</b>：<code>showUpdateFound</code> /
+            <code>showDownloadInitiated</code> / <code>showDownloadDidReceiveData</code> /
+            <code>showReadyToInstallAndRelaunch</code> 这四个回调在全库里只有
+            <code>SPUUIBasedUpdateDriver</code> 一个调用方，而自动那条路不经过它。
+            既没有「开始下载」、也没有进度 —— <b>百分比无从得知</b>，画一条停在 0% 的进度条
+            比不画更让人怀疑（同 B3 那条「猜出来的百分比会在中途倒退」）。
+            所以 C 段第 3 行改成了「行保持原样」，第 7 行的触发条件去掉了「自动更新开」。
+            自动那条路能给出的落点只有一个：delegate 的 <code>willInstallUpdateOnQuit</code>
+            —— 它一到达就已经是「下载完成、等退出时装」。<b>已接上</b>，于是「已就绪」
+            在自动那条路上是<b>可达的</b>（在此之前它一直停在「已是最新版本」，
+            而更新其实已经躺在磁盘上等退出 —— 界面在说谎）。
+            想如实画出中间那一段，得先有一个<b>不带百分比</b>的行态：那是设计决策，尚未拍板。</li>
         </ul>
       </div>
     </div>

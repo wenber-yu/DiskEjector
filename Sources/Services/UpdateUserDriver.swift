@@ -21,6 +21,16 @@ import Sparkle
 /// 关着就弹窗。用户主动点「检查更新」时，反馈由设置行给（「正在后台下载 1.1.0」或
 /// 「发现 1.1.0」），不是靠弹窗 —— 否则开关开着也会弹，与设计稿自相矛盾。
 ///
+/// ## ⚠️ 上面那句「开关开着就静默下载（设置行显示进度）」的适用范围（2026-09-19 补）
+///
+/// 那个组合**只可能出现在用户手动点「检查更新」时**。定时 / 后台那条在开关开着时
+/// 走的是 `SPUAutomaticUpdateDriver`，而它**根本不调 `showUpdateFound`**
+/// （`SPUUIBasedUpdateDriver.m` 是这四个回调的唯一调用方），所以**连这个方法都不会进**：
+/// 应用侧在那条路上收不到任何回调，进度自然也**无从得知**。
+///
+/// 自动那条路的落点是 delegate 的 `willInstallUpdateOnQuit` —— 它一到达就已经是
+/// 「下载完成、等退出时装」，中间那段**没有界面**。完整推导见 `DESIGN-SPEC.md` §8.80。
+///
 /// ## 关于线程隔离
 ///
 /// `SPUUserDriver` 是 ObjC 协议，方法没有 `@MainActor` 标注，而 Sparkle 保证
@@ -91,14 +101,9 @@ final class UpdateUserDriver: NSObject, SPUUserDriver {
             return
         }
 
-        let update = PendingUpdate(
-            version: appcastItem.displayVersionString,
-            newBuild: appcastItem.versionString,
-            currentVersion: AppVersionInfo.shortVersion() ?? L10n.tr(.updateUnknownVersion),
-            currentBuild: AppVersionInfo.build(),
-            date: appcastItem.dateString,
-            sizeBytes: appcastItem.contentLength,
-            notes: UpdateReleaseNotes.lines(fromHTML: appcastItem.itemDescription))
+        // **翻译只有一处**（`PendingUpdate.init(appcastItem:)`）：同一个条目也会从
+        // 自动那条路的 delegate 回调送进来，两处各写一遍会静默分叉。
+        let update = PendingUpdate(appcastItem: appcastItem)
 
         let shouldPresent = controller.driverDidFindUpdate(
             update,
