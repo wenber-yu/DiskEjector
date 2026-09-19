@@ -144,7 +144,7 @@ struct OnboardingView: View {
     }
 
     private var title: some View {
-        markdownText(L10n.tr(.fdaOnboardingTitle))
+        MarkdownCopy.text(L10n.tr(.fdaOnboardingTitle))
             .font(.system(size: DesignTokens.FontSize.heading, weight: .semibold))
             .foregroundStyle(DesignTokens.Palette.foreground)
             .multilineTextAlignment(.center)
@@ -154,7 +154,7 @@ struct OnboardingView: View {
     }
 
     private var description: some View {
-        markdownText(L10n.tr(.fdaOnboardingBody))
+        MarkdownCopy.text(L10n.tr(.fdaOnboardingBody))
             .font(.system(size: DesignTokens.FontSize.body))
             .foregroundStyle(DesignTokens.Palette.mutedForeground)
             .multilineTextAlignment(.center)
@@ -217,7 +217,7 @@ struct OnboardingView: View {
 
     private func textColumn(_ step: OnboardingStep, isLast: Bool) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            markdownText(L10n.tr(step.textKey))
+            MarkdownCopy.text(L10n.tr(step.textKey))
                 .font(.system(size: DesignTokens.FontSize.caption))
                 .foregroundStyle(DesignTokens.Palette.foreground)
                 // 设计稿 `.step__text { line-height: 1.5 }`（12 → 18）。
@@ -341,27 +341,6 @@ struct OnboardingView: View {
             )
         }
         .frame(maxWidth: .infinity, alignment: .trailing)
-    }
-
-    // MARK: 工具
-
-    /// 把文案当 **Markdown 行内标记**渲染（设计稿用 `<b>` / `<strong>` 加粗）。
-    ///
-    /// **为什么不把加粗拆成「前段 + 粗体词 + 后段」三个文案键**：那等于把语序写进
-    /// 代码，英文里 `DiskEjector` 的位置与中文不同，翻译者无法调整。
-    /// 让文案自己带 `**` 标记，语序就完全归翻译者管。
-    ///
-    /// `inlineOnlyPreservingWhitespace` 是关键：它只解析行内标记，
-    /// **保留换行** —— 设计稿的说明段中间有一个 `<br>`，不保留就会被合成一行。
-    private func markdownText(_ raw: String) -> Text {
-        let options = AttributedString.MarkdownParsingOptions(
-            interpretedSyntax: .inlineOnlyPreservingWhitespace)
-        guard let attributed = try? AttributedString(markdown: raw, options: options) else {
-            // 文案里有不成对的 `*` / `_` 时会解析失败 —— 退回纯文本，
-            // 而不是把整段变成空白（那才是真正的「界面和设计不一样」）。
-            return Text(raw)
-        }
-        return Text(attributed)
     }
 }
 

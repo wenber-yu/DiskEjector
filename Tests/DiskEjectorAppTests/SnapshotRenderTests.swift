@@ -467,11 +467,14 @@ struct SnapshotRenderTests {
         try dump(popover, width: DesignTokens.Size.menuPopoverWidth, name: "menu-popover-dark", dark: true)
 
         // ---- FDA 横幅两种语义（设计稿 04-onboarding.html）----
+        // ⚠️ 这两处的实参**必须与 `ContentView.bannerArea` 逐字一致**：
+        // 走查图是拿来和真机并排看的，夹具与生产不一致 = 图里看不出线上的问题。
+        // （`message` 的类型是 `Text`，就是为了逼调用方在这里做一次显式选择。）
         try dump(
             NoticeBanner(
                 kind: .warning,
                 icon: "lock",
-                message: L10n.tr(.fdaBannerLead),
+                message: MarkdownCopy.text(L10n.tr(.fdaBannerLead)),
                 actionTitle: L10n.tr(.openSystemSettings),
                 accent: .default,
                 action: {}),
@@ -480,7 +483,7 @@ struct SnapshotRenderTests {
             NoticeBanner(
                 kind: .success,
                 icon: "checkmark.circle",
-                message: L10n.tr(.fdaGrantedBanner),
+                message: Text(L10n.tr(.fdaGrantedBanner)),
                 accent: .default),
             width: DesignTokens.Size.mainWindow.width, name: "banner-success-light")
 

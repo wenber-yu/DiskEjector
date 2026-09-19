@@ -403,7 +403,9 @@ struct ContentView: View {
             NoticeBanner(
                 kind: .warning,
                 icon: "lock",
-                message: L10n.tr(.fdaBannerLead),
+                // ⚠️ 这句文案的值里带 `**`（设计稿那一句是粗体）⇒ **必须**走
+                // `MarkdownCopy`。直接 `Text(L10n.tr(…))` 会原样画出裸星号（§8.78）。
+                message: MarkdownCopy.text(L10n.tr(.fdaBannerLead)),
                 actionTitle: L10n.tr(.openSystemSettings),
                 accent: accentColor,
                 action: AppSettings.openFullDiskAccessSettings
@@ -415,7 +417,9 @@ struct ContentView: View {
                 // 与全设计稿的图标（1.7px 描边、无填充）同一套。
                 // 曾经用 `.fill` 的实心圆：在一排描边图标里，它是唯一一个实心的。
                 icon: "checkmark.circle",
-                message: L10n.tr(.fdaGrantedBanner),
+                // 这句**不带** markdown 标记 ⇒ 走 `Text` 就够（别顺手改成 MarkdownCopy：
+                // 那会让文案里偶然出现的 `_` 被当成斜体）。
+                message: Text(L10n.tr(.fdaGrantedBanner)),
                 accent: accentColor
             )
             .transition(.move(edge: .top).combined(with: .opacity))

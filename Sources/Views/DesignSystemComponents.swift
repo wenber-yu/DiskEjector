@@ -856,7 +856,14 @@ struct NoticeBanner: View {
 
     let kind: Kind
     let icon: String
-    let message: String
+    /// ⚠️ 类型是 `Text` 而**不是 `String`** —— 由**调用方**决定要不要走
+    /// ``MarkdownCopy/text(_:)``。理由是只有调用方知道这条文案的**值里有没有 `**`**：
+    /// `fdaBannerLead` 有（设计稿里那一句是粗体），`fdaGrantedBanner` 没有。
+    ///
+    /// **曾经是 `String` + 内部 `Text(message)`** —— 那样渲染是**原样**的，
+    /// 于是 `fdaBannerLead` 在界面上显示成 `…才能看到**是谁占用了磁盘**`（裸星号）。
+    /// 见 §8.78。
+    let message: Text
     var actionTitle: String?
     var accent: AccentColor = .default
     var action: (() -> Void)?
@@ -870,7 +877,7 @@ struct NoticeBanner: View {
                 .frame(width: 16, height: 16)
                 .accessibilityHidden(true)
 
-            Text(message)
+            message
                 .font(.system(size: DesignTokens.FontSize.caption))
                 .foregroundStyle(DesignTokens.Palette.foreground)
                 .designLineHeight(
