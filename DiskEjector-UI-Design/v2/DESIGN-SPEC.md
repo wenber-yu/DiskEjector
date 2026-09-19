@@ -5078,10 +5078,9 @@ Sparkle 会不会装上这次更新 —— 依据是 `showUpdateFound` 的文档
 
 ### §8.42.2 仍开着的（按「谁能关掉它」分类）
 
-> ⚠️ **本表的最后核对时刻：2026-09-19 15:55**（`git status --short | wc -l` = **5**：
-> §8.74 的改动 —— `06-states.html`（新增 `E · 容量条用量三档` + D 节硬规则加例外）+
-> `DesignTokens.Threshold` + `StorageMeter` + `MeterThresholdParityTests` + 本文档，
-> 尚未提交；`HEAD` = `48080a1`，**已推送**）。
+> ⚠️ **本表的最后核对时刻：2026-09-19 15:55**（`HEAD` = `5df286f`，**已推送**，工作区 0 脏）。
+> 该提交是 §8.74 的改动 —— `06-states.html`（新增 `E · 容量条用量三档` + D 节硬规则加例外）
+> + `DesignTokens.Threshold` + `StorageMeter` + `MeterThresholdParityTests` + 本文档。
 > §8.34.1 的教训在这里同样成立：**连「尚未做」都有保质期，记下时刻比记下结论更有用。**
 
 | # | 项 | 谁才能关 | 出处 | 现状（2026-09-19 14:03 核对） |
