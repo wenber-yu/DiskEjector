@@ -134,7 +134,12 @@
   // 标注方式：
   //   <div data-i18n="showDockIcon">在 Dock 中显示图标</div>
   //   <button data-i18n-attr="aria-label:refresh,title:refresh">…</button>
+  //   <button data-i18n-attr="aria-label:ejectDiskFormat" data-i18n-args="WD Blue">…</button>
   // 值里允许 HTML（<b> / <code> / <i data-i="gear">），回填后会重新水合图标。
+  //
+  // ⚠️ 值里**带占位符**时（`ejectDiskFormat` = `推出 %@`）必须给 `data-i18n-args`，
+  // 否则界面上会显示字面量 `%@`（aria-label 会被 VoiceOver 念成「百分号 at」）。
+  // 守卫会盯这件事（§8.70.2）。
   // ==========================================================================
 
   /// 缺键登记表：控制台会报出来，避免「漏翻了却看不出来」。
@@ -156,6 +161,23 @@
     return key;
   }
 
+  /// 取 `data-i18n-args` 里的参数（逗号分隔，按占位符出现的顺序填）。
+  function argsOf(el) {
+    var raw = el.getAttribute('data-i18n-args');
+    return raw ? raw.split(',') : [];
+  }
+
+  /// 把值里的 `%@` / `%d` **按顺序**换成参数。
+  ///
+  /// ⚠️ 参数不够时**保留原占位符**：让它明晃晃地留在界面上，
+  /// 而不是悄悄显示成空串 —— 「少给了一个参数」和「界面本来就没这个数字」长得一样。
+  function fill(value, args) {
+    var i = 0;
+    return value.replace(/%[@sd]/g, function (m) {
+      return i < args.length ? args[i++] : m;
+    });
+  }
+
   /// 把当前语言的文案写回页面。
   ///
   /// **必须重新 hydrate**：`innerHTML` 会把 `<i data-i="gear">` 里已经注入的 `<svg>` 覆盖掉，
@@ -163,14 +185,15 @@
   /// 只是变成了空标签（与 §8.34 那个「水合前量测」是同一类问题）。
   function applyLang(lang) {
     document.querySelectorAll('[data-i18n]').forEach(function (el) {
-      el.innerHTML = t(lang, el.getAttribute('data-i18n'));
+      el.innerHTML = fill(t(lang, el.getAttribute('data-i18n')), argsOf(el));
     });
     document.querySelectorAll('[data-i18n-attr]').forEach(function (el) {
+      var args = argsOf(el);
       el.getAttribute('data-i18n-attr').split(',').forEach(function (pair) {
         var parts = pair.split(':');
         if (parts.length !== 2) return;
         // 属性里不能带 HTML 标签，剥掉再写（否则 aria-label 会被 VoiceOver 念成标签名）
-        el.setAttribute(parts[0], t(lang, parts[1]).replace(/<[^>]+>/g, ''));
+        el.setAttribute(parts[0], fill(t(lang, parts[1]), args).replace(/<[^>]+>/g, ''));
       });
     });
     hydrate(document);

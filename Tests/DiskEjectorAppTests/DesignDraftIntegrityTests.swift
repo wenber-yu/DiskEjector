@@ -444,6 +444,43 @@ struct DesignDraftIntegrityTests {
     /// 空元素（不成对，`<br>` / `<br/>` 都算）。
     private static let voidTags: Set<String> = ["br"]
 
+    /// HTML 里的空元素（解析器不把它们压栈）。
+    ///
+    /// ⚠️ 与 `voidTags` 不是一回事：那个是**文案值里**允许的空元素，这个是**整份 HTML** 里的。
+    private static let htmlVoidTags: Set<String> = [
+        "br", "img", "meta", "link", "input", "hr", "source",
+        "path", "circle", "rect", "use", "stop", "line", "polyline", "polygon", "ellipse",
+    ]
+
+    /// 设计稿**说明区 / chrome** 的类名 —— 这些区域里的中文不翻（§8.69.7 口径）。
+    ///
+    /// ⚠️ 必须是**完整类名**：用子串 `doc__` 会把 `doc__section`（整页外衣，8 页全有）
+    /// 也算成说明区 ⇒ UI 稿整体被豁免 ⇒ 守卫 56 对所有界面文案失效（实测：旧口径假绿）。
+    private static let noteClassTokens: Set<String> = [
+        "spec-note", "note-list", "state-tbl", "framecap", "legend", "frame__label",
+        "doc__h2", "doc__h3", "doc__lede", "doc__title", "doc__eyebrow", "doc__h2desc",
+        "doc__nav",
+    ]
+
+    private static func isNoteClass(_ cls: String?) -> Bool {
+        guard let cls else { return false }
+        return Set(cls.split(whereSeparator: { $0 == " " || $0 == "\t" }).map(String.init))
+            .intersection(noteClassTokens).isEmpty == false
+    }
+
+    /// 给人看的**文案属性** —— 它们不参与 `innerHTML` 回填，只能靠 `data-i18n-attr` 翻。
+    private static let textAttrs: Set<String> = ["title", "aria-label", "placeholder", "alt"]
+
+    /// 属性文案的豁免表：这些值**故意不翻**（键是值本身，理由写在 value 里）。
+    ///
+    /// ⚠️ 曾是「含样本磁盘名」4 条（`关闭并推出 Samsung T7` …）：对应键带 `%@`，
+    /// 而 `ds.js` 当初**不做插值** ⇒ 接上去会被念成「百分号 at」。
+    /// 现已支持 `data-i18n-args` 插值（§8.70.2），那 4 条**已接线并移出本表**。
+    private static let attrAllowlist: [String: String] = [
+        "DiskEjector 主窗口，列出三块外置磁盘": "画框说明（同 frame__label），属设计稿 chrome",
+        "菜单栏弹出面板，列出两块外置磁盘": "画框说明（同 frame__label），属设计稿 chrome",
+    ]
+
     /// 解析文案值里的 HTML 标签。
     ///
     /// ⚠️ 只认 `<tag …>` / `</tag>` / `<tag/>` 这一种写法 —— 文案是**手写**的，
@@ -682,23 +719,14 @@ struct DesignDraftIntegrityTests {
             var descWired = false  // 后代里已经有人接线 ⇒ 祖先不必再报
             var childTags: Set<String> = []
         }
-        func isNote(_ cls: String?) -> Bool {
-            guard let cls else { return false }
-            // ⚠️ `frame__label` 是**画框标签**（「800 × 520 · …」），属设计稿 chrome，不翻。
-            // ⚠️ **没有** `dim`：那是**弹窗遮罩层**（`<div class="dim">` 包着整个 alert），
-            // 把它当说明区 ⇒ 所有弹窗内容被豁免，守卫对弹窗**完全失效**（实测 M95 假绿）。
-            // 类名有歧义时（dim 既可指遮罩也可指次要文字），宁可**不豁免** ——
-            // 漏报比误报危险：误报会被人看见，漏报不会。
-            return [
-                "spec-note", "note-list", "doc__", "state-tbl", "framecap", "legend",
-                "frame__label",
-            ]
-            .contains { cls.contains($0) }
-        }
-        let voids: Set<String> = [
-            "br", "img", "meta", "link", "input", "hr", "source",
-            "path", "circle", "rect", "use", "stop", "line", "polyline", "polygon", "ellipse",
-        ]
+        // ⚠️ `frame__label` 是**画框标签**（「800 × 520 · …」），属设计稿 chrome，不翻。
+        // ⚠️ **没有** `dim`：那是**弹窗遮罩层**（`<div class="dim">` 包着整个 alert），
+        // 把它当说明区 ⇒ 所有弹窗内容被豁免，守卫对弹窗**完全失效**（实测 M95 假绿）。
+        // 类名有歧义时（dim 既可指遮罩也可指次要文字），宁可**不豁免** ——
+        // 漏报比误报危险：误报会被人看见，漏报不会。
+        // ⚠️ 同理**不能用子串**（`doc__` vs `doc__section`）—— 详见 `noteClassTokens`。
+        func isNote(_ cls: String?) -> Bool { Self.isNoteClass(cls) }
+        let voids = Self.htmlVoidTags
         var stack: [Node] = []
         var out: [ElementText] = []
         var i = html.startIndex
@@ -1017,6 +1045,178 @@ struct DesignDraftIntegrityTests {
             """)
     }
 
+    // MARK: 属性文案
+
+    /// 含中文的**属性文案**必须接上 `data-i18n-attr` —— 否则切英文时它还是中文。
+    ///
+    /// `applyLang` 是 `el.innerHTML = t(…)`，只覆盖**元素内容**；`title` / `aria-label`
+    /// 这些属性**不在覆盖范围内** ⇒ 必须由 `data-i18n-attr` 单独驱动（`ds.js` 里实现了）。
+    /// 实测（无头 Chrome，8 页）：接线前切英文，**57 处属性一处都没翻**；接线后剩 10 处
+    /// （豁免表里的 8 处样本磁盘名 + 2 处画框说明）。
+    ///
+    /// ⚠️ 这类缺口和 §8.69 那个 `ReferenceError` 是同一形状：**机制写好了、没人用** ——
+    /// `ds.js` 的注释里连用法都写了，而全库 `data-i18n-attr` **零使用**。
+    /// ⚠️ 扫的是 `htmlFiles()`（**含总览页 `index.html`**，不只是 `screens/`）：
+    /// 总览页同样加载了 `i18n.js` + `ds.js`，那里写死的 `aria-label` 一样不翻
+    /// （实测 10 处 —— 首版只扫 `screens/` ⇒ 整个总览页是盲区）。
+    @Test func 含中文的属性文案必须接上data_i18n_attr() throws {
+        guard let zh = try loadLanguagePack()["zh-Hans"] else {
+            Issue.record("语言包里没有 zh-Hans 列")
+            return
+        }
+        var rows: [String] = []
+        var seen: Set<String> = []
+        var total = 0
+        for url in try htmlFiles() {
+            let name = url.lastPathComponent
+            for hit in Self.textAttrHits(in: try read(url)) {
+                // 与守卫「英文文案里不许出现中文字符」同一个口径（CJK 统一表意文字）
+                let hasHan = hit.value.unicodeScalars.contains { (0x4E00...0x9FFF).contains($0.value) }
+                guard !hit.note, hasHan else { continue }
+                total += 1
+                seen.insert(hit.value)
+                if Self.attrAllowlist[hit.value] != nil { continue }
+                guard let spec = hit.attrs["data-i18n-attr"] else {
+                    rows.append("\(name)：\(hit.attr)=\"\(hit.value)\" → 没接 data-i18n-attr")
+                    continue
+                }
+                // 接了还不够：这个属性对应的键必须**在语言包里**（写错键 ⇒ 属性变成键名）
+                let keys = spec.split(separator: ",").compactMap { pair -> String? in
+                    let parts = pair.split(separator: ":", maxSplits: 1).map(String.init)
+                    return parts.count == 2 && parts[0] == hit.attr ? parts[1] : nil
+                }
+                if keys.isEmpty {
+                    rows.append("\(name)：\(hit.attr)=\"\(hit.value)\" → data-i18n-attr 里没有 \(hit.attr)")
+                } else if let bad = keys.first(where: { zh[$0] == nil }) {
+                    rows.append("\(name)：\(hit.attr)=\"\(hit.value)\" → 键 '\(bad)' 不在语言包里")
+                }
+            }
+        }
+        #expect(total >= 20, "只扫到 \(total) 处含中文的属性 —— 扫描逻辑多半坏了")
+        #expect(seen.count >= 5, "只见到 \(seen.count) 种属性值 —— 扫描逻辑多半坏了")
+        #expect(
+            rows.isEmpty,
+            """
+            这些属性是中文，切英文时**不会跟着变**（`innerHTML` 回填不覆盖属性）：
+            \(rows.joined(separator: "\n  "))
+            接法：`data-i18n-attr="aria-label:refreshDisks,title:refreshDisks"`（ds.js 已实现）。
+            确实不能翻的，连同理由登记进 `attrAllowlist`。
+            """)
+    }
+
+    /// 键的值里**带占位符**（`%@` / `%d`）时，元素必须给 `data-i18n-args`，且个数要够。
+    ///
+    /// 症状：占位符会**原样显示** —— 界面上明晃晃一个 `%@`，`aria-label` 还会被 VoiceOver
+    /// 念成「百分号 at」。而语言包那边一切正常（键在、值在），谁也不会想到是 HTML 少了参数。
+    ///
+    /// ⚠️ 实测当前**正文**里 0 处带占位符，只有 6 个属性用到了（样本磁盘名）⇒
+    /// 这条守卫现在守的是「以后别忘」，锚因此写得很松（≥6）。
+    @Test func 带占位符的键必须给足data_i18n_args() throws {
+        guard let zh = try loadLanguagePack()["zh-Hans"] else {
+            Issue.record("语言包里没有 zh-Hans 列")
+            return
+        }
+        var rows: [String] = []
+        var checked = 0
+        for url in try htmlFiles() {
+            let name = url.lastPathComponent
+            for hit in Self.textAttrHits(in: try read(url)) {
+                guard !hit.note, let spec = hit.attrs["data-i18n-attr"] else { continue }
+                let args = (hit.attrs["data-i18n-args"] ?? "").split(separator: ",").count
+                for pair in spec.split(separator: ",") {
+                    let parts = pair.split(separator: ":", maxSplits: 1).map(String.init)
+                    guard parts.count == 2, let value = zh[parts[1]] else { continue }
+                    let holes = value.matches(of: /%[@sd]/).count
+                    guard holes > 0 else { continue }
+                    checked += 1
+                    if args < holes {
+                        rows.append(
+                            "\(name)：\(hit.attr) 用了 \(parts[1])（值 \(value)）→ 要 \(holes) 个参数，"
+                                + "data-i18n-args 只给了 \(args) 个")
+                    }
+                }
+            }
+        }
+        #expect(checked >= 6, "只查到 \(checked) 处带占位符的接线 —— 扫描逻辑多半坏了")
+        #expect(
+            rows.isEmpty,
+            """
+            这些接线的值里有占位符，但 `data-i18n-args` 没给够：
+            \(rows.joined(separator: "\n  "))
+            占位符会**原样显示**（`%@` 被 VoiceOver 念成「百分号 at」），
+            而语言包一切正常 ⇒ 只有肉眼看界面才发现得了。
+            """)
+    }
+
+    /// 属性豁免表**不许过期**：登记的值如果页面上已经没有了，要回来划掉。
+    @Test func 属性豁免表里已经没人用的条目要划掉() throws {
+        var seen: Set<String> = []
+        for url in try htmlFiles() {
+            for hit in Self.textAttrHits(in: try read(url)) { seen.insert(hit.value) }
+        }
+        let stale = Self.attrAllowlist.keys.filter { !seen.contains($0) }.sorted()
+        #expect(
+            stale.isEmpty,
+            """
+            属性豁免表里这些值，页面上**已经没有了**：\(stale.joined(separator: " / "))
+            要么把它翻掉（现在 `ds.js` 可能支持插值了），要么回来划掉这一条。
+            """)
+    }
+
+    /// `ds.js` 回填时**必须过一遍 `fill()`** —— 光是 HTML 里写了 `data-i18n-args` 没用。
+    ///
+    /// 症状：谁把 `fill()` 从属性那一支摘掉，页面照常跑、`data-i18n-args` 也都还在
+    /// ⇒ **守卫 63 依然是绿的**，而 `aria-label` 又变回字面量 `%@`。
+    /// 这与 §8.70.1 是同一个形状：**机制在不在，和它生效没生效，是两件事**。
+    @Test func dsjs回填时必须过一遍fill() throws {
+        let js = try read(designRoot.appendingPathComponent("assets/ds.js"))
+        let fillCalls = js.matches(of: /fill\(\s*t\(/).count
+        let argsOf = js.matches(of: /function\s+argsOf/).count
+        // 两支都要过 fill：`[data-i18n]`（.innerHTML）与 `[data-i18n-attr]`（setAttribute）
+        #expect(fillCalls >= 2, "ds.js 里只有 \(fillCalls) 处 fill(t(…)) —— 有一支回填忘了插值")
+        #expect(argsOf == 1, "ds.js 里 argsOf 的定义有 \(argsOf) 处 —— 插值参数读不到了")
+    }
+
+    /// 扫出页面里所有**带文案属性**的起始标签（含「是否在说明区内」）。
+    private static func textAttrHits(
+        in html: String
+    ) -> [(attr: String, value: String, attrs: [String: String], note: Bool)] {
+        var stack: [[String: String]] = []
+        var out: [(attr: String, value: String, attrs: [String: String], note: Bool)] = []
+        var i = html.startIndex
+        while i < html.endIndex {
+            guard html[i] == "<", let gt = html[i...].firstIndex(of: ">") else {
+                i = html.index(after: i)
+                continue
+            }
+            var inner = String(html[html.index(after: i)..<gt])
+            i = html.index(after: gt)
+            if inner.hasPrefix("!") { continue }
+            let closing = inner.hasPrefix("/")
+            if closing { inner.removeFirst() }
+            if inner.hasSuffix("/") { inner.removeLast() }
+            let name = inner.split(separator: " ").first.map { $0.lowercased() } ?? ""
+            if closing {
+                if let idx = stack.lastIndex(where: { $0["__tag"] == name }) {
+                    stack.removeSubrange(idx...)
+                }
+                continue
+            }
+            guard !name.isEmpty, !htmlVoidTags.contains(name) else { continue }
+            var attrs: [String: String] = ["__tag": name]
+            for pair in attrPairs(in: inner) { attrs[pair.0] = pair.1 }
+            // ⚠️ **自己**的说明区 class 也算：`<p class="spec-note" aria-label="…">` 这种，
+            // 只看祖先会把它当成界面文案（实测 M114 红了才发现的）。
+            let note =
+                Self.isNoteClass(attrs["class"]) || stack.contains { Self.isNoteClass($0["class"]) }
+            for attr in textAttrs.sorted() {
+                if let value = attrs[attr] { out.append((attr, value, attrs, note)) }
+            }
+            stack.append(attrs)
+        }
+        return out
+    }
+
     /// 取 `ds.js` 里 `t(…)` **调用**的两个实参（排除 `function t(lang, key)` 这个定义）。
     private static func translateCalls(in js: String) -> [(whole: String, keyArg: String)] {
         guard let re = try? NSRegularExpression(pattern: #"\bt\s*\("#) else { return [] }
@@ -1160,17 +1360,15 @@ struct DesignDraftIntegrityTests {
     /// 只认 HTML 静态会把 `.langbar` 误判成断链。所以来源是**并集**，
     /// 且由两条**负向锚**（`langbar` / `data-lang-btn` 必须在已知集里）钉住 ——
     /// 若哪天这两条来源的解析坏了，守卫会**先红在这里**，而不是误报一堆断链。
-    private static let unresolvedDOMTargets: [String: String] = [
-        "data-i18n-attr":
-            """
-        ds.js 实现了**属性级翻译**（`data-i18n-attr="aria-label:键,title:键"`，
-        用法就写在 ds.js:136 的注释里），但设计稿里**一个元素都没用** ⇒ 这段代码从不执行。
-        而硬编码中文的 `aria-label` / `title` 有 **67 处** ——
-        切到英文时正文翻了、**无障碍标签仍是中文**（VoiceOver 会念中文），
-        而 aria-label 不显示，**走查看不出来**。
-        要不要接线（以及接哪些）是设计决策，待拍板；这里先登记，由「不得增加」那条守住别再恶化。
-        """
-    ]
+    /// ⚠️ **这张表现在是空的**（2026-09-19 清空）。
+    ///
+    /// 原来只有一条 `data-i18n-attr`：登记的是「`ds.js` 实现了属性级翻译，但设计稿
+    /// **一个元素都没用** ⇒ 这段代码从不执行」。§8.70 已把它全面接线（34 个元素）
+    /// ⇒ 条目变成「登记了却有人用」⇒ 由 `已登记的DOM目标如果有元素在用了要划掉`
+    /// **自己报出来并划掉**（这就是那条守卫的价值：还了账它催你回来改）。
+    ///
+    /// 表留着：将来再出现「机制写好了、没人用」的口子，登记进来。
+    private static let unresolvedDOMTargets: [String: String] = [:]
 
     @Test func 脚本查询的DOM目标必须存在() throws {
         let s = try loadDOM()
@@ -1218,9 +1416,9 @@ struct DesignDraftIntegrityTests {
 
     /// **量化基线**：硬编码中文的无障碍标签**只许减少，不许增加**。
     ///
-    /// 修不修那 67 处是设计决策（要拍板），但**继续劣化是不需要讨论的** ——
-    /// 每新增一处，切到英文时它就又是「中文的无障碍标签」。
-    /// 报红时一定有问题（只可能因为新增），所以它可以进 CI。
+    /// ⚠️ 这是**兜底**，真正的刹车是守卫 61（含中文的属性必须接 `data-i18n-attr`，
+    /// 精确规则）。本条比 61 **宽**两处：① 它连说明区里的 `aria-label` 也数（61 豁免说明区）；
+    /// ② 它连 `index.html` 也扫（61 只扫 `screens/`，而总览页那 10 处同样没接线 —— §8.70.6）。
     @Test func 硬编码中文的无障碍标签不得增加() throws {
         var n = 0
         for url in try htmlFiles() {
@@ -1238,7 +1436,11 @@ struct DesignDraftIntegrityTests {
             """)
     }
 
-    /// 基线 = 2026-09-19 实测的 **67 处**。修掉会变小（仍绿），新增会变大（必红）。
+    /// 基线 = 2026-09-19 实测的 **67 处**（`screens/` 57 + 总览页 `index.html` 10）。
+    /// 修掉会变小（仍绿），新增会变大（必红）。
+    ///
+    /// ⚠️ 别照着 `screens/` 的数去改这个基线：本条扫的是 `htmlFiles()`，
+    /// **包含 `index.html`**（总览页的强调色切换器 + 开关演示，共 10 处）。
     private static let hardcodedA11yBaseline = 67
 
     // MARK: 索引 ↔ 页面自身标题（§8.62）
