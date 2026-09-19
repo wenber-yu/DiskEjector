@@ -8793,6 +8793,14 @@ scan.used.formUnion(Self.classAttributes(in: try read(jsURL)))
 | 设计稿 | `tools/build_i18n.py` 的 `md_bold` 把成对的 `**X**` 换成 `<b>X</b>`，`ds.js` 当 HTML 渲染 | ✅ 粗体 |
 | app | `NoticeBanner` 的 `message` 类型是 `String`，内部 `Text(message)` | ❌ **裸星号** |
 
+⚠️ **记账要准：这是「尚未发布」的回归，不是线上 bug。**
+`git diff v2026.09.18.4..HEAD -- Sources/Localization/Localizable.xcstrings` 显示：
+线上那版 `fdaBannerLead` 的值是 `…才能看到是谁占用了磁盘`（**不带 `**`**），
+`**` 是 `33a5df1`（§8.69.5，把设计稿的 `<b>` 搬进语言包值）**之后**才加的。
+⇒ 本次发版**如果没修**，它会**第一次**被带出去；修了就是「从未发布过」。
+（线上那版只有 2 个带 `**` 的键，都在 onboarding 路径上，而那条路径走的是私有
+`markdownText(_:)` ⇒ **是对的**。所以这个病只在「新增了第三条路径」时才出现。）
+
 两边**各自的逻辑都自洽**，没有任何一处「写错了」—— 错在**接缝**：
 设计稿侧那份转换器的注释甚至逐字写着「直接回填会显示成裸星号」，
 而 app 侧**没人执行这条约定**。
