@@ -9774,6 +9774,8 @@ M239 改了 `Localizable.xcstrings` 但 **restore 脚本只还原了 view + html
 | `Tests/DiskEjectorAppTests/SnapshotRenderTests.swift` | 加 `downloading-unknown` 那一格；注释里的「七态」→「八态」 |
 | `Tests/DiskEjectorAppTests/UpdateSettingsTests.swift` | 新增 `设计稿3b那一帧与实现用同一个说明键`；新增 `slice(after:upTo:in:)` 辅助（用 `range(of:)` 取真实值，不是 `contains`） |
 
+**本轮提交：`682cd76`**（8 个文件 / +260 −21），已推送（`6c2a35a..682cd76`）。
+
 ---
 
 ## 9. 文件清单
