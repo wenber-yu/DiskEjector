@@ -9383,6 +9383,10 @@ stash 前后用 `git diff | shasum` 核对指纹，确认改动完整还原。
 | `DiskEjector-UI-Design/v2/screens/08-update.html` | C 段第 3 / 7 / 8 行按本轮结论订正；D 段新增一条说明（为什么中间那段画不出来） |
 | `DiskEjector-UI-Design/v2/DESIGN-SPEC.md` | 新增 §8.80；关掉「仍开着」表第 27 行、加第 28 行、刷新核对时刻与表末那段 |
 
+**提交**：`41fd71e`（5 files, +583/−23），**已推送**（`3ae3951..41fd71e`；
+本地 = 远端 = `41fd71e`，工作区 0 脏）。§8.80.9 那次修复与本节是同一个提交 ——
+**它是提交前重跑门槛抓到的**，不是事后补记。
+
 ⚠️ **`.build/probe/round31/` 的脚本不入库**（`.build/` 已被忽略）。其中值得留下来的：
 `verify_install_on_quit.sh`（**新代码 + 旧版本号**打包后复验「退出仍装」，带三重自证字段）、
 `mutate.py`（逐条变异 + 逐条还原 + 回读校验）、`ab_coverage2.sh`（覆盖率 A/B，
