@@ -105,7 +105,7 @@ struct MenuPopoverLayoutTests {
     /// ⚠️ 这里**故意不写 360**：360 的出处是设计稿 `ds.css` 的 `--w-popover`，
     /// 写死字面量就成了「拿常量跟自己比」（§8.51 明令禁止）——
     /// 设计稿改成 380 而实现没跟时，这条**照样绿**。
-    /// 那一头由 `WindowSizeParityTests.设计稿与实现的窗口尺寸必须同数()` 钉住；
+    /// 那一头由 `DesignSizeParityTests.设计稿与实现的尺寸必须同数()` 钉住；
     /// 这一条只守「排版没把宽度顶宽」。
     @Test func 面板渲染宽度等于实现常量() {
         let s = size(popover(disks: [disk(1)]))

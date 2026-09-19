@@ -304,6 +304,6 @@ struct TitleBarBaselineTests {
 
     // 「52 这个数是从哪来的」不在这里答 —— 它属于**窗口尺寸同源**那一族，
     // 与 `--w-main` / `--h-main` / `--w-popover` 收在同一张表里，见
-    // `WindowSizeParityTests.设计稿与实现的窗口尺寸必须同数()`。
+    // `DesignSizeParityTests.设计稿与实现的尺寸必须同数()`。
     // 这里只守「内容带 + 留白 = 总高」的**内部自洽**。
 }

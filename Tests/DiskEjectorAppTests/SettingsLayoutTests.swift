@@ -279,7 +279,7 @@ struct SettingsLayoutTests {
     /// 2026-09-18 之前设计稿写的是 826（= 它自己 Chrome 口径的英文自然高 814.25 + 余量），
     /// 它对自己的渲染没错，**但对实现偏大**：照它做会在中文下留 59.4pt 空白带。
     /// → 已拍板把设计稿同步成 800（§8.43），两份文档现在同数，
-    /// 由 `WindowSizeParityTests.设计稿与实现的窗口尺寸必须同数()` 钉住（同源表第 4/5 项）。
+    /// 由 `DesignSizeParityTests.设计稿与实现的尺寸必须同数()` 钉住（同源表第 4/5 项）。
     @Test func 中文高度与设计稿几乎逐点相同() {
         let header = renderedSize(SettingsHeaderBar(onDone: {}), width: panelWidth)
         let sections = renderedSize(SettingsSectionsColumn { _ in }, width: panelWidth)
