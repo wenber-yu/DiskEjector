@@ -9977,6 +9977,8 @@ func failedToDownloadUpdate(...) {
 |---|---|
 | `Tests/DiskEjectorAppTests/UpdateSettingsTests.swift` | 新增 `failedToDownloadUpdate必须真的接通delegate那条路`（3 条断言） |
 
+**本轮提交：`d6cb99b`**（2 个文件 / +134 −7），已推送（`860a262..d6cb99b`）。
+
 ---
 
 ## 9. 文件清单
