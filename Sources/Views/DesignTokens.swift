@@ -601,6 +601,19 @@ enum DesignTokens {
                 dark: NSColor(srgbRed: 235 / 255, green: 235 / 255, blue: 245 / 255, alpha: dark))
         }
 
+        /// 分隔 / 描边用的「墨色线」：浅色 `rgba(60,60,67,α)`、深色 **`rgba(255,255,255,α)`**。
+        ///
+        /// ⚠️ **别拿 ``ink(_:)`` 来画描边**（§8.77 实扫出来的）：`ink` 的深色基色是
+        /// `rgba(235,235,245,·)` —— 那是 **`--text-*` 文字族**的基色；而设计稿里
+        /// `--border` / `--border-strong` / `--hairline` 的深色基色是**纯白** `rgba(255,255,255,·)`。
+        /// 两者差 20/255，单看无感，但会让本文件头上那句「与 `ds.css` 逐值一致」不成立。
+        /// **描边与文字是两族、基色不同，helper 也必须分开。**
+        private static func edge(_ alpha: CGFloat) -> Color {
+            adaptive(
+                light: NSColor(srgbRed: 60 / 255, green: 60 / 255, blue: 67 / 255, alpha: alpha),
+                dark: NSColor(white: 1, alpha: alpha))
+        }
+
         // MARK: 表面
 
         // ⚠️ 2026-09-18 实扫删除：`base`（= 后来的 ``windowBase(for:)`` 的旧名）
@@ -676,16 +689,19 @@ enum DesignTokens {
                 ? Color(red: 44 / 255, green: 44 / 255, blue: 48 / 255).opacity(0.86)
                 : Color.white.opacity(0.86)
         }
-        /// 卡片、分隔、芯片描边。
-        static var border: Color { ink(0.10) }
+        /// 卡片、分隔、芯片描边 —— 设计稿 `--border`（深色基色是**纯白**，见 ``edge(_:)``）。
+        static var border: Color { edge(0.10) }
         /// 略重的描边（outline 按钮、徽标、面板外框）。
         ///
         /// 设计稿 `--border-strong` 两套都是 **0.18**（浅色 `rgba(60,60,67,.18)`、
         /// 深色 `rgba(255,255,255,.18)`）。曾经写 0.16 —— 描边淡一档，
         /// 在毛玻璃上尤其看不出来（这也是「outline 按钮像没有边框」的原因）。
-        static var borderStrong: Color { ink(0.18) }
-        /// 分隔线（比 `border` 更淡）。
-        static var hairline: Color { ink(0.08) }
+        ///
+        /// ⚠️ 深色那一句「`rgba(255,255,255,.18)`」与代码**曾经不一致**（§8.77）：
+        /// 当时用的是 `ink(0.18)`，深色产出 `rgba(235,235,245,.18)`。已改用 ``edge(_:)``。
+        static var borderStrong: Color { edge(0.18) }
+        /// 分隔线（比 `border` 更淡）—— 设计稿 `--hairline`（深色基色是**纯白**）。
+        static var hairline: Color { edge(0.08) }
 
         // MARK: 文字
 
