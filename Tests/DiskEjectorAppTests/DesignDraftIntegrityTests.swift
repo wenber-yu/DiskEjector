@@ -456,10 +456,18 @@ struct DesignDraftIntegrityTests {
     ///
     /// ⚠️ 必须是**完整类名**：用子串 `doc__` 会把 `doc__section`（整页外衣，8 页全有）
     /// 也算成说明区 ⇒ UI 稿整体被豁免 ⇒ 守卫 56 对所有界面文案失效（实测：旧口径假绿）。
+    ///
+    /// ⚠️ **2026-09-19（§8.75）扩了 3 个词**（`spec` / `toolbar` / `swatchcard`）——
+    /// 扫描范围从 `screens/` 扩到 `htmlFiles()` 之后，`index.html` 里这些**设计规范页自己的
+    /// chrome**（规格表 `<table class="spec">`、右上角工具条、色卡）会被当成漏接。
+    /// 实测这三个词**只**出现在总览页 + `07-dark.html` 的色卡（都是 chrome），
+    /// 加进来不会把任何界面文案豁免掉（加之前/之后，`screens/` 的漏接数都是 0）。
     private static let noteClassTokens: Set<String> = [
         "spec-note", "note-list", "state-tbl", "framecap", "legend", "frame__label",
         "doc__h2", "doc__h3", "doc__lede", "doc__title", "doc__eyebrow", "doc__h2desc",
         "doc__nav",
+        // 设计规范页（`index.html`）的 chrome —— 规格表 / 工具条 / 色卡
+        "spec", "toolbar", "swatchcard",
     ]
 
     private static func isNoteClass(_ cls: String?) -> Bool {
@@ -844,27 +852,88 @@ struct DesignDraftIntegrityTests {
         }
         #expect(byValue.count > 150, "只有 \(byValue.count) 条中文文案 —— 语言包没读全")
 
+        // ⚠️ **2026-09-19（§8.75）补上「整文本」的数字盲区。**
+        //
+        // 「元素整文本 == 语言包某个值」这条判据有个洞：语言包里的样本是
+        // `ds.occ.appsUsingA = "2 个程序正在占用"`，而入口页写着
+        // `<span><span class="evid__count">3</span> 个程序正在占用</span>` ——
+        // **逐字对不上**（2 ≠ 3），于是这一整块被**静默跳过**。
+        // 症状与漏接一模一样（切英文还是中文），但守卫看不见。
+        //
+        // ⇒ 再建一张**抹掉 ASCII 数字后**的索引。只对**没有键**的元素兜底：
+        // 有键的元素走上面那条路（键在不在候选里），**不改**它 ——
+        // 否则「快照里的字与键的值不同步」（合法：快照只是源语言留档）会假红。
+        var byValueStripped: [String: [String]] = [:]
+        for (key, value) in zh {
+            let plain = Self.plainText(value)
+            guard !plain.isEmpty else { continue }
+            byValueStripped[Self.strippingDigits(plain), default: []].append(key)
+        }
+        // 负向锚：索引空掉 ⇒ 下面那个分支**永远不生效**（静默失效，比红更糟）。
+        #expect(
+            byValueStripped[Self.strippingDigits("3 个程序正在占用")] != nil,
+            "抹掉数字后的索引里查不到「个程序正在占用」—— 索引没建起来，数字兜底分支是死的（假绿）")
+
         var problems: [String] = []
         var wired = 0  // 已接线且整文本对得上键值的元素数（口径自证）
-        let dir = designRoot.appendingPathComponent("screens")
-        for name in try screenFiles() {
-            for element in elementTexts(in: try read(dir.appendingPathComponent(name))) {
+        var digitOnly = 0  // 只有抹掉数字才对得上的元素数（数字兜底自证）
+        // ⚠️ **2026-09-19（§8.75）范围从 `screenFiles()` 扩到 `htmlFiles()`。**
+        // 原来只扫 `screens/`（那个函数的注释里明写「不含 index.html 等」），
+        // 而 `index.html` 是设计稿的**入口页**：它整页 0 处 `data-i18n`，
+        // 守卫却一直绿 —— 因为入口页**根本不在扫描范围里**。
+        // 而 `ds.js` 的 `buildLangBar()` 会往 `.doc__nav` 后面插语言切换栏，
+        // 9 个页面（含入口页）都有：在总览页点「English」，**一个字都不会变**。
+        var wiredByPage: [String: Int] = [:]
+        for url in try htmlFiles() {
+            let name = url.lastPathComponent
+            for element in elementTexts(in: try read(url)) {
                 let text = Self.plainText(element.text)
-                guard let keys = byValue[text] else { continue }
+                // ① 整文本逐字对得上
+                var keys = byValue[text]
+                var fuzzy = false
+                // ② 兜底：抹掉数字后对得上（**只在没有键时**才走这条）
+                if keys == nil, element.key == nil {
+                    let stripped = Self.strippingDigits(text)
+                    if stripped != text, let hit = byValueStripped[stripped] {
+                        keys = hit
+                        fuzzy = true
+                    }
+                }
+                guard let keys else { continue }
                 if let key = element.key {
-                    if keys.contains(key) { wired += 1 }
+                    if keys.contains(key) {
+                        wired += 1
+                        wiredByPage[name, default: 0] += 1
+                    }
                     continue
                 }
                 if element.note || element.suppressed { continue }
-                problems.append("\(name)：'\(text)' → \(keys.joined(separator: " / "))")
+                if fuzzy { digitOnly += 1 }
+                problems.append(
+                    "\(name)：'\(text)' → \(keys.joined(separator: " / "))"
+                        + (fuzzy ? "（⚠️ 数字与样本不同 ⇒ 只有抹掉数字才对得上）" : ""))
             }
         }
-        print("  [设计稿] 界面文案接线：整文本对得上的已接线元素 \(wired) 个")
+        print(
+            "  [设计稿] 界面文案接线：整文本对得上的已接线元素 \(wired) 个（"
+                + wiredByPage.sorted { $0.key < $1.key }
+                .map { "\($0.key) \($0.value)" }.joined(separator: " ｜ ") + "）"
+                + " ｜ 数字兜底命中 \(digitOnly) 处")
         // 负向锚：**口径自证** —— 已接线的元素里必须有一大批整文本对得上，
         // 否则说明「整文本」的拼法与语言包对不上，下面「0 处漏接」就是假绿。
         #expect(
             wired >= 30,
             "只有 \(wired) 个已接线元素的整文本对得上语言包 —— 整文本口径失效（假绿）")
+        // 负向锚（**扫描范围**）：上面那条管「口径对不对」，这条管「**扫没扫到入口页**」。
+        // 少了它，把范围收回 `screenFiles()` 会**照样绿** —— 因为 `screens/` 本来就是 0 处漏接，
+        // 「0 处漏接」这个结论对「扫了一半的页面」没有任何分辨力（§8.75 的核心教训）。
+        #expect(
+            wiredByPage["index.html", default: 0] >= 20,
+            """
+            `index.html` 只贡献了 \(wiredByPage["index.html", default: 0]) 个「整文本对得上」的已接线元素。
+            这个数**不是装饰**：它是扫描范围的负向锚。范围一旦收回 `screens/`，
+            总览页就完全不被扫，这个数掉到 0，而「漏接 0 处」**照样绿**（§8.75）。
+            """)
         #expect(
             problems.isEmpty,
             """
@@ -964,16 +1033,22 @@ struct DesignDraftIntegrityTests {
     /// 已清零 ⇒ 从「只记录 + 上限锚」升级成**硬断言**。
     /// 实测（修好 `ds.js` 让 i18n 第一次真跑起来后）：01-main-window 的图标 **23 → 15**、
     /// `<b>` **21 → 11**、按钮 **6 → 5**。
+    ///
+    /// ⚠️ **2026-09-19（§8.75）范围从 `screenFiles()` 扩到 `htmlFiles()`** ——
+    /// 与接线守卫同一个病：入口页 `index.html` 不在范围里。它本轮才第一次接线，
+    /// 而「值里有没有这个标签」正是**接线之后**才会出问题的那一类。
     @Test func 已接线元素里的子标签必须在语言包值里出现() throws {
-        let dir = designRoot.appendingPathComponent("screens")
         guard let zh = try loadLanguagePack()["zh-Hans"] else {
             Issue.record("语言包里没有 zh-Hans 列")
             return
         }
         var rows: [String] = []
-        for name in try screenFiles() {
-            for element in elementTexts(in: try read(dir.appendingPathComponent(name))) {
+        var scanned = 0
+        for url in try htmlFiles() {
+            let name = url.lastPathComponent
+            for element in elementTexts(in: try read(url)) {
                 guard let key = element.key, let value = zh[key] else { continue }
+                scanned += 1
                 let valueTags = Set(tags(in: value).map { $0.name })
                 let missing = element.childTags.subtracting(valueTags).sorted()
                 guard !missing.isEmpty else { continue }
@@ -981,13 +1056,7 @@ struct DesignDraftIntegrityTests {
             }
         }
         // 锚：`childTags` 恒为空时这条守卫**也是绿的**（0 处）⇒ 必须证明它扫到了东西。
-        // 实测扫到的已接线元素 ≥ 150 个。
-        var scanned = 0
-        for name in try screenFiles() {
-            scanned +=
-                elementTexts(in: try read(dir.appendingPathComponent(name)))
-                .filter { $0.key != nil && zh[$0.key!] != nil }.count
-        }
+        // 实测扫到的已接线元素 ≥ 150 个（扩到 `htmlFiles()` 后 239 个）。
         #expect(scanned >= 150, "只扫到 \(scanned) 个已接线元素 —— 解析口径失效")
         #expect(
             rows.isEmpty,
@@ -1011,16 +1080,18 @@ struct DesignDraftIntegrityTests {
     ///
     /// ⚠️ 只比 **zh-Hans**：源码快照是中文，跟中文值比才有意义。别的语言值里多一个
     /// `<b>` 是**加分**不是丢失（切过去不会少东西），由守卫 59 那一侧管。
+    ///
+    /// ⚠️ **2026-09-19（§8.75）范围从 `screenFiles()` 扩到 `htmlFiles()`**（同上）。
     @Test func 语言包值里的标签必须在源码快照里出现() throws {
-        let dir = designRoot.appendingPathComponent("screens")
         guard let zh = try loadLanguagePack()["zh-Hans"] else {
             Issue.record("语言包里没有 zh-Hans 列")
             return
         }
         var rows: [String] = []
         var tagged = 0
-        for name in try screenFiles() {
-            for element in elementTexts(in: try read(dir.appendingPathComponent(name))) {
+        for url in try htmlFiles() {
+            let name = url.lastPathComponent
+            for element in elementTexts(in: try read(url)) {
                 guard let key = element.key, let value = zh[key] else { continue }
                 let valueTags = Set(tags(in: value).map { $0.name })
                     .intersection(Self.allowedValueTags)
@@ -1873,6 +1944,16 @@ struct DesignDraftIntegrityTests {
         let stripped = replace(in: html, pattern: #"<[^>]+>"#, with: "")
         return stripped.split(whereSeparator: { $0.isWhitespace || $0.isNewline })
             .joined(separator: " ")
+    }
+
+    /// 抹掉 **ASCII 数字**，其余原样（§8.75 的「数字兜底」用）。
+    ///
+    /// ⚠️ 与 `StatusLabelParityTests.strippingDigits` 是**同一个口径**，两处各有一份 ——
+    /// 这是**故意的**：两个 suite 守的是不同的东西（那边守「同一态只能有一套文案」，
+    /// 这边守「硬编码中文必须接线」），共用一个 helper 会让改动一边时**另一边悄悄变严**。
+    /// 改动时**两边都要改**（`grep -rn strippingDigits Tests/` 能一次找全）。
+    private static func strippingDigits(_ text: String) -> String {
+        replace(in: text, pattern: #"[0-9]+"#, with: "")
     }
 
     private struct Scan {
