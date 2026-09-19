@@ -9892,6 +9892,8 @@ M239 改了 `Localizable.xcstrings` 但 **restore 脚本只还原了 view + html
 | `Sources/Services/UpdateController.swift` | 新增 `nonisolated static func shouldEnterBackgroundDownload(phase:autoDownloads:)`（与 `shouldPublishProgress` / `isDownloadFailure` 同区）；`willDownloadUpdate` 体的 guard 改成调它 |
 | `Tests/DiskEjectorAppTests/UpdateSettingsTests.swift` | 改写 `自动那条路的下载开始也由delegate送达`（读**两个体**：纯函数体钉判据，方法体钉调用关系与不猜 0）；新增 `shouldEnterBackgroundDownload的真值表`（7 个组合，顺推 + reverse） |
 
+**本轮提交：`7e4d6e8`**（3 个文件 / +230 −13），已推送（`793016e..7e4d6e8`）。
+
 ---
 
 ## 9. 文件清单
