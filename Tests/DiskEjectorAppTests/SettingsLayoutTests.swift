@@ -21,27 +21,6 @@ struct SettingsLayoutTests {
 
     private let panelWidth = DesignTokens.Size.settingsPanel.width
 
-    /// #filePath = <仓库根>/Tests/DiskEjectorAppTests/SettingsLayoutTests.swift
-    private var repoRoot: URL {
-        URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-    }
-
-    /// 从 CSS 文本里取 `token` **之后**第一个 `<数字>px`。
-    ///
-    /// ⚠️ 只在 token 之后找 —— `ds.css` 的 token 上方有一大段解释性注释（里面也写着 800 / 826），
-    /// 全文搜数字会搜到注释里的那个，然后「改代码不改注释」也会绿。
-    private func pxValue(in css: String, token: String) -> Double? {
-        guard let t = css.range(of: token) else { return nil }
-        let rest = css[t.upperBound...]
-        guard
-            let m = rest.range(of: #"[0-9]+(?:\.[0-9]+)?px"#, options: .regularExpression)
-        else { return nil }
-        return Double(rest[m].dropLast(2))
-    }
-
     /// 在给定宽度下渲染并返回**真实渲染尺寸**（走 SwiftUI 布局，不是读常量）。
     ///
     /// ⚠️ **必须用 `sizeThatFits(in:)`，不能用 `setFrameSize + fittingSize`**（2026-09-15 修正）。
@@ -300,7 +279,7 @@ struct SettingsLayoutTests {
     /// 2026-09-18 之前设计稿写的是 826（= 它自己 Chrome 口径的英文自然高 814.25 + 余量），
     /// 它对自己的渲染没错，**但对实现偏大**：照它做会在中文下留 59.4pt 空白带。
     /// → 已拍板把设计稿同步成 800（§8.43），两份文档现在同数，
-    /// 由 ``设计稿与实现的面板尺寸必须同数()`` 钉住。
+    /// 由 `WindowSizeParityTests.设计稿与实现的窗口尺寸必须同数()` 钉住（同源表第 4/5 项）。
     @Test func 中文高度与设计稿几乎逐点相同() {
         let header = renderedSize(SettingsHeaderBar(onDone: {}), width: panelWidth)
         let sections = renderedSize(SettingsSectionsColumn { _ in }, width: panelWidth)
@@ -323,44 +302,6 @@ struct SettingsLayoutTests {
         // 「英文更长」是上面那条「英文是最坏情况」的前提。不成立只有两种可能：
         // ① 钉语言失效；② 英文文案缺失、`tr` 回退到中文源语言。**都不是「缺陷被修好」**。
         #expect(en > zh, "英文（\(en)）没比中文（\(zh)）高 —— 检查 L10n.forcedLocale 是否还能传到渲染")
-    }
-
-    /// 设计稿的 `--w-settings` / `--h-settings` 与实现的面板尺寸**必须同数**。
-    ///
-    /// **为什么需要**：这两份数字曾经分叉了整整一轮 —— 设计稿写 826、实现写 800，
-    /// 双方各自的文档里都留着一句「另一边还没同步，待拍板」，
-    /// 而**没有任何机制会提醒谁去还这笔账**（2026-09-18 拍板统一成 800，见 §8.43）。
-    /// 这一条负责让它们**不再分叉**：改任何一边而忘了另一边，这里立刻红。
-    ///
-    /// ⚠️ 读的是**设计稿的源文件**（`ds.css`），不是常量自己跟自己比 —— 那是没牙的断言
-    /// （`UpdateFeedTests` 读 `build_app.sh` 是同一个道理：唯一真相在别处时，测试就得去读那里）。
-    ///
-    /// ⚠️ 判据只能是「**两边相等**」，**不能写成「等于 800」**：
-    /// 后者在有人把两边**同时**改成 900 时依然会红 —— 那是假失败，会把下一个人引向错误方向。
-    @Test func 设计稿与实现的面板尺寸必须同数() throws {
-        let css = try String(
-            contentsOf: repoRoot.appendingPathComponent("DiskEjector-UI-Design/v2/assets/ds.css"),
-            encoding: .utf8)
-        let designW = try #require(
-            pxValue(in: css, token: "--w-settings:"), "ds.css 里找不到 --w-settings 的 px 值")
-        let designH = try #require(
-            pxValue(in: css, token: "--h-settings:"), "ds.css 里找不到 --h-settings 的 px 值")
-        print(
-            "  [设置面板] 设计稿 \(designW)×\(designH) ｜ "
-                + "实现 \(DesignTokens.Size.settingsPanel.width)×\(DesignTokens.Size.settingsPanel.height)"
-        )
-        #expect(
-            designW == Double(DesignTokens.Size.settingsPanel.width),
-            "设计稿 --w-settings = \(designW)px，实现 settingsPanel.width = \(DesignTokens.Size.settingsPanel.width)pt —— 两边必须同数"
-        )
-        #expect(
-            designH == Double(DesignTokens.Size.settingsPanel.height),
-            """
-            设计稿 --h-settings = \(designH)px，实现 settingsPanel.height = \
-            \(DesignTokens.Size.settingsPanel.height)pt —— 两边必须同数。
-            这两份数字曾经分叉一整轮（826 vs 800）而没人还账（§8.43）。改一边就改另一边。
-            """
-        )
     }
 
     /// 「更新」行**七态渲染出来必须一样高**。

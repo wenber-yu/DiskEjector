@@ -84,7 +84,11 @@ struct MenuPopoverLayoutTests {
     /// `GlassSurface` 内含 `NSViewRepresentable`，被无限量测时会把 1.79e308
     /// 送进 `NSLayoutConstraint` 并抛异常打死进程（signal 5）。
     /// 这条约束由 `GlassSurfaceTests` 与本测试共同守护 —— 谁把它挪进 `ZStack`，这里就崩。
-    private func size(_ view: some View, width: CGFloat = 360) -> CGSize {
+    private func size(
+        _ view: some View, width: CGFloat = DesignTokens.Size.menuPopoverWidth
+    )
+        -> CGSize
+    {
         _ = NSApplication.shared
         let hosting = NSHostingController(rootView: view)
         return hosting.sizeThatFits(
@@ -93,14 +97,22 @@ struct MenuPopoverLayoutTests {
 
     // MARK: - 宽度
 
-    /// 面板宽**恰好 360**（设计稿 `.win--popover { width: 360px }`）。
+    /// 面板渲染出来**恰好等于实现常量**（`DesignTokens.Size.menuPopoverWidth`）。
     ///
     /// 不是「约等于」：`NSPopover` 会按内容的 fitting size 定宽，
-    /// 任何一处多了 1pt 内边距都会让它变成 361 —— 而 360 是设计稿里
-    /// 与主窗口 800、设置面板 480 并列的**第三个固定尺寸**。
-    @Test func 面板宽度恰好三百六十() {
+    /// 任何一处多了 1pt 内边距都会让它变成 361。
+    ///
+    /// ⚠️ 这里**故意不写 360**：360 的出处是设计稿 `ds.css` 的 `--w-popover`，
+    /// 写死字面量就成了「拿常量跟自己比」（§8.51 明令禁止）——
+    /// 设计稿改成 380 而实现没跟时，这条**照样绿**。
+    /// 那一头由 `WindowSizeParityTests.设计稿与实现的窗口尺寸必须同数()` 钉住；
+    /// 这一条只守「排版没把宽度顶宽」。
+    @Test func 面板渲染宽度等于实现常量() {
         let s = size(popover(disks: [disk(1)]))
-        #expect(s.width == 360, "面板宽 \(s.width)pt，设计稿是 360pt")
+        let expected = DesignTokens.Size.menuPopoverWidth
+        #expect(
+            s.width == expected,
+            "面板宽 \(s.width)pt，实现常量是 \(expected)pt —— 多出来的多半是某处内边距")
     }
 
     // MARK: - 增量（与内容量无关，是排版规则本身）
