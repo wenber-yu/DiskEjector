@@ -10096,7 +10096,7 @@ func failedToDownloadUpdate(...) {
 | `DiskEjector-UI-Design/v2/DESIGN-SPEC.md` | 新增 §8.85；关掉「仍开着」表**第 30 行**、新开**第 34 行**、刷新核对时刻 |
 | `.build/probe/round36/`（不入库） | `axtext.swift` / `open_settings.swift` / `auto_ui` / `auto_download_probe.sh` / `logs/` |
 
-**本轮提交：`（见 §8.85.7 之后补记）`**
+**本轮提交：`40b5807`**（1 个文件 / +122 −3），已推送（`514da3c..40b5807`）。
 
 ---
 
