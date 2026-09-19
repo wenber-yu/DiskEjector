@@ -1,0 +1,39 @@
+{
+  "_comment": "生成物：`tools/measure_row_heights.py` 用无头 Chrome 量出来的实测值。别手改 —— 要改就重跑脚本。由 RowHeightParityTests 读取。",
+  "measuredAt": "2026-09-19 14:03",
+  "rows": {
+    "busy": {
+      "page": "screens/01-main-window.html",
+      "selector": ".row--busy",
+      "count": 1,
+      "heights": [
+        169.47
+      ]
+    },
+    "safeUnknown": {
+      "page": "screens/01-main-window.html",
+      "selector": ".row:not(.row--busy)",
+      "count": 4,
+      "heights": [
+        127.47,
+        133.47
+      ]
+    },
+    "menu": {
+      "page": "screens/02-menu-bar.html",
+      "selector": ".mrow",
+      "count": 2,
+      "heights": [
+        68.72
+      ]
+    },
+    "compact": {
+      "page": "screens/06-states.html",
+      "selector": ".crow",
+      "count": 6,
+      "heights": [
+        46
+      ]
+    }
+  }
+}
