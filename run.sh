@@ -4,9 +4,8 @@
 # 用法：
 #   ./run.sh                # 编译并启动（菜单栏 App）
 #   ./run.sh --reset        # 透传参数给程序本身
-#   ./run.sh check          # 不启动，只过 CI 的两道严格门槛
-#                           #   （-warnings-as-errors + swift-format --strict）
-#   ./run.sh check --with-tests   # 追加测试与覆盖率门槛
+#   ./run.sh check          # 不启动，只过 CI 的门槛（**逐道打印标题**——那份输出才是清单）
+#   ./run.sh check --with-tests   # 再追加最贵的那道：测试与覆盖率
 #   ./run.sh ci             # 推送**之后**看 CI 结论（等它跑完；--no-wait 只看状态）
 #                           #   退出码 0=绿 / 1=红 / 2=没拿到结论（2 ≠ 绿）
 # 说明：在源码目录编译并启动 DiskEjector（菜单栏 App）。

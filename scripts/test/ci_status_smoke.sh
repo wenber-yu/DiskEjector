@@ -7,8 +7,13 @@
 # 而其中**最关键的一条只能靠等网络抖动**才能出现 ⇒ 用假 gh（`scripts/test/fake-gh/gh`）
 # 把它变成确定性样本。
 #
-# 用法：./scripts/test/ci_status_smoke.sh
-# 退出码：0 = 确定性用例全部符合预期；1 = 有不符合
+# 用法：./scripts/test/ci_status_smoke.sh            # 全跑（含真 gh，看当前 HEAD 的结论）
+#       ./scripts/test/ci_status_smoke.sh --offline  # **只跑确定性用例**，不碰网络
+# 退出码：0 = 确定性用例全部符合预期；1 = 有不符合；2 = 参数错误
+#
+# ⚠️ **`--offline` 是给门槛用的那一档**（`scripts/preflight.sh` 用 `--offline` 调本脚本）：
+#    CI 上不该因为「网络抖了」而红，也不该让一次门槛多花十几秒去等 `gh`。
+#    默认（不带参数）那档是给人看的：多打几行当前 CI 结论，**不作为判据**。
 #
 # ⚠️ **判据是「退出码 + 输出里的关键串」两样都要对**：只看退出码的话，
 #    「查询失败」与「还没跑完」都是 2 ⇒ 两者分不开 —— 那正是 §8.107 要修的毛病。
@@ -25,6 +30,22 @@
 #    而症状与「装置没牙」逐字相同。要模拟旧行为必须**整块替换**。
 # =============================================================
 set -uo pipefail
+
+OFFLINE=0
+for arg in "$@"; do
+    case "$arg" in
+        --offline) OFFLINE=1 ;;
+        -h | --help)
+            sed -n '3,30p' "${BASH_SOURCE[0]}"
+            exit 0
+            ;;
+        *)
+            echo "未知参数：${arg}" >&2
+            echo "用法：./scripts/test/ci_status_smoke.sh [--offline]" >&2
+            exit 2
+            ;;
+    esac
+done
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 FAKE="$REPO/scripts/test/fake-gh"
@@ -67,7 +88,9 @@ run_case "假 gh：显式 run-id ⇒ 拿不到 run" 2 "拿不到 run" \
 run_case "未知参数" 2 "未知参数" "$REPO/run.sh" ci --definitely-not-a-flag
 
 echo
-if [ -x "$GH" ] && "$GH" run list --limit 1 >/dev/null 2>&1; then
+if [ "$OFFLINE" = "1" ]; then
+    echo "⏭ --offline：跳过真 gh 那几条（它们只打印、本来就不作判据）。"
+elif [ -x "$GH" ] && "$GH" run list --limit 1 >/dev/null 2>&1; then
     echo "── 真 gh（只打印，不给期望值：结果取决于 CI 与网络）──"
     "$REPO/run.sh" ci --no-wait 2>&1 | tail -8 | while IFS= read -r l; do echo "   $l"; done
 else

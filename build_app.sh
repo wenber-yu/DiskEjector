@@ -9,8 +9,7 @@
 #   VERSION=2.1.0 ./build_app.sh                # 显式指定版本
 #   BUILD_NUMBER=42 ./build_app.sh              # 显式指定构建号
 #   OUTPUT_DIR=/tmp ./build_app.sh              # 指定输出目录（默认 dist/）
-#   STRICT_CI=1 ./build_app.sh                  # 打包前先过 CI 的两道严格门槛
-#                                               #   （-warnings-as-errors + swift-format --strict）
+#   STRICT_CI=1 ./build_app.sh                  # 打包前先过 CI 的门槛（见 scripts/preflight.sh）
 #   DISABLE_SANDBOX=1 ./build_app.sh            # 让 swift build 跳过 SwiftPM 自带的 sandbox-exec
 #                                               #   （仅供本机执行环境已自带沙箱、导致
 #                                               #    "sandbox_apply: Operation not permitted" 时使用）
@@ -216,16 +215,16 @@ if [ ! -f "$PACKAGE_DIR/Package.swift" ]; then
 fi
 
 # ---------------------------------------------------------------
-# STRICT_CI=1：打包前先过 CI 的两道严格门槛
+# STRICT_CI=1：打包前先过 CI 的门槛（`scripts/preflight.sh`，逐道打印标题）
 #
-# **为什么默认关闭**：这两道门槛比打包本身严格得多，日常迭代反复跑会拖慢节奏；
+# **为什么默认关闭**：这些门槛比打包本身严格得多，日常迭代反复跑会拖慢节奏；
 # 但它们恰恰是 CI 会拦下来的东西，而本脚本的 release 构建**不带**这些 flag，
 # 所以「打包成功」不能推出「CI 会绿」。发布 / 提交 PR 前应显式开启：
 #     STRICT_CI=1 ./build_app.sh
 # 门槛实现见 scripts/preflight.sh（本地与 CI 共用同一文件，避免逻辑分叉）。
 # ---------------------------------------------------------------
 if [ "${STRICT_CI:-0}" = "1" ]; then
-    echo "▶ [0/4] 严格门槛预检（STRICT_CI=1）..."
+    echo "▶ [0/5] 严格门槛预检（STRICT_CI=1）..."
     "$SCRIPT_DIR/scripts/preflight.sh"
 fi
 
@@ -233,13 +232,13 @@ fi
 # 在 `cd` 后会把脚本剩余部分放到一个不继承前面变量定义的新上下文里执行，导致后续步骤
 # 报「未绑定变量」。改用 `env -C` 仅对 swift 构建命令临时切换工作目录（走 chdir 系统调用，
 # 不被上述 broker 拦截），其余步骤一律使用绝对路径（$APP_BUNDLE 等），彻底规避该问题。
-echo "▶ [1/4] Release 构建 ..."
+echo "▶ [1/5] Release 构建 ..."
 env -C "$PACKAGE_DIR" swift build -c release --product "$EXECUTABLE" \
     ${SWIFT_BUILD_FLAGS[@]+"${SWIFT_BUILD_FLAGS[@]}"}
 BIN_PATH="$(env -C "$PACKAGE_DIR" swift build -c release --show-bin-path \
     ${SWIFT_BUILD_FLAGS[@]+"${SWIFT_BUILD_FLAGS[@]}"})/$EXECUTABLE"
 
-echo "▶ [2/4] 组装 $APP_NAME.app ..."
+echo "▶ [2/5] 组装 $APP_NAME.app ..."
 rm -rf "$APP_BUNDLE"
 mkdir -p "$APP_BUNDLE/Contents/MacOS" "$APP_BUNDLE/Contents/Resources"
 cp "$BIN_PATH" "$APP_BUNDLE/Contents/MacOS/$EXECUTABLE"
@@ -360,7 +359,7 @@ $SPARKLE_PUBLIC_ED_KEY_PLIST
 </plist>
 PLIST
 
-echo "▶ [3/4] 复制应用图标 ..."
+echo "▶ [3/5] 复制应用图标 ..."
 if [ -f "$ICON_SOURCE" ]; then
     cp "$ICON_SOURCE" "$APP_BUNDLE/Contents/Resources/"
     echo "   ✓ AppIcon.icns（来自 ${ICON_SOURCE}）"
@@ -387,7 +386,7 @@ write_infoplist_strings "zh-Hans" "$APP_DISPLAY_NAME"
 write_infoplist_strings "zh-Hant" "$APP_DISPLAY_NAME_HANT"
 write_infoplist_strings "en" "$APP_NAME"
 
-echo "▶ [4/4] 签名（Hardened Runtime，直发渠道）..."
+echo "▶ [4/5] 签名（Hardened Runtime，直发渠道）..."
 if [ ! -f "$ENTITLEMENTS" ]; then
     echo "   ❌ 缺少 entitlements: $ENTITLEMENTS" >&2
     exit 1

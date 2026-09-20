@@ -49,11 +49,12 @@ jobs:
           swift --version
           xcrun swift-format --version
 
-      # 三道严格门槛：零警告构建（-Xswiftc -warnings-as-errors）、swift-format --strict、
-      # 测试 + 覆盖率门槛。全部封装在 scripts/preflight.sh 里 —— 本地跑的是**同一个文件**
+      # 门槛全部封装在 scripts/preflight.sh 里 —— 本地跑的是**同一个文件**
       # （`./run.sh check --with-tests`），因此不存在「本地判据与 CI 判据分叉」的可能。
       # 本仓库曾因两侧不一致，让 13 条 Swift 6 并发错误在本地一路绿灯的情况下潜伏三天。
-      - name: 代码门槛（零警告构建 · 格式 · 测试覆盖率）
+      # ⚠️ 这里**不写门槛数量**（门槛会加，数字会漂 —— 本行曾写「三道」，而实际早已不是了）。
+      #    要清单就跑 `./run.sh check`：它逐道打印标题，那份输出才是权威。
+      - name: 代码门槛（scripts/preflight.sh --with-tests）
         run: ./scripts/preflight.sh --with-tests
 
       # 打包验证：确认 .app 能构建出来且签名步骤不报错。
