@@ -27,8 +27,16 @@ enum DistributionChannel: String, Sendable, CustomStringConvertible {
 ///
 /// ## 与自更新（Sparkle）的关系
 ///
-/// 当前只提供「打开下载页」：应用自身还不检查更新。接入 Sparkle 后由 `SPUUpdater`
-/// 承担检查与安装，这里只保留「手动打开 Releases 页」这一条退路。
+/// ⚠️ **2026-09-20 订正**：这里原来写着「应用自身还不检查更新，接入 Sparkle 后由
+/// `SPUUpdater` 承担」—— **Sparkle 早已接好**，那句话是过时的（同类的过时注释本轮
+/// 还修了三处，见 §8.87）。现在的分工是：
+///
+/// - ``UpdateController`` 持有 `SPUUpdater`，负责**检查 / 下载 / 安装**；
+/// - ``UpdateUserDriver`` 把 Sparkle 的回调翻译成 ``UpdateController`` 的状态机；
+/// - **本文件**只留「手动打开 Releases 页」这一条**退路**（`openUpdateSource()`），
+///   以及渠道判定。它**不参与更新检查**，也确实不 import Sparkle —— 那句
+///   「本文件尚未集成 Sparkle」指的是**这个文件**，不是说应用没接。
+///
 /// 渠道判定与 UI 无需再分叉 —— 不上架 MAS 之后，渠道只剩一种，没有第二个分支要照顾。
 enum UpdateService {
 
