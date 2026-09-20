@@ -9,6 +9,7 @@
 #
 # 退出码：0 = 绿 ／ 1 = 红 ／ 2 = 没拿到结论
 #         ⚠️ 2 **不等于**绿 —— 这条是本脚本存在的意义之一，见下。
+#         （`cancelled` / `skipped` 也归到 2：被后续推送取代**不是失败**）
 #
 # 为什么需要它（2026-09-20）：CI 曾**连续 76 次红**（约 2.5 天）而没人看 ——
 # 本地门槛每轮都报「4 道门槛全绿」，于是「推完就走」这件事没有任何落点。
@@ -74,6 +75,10 @@ read_fields() {
     { read -r id; read -r status; read -r conclusion; read -r sha; read -r branch; read -r title; } <<<"$1" || true
 }
 
+# ⚠️ 这些变量在**所有**分支都必须先有值：`set -u` 下缺一个就报 `unbound variable`，
+# 而 shell 因此退出时**退出码是 1** —— 与「CI 红」的退出码**相同** ⇒ 会被误读成「CI 红」。
+id=""; status=""; conclusion=""; sha=""; branch=""; title=""
+
 HEAD_FULL="$(git rev-parse HEAD)"
 HEAD_SHORT="$(git rev-parse --short=7 HEAD)"
 
@@ -85,6 +90,7 @@ if [ -n "$RUN_ID" ]; then
         echo "  gh 原始输出：$info" >&2
         exit 2
     }
+    read_fields "$info"
 else
     # --- ⑤ 按**当前 HEAD 的提交**查，不是「最近一次」 ---
     BRANCH="$(git rev-parse --abbrev-ref HEAD)"
@@ -146,6 +152,14 @@ case "$conclusion" in
     success)
         echo "✅ CI 绿"
         exit 0
+        ;;
+    cancelled|skipped)
+        # ⚠️ `cancelled` 是「被后续推送取代」，**不是失败** —— 报成「❌ CI 红」会误导
+        # （2026-09-20 实测撞到：指定一个被取代的 run 时它报「❌ CI 红：cancelled」）。
+        # 归到「没拿到有效结论」（退出码 2），与「绿」「红」都分开。
+        echo "⏹ CI $conclusion —— **不是失败**：这次 run 被后续推送取代了（或没跑）。"
+        echo "   要看结论请跑最新的那次：./run.sh ci"
+        exit 2
         ;;
     *)
         echo "❌ CI 红：${conclusion:-(无结论字段)}"
