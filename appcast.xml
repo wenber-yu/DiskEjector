@@ -3,19 +3,21 @@
     <channel>
         <title>DiskEjector</title>
         <item>
-            <title>2026.09.19.1</title>
-            <pubDate>Sat, 19 Sep 2026 19:24:36 +0800</pubDate>
+            <title>2026.09.20.1</title>
+            <pubDate>Sun, 20 Sep 2026 10:37:29 +0800</pubDate>
             <link>https://github.com/wenber-yu/DiskEjector</link>
-            <sparkle:version>119</sparkle:version>
-            <sparkle:shortVersionString>2026.09.19.1</sparkle:shortVersionString>
+            <sparkle:version>140</sparkle:version>
+            <sparkle:shortVersionString>2026.09.20.1</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
             <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
-            <description><![CDATA[<ul data-page-node-id="Rn91KdXmQwLpZtVbChGs7f">
-<li data-page-node-id="Ux4JpAe2vBnM8sWqTdYk3c">修复主窗口「完全磁盘访问」提示里多出来的两个星号（现在正确显示为粗体）</li>
-<li data-page-node-id="Kf7mHtLqRz5wNbXvDsEp2a">深色模式下细描边与分隔线的颜色更准确（此前偏灰）</li>
+            <description><![CDATA[<ul>
+<li>修复「自动更新」开启时设置行显示不准的问题：后台下载中的状态现在会真实显示，不再停在旧的检查状态</li>
+<li>后台下载那一态不再假装知道进度：没有进度数据时不画进度条，只显示说明文案</li>
+<li>菜单栏面板中被占用磁盘左侧的琥珀判定条宽度与设计稿一致（此前宽 0.5pt）</li>
+<li>更新检查的取消与失败回调处理更严格，异常情况下状态不会卡住</li>
 </ul>
 ]]></description>
-            <enclosure url="https://github.com/wenber-yu/DiskEjector/releases/download/v2026.09.19.1/DiskEjector-2026.09.19.1.dmg" length="2702041" type="application/octet-stream" sparkle:edSignature="xkfiagoORqMyb+m7fb3fxU9UkpMGN12LFP1y/YKjH1WnejLrwz3Hs+1IZy6XENF+zoahcYfyTl1d3thmT1P3AQ=="/>
+            <enclosure url="https://github.com/wenber-yu/DiskEjector/releases/download/v2026.09.20.1/DiskEjector-2026.09.20.1.dmg" length="2711541" type="application/octet-stream" sparkle:edSignature="Gzk5hjjiCBea+WJgxFU81jt28GHSR+UmdMp7SEyskE3XlOLFxTlFHTuyr5NCMc+B99jvU8dgbu55fyv7vC1wDw=="/>
         </item>
     </channel>
 </rss>
