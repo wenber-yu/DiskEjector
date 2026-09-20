@@ -12664,7 +12664,69 @@ $ LC_ALL=en_US.UTF-8 … echo "$n，x" …       bash: n<?>: unbound variable
 修一个问题的设置，常常同时是另一个问题的遮罩。
 
 **落地**：提交 `55a7af1`（8 files，+362 / −23）**CI 红** run `35509585072`；
-修复提交 **（本轮补）**。
+修复提交 **`b530f68`**（7 files，+167 / −14）。
+
+### 8.108.2 ⚠️ 修完 §8.108.1 推上去**又红了一次**：`SubprocessOutput` 超时后可能返回 `""` 而不是 `nil`
+
+CI run **`35510414520`** failure —— 这次是门槛 5：
+
+```
+✘ Test 超时是真超时而不是装饰() recorded an issue at SubprocessOutputTests.swift:49:9:
+  Expectation failed: (output → "") == nil
+```
+
+**真因（读代码 + CI 日志推出来，本地一次都没复现）**：`SubprocessOutput` 的超时块是
+
+```swift
+if task.isRunning { task.terminate() }   // ← 这一步会让管道**立刻 EOF**
+complete(nil)                            // ← 与下面的 EOF 路径是**竞态**
+```
+
+而 `terminate()` 造成的 EOF 会让 `readabilityHandler` 收到空 chunk ⇒
+`completeFromBuffer()` 以**「输出收齐了」**收尾（`/bin/sleep` 就是 `""`）。
+**谁先到谁生效** —— CI 上 434 条测试并发时，EOF 抢先了一次。
+
+⚠️ **这不只是一条 flaky 测试**，它是产品缺陷：`SubprocessOutput` 的契约是
+「`nil` = 没拿到（超时/启动失败）」。上层（`OccupancyDetector`）据此区分
+「**没有占用进程**」与「**不知道**」—— 拿到 `""` 会被读成前者，
+于是**占用检测在超时时静默给出一个肯定的错误答案**。
+（与 §8.107 那条同族：**「没拿到」被读成「拿到了但为空」**。）
+
+**修法**（`Sources/Services/OccupancyDetector.swift`）：加一个 `timedOut` 位，
+并且 **判据与它放在同一把锁里判定**：
+
+```swift
+private func complete(_ value: String?) {
+    lock.lock()
+    guard !finished else { lock.unlock(); return }
+    finished = true
+    output = timedOut ? nil : value   // ← 在锁里判，不靠「先到先得」
+    ...
+}
+```
+
+⚠️ 两种**不够**的写法（都留着缝）：
+
+- 只把 `complete(nil)` 挪到 `terminate()` **之前**：EOF 路径可能已经过了 `finished` 检查、
+  正卡在「取完 buffer、还没调 `complete`」那一步 —— 缝还在；
+- 只在 `completeFromBuffer()` 外面判 `if timedOut { complete(nil) }`：
+  它可能在置位**之前**读到 `false`，随后仍以 `text` 收尾。
+
+⇒ 只有把「是否超时」与「收尾一次」放进**同一把锁**才关得上。
+
+**⚠️ 诚实记录：这条修不出「确定性回归测试」。**
+竞态窗口是 `terminate()` 到 `complete(nil)` 之间的几微秒，本地**一次都没复现**
+（连跑 3 轮 `SubprocessOutputTests` 全绿）。⇒ 现有的
+`超时是真超时而不是装饰` 是一条**概率性**守卫 —— 它会在竞态输掉那次掷硬币时红
+（这次 CI 就是）。**别把它读成「已验证修好了」。**
+（同族：`SubprocessOutput` 那两条「偶发挂死」当年也是靠压测 100 次才钉住的。）
+
+**顺带**：同一次 CI 日志里还有一句
+`LLVM Profile Error: Failed to write file "default.profraw": Operation not permitted` ——
+它**不是**本次失败的原因（门槛 5 是因为测试未通过，不是覆盖率不达标），
+本地跑覆盖率也没有这句。记在这里，暂未追。
+
+**落地**：（本轮补）
 
 ---
 

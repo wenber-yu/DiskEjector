@@ -332,6 +332,21 @@ final class SubprocessOutput: @unchecked Sendable {
     private var buffer = Data()
     private var finished = false
 
+    /// 超时**已发生**。置位之后，**任何**收尾路径都只能按「没拿到」（`nil`）走。
+    ///
+    /// ⚠️ 为什么必须有这个位（2026-09-20 CI 实测撞到一次）：超时块里先 `terminate()`
+    /// 再 `complete(nil)`，而 `terminate()` 会让管道**立刻 EOF** ⇒ `readabilityHandler`
+    /// 收到空 chunk ⇒ `completeFromBuffer()` 以**「输出收齐了」**收尾。
+    /// 这与超时块的 `complete(nil)` 是**竞态**：谁先到谁生效。
+    /// EOF 先到时调用方拿到的是 **空字符串**而不是 `nil` ⇒
+    /// 「没拿到」被读成「拿到了、但输出为空」，上层会按「没有占用进程」而不是「不知道」处理
+    /// —— **症状与真问题逐字相同**。
+    ///
+    /// ⚠️ 它只在**负载下**偶发：本地一次都没复现，CI 上 434 条测试并发时炸了一次
+    /// （`SubprocessOutputTests.超时是真超时而不是装饰` 拿到 `""`）。
+    /// ⇒ 判据放在**同一把锁里**（见 `complete`），不靠「先到先得」。
+    private var timedOut = false
+
     /// 结束后可读到输出；`nil` = 没拿到（启动失败或超时）。
     private(set) var output: String?
 
@@ -383,6 +398,11 @@ final class SubprocessOutput: @unchecked Sendable {
         }
 
         DispatchQueue.global().asyncAfter(deadline: .now() + timeout) { [self] in
+            // ⚠️ **先置位再 terminate**：`terminate()` 会立刻造成 EOF，
+            //    而 EOF 路径此刻正盯着「输出收齐了」这条路 —— 置位晚一步就会被它抢先。
+            lock.lock()
+            timedOut = true
+            lock.unlock()
             if task.isRunning {
                 task.terminate()
             }
@@ -406,9 +426,13 @@ final class SubprocessOutput: @unchecked Sendable {
             return
         }
         finished = true
-        output = value
+        // ⚠️ **判据必须与 `timedOut` 在同一把锁里判定**：超时一旦置位，
+        //    不管是超时块还是（terminate 造成的）EOF 路径先到，收尾值都只可能是 `nil`。
+        //    写成「if timedOut { complete(nil) }」在外面判，锁内锁外之间仍有缝。
+        output = timedOut ? nil : value
+        let final = output
         lock.unlock()
         pipe.fileHandleForReading.readabilityHandler = nil
-        completion(value)
+        completion(final)
     }
 }
