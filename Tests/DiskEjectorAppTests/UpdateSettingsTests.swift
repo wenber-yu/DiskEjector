@@ -62,7 +62,7 @@ struct UpdateSettingsTests {
 
     /// 取 `switch` 里某一个 `case` 的整段（到下一个**同缩进**的 `case` 之前）。
     ///
-    /// **为什么需要它**：`updateCheckLine` 那七个分支写在同一个 `switch` 里，
+    /// **为什么需要它**：`updateCheckLine` 的每一个行态都写在同一个 `switch` 里，
     /// 对整份 `SettingsView.swift` 做 `contains` 的话，断言会被**另一个分支**满足
     /// —— 与 `functionBody` 那条理由一样：要钉的是「这一段里有什么」。
     ///
@@ -119,7 +119,7 @@ struct UpdateSettingsTests {
                 == .skipped(version: "1.1.0"),
             "没检查过也要显示跳过态 —— 用户可能是在上次会话里跳过的")
 
-        // ② 进行中的四态盖过一切 —— 否则界面会同时说「已跳过 1.1.0」和「正在下载 1.1.0」。
+        // ② 进行中 / 受阻的六态盖过一切 —— 否则界面会同时说「已跳过 1.1.0」和「正在下载 1.1.0」。
         #expect(
             UpdateController.rowState(
                 phase: .downloading(version: "1.2.0", fraction: 0.42),
@@ -137,6 +137,37 @@ struct UpdateSettingsTests {
             UpdateController.rowState(
                 phase: .found(version: "1.2.0"), skippedVersion: "1.1.0", lastCheck: checked)
                 == .found(version: "1.2.0", lastCheck: checked))
+
+        // ⚠️ **`.checking` 也在这条链上**（2026-09-20 补，§8.93 / §8.97）：
+        // 它是「用户点了、Sparkle 还没答」的那 3~4.5 秒。若被跳过态盖过，
+        // 界面上仍写着「已跳过 1.1.0」—— 用户会以为那一下没生效，然后再点一次。
+        #expect(
+            UpdateController.rowState(
+                phase: .checking, skippedVersion: "1.1.0", lastCheck: checked)
+                == .checking,
+            "「正在检查」被跳过态盖过了 —— 用户点完看到的是上一轮的结果，会反复点（真机实测这段 3~4.5 秒，§8.93）")
+        #expect(
+            UpdateController.rowState(phase: .checking, skippedVersion: nil, lastCheck: checked)
+                == .checking,
+            "「正在检查」被「已是最新版本」盖过了 —— 那正是这条中间态要修的现象：点完几秒内零反馈")
+        #expect(
+            UpdateController.rowState(phase: .checking, skippedVersion: nil, lastCheck: nil)
+                == .checking,
+            "「正在检查」被「尚未检查」盖过了 —— 点完还是写着「尚未检查」，用户只能再点一次")
+
+        // ⚠️ **`.locationBlocked` 也在这条链上**（2026-09-20 补，§8.94 / §8.95.7）：
+        // 只读卷上 Sparkle **连 appcast 都不去取**（`SPUBasicUpdateDriver.m:71` 判 `MNT_RDONLY`），
+        // 而它仍把「上次检查时间」写成当下（`SPUUpdater.m:789`）—— 落到「已是最新版本」
+        // 就是**谎报**：明明一次网络请求都没发。
+        #expect(
+            UpdateController.rowState(
+                phase: .locationBlocked, skippedVersion: "1.1.0", lastCheck: checked)
+                == .locationBlocked,
+            "「位置不允许更新」被跳过态盖过了 —— 用户会以为是跳过标记挡着，去点「检查更新」")
+        #expect(
+            UpdateController.rowState(phase: .locationBlocked, skippedVersion: nil, lastCheck: checked)
+                == .locationBlocked,
+            "「位置不允许更新」被「已是最新版本」盖过了 —— 只读卷上这就是一句谎话（§8.94 实测零网络请求）")
     }
 
     /// 「发现新版本」那一行要把上次检查时间带上（设计稿 B2：`发现 1.1.0 · 上次检查：…`）。
@@ -206,6 +237,45 @@ struct UpdateSettingsTests {
         #expect(
             head.contains("clearSkippedVersion()"),
             "checkForUpdates() 开头必须先清掉跳过标记，否则用户永远看不到被跳过的版本")
+    }
+
+    /// **「正在检查」这一态只在 `ensureUpdater()` 成功之后才设** —— 顺序错了会留下一个没有出口的态。
+    ///
+    /// `checkForUpdates()` 里 updater 起不来时是**直接 `return` 并跳去下载页**的
+    /// （`UpdateService.openUpdateSource()`）。若把 `phase = .checking` 提到 `guard` 之前，
+    /// 那条路上界面会**永远停在「正在检查更新…」**，而它实际发生的事是「打开网页」——
+    /// 用户等的是一个永远不来的答案。
+    ///
+    /// ⚠️ **为什么是源码文本守卫**：`phase` 是 `private(set)`、`ensureUpdater()` 是 `private`，
+    /// 测试进程里造不出「updater 起不来」那条路（同 `停摆兜底挂在phase的didSet上` 的局限）。
+    /// 而顺序这件事**编译不会管、别处也不会红** —— 只能靠这条钉。
+    ///
+    /// 变异验证见本轮记录：把 `phase = .checking` 挪到 `guard` 之前，这条会红。
+    @Test func 正在检查这一态只在updater起来之后才设() throws {
+        let source = try contents("Sources/Services/UpdateController.swift")
+        let body = codeOnly(try functionBody("func checkForUpdates()", in: source))
+
+        let ensureAt = try #require(
+            body.range(of: "ensureUpdater()")?.lowerBound,
+            "checkForUpdates() 里没有 ensureUpdater() —— 改名了就要同步这条断言")
+        let checkingAt = try #require(
+            body.range(of: "phase = .checking")?.lowerBound,
+            """
+            checkForUpdates() 没有把状态推进到「正在检查」——
+            用户点完之后界面在这几秒里零反馈（真机实测 4.31 / 3.15 / 4.51 秒，§8.93），
+            而「检查更新」按钮在这几秒里仍亮着、仍可反复点。实得：
+            \(body)
+            """)
+
+        #expect(
+            checkingAt > ensureAt,
+            """
+            `phase = .checking` 排在 `ensureUpdater()` 之前了。
+            updater 起不来时上面已经 `return` 并跳去下载页 —— 提前设的那一态
+            会**永远停在「正在检查更新…」**，而它实际发生的事是「打开网页」。
+            这一态**必须有出口**，所以它只能在确认 updater 起来了之后才设。实得：
+            \(body)
+            """)
     }
 
     // MARK: - 「更新」是唯一入口
@@ -324,6 +394,54 @@ struct UpdateSettingsTests {
         #expect(!UpdateController.isDownloadFailure(phase: .found(version: "1.1.0")))
         #expect(!UpdateController.isDownloadFailure(phase: .ready(version: "1.1.0")))
         #expect(!UpdateController.isDownloadFailure(phase: .failed(version: "1.1.0")))
+        // 2026-09-20 补的两态：**尤其 `.checking`** —— 用户点「检查更新」之后、
+        // Sparkle 还没答的那几秒，`showUpdaterError` 是可能到的（feed 拿不到）。
+        // 若被算成「下载失败」，界面会写「1.1.0 下载失败」—— 而**根本还没开始下载**。
+        #expect(
+            !UpdateController.isDownloadFailure(phase: .checking),
+            "「正在检查」被算成「下载失败」了 —— 那一刻还没开始下载，文案会凭空冒出「%@ 下载失败」")
+        #expect(
+            !UpdateController.isDownloadFailure(phase: .locationBlocked),
+            "「位置不允许更新」被算成「下载失败」了 —— 它不是网络问题，重试在只读卷上必然再失败（§8.94）")
+    }
+
+    /// **「位置不允许更新」的判定**：域 + 码，**单测写字面量**。
+    ///
+    /// ⚠️ 这里**故意不引 `SUError.runningFromDiskImageError`**：实现引符号、测试写字面量，
+    /// 两边才**不同源**。两边都引符号就是「拿常量跟自己比」—— Sparkle 哪天把 `1003`
+    /// 改成别的数字，这条断言**照样绿**（§8.95.7 记过这个坑）。
+    ///
+    /// 反例与正例**同样重要**：只测正例的话，把判据写成 `return true` 也能过，
+    /// 而那会把一次普通网络失败说成「请把应用拷到『应用程序』文件夹」。
+    ///
+    /// 两个码都在 Sparkle 源码里**写死**（`SUErrors.h:43` / `:45`），域是 `SUConstants.m:53`
+    /// —— 读源码就是证据，不需要真机验证（§8.95.7 逐行对过）。
+    @Test func 位置不允许更新的判定按域与码分档() {
+        func sparkleError(_ code: Int) -> NSError {
+            NSError(domain: "SUSparkleErrorDomain", code: code)
+        }
+
+        #expect(
+            UpdateController.isUpdateLocationBlocked(sparkleError(1003)),
+            """
+            只读卷（SURunningFromDiskImageError = 1003）没被判出来 ——
+            用户从 dmg 挂载卷里直接双击就掉进「已是最新版本」，而 Sparkle 连 appcast 都没去取。
+            """)
+        #expect(
+            UpdateController.isUpdateLocationBlocked(sparkleError(1005)),
+            """
+            App Translocation（SURunningTranslocated = 1005）没被判出来 ——
+            从「下载」文件夹直接双击走的就是这条（Gatekeeper 把 app 挪到只读随机路径）。
+            """)
+
+        // 域对、码不对 ⇒ 不是这一态（别的 Sparkle 错误有自己的出口）。
+        #expect(
+            !UpdateController.isUpdateLocationBlocked(sparkleError(1000)),
+            "别的 Sparkle 错误码被误判成「位置不允许更新」—— 那会把一次普通失败说成「请把应用拷到『应用程序』文件夹」")
+        // 码对、域不对 ⇒ 也不是（别的框架恰好也用 1003 时不该被我们认领）。
+        #expect(
+            !UpdateController.isUpdateLocationBlocked(NSError(domain: "SomeOtherDomain", code: 1003)),
+            "域没对上却按码认领了 —— 判域存在的意义就是防这个")
     }
 
     /// **「下载失败」这一态必须有生产者，而且接线断掉时这条会红。**

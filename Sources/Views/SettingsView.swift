@@ -519,6 +519,21 @@ struct SettingsSectionsColumn: View {
                 description: String(format: L10n.tr(.updateSkippedFormat), version)
             ) { checkForUpdatesButton }
 
+        case .checking:
+            // ⚠️ **不给按钮**：此刻 Sparkle 正跑着，点「检查更新」是没有反应的
+            // （`checkForUpdates()` 会先回到 `.idle` 再重来一遍，用户只看到闪一下）。
+            // 给一个点了没反应的按钮，与「功能坏了」长得一模一样 —— 同 `.ready` 那条判据。
+            //
+            // ⚠️ **必须带 `description`**：面板是固定高度，而其余各态都有第二行
+            // （进度条 / 说明 / 上次检查）。只有 label 的话实测会比别态矮 ——
+            // §8.82 就是这么抓到「下载中（无百分比）」那一态的（矮 14.8pt）。
+            line(
+                label: L10n.tr(.updateChecking),
+                description: L10n.tr(.updateCheckingHint)
+            ) {
+                EmptyView()
+            }
+
         case .found(let version, let lastCheck):
             line(
                 label: L10n.tr(.checkForUpdates),
@@ -571,6 +586,20 @@ struct SettingsSectionsColumn: View {
                 label: String(format: L10n.tr(.updateFailedFormat), version),
                 description: L10n.tr(.updateFailedHint)
             ) { retryUpdateButton }
+
+        case .locationBlocked:
+            // ⚠️ **不给按钮**：我们没法替用户把 `.app` 搬进「应用程序」文件夹，
+            // 而「重试」在只读卷上**必然再失败**（Sparkle 连 appcast 都不会去取，
+            // §8.94）—— 那就是下一个「点了没反应的按钮」。
+            //
+            // 这一态替换掉的是原先的**谎报**：只读卷上检查更新后，界面会说
+            // 「已是最新版本」并把「上次检查」刷成当下，而它其实**一次网络请求都没发**。
+            line(
+                label: L10n.tr(.updateLocationBlocked),
+                description: L10n.tr(.updateLocationBlockedHint)
+            ) {
+                EmptyView()
+            }
         }
     }
 

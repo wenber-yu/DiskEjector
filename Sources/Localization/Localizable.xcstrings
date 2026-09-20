@@ -554,6 +554,20 @@
         "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "按下「背景下載並重新啟動」後，應用程式會在背景下載並驗證簽章，完成後自動重新啟動以完成安裝。正在退出的磁碟不會被中斷。" } }
       }
     },
+    "updateChecking" : {
+      "localizations" : {
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "正在检查更新…" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Checking for updates…" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "正在檢查更新…" } }
+      }
+    },
+    "updateCheckingHint" : {
+      "localizations" : {
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "通常只需要几秒钟。" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "This usually takes a few seconds." } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "通常只需要幾秒鐘。" } }
+      }
+    },
     "updateDownloadingFormat" : {
       "localizations" : {
         "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "正在后台下载 %@" } },
@@ -608,6 +622,20 @@
         "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "后台更新并重启" } },
         "en" : { "stringUnit" : { "state" : "translated", "value" : "Update in Background & Restart" } },
         "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "背景下載並重新啟動" } }
+      }
+    },
+    "updateLocationBlocked" : {
+      "localizations" : {
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "请把应用拷到「应用程序」文件夹" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Move the app to your Applications folder" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "請把應用程式拷到「應用程式」資料夾" } }
+      }
+    },
+    "updateLocationBlockedHint" : {
+      "localizations" : {
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "应用当前所在的磁盘位置不允许它更新自己。" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "The app can't update itself from where it is right now." } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "應用程式目前所在的磁碟位置不允許它更新自己。" } }
       }
     },
     "updateNeverChecked" : {

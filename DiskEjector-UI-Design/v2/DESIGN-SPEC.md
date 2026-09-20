@@ -5078,8 +5078,18 @@ Sparkle 会不会装上这次更新 —— 依据是 `showUpdateFound` 的文档
 
 ### §8.42.2 仍开着的（按「谁能关掉它」分类）
 
-> ⚠️ **本表的最后核对时刻：2026-09-20 13:39**（起点 `HEAD` = `b94762b`，工作区 0 脏；本轮改动见 §8.96 + §8.95.7 + §8.97）。
-> 本次核对是 §8.96 + §8.95.7 + §8.97 —— **没关掉任何一行**。§8.96 先**把第 35 行的两个剩余方向扫完了一个**：
+> ⚠️ **本表的最后核对时刻：2026-09-20 14:03**（起点 `HEAD` = `16575ce`，工作区 **10 脏**；本轮改动见 §8.98）。
+> 本次核对是 §8.98 —— **关掉了两行（第 38、39 行），并新开第 40 行**。
+> 用户拍板：第 39 行取**方案 C**（新增一态「请把应用拷到『应用程序』文件夹」）、
+> 第 38 行**补**「正在检查…」中间态 —— 两条一起做（动的是同一组枚举与同一行画法）。
+> `UpdatePhase` 5 → **7** 态、`CheckRowState` 7 → **9** 态、本地化 **+4 键**；
+> 三组变异**全红**（顺序 / 判定恒真 / 不派生）；「各态一样高」实测九态**逐位相同**（698.6）。
+> ⚠️ 顺带把一条旧守卫**转正**：`updateChecking` 从「零消费者残留」变回**正例**
+> （本轮把它画出来了 ⇒ 原来钉「不存在」的那半条与实现直接打架）。
+> ⚠️ **新开第 40 行**：设计稿 `08-update.html` **没有这两帧** —— 走查图能出、设计稿没有，
+> 属于 §8.82 / §8.69 那类「两边各写一句记得同步守不住」的风险。详见 §8.98。
+>
+> _（上一次核对是 §8.96 + §8.95.7 + §8.97 —— **没关掉任何一行**。§8.96 先**把第 35 行的两个剩余方向扫完了一个**：
 > 「并行 suite 里的非 main-actor 代码」**0 候选**（418 个 test / 161 个非 main-actor；
 > 函数体内碰共享状态的 4 条**全是源码文本断言的字符串字面量**）。
 > ⚠️ 这个**阴性**结论是靠**双向阳性对照**才敢写的 —— 扫描器连错四次（三次误报 + 一次漏报，
@@ -5092,7 +5102,7 @@ Sparkle 会不会装上这次更新 —— 依据是 `showUpdateFound` 的文档
 > 「3s 会偶发假红（**实测过一次**）」、「2026-09-17 CI 上 10s **仍然没等到**」，
 > 并自认「**放宽超时是在买时间，不是在修根因**」；机制链也对上了（`waitUntil` 依赖主 actor，
 > 而主 actor 上有两个测试在**同步阻塞**）。⇒ **第 35 行其实有实证，只是没进这张表。**
-> §8.95.7 则把第 39 行的「判定」核实到底（源码级逐行对上，**不需要真机验证**）。
+> §8.95.7 则把第 39 行的「判定」核实到底（源码级逐行对上，**不需要真机验证**）。）_
 >
 > _（上一次核对是 §8.95 —— **没关掉任何一行**，但**把第 39 行从「三个待选修法」收敛成「只剩落点要选」**：
 > abort 的调用链追到底了（六跳、逐行对上），真正的落点是 **`showUpdaterError`**；
@@ -5169,7 +5179,7 @@ Sparkle 会不会装上这次更新 —— 依据是 `showUpdateFound` 的文档
 | 12 | ~~复验时「25s 内没写 `SULastCheckTime`」看着像回归~~ | 已关闭 | §8.47.8 | ✅ 查出是**探针残留**（用户域 `SUEnableAutomaticChecks=0` 盖过 Info.plist 的 `true`）；已恢复 + 写进探针 |
 | 13 | ~~三组 `*BusyBar*` 令牌**接错行**（菜单行拿 3/8、紧凑行拿 3/10）~~ | 已关闭 | §8.48 | ✅ 各自接回自己的令牌；新增 `MenuDiskRowLayoutTests/三种行的琥珀条各用自己那组的规格`（量像素，期望值取设计稿字面值），两条轴**逐条变异**验证过 |
 | 14 | ~~**`menuBusyBarWidth = 2.5` 落不了地** —— `.frame(width: 2.5)` 在行首渲染出来是 **3pt**（与 3.0 逐像素相同）~~ | ~~换画法才能做到（**未做**，收益 0.5pt）~~ | §8.48 / **§8.87** | ✅ **已还账（第 36 轮）** —— 机制查实了（不是圆角、是 `path(in:)` 拿到的 `rect` **已被对齐到整点**）⇒ 换「宽度走自己属性」的 `BusyBarShape`，2.5pt 落下来了（菜单行实测 5px）。守卫从「只守上限」改成**双侧 ±0.25pt**，并有变异背书（改回 `rect.width` → 实测 3.0pt、变红） |
-| 15 | ~~两个**零消费者**文案键（`terminateAndEject` / `updateChecking`）~~ | 已关闭 | §8.48 | ✅ 从三语表删除（158 → 156）；补「不再存在」断言 + **「每个键都必须有消费者」**守卫（插一个假键即红，验证过） |
+| 15 | ~~两个**零消费者**文案键（`terminateAndEject` / `updateChecking`）~~ | 已关闭 | §8.48 | ✅ 从三语表删除（158 → 156）；补「不再存在」断言 + **「每个键都必须有消费者」**守卫（插一个假键即红，验证过） ⚠️ **§8.98 订正（2026-09-20）：这条里的 `updateChecking` 那半已被推翻** —— 用户拍板把「正在检查…」那一态**画出来**（§8.98.7），于是它从「零消费者残留」变回**正例**；`LocalizationCatalogTests` 里钉「它不存在」的那半条已删、函数改名 `零消费者的文案键不再存在`，并补了**反向**守卫 `正在检查那一态的文案键已转正`。`terminateAndEject` 那半**仍然有效**。 |
 | 16 | ~~偏好键 / 设计令牌还没有 CI 守卫~~ | 已关闭 | §8.50 | ✅ `DeclarationConsumerTests` 两个 suite：令牌 145 个声明 / 14 个零消费者、偏好键 7 个 / 1 个，均以**豁免表**登记（两个方向都查）；7 条变异验证过。⚠️ 附带的「5 个令牌 = 拿常量跟自己比」这句**归因是错的**，§8.51.1 订正 |
 | 17 | ~~**4 个行高令牌（`diskRow*` / `menuRowHeight`）在设计稿里**没有声明**，只能靠无头 Chrome 实测 ⇒ 进不了 CI**~~ | ~~造不出机器无关的量法~~ | §8.51.3 / **§8.73** | ✅ **已还账（第 25 轮）** —— 实测值固化成 `assets/design-row-heights.json`（`tools/measure_row_heights.py` 一键重生成，带**实测时刻**与自证字段：页面 / 选择器 / 命中数），由 `RowHeightParityTests` 比对（容差 1pt）。⇒ 从「只能手工复核」变成「**CI 能抓实现侧漂移**」。⚠️ **边界**（§8.73.3）：**抓不住「设计稿改了而没重跑脚本」** —— 那仍要人工重跑；这是实测类事实的固有代价，已写进守卫注释。旧的手工复核脚本 `.build/probe/design_row_height.py` 已被正式版取代 |
 | 18 | ~~设计稿缺「高用量（≥90%）」这一态 —— `.meter--high` 有定义、零消费者，所有容量条样本最高 **70%**，而实现有 `highThreshold = 0.9`~~ | ~~要设计决策（补在哪个页面）~~ | §8.52.4 / **§8.74** | ✅ **已还账（第 26 轮）** —— 拍板补在 `06-states.html`（新开 `E · 容量条用量三档`：30% / 70% / **95% 切琥珀**，并把「为什么是 90 而不是 80」写进那一节），而不是硬塞进 D 节那张「行状态」表。同时：D 节「琥珀只表示被占用」加**唯一例外**（两节互相指名）；阈值从 `StorageMeter` 的私有字面值搬进 `DesignTokens.Threshold.meterHigh`，设计稿侧加**手写声明** `data-meter-high="0.9"`；`>=` 拎成 `meterIsHigh(_:)` 让边界可测。`MeterThresholdParityTests` 5 条守卫、变异 **8 红 + 2 绿**（含反向变异 M153 与两条「只让一条红」的 M156/M157）。⇒ `.meter--high` 不再是零消费者，设计稿那条「定义了但没元素用」清单 **18 → 17** |
@@ -5201,8 +5211,9 @@ Sparkle 会不会装上这次更新 —— 依据是 `showUpdateFound` 的文档
 到期（>30 天）**只警告不失败** —— 没有代码改动也会变红的门槛会被关掉。
 变异背书：插一行无日期 `TODO` ⇒ **红**；还原 `cmp -s` 校验通过 |
 | 37 | **`DiskEjectorApp.swift` 2351 行**：其中约 660 行是「真机自检的量测 / 比对 / 打印」，与应用装配混在一起 —— **但纯外移做不成** | 你（**取舍**：把 4 个属性改 `private(set)` 让只读对外，还是维持现状） | §8.91 | ⬜ **仍开着**（§8.91 新开）。实测挡路的三条：① `private` 是**文件级**作用域（`fileprivate` 一样）⇒ 跨文件访问必须放宽；② 自检块读 `mainWindow` / `onboardingHosting` / `statusPopover` / `statusItem` 四个私有属性，而且是**裸名**访问（不带 `self.`）⇒ 「块内没有 `self.`」这个判据**看不出**它们；③ 这些自检代码在 `Sources/DiskEjectorApp/` ⇒ **不在覆盖率分母里、也没有单测** ⇒ 外移只能靠「编译通过」验，**改坏了没有测试会红**。 |
-| 38 | **点击「检查更新」后有 3~4.5 秒界面零反馈** —— `UpdateUserDriver.showUserInitiatedUpdateCheck` 的注释写着「这一段通常只有**几百毫秒**，所以故意不画『正在检查…』」。真机实测（**dist 产物**，单时间轴 4 轮）是 **4.31 / 3.15 / 4.51 / 0.17s**，典型 **3~4.5 秒**；按下后连抓 AX 树 0.5~4.0s，更新区**零变化**，按钮仍是「检查更新」且仍 `enabled`（可反复点）⇒ **原决策的前提已被推翻**，是否补「正在检查…」中间态是**设计决策** | 你（**取舍**：补一态 vs 维持现状） | §8.93 | ⬜ **仍开着**（§8.93 新开）。补的话要动 `UpdatePhase` / `CheckRowState` / `rowState` / 设置行画法 / 本地化，并让**七态变八态**（走查图清单要加一态，且受「各态渲染出来必须一样高」那条守卫约束，§8.82）。ⓘ Sparkle 给的 `cancellation` 闭包**目前被丢弃** —— 它正好是「取消」按钮的落点；只画文案不给取消 = 又一个「点了没反应」的按钮（同 `.ready` 态那条判据） |
-| 39 | **从 dmg（只读卷）直接运行时，「检查更新」是只会说「已是最新版本」的假动作** —— `SPUUpdater.m:789` 发起 `checkForUpdates()` **即写**「上次检查时间」（不看成败）；随后 `SPUBasicUpdateDriver.m:71` 判 `isRunningOnReadOnlyVolume`（`SUHost.m:174` 用 `statfs` 查 `MNT_RDONLY`）为真 ⇒ **根本不去取 appcast**，直接 abort（错误码 1003）；而 `basicDriverIsRequestingAbortUpdateWithError:` **我们全仓库 0 处实现** ⇒ abort 无落点。实测：只读卷上点了之后**零网络请求**（本地 feed server 一行没多），而界面「上次检查」仍刷新成当下并宣称「已是最新版本」⇒ 即使 appcast 里有新版本，用户**永远看不到** | 你（**修法三选一**，见 §8.94.6） | §8.94 | ⬜ **仍开着**（§8.94 新开）。⚠️ 与第 27 行同类但更彻底：那次是「做完了没显示」，这次是**根本没做却说做过了**。选项：① 接 Sparkle 那个 abort 回调（文案它已备好，且还覆盖 App Translocation）；② 自己 `statfs` 判只读后改走打开 Releases 页（**不加态**，最小）；③ 新增一态显示「请拷到应用程序文件夹」（体验最好，代价最大）。⚠️ **§8.95 订正：选项 ① 作废** —— 调用链追到底了（六跳，逐行对上）：abort 真正落到 `showUpdaterError(_:acknowledgement:)`，**不是** `basicDriverIsRequestingAbortUpdateWithError:`（那是 Sparkle **driver 之间**的内部协议，我们的 `SPUUserDriver` 不在那条链上，接不到）。⇒ **判定这一族所需的输入已现成**（错误码 1003 / 1005），可照 `isDownloadFailure` 的惯例抽纯函数 + 单测 + 变异，**这部分没有取舍**；只剩「判出来之后显示什么」要拍板：**A** 改走打开 Releases 页（**不加态**，最小）／**B** 复用 `.failed` 但「重试」在只读卷上**必然再失败**（**不建议**，又一个点了没反应的按钮）／**C** 新增一态「请拷到应用程序文件夹」（要加态 + 本地化 + 走查图，代价最大）。三者共同点：**都不再谎报「已是最新版本」**。⚠️ **§8.95.7 订正：上面那句「这部分没有取舍」是错的** —— 只加纯函数不接落点就是**死代码**（本仓库有 CI 守卫专门钉「有声明、没消费者」），为了不红就得偷偷接一个没拍板的落点 ⇒ **判定与落点必须一起拍板**。好消息：判定的**技术不确定性已全部消掉**（`SPUBasicUpdateDriver.m:78/:80` 构造 + `SPUUIBasedUpdateDriver.m:462→:485` 原样传递，逐行对上；**不需要真机验证**），拍板后只剩写代码。另：Sparkle 的 `userInfo` 里**自带** `NSLocalizedDescriptionKey` / `NSLocalizedRecoverySuggestionErrorKey`（选项 C 的文案不必自己写），⚠️ 但那是 Sparkle bundle 的本地化，**语言未必跟我们的 `LanguageManager`** ⇒ 要么自己写，要么先核实它有没有中文 |
+| 38 | **点击「检查更新」后有 3~4.5 秒界面零反馈** —— `UpdateUserDriver.showUserInitiatedUpdateCheck` 的注释写着「这一段通常只有**几百毫秒**，所以故意不画『正在检查…』」。真机实测（**dist 产物**，单时间轴 4 轮）是 **4.31 / 3.15 / 4.51 / 0.17s**，典型 **3~4.5 秒**；按下后连抓 AX 树 0.5~4.0s，更新区**零变化**，按钮仍是「检查更新」且仍 `enabled`（可反复点）⇒ **原决策的前提已被推翻**，是否补「正在检查…」中间态是**设计决策** | 你（**取舍**：补一态 vs 维持现状） | §8.93 | ⬜ **仍开着**（§8.93 新开）。补的话要动 `UpdatePhase` / `CheckRowState` / `rowState` / 设置行画法 / 本地化，并让**七态变八态**（走查图清单要加一态，且受「各态渲染出来必须一样高」那条守卫约束，§8.82）。ⓘ Sparkle 给的 `cancellation` 闭包**目前被丢弃** —— 它正好是「取消」按钮的落点；只画文案不给取消 = 又一个「点了没反应」的按钮（同 `.ready` 态那条判据） | ⚠️ **§8.98 关闭（2026-09-20）**：用户拍板**补**这一态。已加 `UpdatePhase.checking` / `CheckRowState.checking` + `rowState` 派生 + `checkForUpdates()` 里 `phase = .checking`（**必须放在 `ensureUpdater()` 之后** —— 放前面会让「updater 起不来」那条路永远停在「正在检查…」，而它实际是跳去下载页）+ 设置行画法（**带第二行**、不给按钮）+ 本地化 2 键。`cancellation` **仍被丢弃**（这一段只有几秒，给取消反而增加噪声；理由已重写进 `showUserInitiatedUpdateCheck` 的注释）。守卫：顺序源码断言 + 优先级三条 + 「各态一样高」；变异 A/C 全红。⚠️ 顺带把 `LocalizationCatalogTests/两个零消费者的文案键不再存在` 里钉「`updateChecking` 不存在」的那半条**转正**（详见 §8.98.7）。⚠️ **新开第 40 行**：设计稿还没有这两帧。 |
+| 39 | **从 dmg（只读卷）直接运行时，「检查更新」是只会说「已是最新版本」的假动作** —— `SPUUpdater.m:789` 发起 `checkForUpdates()` **即写**「上次检查时间」（不看成败）；随后 `SPUBasicUpdateDriver.m:71` 判 `isRunningOnReadOnlyVolume`（`SUHost.m:174` 用 `statfs` 查 `MNT_RDONLY`）为真 ⇒ **根本不去取 appcast**，直接 abort（错误码 1003）；而 `basicDriverIsRequestingAbortUpdateWithError:` **我们全仓库 0 处实现** ⇒ abort 无落点。实测：只读卷上点了之后**零网络请求**（本地 feed server 一行没多），而界面「上次检查」仍刷新成当下并宣称「已是最新版本」⇒ 即使 appcast 里有新版本，用户**永远看不到** | 你（**修法三选一**，见 §8.94.6） | §8.94 | ⬜ **仍开着**（§8.94 新开）。⚠️ 与第 27 行同类但更彻底：那次是「做完了没显示」，这次是**根本没做却说做过了**。选项：① 接 Sparkle 那个 abort 回调（文案它已备好，且还覆盖 App Translocation）；② 自己 `statfs` 判只读后改走打开 Releases 页（**不加态**，最小）；③ 新增一态显示「请拷到应用程序文件夹」（体验最好，代价最大）。⚠️ **§8.95 订正：选项 ① 作废** —— 调用链追到底了（六跳，逐行对上）：abort 真正落到 `showUpdaterError(_:acknowledgement:)`，**不是** `basicDriverIsRequestingAbortUpdateWithError:`（那是 Sparkle **driver 之间**的内部协议，我们的 `SPUUserDriver` 不在那条链上，接不到）。⇒ **判定这一族所需的输入已现成**（错误码 1003 / 1005），可照 `isDownloadFailure` 的惯例抽纯函数 + 单测 + 变异，**这部分没有取舍**；只剩「判出来之后显示什么」要拍板：**A** 改走打开 Releases 页（**不加态**，最小）／**B** 复用 `.failed` 但「重试」在只读卷上**必然再失败**（**不建议**，又一个点了没反应的按钮）／**C** 新增一态「请拷到应用程序文件夹」（要加态 + 本地化 + 走查图，代价最大）。三者共同点：**都不再谎报「已是最新版本」**。⚠️ **§8.95.7 订正：上面那句「这部分没有取舍」是错的** —— 只加纯函数不接落点就是**死代码**（本仓库有 CI 守卫专门钉「有声明、没消费者」），为了不红就得偷偷接一个没拍板的落点 ⇒ **判定与落点必须一起拍板**。好消息：判定的**技术不确定性已全部消掉**（`SPUBasicUpdateDriver.m:78/:80` 构造 + `SPUUIBasedUpdateDriver.m:462→:485` 原样传递，逐行对上；**不需要真机验证**），拍板后只剩写代码。另：Sparkle 的 `userInfo` 里**自带** `NSLocalizedDescriptionKey` / `NSLocalizedRecoverySuggestionErrorKey`（选项 C 的文案不必自己写），⚠️ 但那是 Sparkle bundle 的本地化，**语言未必跟我们的 `LanguageManager`** ⇒ 要么自己写，要么先核实它有没有中文 | ⚠️ **§8.98 关闭（2026-09-20）**：用户拍板取**方案 C**（新增一态）。已加 `UpdatePhase.locationBlocked` / `CheckRowState.locationBlocked` + 纯函数 `isUpdateLocationBlocked(_:)`（**实现引符号、单测写字面量 `1003` / `1005`** —— 两边不同源，否则是「拿常量跟自己比」）+ `showUpdaterError` **三分支**（位置受限**排最前**；只读卷上 `phase` 还停在 `.idle` ⇒ `isDownloadFailure` 判不出来 ⇒ 不排最前就会谎报）+ `driverDidBlockAtLocation()`（存在的**唯一**理由：不回到「已是最新版本」）+ 设置行画法（**不给按钮** —— 我们没法替用户搬 `.app`，而「重试」在只读卷上**必然再失败**）+ 本地化 2 键。守卫：判定真值表（含两条反例）+ 优先级两条 + 「各态一样高」；变异 B 红（2 issues）。⚠️ **本轮没有挂 dmg 真机复验** —— 判定输入是 Sparkle 源码里写死的字面量（§8.95.7 逐行对上），不需要；需要真机验的是「三分支实际走哪一条」，属第 10/32 行那类（要能读应用日志的机器）。 |
+| 40 | **设计稿 `08-update.html` 缺「正在检查」与「位置不允许更新」两帧** —— 实现已按 §8.98 加上这两态（走查图 `SnapshotRenderTests` 也能出），但设计稿里查 `updateChecking` / `updateLocationBlocked` **零命中**（连「正在检查」这类字面串也没有）⇒ 「实现有、设计稿没有」的分叉：下一个照设计稿改实现的人会把这两态改没（或改成没有第二行的样子） | 你（**取舍**：补两帧 vs 明确记下「这两态只由实现定义」） | §8.98.8 | ⬜ **仍开着**（§8.98 新开）。⚠️ 这正是 §8.82 / §8.69 那类「两边各写一句『记得同步』守不住」—— 面板尺寸就是这样分叉了一整轮（§8.43）。补帧的话，`updateCheckingHint` / `updateLocationBlockedHint` 要**各画一行 `.sline__desc`**（少一行就矮 14.8pt，§8.82 实测过），并且那一帧的键名要与实现**同源**（可比照 `设计稿3b那一帧与实现用同一个说明键` 那条守卫的写法） |
 > **判据：这张「仍开着」的表本身也是承诺型的话。** 17:55 回头核对时，第 4、5 行**早已关掉
 > 而表还写着「仍开着」** —— 和 §8.33 清掉的那 6 条是同一个病：**还了账没人回来划掉**。
 > 所以它现在多了一列「现状」和一个**核对时刻**：下次谁来读，先看时刻再看结论。
@@ -5944,9 +5955,22 @@ SwiftUI `body`、字符串反射都可能让「看起来没人调」的方法其
 | 键 | 三语文案 | 为什么是死的 |
 |---|---|---|
 | `terminateAndEject` | 终止程序并推出 / Terminate & Eject / 終止程式並退出 | 按钮用的是 `closeAndEject`（关闭并推出）—— **语义相近、用词不同**，更容易误导 |
-| `updateChecking` | 正在检查… / Checking… / 正在檢查… | 是**故意不画**的那一态的残留（`showUserInitiatedUpdateCheck` 只写日志，见 §8.35.5） |
+| `updateChecking` | 正在检查… / Checking… / 正在檢查… | 是**故意不画**的那一态的残留（`showUserInitiatedUpdateCheck` 只写日志，见 §8.35.5）⚠️ **§8.98 订正（2026-09-20）：这一行已作废 —— 它不再是死键**（见本节末尾） |
 
 已从三语表删除（**158 → 156**；其余键逐字不变，脚本校验过），并按该文件既有惯例补「不再存在」断言。
+
+> ⚠️ **§8.98 订正（2026-09-20）：上表第二行已作废** —— `updateChecking` **不再是死键**。
+> 用户拍板把「正在检查…」那一态**画出来**（§8.98.7；依据是真机实测：用户点完 3~4.5 秒零反馈，§8.93），
+> 于是它有了消费者（`SettingsView` 的 `case .checking`）。相应地：
+> ① `LocalizationCatalogTests` 里钉「它不存在」的那半条**已删**、函数改名
+> `零消费者的文案键不再存在`（只留 `terminateAndEject`）；② 补了**反向**守卫
+> `正在检查那一态的文案键已转正`（钉 4 个新键的存在性）；③ 全表键数 **156 → 161**
+> （本轮 +4：`updateChecking` / `updateCheckingHint` / `updateLocationBlocked` / `updateLocationBlockedHint`）。
+> 上表第一行（`terminateAndEject`）**仍然有效**。
+>
+> **教训**：这个「死键」判断依据的是**当时的设计决策**（那一态不画）——
+> 而设计决策会变。⇒ 把「键不存在」钉成测试时，注释里要写清**它依据的是哪条决策**，
+> 否则决策一变，守卫就从「防死代码」变成「防正确代码」（本轮正是如此）。
 
 **并把这一类机械化**：新增 `LocalizationCatalogTests/每个键都必须有消费者` ——
 读 `Sources/**/*.swift`（去整行注释），要求每个键都能匹配 `\.key` 成员表达式。
@@ -11202,6 +11226,125 @@ v4 修正**前**：① 都没报（没牙）。修正（排除注释污染）**�
 
 ⇒ 两个动作：① 核对「仍开着」表时，**顺手扫一遍相关源码 / 测试的注释** —— 实证常在那里；
 ② 拿到实证要**立刻登记到表上**，否则下一轮又会从「没证据」开始。
+
+---
+
+## 8.98 第 38 + 39 行落地：新增 `checking` 与 `locationBlocked` 两态（2026-09-20）
+
+**用户拍板**：第 39 行取**方案 C**（新增一态）；第 38 行**补**中间态。
+两条一起做 —— 它们动的是同一组枚举（`UpdatePhase` / `CheckRowState`）与同一行画法。
+
+### §8.98.1 动到的文件
+
+| 层 | 文件 | 改动 |
+|---|---|---|
+| 状态机 | `Sources/Services/UpdateController.swift` | `UpdatePhase` 5 → **7** 态；`CheckRowState` 7 → **9** 态；`rowState(...)` 补两支；`checkForUpdates()` 里设 `phase = .checking`；新增纯函数 `isUpdateLocationBlocked(_:)`；新增 `driverDidBlockAtLocation()` |
+| 驱动 | `Sources/Services/UpdateUserDriver.swift` | `showUpdaterError` 由两分支改**三分支**（位置受限**排最前**）；`showUserInitiatedUpdateCheck` 的注释整段重写（旧结论「故意不画」已被 §8.93 推翻） |
+| 视图 | `Sources/Views/SettingsView.swift` | `updateCheckLine` 补 `.checking` / `.locationBlocked` 两支（都**不给按钮**、都**带第二行**） |
+| 文案 | `Sources/Localization/Localizable.xcstrings` | **+4 键**，三语齐全（全表 **161** 键） |
+| 测试 | `UpdateSettingsTests` / `SettingsLayoutTests` / `SnapshotRenderTests` / `LocalizationCatalogTests` | 见 §8.98.4 ~ §8.98.7 |
+
+### §8.98.2 第 38 行：`phase = .checking` **必须**放在 `ensureUpdater()` 之后
+
+`checkForUpdates()` 里 updater 起不来时是**直接 `return` 并跳去下载页**的
+（`UpdateService.openUpdateSource()`）。把这一态提到 `guard` 之前 ⇒ 那条路上界面会
+**永远停在「正在检查更新…」**，而它实际发生的事是「打开网页」—— 用户等的是一个永远不来的答案。
+
+⇒ 它属于**「必须有出口」**那一类态。出口有两条：`showUpdateFound` → `.found` / `.downloading`；
+`showUpdateNotFoundWithError` 与 `showUpdaterError` → `driverDidReset()` → `.idle`。
+
+⚠️ 这条**顺序**编译不会管、别处也不会红 ⇒ 新增源码文本守卫
+`正在检查这一态只在updater起来之后才设`（变异 A 见 §8.98.4）。
+
+### §8.98.3 第 39 行：`driverDidBlockAtLocation()` 存在的**唯一**理由
+
+`showUpdaterError` 原来是两分支（下载失败 / 其余一律 `driverDidReset()`）。
+只读卷上 `phase` **还是 `.idle`** —— Sparkle 连 appcast 都没取，没有任何 `show*` 回调先到
+⇒ `isDownloadFailure(phase:)` 判不出来 ⇒ 落进 `driverDidReset()` ⇒ **谎报「已是最新版本」**。
+
+⇒ 新增第三分支，且**排在最前**（它是**位置**问题，不是**网络**问题）：
+
+```swift
+if let controller, UpdateController.isUpdateLocationBlocked(error) {
+    controller.driverDidBlockAtLocation()
+} else if let controller, UpdateController.isDownloadFailure(phase: controller.phase) {
+    controller.driverDidFailDownload(version: controller.pendingUpdate?.version)
+} else {
+    controller?.driverDidReset()
+}
+```
+
+`driverDidBlockAtLocation()` 与 `driverDidReset()` 的差别**只有 `phase` 落点**：
+前者落 `.locationBlocked`，后者落 `.idle`（→ 界面显示「已是最新版本」）。这就是它存在的**全部**理由。
+
+### §8.98.4 变异：三组，全红
+
+| # | 变异 | 期望红的守卫 | 实测 |
+|---|---|---|---|
+| A | `phase = .checking` 提前到 `guard` 之前 | `正在检查这一态只在updater起来之后才设` | ✘ **红（1 issue）** |
+| B | `isUpdateLocationBlocked` 改成 `return true` | `位置不允许更新的判定按域与码分档` | ✘ **红（2 issues）**（两条反例各一次） |
+| C | `rowState` 的 `case .checking` 改成 `break`（不派生） | `行状态的优先级` | ✘ **红（3 issues）**（本轮新加的三条） |
+
+⚠️ 变异**不用 `git checkout` 还原**（会清掉本轮未提交的改动）：`cp 备份` → 改 → 跑 →
+`cp` 回来 → `cmp -s` 确认（用户级记忆规则 4）。
+
+### §8.98.5 单测两边**不同源**：实现引符号，测试写字面量
+
+`isUpdateLocationBlocked` 的实现引 `SUError.runningFromDiskImageError` / `.runningTranslocated`
+（Swift 里 `NS_ENUM` 的 `SU` 前缀被剥掉）；而单测**故意写 `1003` / `1005` 字面量 + 域字符串**。
+
+两边都引符号 = 拿常量跟自己比 ⇒ Sparkle 哪天改了数字也测不出来（§8.95.7 记过这个坑）。
+
+### §8.98.6 「各态一样高」实测：新态与其余**逐位相同**
+
+`SettingsLayoutTests/更新行各态渲染出来必须一样高` 现在覆盖**九态**，实测：
+
+```
+尚未检查 698.6 ｜ 已是最新 698.6 ｜ 已跳过 698.6 ｜ 正在检查 698.6 ｜ 发现新版本 698.6
+｜ 下载中 698.65 ｜ 下载中（无百分比）698.6 ｜ 已就绪 698.6 ｜ 失败 698.6 ｜ 位置不允许更新 698.6
+```
+
+⇒ 两个新态的**第二行**（`updateCheckingHint` / `updateLocationBlockedHint`）确实撑住了高度
+—— 少写 `description` 就会矮 14.8pt（§8.82 就是这么抓到「下载中（无百分比）」那一态的）。
+
+### §8.98.7 顺带把一条旧守卫**转正**：`updateChecking` 从死键变活键
+
+`LocalizationCatalogTests/两个零消费者的文案键不再存在` 原来钉的是
+「`terminateAndEject` 与 `updateChecking` **都不存在**」—— 依据是 §8.35.5
+「那一态故意不画 ⇒ 键是残留」。本轮把它**画出来了** ⇒ 继续钉「不存在」会与实现直接打架。
+
+⇒ 处理：① 那条改名 `零消费者的文案键不再存在`（只留 `terminateAndEject`），
+**原文以「2026-09-20 订正」的形式保留**（不删行，只记订正）；② 新增**反向**守卫
+`正在检查那一态的文案键已转正`（钉 4 个新键的**存在性**）。
+「有没有消费者」仍由 `每个键都必须有消费者` 统一负责 —— 两者是**独立**会坏的东西
+（键被删掉 / 键在但没人用，症状不同、修法也不同）。
+
+⚠️ 这条正是**「判定与落点必须一起拍板」**（§8.95.7）的又一例：上一轮若只抽纯函数不接落点，
+今天就不会撞上这条守卫；而正因为**接了落点**，它才红得**有意义**（红在「决策变了」）。
+
+### §8.98.8 ⚠️ 新开一个分叉：设计稿 `08-update.html` **没有这两帧**
+
+走查图现在能出这两态（`SnapshotRenderTests` 的 `updateRowStates` 已补），
+但设计稿侧**没有对应帧** —— 在 `08-update.html` 里查 `updateChecking` / `updateLocationBlocked`
+**零命中**，也没有「正在检查」/「应用程序」文件夹」这类字面串。
+
+这正是 §8.82 / §8.69 反复记的那类风险：**两边各写一句「记得同步」守不住** ——
+下一个照设计稿改实现的人会把这两态改没（或改成没有第二行的样子）。
+⇒ 登记为「仍开着」表**第 40 行**：设计稿补这两帧（或明确记下「这两态只由实现定义」）。
+
+### §8.98.9 顺手修掉一处**上一轮自己留下的注释错位**
+
+上一轮把 `driverDidBlockAtLocation()` 插在 `driverDidReset()` **之前**时，
+把后者的文档注释第一行（「回到『什么都没在进行』…」）**留在了新函数的注释头上** ——
+于是 `driverDidBlockAtLocation()` 的注释首句是错的（它不回到「什么都没在进行」），
+而 `driverDidReset()` 反而没有注释了。
+
+⚠️ **门槛扫不出来**：`scripts/scan_stale_comments.sh`（门槛 3）只认**承诺句关键词**
+（`未核实|待拍板|TODO|…`），这种「注释整体错位一行」不在它的口径里；
+编译更不会管。⇒ **只有人读才会发现**（本轮是在写 SPEC 时回读代码才撞上的）。
+
+⇒ 教训：**插入新函数时，要先看紧邻那个函数的注释归属** ——
+文档注释（`///`）在 Swift 里是**跟下一个声明绑定**的，插在中间会把上面那条「抢」过来。
 
 ---
 

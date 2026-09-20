@@ -74,24 +74,24 @@ final class UpdateUserDriver: NSObject, SPUUserDriver {
 
     /// 用户主动检查开始。
     ///
-    /// **故意不画「正在检查…」**：设置行此时显示的仍是上一轮的结果，直到
-    /// ``showUpdateFound(with:state:reply:)`` 或
-    /// ``showUpdateNotFoundWithError(_:acknowledgement:)`` 给出新答案。
-    /// 画一个会闪一下的中间态比不画更吵 —— 与主窗口那条「推出中不画进度」同一条理由。
+    /// ⚠️ **这里不设 `phase`** —— 中间态由 ``UpdateController/checkForUpdates()`` 负责：
+    /// 它是在**调用 Sparkle 之前**就设好的，比这个回调更早也更可靠
+    /// （`ensureUpdater()` 起不来时它已经 `return` 了，不会留下一个永远转的态）。
     ///
-    /// ⚠️ **上面这条理由的前提已被实测推翻，决策待重估（2026-09-20，§8.93）**：
-    /// 原注释写的是「这一段通常只有**几百毫秒**」。真机实测（dist 产物，单时间轴
-    /// 量 4 轮）是 **4.31s / 3.15s / 4.51s / 0.17s**（末轮是偶发快路径），典型 **3~4.5 秒**。
+    /// ## 曾经故意不画「正在检查…」，2026-09-20 改掉了
+    ///
+    /// 原注释的理由是「这一段通常只有**几百毫秒**，画一个会闪一下的中间态比不画更吵」。
+    /// **真机实测把这个前提推翻了**（dist 产物，单时间轴量 4 轮）：
+    /// **4.31s / 3.15s / 4.51s / 0.17s**（末轮是偶发快路径），典型 **3~4.5 秒**。
     /// 按下后连抓 AX 树 0.5~4.0s，更新区**零变化**：按钮仍是「检查更新」且仍 `enabled`
-    /// （用户在这几秒里还能反复点）。3~4.5 秒不是「闪一下」。
+    /// ⇒ 用户在这几秒里能反复点，也不知道自己那一下有没有生效。
+    /// **3~4.5 秒不是「闪一下」。**
     ///
-    /// ⇒ 「是否补一个「正在检查…」中间态」列为**待拍板项**（2026-09-20，见「仍开着」表第 38 行）：
-    /// 它要动 `UpdatePhase` / `CheckRowState` / `rowState` / 设置行画法 / 本地化，
-    /// 并让七态变八态（走查图清单要加一态）。**拍板前保持现状**。
+    /// ⇒ 已按 §8.93 的实测结论补上 `.checking`（设置行显示「正在检查更新…」且**不给按钮**）。
     ///
-    /// - Note: `cancellation` 目前**被丢弃** —— 它是 Sparkle 给的「取消这次检查」。
-    ///   真正要补中间态时，这一格正好是「取消」按钮的落点；
-    ///   只画文案不给取消，等于给一个点了没反应的按钮（同 `.ready` 态那条判据）。
+    /// - Note: `cancellation` 仍然**被丢弃** —— 它是 Sparkle 给的「取消这次检查」。
+    ///   要给它落点就得再补一个「取消」按钮，而这一段本来只有几秒、
+    ///   给取消反而增加噪声。真要做的话，这一格就是落点。
     func showUserInitiatedUpdateCheck(cancellation: @escaping () -> Void) {
         Self.logger.debug("用户主动检查更新")
     }
@@ -147,8 +147,14 @@ final class UpdateUserDriver: NSObject, SPUUserDriver {
     }
 
     func showUpdaterError(_ error: Error, acknowledgement: @escaping () -> Void) {
-        // 更新流程出错。**分两种，落点不同**：
+        // 更新流程出错。**分三种，落点不同**：
         //
+        // - **位置不允许更新**（只读卷 / App Translocation，错误码 `1003` / `1005`）
+        //   → `.locationBlocked`。**这一支必须排在最前**：只读卷上 Sparkle 连 appcast
+        //   都不会去取（`SPUBasicUpdateDriver.m:71` 判 `statfs` 的 `MNT_RDONLY` 直接 abort），
+        //   `phase` 停在 `.idle`，于是走 `driverDidReset()` 会让界面回到「已是最新版本」——
+        //   而 `SPUUpdater.m:789` 早就把「上次检查时间」写成了当下（不看成败）。
+        //   结果就是**根本没检查却说检查过了**（§8.94 实测：零网络请求）。
         // - **正在下载时出错 = 下载失败** → `.failed`（界面：文案 + 「重试」按钮）。
         //   这是 `.failed` 在 user driver 这条路上的来源 ——
         //   2026-09-18 实扫发现 `driverDidFailDownload` 当时**全仓库没有调用点**，
@@ -161,10 +167,12 @@ final class UpdateUserDriver: NSObject, SPUUserDriver {
         // （设置行 + 日志）。给一个「更新失败」弹窗会打断用户拔盘，
         // 而这件事与他此刻在做的事无关。
         //
-        // 判据走 `UpdateController.isDownloadFailure(phase:)`（纯函数，有单测）——
-        // 不新增一个「这一错是不是下载错」的位：能派生就别用「手动开关」。
+        // 判据走两个**纯函数**（`isUpdateLocationBlocked(_:)` / `isDownloadFailure(phase:)`，
+        // 都有单测）—— 不新增「这一错是什么错」的位：能派生就别用「手动开关」。
         Self.logger.error("更新出错：\(error.localizedDescription, privacy: .public)")
-        if let controller, UpdateController.isDownloadFailure(phase: controller.phase) {
+        if let controller, UpdateController.isUpdateLocationBlocked(error) {
+            controller.driverDidBlockAtLocation()
+        } else if let controller, UpdateController.isDownloadFailure(phase: controller.phase) {
             controller.driverDidFailDownload(version: controller.pendingUpdate?.version)
         } else {
             controller?.driverDidReset()

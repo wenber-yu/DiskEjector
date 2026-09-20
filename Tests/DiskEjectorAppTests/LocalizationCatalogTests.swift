@@ -149,23 +149,54 @@ struct LocalizationCatalogTests {
         )
     }
 
-    /// 两个**零消费者**的文案键已删除（2026-09-18 实扫）。
+    /// 零消费者的文案键已删除（2026-09-18 实扫）。
     ///
     /// **为什么要把「不存在」钉成测试**：与上面 App Store 那两条同一个理由 ——
-    /// 死文案会误导人。这两条尤其：
+    /// 死文案会误导人：
     /// - `terminateAndEject`（「终止程序并推出」）与**实际在用**的
     ///   `closeAndEject`（「关闭并推出」）**语义相近、用词不同** ——
-    ///   下一个读到的人很容易以为还有一个动作叫「终止程序并推出」；
-    /// - `updateChecking`（「正在检查…」）是**故意不画**的那一态的残留
-    ///   （`showUserInitiatedUpdateCheck` 只写日志、不画「正在检查…」，见 §8.35.5）。
-    @Test func 两个零消费者的文案键不再存在() {
+    ///   下一个读到的人很容易以为还有一个动作叫「终止程序并推出」。
+    ///
+    /// ⚠️ **2026-09-20 订正（不删原文，只记订正）**：这条原来钉的是**两个**键，
+    /// 第二个是 `updateChecking`（「正在检查…」）—— 当时的判断是
+    /// 「`showUserInitiatedUpdateCheck` 只写日志、不画那一态（§8.35.5）⇒ 是残留」。
+    /// 本轮用户拍板**把那一态画出来**（§8.93 真机实测：用户点完 3~4.5 秒里界面零反馈），
+    /// 于是 `updateChecking` **从残留转成了正例** —— 它现在有消费者
+    /// （`SettingsView` 的 `case .checking` 读它）。继续钉「不存在」会与实现直接打架。
+    /// ⇒ 删掉那半条，并在下面补一条**反向**守卫。
+    @Test func 零消费者的文案键不再存在() {
         #expect(
             L10n.Key(rawValue: "terminateAndEject") == nil,
             "「终止程序并推出」没有任何消费者（按钮用的是 closeAndEject「关闭并推出」），文案键不该再留着"
         )
+    }
+
+    /// ⚠️ **`updateChecking` 已转正**（2026-09-20，用户拍板补中间态）。
+    ///
+    /// 它与上面那条是**一对**：那条钉「死键不许留」，这条钉「活键不许被当成死的删掉」。
+    /// 只留前者的话，下一个读到 §8.35.5 旧结论的人会顺手把 `updateChecking` 删掉 ——
+    /// 而它正是「用户点完检查、Sparkle 还没答」那 3~4.5 秒里**唯一**的界面回执
+    /// （§8.93 / §8.97）。
+    ///
+    /// 这里只钉**存在性**（`L10n.Key(rawValue:) != nil`）：「有没有消费者」由上面
+    /// `每个键都必须有消费者` 那条统一负责（它扫全部 `Sources/`）。两者是**独立**会坏的东西
+    /// —— 键被删掉、与键在但没人用，症状不同、修法也不同。
+    @Test func 正在检查那一态的文案键已转正() {
         #expect(
-            L10n.Key(rawValue: "updateChecking") == nil,
-            "「正在检查…」是故意不画的那一态的残留，文案键不该再留着"
+            L10n.Key(rawValue: "updateChecking") != nil,
+            "`updateChecking` 又没了 —— 它是「正在检查」那一态唯一的界面回执（§8.97），别当成死键删掉"
+        )
+        #expect(
+            L10n.Key(rawValue: "updateCheckingHint") != nil,
+            "`updateCheckingHint` 又没了 —— 那一态的**第二行**，少了它整行会矮 14.8pt（§8.82）"
+        )
+        #expect(
+            L10n.Key(rawValue: "updateLocationBlocked") != nil,
+            "`updateLocationBlocked` 又没了 —— 只读卷 / Translocation 那一态唯一的回执（§8.94 / §8.95.7）"
+        )
+        #expect(
+            L10n.Key(rawValue: "updateLocationBlockedHint") != nil,
+            "`updateLocationBlockedHint` 又没了 —— 那一态的第二行（§8.82 的等高要求）"
         )
     }
 

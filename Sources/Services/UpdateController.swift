@@ -15,6 +15,18 @@ import Sparkle
 enum UpdatePhase: Equatable {
     /// 什么都没在进行（也包含「检查完发现是最新」「已跳过」「从未检查」）。
     case idle
+    /// **用户点了「检查更新」，Sparkle 还没给出答案**（§8.93 / §8.97）。
+    ///
+    /// 真机实测（dist 产物，单时间轴 4 轮）从按下到界面有反应是 **4.31 / 3.15 / 4.51 秒**
+    /// （典型 3~4.5 秒）。此前这段时间 `phase` 停在 `.idle` ⇒ 界面仍显示上一轮的结果，
+    /// 且「检查更新」按钮**仍可反复点** —— 用户不知道自己那一下到底有没有生效。
+    /// 原注释写的「这一段通常只有几百毫秒」已被实测推翻。
+    ///
+    /// ⚠️ **它必须有出口**：`showUpdateFound` → `.found` / `.downloading`；
+    /// `showUpdateNotFoundWithError` 与 `showUpdaterError` → `driverDidReset()` → `.idle`。
+    /// Sparkle 的手动检查**不受 24h 节流限制**（节流只针对自动检查），
+    /// 所以「点了但一个回调都不来」不是一条真实存在的路。
+    case checking
     /// 发现新版本，等用户决定（弹窗开着，或用户按了 Esc 之后留在设置行上）。
     case found(version: String)
     /// 正在后台下载。
@@ -31,6 +43,17 @@ enum UpdatePhase: Equatable {
     case ready(version: String)
     /// 下载失败。
     case failed(version: String)
+    /// **应用当前所在的位置不允许更新** —— 只读卷（dmg 挂载点）或 App Translocation（§8.94）。
+    ///
+    /// 这一态**不是「错误处理的细节」，是「不许说谎」**：`SPUUpdater` 发起检查时**即写**
+    /// 「上次检查时间」（`SPUUpdater.m:789`，不看成败），而只读卷上 Sparkle **根本不去取
+    /// appcast**（`SPUBasicUpdateDriver.m:71` 用 `statfs` 查 `MNT_RDONLY` ⇒ 直接 abort，
+    /// 错误码 `1003`）。于是界面会刷新「上次检查」并宣称「已是最新版本」——
+    /// **即使 appcast 里有新版本，用户永远看不到**（2026-09-20 §8.94 实测：零网络请求）。
+    ///
+    /// 判定见 ``UpdateController/isUpdateLocationBlocked(_:)``；文案**不给按钮**
+    /// （我们没法替他搬文件，给一个点了没反应的按钮就是下一个坑）。
+    case locationBlocked
 }
 
 /// 弹窗要展示的那一份「新版本说明」。
@@ -254,6 +277,13 @@ final class UpdateController: NSObject, ObservableObject {
             UpdateService.openUpdateSource()
             return
         }
+        // ⚠️ **必须放在 `ensureUpdater()` 之后**：updater 起不来时上面已经 `return` 了，
+        // 那一态会永远停在「正在检查…」，而它实际发生的事是「跳去下载页」。
+        //
+        // 真机实测（dist 产物，单时间轴 4 轮）这一段是 **4.31 / 3.15 / 4.51 秒**（§8.93）——
+        // 不画出来，用户不知道自己那一下有没有生效；而且按钮在这几秒里**仍可反复点**
+        // （`rowState` 仍是 `.upToDate`，「检查更新」还亮着）。
+        phase = .checking
         updater.checkForUpdates()
     }
 
@@ -377,6 +407,11 @@ final class UpdateController: NSObject, ObservableObject {
         case upToDate(Date)
         /// 用户点过「跳过此版本」，记着跳的是哪一版。
         case skipped(version: String)
+        /// 正在检查（用户刚点了「检查更新」，Sparkle 还没回话）。
+        ///
+        /// ⚠️ **这一态不给按钮**：此刻点「检查更新」是没用的（Sparkle 正跑着），
+        /// 给一个点了没反应的按钮，与「功能坏了」长得一模一样（同 `.ready` 那条判据）。
+        case checking
         /// 发现了新版本，等用户决定。
         case found(version: String, lastCheck: Date?)
         /// 正在后台下载。`fraction` 为 `nil` = 百分比无从得知（见 ``UpdatePhase/downloading(version:fraction:)``）。
@@ -385,6 +420,11 @@ final class UpdateController: NSObject, ObservableObject {
         case ready(version: String)
         /// 下载失败。
         case failed(version: String)
+        /// **应用当前所在的位置不允许更新**（只读卷 / App Translocation，见 ``UpdatePhase/locationBlocked``）。
+        ///
+        /// ⚠️ **也不给按钮**：我们没法替用户把 `.app` 搬进「应用程序」文件夹 ——
+        /// 而给「重试」在只读卷上**必然再失败**（Sparkle 连 appcast 都不会去取）。
+        case locationBlocked
     }
 
     /// 用户点过「跳过此版本」的那个版本号（没跳过时为 `nil`）。
@@ -414,8 +454,9 @@ final class UpdateController: NSObject, ObservableObject {
     /// 留在计算属性里就只能测到「跳过标记生效了没有」，测不到顺序。
     ///
     /// **顺序有语义**：
-    /// 1. 进行中的四态（下载 / 就绪 / 失败 / 发现）**盖过**其它一切 ——
-    ///    否则用户会看到「已跳过 1.1.0」的同时有个下载进度条在跑。
+    /// 1. 进行中 / 受阻的六态（检查 / 下载 / 就绪 / 失败 / 位置受限 / 发现）**盖过**其它一切 ——
+    ///    否则用户会看到「已跳过 1.1.0」的同时有个下载进度条在跑，
+    ///    或者「已是最新版本」把「这个位置不让更新」盖掉。
     /// 2. 跳过态**盖过**「已是最新」—— 用户跳过 1.1.0 之后界面上必须留着那条痕迹，
     ///    否则他无法分辨「跳过生效了」和「检查更新坏了」
     ///    （与登录项「等待系统批准」同一类判据：**第三态不画就等于没有**）。
@@ -429,12 +470,16 @@ final class UpdateController: NSObject, ObservableObject {
         phase: UpdatePhase, skippedVersion: String?, lastCheck: Date?
     ) -> CheckRowState {
         switch phase {
+        case .checking:
+            return .checking
         case .downloading(let version, let fraction):
             return .downloading(version: version, fraction: fraction)
         case .ready(let version):
             return .ready(version: version)
         case .failed(let version):
             return .failed(version: version)
+        case .locationBlocked:
+            return .locationBlocked
         case .found(let version):
             return .found(version: version, lastCheck: lastCheck)
         case .idle:
@@ -474,6 +519,37 @@ final class UpdateController: NSObject, ObservableObject {
     nonisolated static func isDownloadFailure(phase: UpdatePhase) -> Bool {
         if case .downloading = phase { return true }
         return false
+    }
+
+    /// 这个错误是不是「**应用当前所在的位置不允许更新**」（只读卷 / App Translocation）。
+    ///
+    /// 判定输入是 Sparkle 造的 `NSError`，两个码都在**它的源码里写死**
+    /// （不是运行时行为 ⇒ 读源码就是证据，**不需要真机验证**；2026-09-20 §8.95.7 逐行对过）：
+    ///
+    /// - `SURunningFromDiskImageError`（`1003`）：从**只读卷或临时位置**运行 ——
+    ///   典型是用户直接在 dmg 挂载卷里双击。构造处 `SPUBasicUpdateDriver.m:80`。
+    /// - `SURunningTranslocated`（`1005`）：Gatekeeper 的「移位隔离」——
+    ///   系统把 app 挪到一个只读的随机路径上跑。构造处 `SPUBasicUpdateDriver.m:78`。
+    ///
+    /// 两个码都在 `SUErrors.h`（`:43` / `:45`），域是 `SUSparkleErrorDomain`
+    /// （`SUConstants.m:53`），并且 `SPUUIBasedUpdateDriver.m:462→:485` 是**原样传递**
+    /// （中间没有重新包装）。
+    ///
+    /// **为什么两个一起判**：它们是**同一件事的两种成因** —— 位置不允许替换 bundle。
+    /// 只判 `1003` 的话，「从下载文件夹直接双击」那种（走 Translocation）仍会掉进
+    /// 「已是最新版本」。
+    ///
+    /// **为什么抽成纯函数**：真机上构造不出来（要挂 dmg、从只读卷启动 app ——
+    /// §8.94 做过一次，代价是打包 + 挂载 + 清理一整轮）。留成驱动里一句 `if`，
+    /// 改错了不会有任何断言变红 —— 同 ``isDownloadFailure(phase:)`` 那条理由。
+    ///
+    /// ⚠️ **单测要用字面量**（`1003` / `1005` + 域字符串），别引这里的符号：
+    /// 两边同源就成了「拿常量跟自己比」，Sparkle 哪天改了数字也测不出来。
+    nonisolated static func isUpdateLocationBlocked(_ error: Error) -> Bool {
+        let nsError = error as NSError
+        guard nsError.domain == SUSparkleErrorDomain else { return false }
+        return nsError.code == Int(SUError.runningFromDiskImageError.rawValue)
+            || nsError.code == Int(SUError.runningTranslocated.rawValue)
     }
 
     /// 自动那条路进入「下载中」的判据（§8.83）。
@@ -575,6 +651,22 @@ extension UpdateController {
         downloadCancellation = nil
         readyReply = reply
         phase = .ready(version: version)
+    }
+
+    /// 更新因为「**应用所在的位置不允许**」而中止（只读卷 / App Translocation，§8.94）。
+    ///
+    /// 与 ``driverDidReset()`` 的区别**只有一件事**：后者会回到「已是最新版本」——
+    /// 而那正是这条链上最严重的问题：Sparkle 在发起检查时**就写好了**「上次检查时间」
+    /// （`SPUUpdater.m:789`，不看成败），于是界面会刷新那个时间并宣称「已是最新」，
+    /// **而它根本没去取过 appcast**（`SPUBasicUpdateDriver.m:71` 判只读就 abort）。
+    /// 结果：用户即使装的是旧版本、appcast 里真有新版，也**永远看不到**。
+    ///
+    /// ⚠️ **这一态没有自动出口，也不该有**：位置不变，再检查多少次都是同一个结果。
+    /// 用户把 `.app` 拷进「应用程序」文件夹、从那里重新打开之后，那是一个新进程，
+    /// `phase` 自然从 `.idle` 开始。
+    func driverDidBlockAtLocation() {
+        downloadCancellation = nil
+        phase = .locationBlocked
     }
 
     /// 回到「什么都没在进行」（检查完没有新版本、或用户关掉了错误提示）。

@@ -5,7 +5,7 @@
    来源：Sources/Localization/Localizable.xcstrings
        + DiskEjector-UI-Design/v2/assets/i18n-extra.json
    ----------------------------------------------------------------------------
-   源指纹 a33ae98d2217734e8484265e3053fa08ac32ce2949400147b6d3b3824eed0358
+   源指纹 b7de30f9d3b640eb9fedcabb2e2419516e008d4e596f778bb059ea509ce51d52
      = sha256(xcstrings + extra + 本脚本) —— 任一方变了它就是旧的，
        由 DesignDraftIntegrityTests 拦下「改了源忘了重跑」。
    ----------------------------------------------------------------------------
@@ -213,6 +213,8 @@ window.DS_L10N = {
       "updateCallout": "点「后台更新并重启」后，应用会在后台下载并校验签名，完成后自动重启完成安装。正在推出的磁盘不会被打断。",
       "updateChannelDevelopment": "开发版",
       "updateChannelDirect": "官网直发版",
+      "updateChecking": "正在检查更新…",
+      "updateCheckingHint": "通常只需要几秒钟。",
       "updateDownloadingFormat": "正在后台下载 %@",
       "updateDownloadingHint": "下载完成后会自动安装，无需你再操作。",
       "updateEscHint": "Esc 稍后再提醒",
@@ -221,6 +223,8 @@ window.DS_L10N = {
       "updateFoundFormat": "发现 %@ · 上次检查：%@",
       "updateFoundShortFormat": "发现 %@",
       "updateInstallAndRestart": "后台更新并重启",
+      "updateLocationBlocked": "请把应用拷到「应用程序」文件夹",
+      "updateLocationBlockedHint": "应用当前所在的磁盘位置不允许它更新自己。",
       "updateNeverChecked": "尚未检查",
       "updateReadyFormat": "%@ 已下载完成",
       "updateReadyHint": "重启后完成安装；下次退出应用时也会自动安装。",
@@ -419,6 +423,8 @@ window.DS_L10N = {
       "updateCallout": "After you choose “Update in Background & Restart”, the app downloads and verifies the update in the background, then restarts to finish installing. Disks that are being ejected are not interrupted.",
       "updateChannelDevelopment": "Development build",
       "updateChannelDirect": "Direct build",
+      "updateChecking": "Checking for updates…",
+      "updateCheckingHint": "This usually takes a few seconds.",
       "updateDownloadingFormat": "Downloading %@ in the background",
       "updateDownloadingHint": "It installs automatically once the download finishes.",
       "updateEscHint": "Esc to remind later",
@@ -427,6 +433,8 @@ window.DS_L10N = {
       "updateFoundFormat": "%@ available · Last checked: %@",
       "updateFoundShortFormat": "%@ available",
       "updateInstallAndRestart": "Update in Background & Restart",
+      "updateLocationBlocked": "Move the app to your Applications folder",
+      "updateLocationBlockedHint": "The app can't update itself from where it is right now.",
       "updateNeverChecked": "Not checked yet",
       "updateReadyFormat": "%@ downloaded",
       "updateReadyHint": "Installs after a restart; it also installs when you next quit the app.",
@@ -625,6 +633,8 @@ window.DS_L10N = {
       "updateCallout": "按下「背景下載並重新啟動」後，應用程式會在背景下載並驗證簽章，完成後自動重新啟動以完成安裝。正在退出的磁碟不會被中斷。",
       "updateChannelDevelopment": "開發版",
       "updateChannelDirect": "官網直發版",
+      "updateChecking": "正在檢查更新…",
+      "updateCheckingHint": "通常只需要幾秒鐘。",
       "updateDownloadingFormat": "正在背景下載 %@",
       "updateDownloadingHint": "下載完成後會自動安裝，無需你再操作。",
       "updateEscHint": "Esc 稍後再提醒",
@@ -633,6 +643,8 @@ window.DS_L10N = {
       "updateFoundFormat": "發現 %@ · 上次檢查：%@",
       "updateFoundShortFormat": "發現 %@",
       "updateInstallAndRestart": "背景下載並重新啟動",
+      "updateLocationBlocked": "請把應用程式拷到「應用程式」資料夾",
+      "updateLocationBlockedHint": "應用程式目前所在的磁碟位置不允許它更新自己。",
       "updateNeverChecked": "尚未檢查",
       "updateReadyFormat": "%@ 已下載完成",
       "updateReadyHint": "重新啟動後完成安裝；下次結束應用程式時也會自動安裝。",
