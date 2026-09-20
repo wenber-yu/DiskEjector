@@ -56,15 +56,25 @@ import Testing
         try String(contentsOf: repoRoot.appendingPathComponent(relative), encoding: .utf8)
     }
 
-    /// 有表格的两份文档。
+    /// 扫描范围 = **仓库里被 git 跟踪的 `.md`**（`git ls-files '*.md'`，当前 4 个）。
     ///
-    /// ⚠️ **别在这里抄表块数** —— 2026-09-20 实测 `DESIGN-SPEC` **354** + `SPEC.md` **8**
-    /// （合计 362），而同一个数字此前在**三处**被抄成了 **353**（见 §8.104.7）。
-    /// 要真值就用 `.build/probe/round41/blocks.swift` 打 ——
-    /// **本守卫只断言下限（`>= 300`），打印不出真值**，所以「写错的数字」能在它这里活下来。
+    /// ⚠️ **范围本身是判据**（§8.75）：2026-09-20 实测 —— `git ls-files '*.md'` 只有 4 个，
+    /// 而此前这里只列了 2 个，**漏掉了 `README.md`（它有一个 10 行的「能力」表）**。
+    /// ⇒ 凡是**被 git 跟踪**的 `.md` 都要进来；漏一份 = 那份文档里的表格永远没人守。
+    ///
+    /// **不进范围的**（有依据，不是漏）：`.workbuddy*/memory/*.md` —— 被 `.gitignore`
+    /// 排除（`.gitignore:28` / `:30`）⇒ **CI 上根本不存在**，扫它们只会在 CI 上读不到文件。
+    /// （本机实测它们有 199 个表块；要检查就手工跑 `.build/probe/round41/table_check.py`。）
+    ///
+    /// ⚠️ **别在这里抄表块数** —— 2026-09-20 实测：同一个数字此前在**三处**被抄成了 353
+    /// （真值 354，见 §8.104.7）。要真值就用 `.build/probe/round41/blocks.swift` 打 ——
+    /// **本守卫只断言下限（`>= 300`，约为当时实测总量的 83%），打印不出真值**，
+    /// 所以「写错的数字」能在它这里活下来。
     private static let docs = [
         "DiskEjector-UI-Design/v2/DESIGN-SPEC.md",
         "SPEC.md",
+        "README.md",
+        "release-notes/README.md",
     ]
 
     // MARK: 判据（纯函数 —— 样本可以直接喂给它，不必改仓库里的文档）
