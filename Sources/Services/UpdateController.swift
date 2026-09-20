@@ -516,6 +516,19 @@ final class UpdateController: NSObject, ObservableObject {
     /// 而它正是 `.failed` 那一态的来源。留成驱动里一句 `if case` 的话，
     /// 「分支写反了」或「被删掉了」都不会有任何断言变红
     /// —— 2026-09-18 实扫发现 `driverDidFailDownload` 当时**全仓库没有调用点**，就是这么发生的。
+    ///
+    /// ⚠️ **它同时是「两条路」的去重闸门**（§8.113，关掉 SPEC 第 10 行）：
+    /// 下载失败这件事 Sparkle 会**同时**走两条路 —— delegate 的
+    /// `updater:failedToDownloadUpdate:error:`（`SPUCoreBasedUpdateDriver.m:273`）与
+    /// user driver 的 `showUpdaterError`（`SPUUIBasedUpdateDriver.m:485`，由 `:276` 的 abort 触发）。
+    /// **delegate 先到**（`:273` 在 `:276` 之前）并把 `phase` 设成 `.failed`；
+    /// 等第二条路进门时 `phase` 已经不是 `.downloading` ⇒ 这里返回 false ⇒ **不会第二次写**。
+    /// ⇒ 两条路是**互为兜底**，不是叠加。
+    /// （自动那条路是例外：`SPUAutomaticUpdateDriver.m:146-152` 只调 `_coreDriver abort…`、
+    /// **不调** `showUpdaterError` ⇒ delegate 是它唯一的一条。）
+    ///
+    /// ⚠️ **别把它改成「`.failed` 也算」**：那会让两条路互相覆盖 —— 第二条路拿
+    /// `pendingUpdate?.version` 再写一次，而这个值为 nil 时会把已知版本号冲成 `"?"`。
     nonisolated static func isDownloadFailure(phase: UpdatePhase) -> Bool {
         if case .downloading = phase { return true }
         return false
