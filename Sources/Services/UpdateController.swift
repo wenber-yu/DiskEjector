@@ -603,7 +603,7 @@ extension UpdateController: SPUUpdaterDelegate {
     /// `driverDidReset()` → `phase = .idle`，表现是「进度条无声消失」，
     /// 与「下载完成了」长得一模一样。
     ///
-    /// ⚠️ **未核实**：下载失败时 Sparkle 到底走 user driver 那条、还是 delegate 这条
+    /// ⚠️ **未核实**（2026-09-19 登记；DESIGN-SPEC「仍开着」第 10 行）：下载失败时 Sparkle 到底走 user driver 那条、还是 delegate 这条
     /// （也可能两条都走）。本环境读不到应用日志、`--preview-*` 又不建 updater，
     /// 真机验证需要一个「真的下载、且真的失败」的场景。**两条都接上，是为了不依赖这个假设**；
     /// 万一两条都触发，也只是把同一个状态设两遍（幂等）。

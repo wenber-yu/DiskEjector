@@ -380,7 +380,7 @@ struct UpdateSettingsTests {
     ///
     /// **为什么**：上一条钉的是 user driver 那条路（`showUpdaterError`），
     /// 这一条钉 **delegate 那条路**（`failedToDownloadUpdate`）。
-    /// 两条路**谁先到**是 §8.47.6 的「未核实」项 —— 钉住任意一条**不等于**钉住另一条：
+    /// 两条路**谁先到**是 §8.47.6 的「未核实」项（2026-09-19 登记；SPEC 第 10 行）—— 钉住任意一条**不等于**钉住另一条：
     /// 「只钉 user driver」⇒ 真机只走 delegate 那条路的话**又没生产者**，
     /// 「只钉 delegate」⇒ 同理。两条都接、且都钉，才不依赖那个假设。
     ///
