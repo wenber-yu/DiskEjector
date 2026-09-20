@@ -74,10 +74,24 @@ final class UpdateUserDriver: NSObject, SPUUserDriver {
 
     /// 用户主动检查开始。
     ///
-    /// **故意不画「正在检查…」**：这一段通常只有几百毫秒，设置行此时显示的仍是
-    /// 上一轮的结果，直到 ``showUpdateFound(with:state:reply:)`` 或
+    /// **故意不画「正在检查…」**：设置行此时显示的仍是上一轮的结果，直到
+    /// ``showUpdateFound(with:state:reply:)`` 或
     /// ``showUpdateNotFoundWithError(_:acknowledgement:)`` 给出新答案。
     /// 画一个会闪一下的中间态比不画更吵 —— 与主窗口那条「推出中不画进度」同一条理由。
+    ///
+    /// ⚠️ **上面这条理由的前提已被实测推翻，决策待重估（2026-09-20，§8.93）**：
+    /// 原注释写的是「这一段通常只有**几百毫秒**」。真机实测（dist 产物，单时间轴
+    /// 量 4 轮）是 **4.31s / 3.15s / 4.51s / 0.17s**（末轮是偶发快路径），典型 **3~4.5 秒**。
+    /// 按下后连抓 AX 树 0.5~4.0s，更新区**零变化**：按钮仍是「检查更新」且仍 `enabled`
+    /// （用户在这几秒里还能反复点）。3~4.5 秒不是「闪一下」。
+    ///
+    /// ⇒ 「是否补一个「正在检查…」中间态」列为**待拍板项**（2026-09-20，见「仍开着」表第 38 行）：
+    /// 它要动 `UpdatePhase` / `CheckRowState` / `rowState` / 设置行画法 / 本地化，
+    /// 并让七态变八态（走查图清单要加一态）。**拍板前保持现状**。
+    ///
+    /// - Note: `cancellation` 目前**被丢弃** —— 它是 Sparkle 给的「取消这次检查」。
+    ///   真正要补中间态时，这一格正好是「取消」按钮的落点；
+    ///   只画文案不给取消，等于给一个点了没反应的按钮（同 `.ready` 态那条判据）。
     func showUserInitiatedUpdateCheck(cancellation: @escaping () -> Void) {
         Self.logger.debug("用户主动检查更新")
     }
