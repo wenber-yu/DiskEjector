@@ -1096,12 +1096,38 @@ struct UpdateSettingsTests {
     ///
     /// 反过来的话，英文界面里那一项会写成 "Chinese" ——
     /// 一个只认中文的用户在英文界面里找中文，反而要绕一下。
+    ///
+    /// ⚠️ **两侧必须钉在同一个语言下**（2026-09-20 修）：左边 `AppLanguage.system.displayName`
+    /// 走的是 `L10n.tr` 的**默认参数** `Locale.current`，而原来的右边 `designText` 钉的是设计稿语言
+    /// ⇒ 不钉左边的话，这条断言的结果由**跑测试那台机器的系统语言**决定：
+    /// CI 是 `en_US` ⇒ 左边 `"Follow System"`、右边 `"跟随系统"`，**必然不等**。
+    /// 实测：CI **连续 7 次推送全红**都红在这一行（`UpdateSettingsTests.swift:1104`），
+    /// 而本地（中文机器）一直绿 —— 典型「本地绿、CI 红」。
+    /// ⚠️ **这里故意不写 `TestLanguage.with(TestLanguage.design)`**：那个常量是「**设计稿**的语言」，
+    /// 只该给「断言设计稿数字」的用例用（见它的文档注释）。本条断言的是**产品本地化表**，
+    /// 与设计稿无关 ⇒ 写死 `"zh-Hans"` / `"en"` 两个**产品语言**。
+    /// 附带好处：这条测试对 `design` 常量**不变** —— 用 `design = "en"` 复现 CI 的那套实验
+    /// **不会**把它一起翻掉（那套实验只对「按中文实测的设计稿数字」那类断言有效；
+    /// 本条当初那个 bug 是「左边**没钉**」而不是「钉错了语言」，两回事）。
+    ///
+    /// ⚠️ 钉**两个**语言而不是一个：只钉中文的话，「**必须本地化**」这半条其实**没被验到**
+    /// —— 把 `displayName` 写成常量中文串也照样绿。
     @Test func 具体语言用该语言自己的写法而跟随系统才本地化() {
+        // endonym：任何界面语言下都写自己的名字，**不随界面语言变**。
         #expect(AppLanguage.zhHans.displayName == "简体中文")
         #expect(AppLanguage.en.displayName == "English")
         #expect(AppLanguage.zhHant.displayName == "繁體中文")
+
         // 「跟随系统」是产品文案，必须本地化 —— 它不是语言的名字。
-        #expect(AppLanguage.system.displayName == TestLanguage.designText(.followSystemLanguage))
+        let zh = TestLanguage.with("zh-Hans") { AppLanguage.system.displayName }
+        let en = TestLanguage.with("en") { AppLanguage.system.displayName }
+        // 前置断言：先把「翻译缺失 / 钉失效」与「文案写错了」分开 ——
+        // 两者在下面两条上长得一样，但要求的处置完全相反（一个是查 `L10n`，一个是改文案）。
+        #expect(
+            zh != en,
+            "中英下「跟随系统」应当不同，实得都是「\(zh)」—— 英文翻译缺失，或 `forcedLocale` 钉已失效")
+        #expect(zh == "跟随系统", "中文下应当是「跟随系统」，实得「\(zh)」")
+        #expect(en == "Follow System", "英文下应当是 \"Follow System\"，实得「\(en)」")
     }
 
     /// 「跟随系统」= **删掉** `AppleLanguages`，不是写一个猜测值。
