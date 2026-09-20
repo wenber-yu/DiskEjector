@@ -88,7 +88,14 @@ struct UpdateSettingsTests {
             source.range(of: header),
             "找不到 \(header) —— 改了 case 的写法就要同步这条断言")
         let rest = source[start.upperBound...]
-        let end = rest.range(of: "\n        case ")?.lowerBound ?? rest.endIndex
+        // ⚠️ **两个候选 stop 都要有**（2026-09-20 补）：只认 `\n        case ` 的话，
+        // 取**最后一支**时会一直吃到**文件末尾**（它后面没有别的 case 了）——
+        // 于是「这一支里没有 X」这类**否定**断言会被后面别处的 X 满足 ⇒ 静默变绿。
+        // `\n        }`（8 空格 + `}`）只匹配 switch 自己的收尾：分支内部的 `}` 缩进更深。
+        let end =
+            ["\n        case ", "\n        }"]
+            .compactMap { rest.range(of: $0)?.lowerBound }
+            .min() ?? rest.endIndex
         return String(rest[rest.startIndex..<end])
     }
 
@@ -442,6 +449,54 @@ struct UpdateSettingsTests {
         #expect(
             !UpdateController.isUpdateLocationBlocked(NSError(domain: "SomeOtherDomain", code: 1003)),
             "域没对上却按码认领了 —— 判域存在的意义就是防这个")
+    }
+
+    /// **「正在检查」与「位置不允许更新」两态不给按钮** —— 而这条只有读源码才钉得住。
+    ///
+    /// 两态各自的理由都写在 `SettingsView` 的注释里：`.checking` 时 Sparkle 正跑着
+    /// （点「检查更新」只会闪一下），`.locationBlocked` 时「重试」在只读卷上**必然再失败**。
+    /// 共同点：**给按钮就等于给一个点了没反应的东西**（同 `.ready` 那条判据）。
+    ///
+    /// ⚠️ **为什么必须钉**：把 `EmptyView()` 换成 `retryUpdateButton` **编译照过、
+    /// 别的断言也不会红**（高度不变、优先级不变）—— 症状是用户点一下没反应，
+    /// 与「功能坏了」逐字相同。
+    ///
+    /// ⚠️ **设计稿没有这两帧**（「仍开着」第 40 行）：所以「照设计稿改实现」这条路
+    /// **指不到它们** —— 只能靠这条守卫。这也是它比一般守卫更该有的原因。
+    ///
+    /// ⚠️ 用的是 `caseBlock`，而 `.locationBlocked` 是那个 `switch` 的**最后一支**
+    /// —— `caseBlock` 因此需要两个候选 stop（2026-09-20 修，见它的说明）。
+    @Test func 正在检查与位置受限两态都不给按钮() throws {
+        let source = try contents("Sources/Views/SettingsView.swift")
+
+        for (label, header) in [
+            ("正在检查", "case .checking:"),
+            ("位置不允许更新", "case .locationBlocked:"),
+        ] {
+            let block = codeOnly(try caseBlock(header, in: source))
+            #expect(
+                block.contains("EmptyView()"),
+                """
+                `\(label)` 那一支的 control 不是 `EmptyView()` —— 它必须是「什么都不给」。实得：
+                \(block)
+                """)
+            #expect(
+                !block.contains("Button"),
+                """
+                `\(label)` 那一支出现了按钮。两态都不该有按钮：
+                「正在检查」时 Sparkle 正跑着（点了只会闪一下）；
+                「位置不允许更新」时「重试」在只读卷上**必然再失败**。
+                给一个点了没反应的按钮，与「功能坏了」长得一模一样。实得：
+                \(block)
+                """)
+            #expect(
+                block.contains("description:"),
+                """
+                `\(label)` 那一支少了第二行（`description:`）—— 面板是固定高度，
+                其余各态都有第二行，只有 label 会比别态矮 14.8pt（§8.82）。实得：
+                \(block)
+                """)
+        }
     }
 
     /// **「下载失败」这一态必须有生产者，而且接线断掉时这条会红。**
