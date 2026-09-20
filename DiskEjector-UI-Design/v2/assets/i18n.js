@@ -5,7 +5,7 @@
    来源：Sources/Localization/Localizable.xcstrings
        + DiskEjector-UI-Design/v2/assets/i18n-extra.json
    ----------------------------------------------------------------------------
-   源指纹 b7de30f9d3b640eb9fedcabb2e2419516e008d4e596f778bb059ea509ce51d52
+   源指纹 4f279e25bddb15e01499ebb0f149e36e972a2cf0543a510fc159a5e1994f84d3
      = sha256(xcstrings + extra + 本脚本) —— 任一方变了它就是旧的，
        由 DesignDraftIntegrityTests 拦下「改了源忘了重跑」。
    ----------------------------------------------------------------------------

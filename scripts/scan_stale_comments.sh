@@ -49,9 +49,12 @@ stale=0
 total=0
 
 allowed() {
-    # 豁免表按 "路径:行号" 精确匹配
+    # 豁免表按 "路径:行号" 精确匹配，**整行**比较（`grep -xF`）。
     [ -f "$ALLOWLIST" ] || return 1
-    grep -qxF "$1" "$ALLOWLIST"
+    # ⚠️ 先剥掉行内 `#` 注释与行尾空白再比：本脚本自己的提示写着「可加 # 说明」，
+    #    而 `-x` 认的是**整行** ⇒ 写成 `Sources/X.swift:12 # 误报` 的条目会
+    #    **永远匹配不上**，症状是「豁免写了、门槛还是红」，且看不出是格式不对。
+    sed 's/#.*$//; s/[[:space:]]*$//' "$ALLOWLIST" | grep -qxF "$1"
 }
 
 today="$(date +%Y-%m-%d)"

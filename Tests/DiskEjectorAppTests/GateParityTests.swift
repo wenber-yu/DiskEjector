@@ -374,7 +374,12 @@ struct GateParityTests {
         let fm = FileManager.default
         var files: [String] = []
         let scriptsDir = repoRoot.appendingPathComponent("scripts")
-        files += ((try? fm.contentsOfDirectory(atPath: scriptsDir.path)) ?? [])
+        // ⚠️ **必须递归**（`subpathsOfDirectory`，不是 `contentsOfDirectory`）：
+        //    2026-09-20 把 `run_gate` 抽到 `scripts/lib/gate_report.sh`，环境契约的
+        //    「读」随之挪走，而这里只枚举一层 ⇒ 立刻报「**没有任何脚本读**
+        //    `PREFLIGHT_FAIL_TAIL`」。那句与「真的没人读了」**逐字相同** ——
+        //    范围窄了一层，判据就从「查接线」变成了「报错文不对题」。
+        files += ((try? fm.subpathsOfDirectory(atPath: scriptsDir.path)) ?? [])
             .filter { $0.hasSuffix(".sh") }.sorted().map { "scripts/\($0)" }
         files += ((try? fm.contentsOfDirectory(atPath: repoRoot.path)) ?? [])
             .filter { $0.hasSuffix(".sh") }.sorted()
@@ -384,6 +389,29 @@ struct GateParityTests {
             scan.scriptBodies[f] = Self.stripComments(try read(f))
         }
         return scan
+    }
+
+    /// ⚠️ **范围锚**：`loadEnv` 扫到的脚本集必须 == `scripts/` 下**所有** `.sh`（递归）。
+    ///
+    /// 2026-09-20 它只枚举一层，`scripts/lib/gate_report.sh` 一挪进去就**不在范围里**，
+    /// 于是「`PREFLIGHT_FAIL_TAIL` 没有脚本读」—— 而这条消息与「真的没人读了」
+    /// **逐字相同**，读它的人会去改接线，越改越错。⇒ 范围本身要有一条守卫。
+    /// 少了这一条，退回 `contentsOfDirectory`（一层）**照样绿**。
+    @Test func 脚本扫描范围必须覆盖scripts下所有sh() throws {
+        let env = try loadEnv()
+        let fm = FileManager.default
+        let dir = repoRoot.appendingPathComponent("scripts")
+        let expected = Set(
+            ((try? fm.subpathsOfDirectory(atPath: dir.path)) ?? [])
+                .filter { $0.hasSuffix(".sh") }
+                .map { "scripts/\($0)" })
+        let got = Set(env.scriptBodies.keys.filter { $0.hasPrefix("scripts/") })
+        #expect(
+            !expected.isEmpty,
+            "scripts/ 下没找到任何 .sh —— 枚举口径失效，后面的「没人读」全是假绿")
+        #expect(
+            got == expected,
+            "扫描范围与「scripts/ 下所有 .sh（递归）」不一致，缺：\(expected.subtracting(got).sorted())")
     }
 
     /// 承接某个环境变量的**局部变量名**：`FAIL_TAIL="${PREFLIGHT_FAIL_TAIL:-30}"` ⇒ `FAIL_TAIL`。

@@ -69,47 +69,27 @@ fi
 LOG="$(mktemp -t diskejector-preflight)"
 trap 'rm -f "$LOG"' EXIT
 
+# ⚠️ 门槛失败时，把**全量**日志另存到持久目录 `.build/preflight/门槛N.log`。
+#
+# 为什么必须留（2026-09-20）：门槛曾红在「415 个测试里 1 个 issue」，而**失败测试的
+# 名字没拿到** —— `$LOG` 被上面的 `trap` 删了、回显又只有尾部 30 行。那次之后
+# 「下次要落盘再 grep」只写在「仍开着」表里，**没有任何机制保证它发生** ⇒
+# 能不能拿到名字，取决于人事前有没有设 `PREFLIGHT_FAIL_TAIL=0`。
+# 留一份持久副本 ⇒ 事后追查**不依赖**当时的环境变量。`.build/` 已被 gitignore。
+KEEP_DIR="$REPO_ROOT/.build/preflight"
+mkdir -p "$KEEP_DIR"
+
 FAILED=0
 GATE_NO=0
 
-# 统一的门槛标题（含递增编号），保证「前置条件失败」与「命令失败」两种路径编号一致。
-gate_header() {
-    GATE_NO=$((GATE_NO + 1))
-    echo ""
-    echo "▶ 门槛 ${GATE_NO}：$1"
-}
-
-# run_gate <标题> <命令...>
-# 输出重定向到日志：成功只回显尾部 3 行（保留覆盖率数字这类关键摘要），
-# 失败回显尾部若干行供定位。**不把命令输出直接接到管道上**——`cmd | tail` 会让
-# `$?` 变成 tail 的状态，把失败判成成功（本项目踩过这个坑）。
+# 门槛执行与「失败报告」抽在 `scripts/lib/gate_report.sh` —— 抽出来的唯一目的是让它
+# **有行为测试**（`scripts/test/gate_report_smoke.sh` 直接 source 它、喂一个必失败的
+# 假门槛，几毫秒验完）。留在 preflight.sh 里就只剩源码文本断言，而那种断言守得住
+# 「那行还在」，守不住「改坏了但还在」。
 #
-# 失败回显行数由 `PREFLIGHT_FAIL_TAIL` 控制：默认 30（本地迭代够用），
-# **`0` = 全量回显**（CI 用）。
-#
-# 为什么必须有「全量」这一档：2026-09-17 CI 门槛 3 红了 **19 个 issue**，
-# 而 `tail -30` 只露出 12 个 —— 被截掉的正好是**断言消息**所在的位置
-# （swift-testing 的 issue 详情混在通过行之间），于是本地只能靠猜。
-# 截断日志把「一次能查清的事」变成「要反复推 CI 猜」，这才是真正的浪费。
-FAIL_TAIL="${PREFLIGHT_FAIL_TAIL:-30}"
-run_gate() {
-    local title="$1"
-    shift
-    gate_header "$title"
-    if "$@" > "$LOG" 2>&1; then
-        sed 's/^/     /' "$LOG" | tail -3
-        echo "   ✓ 通过"
-        return 0
-    fi
-    if [ "$FAIL_TAIL" = "0" ]; then
-        echo "   ✗ 未通过，日志全量回显（PREFLIGHT_FAIL_TAIL=0）："
-        sed 's/^/     /' "$LOG"
-    else
-        echo "   ✗ 未通过，日志尾部 ${FAIL_TAIL} 行（设 PREFLIGHT_FAIL_TAIL=0 可全量回显）："
-        sed 's/^/     /' "$LOG" | tail -n "$FAIL_TAIL"
-    fi
-    return 1
-}
+# ⚠️ `FAIL_TAIL` 由 `gate_report.sh` 自己从 `PREFLIGHT_FAIL_TAIL` 派生（与「按值分支」
+#    那一支同文件 —— 见那边注释）。这里只提供 LOG / KEEP_DIR 两个变量。
+source "$REPO_ROOT/scripts/lib/gate_report.sh"
 
 echo "DiskEjector 预检（仓库：${REPO_ROOT}）"
 
@@ -186,6 +166,19 @@ run_gate "注释承诺句（标了未核实/TODO/已知限制就必须带日期�
 # ---------------------------------------------------------------
 run_gate "脚本冒烟（ci_status.sh 的确定性用例，不碰网络）" \
     "$REPO_ROOT/scripts/test/ci_status_smoke.sh" --offline \
+    || FAILED=$((FAILED + 1))
+
+# ---------------------------------------------------------------
+# 门槛 5：门槛**自己**的失败报告（`scripts/lib/gate_report.sh`）
+# 守「门槛红的时候能不能拿到失败项的名字 + 全量日志有没有留住」。
+# 2026-09-20 之前这件事只是一条写在「仍开着」表里的建议 ⇒ 真红了一次却不知道
+# 红的是谁，至今追不回来（`trap` 删了临时日志，回显又只有尾部 30 行）。
+#
+# ⚠️ 为什么它必须有行为测试而不是源码文本断言：文本断言守得住「那行还在」，
+# 守不住「改坏了但还在」。⇒ `run_gate` 抽进 `scripts/lib/` 就是为了能被 source。
+# ---------------------------------------------------------------
+run_gate "门槛失败报告（红时要给出失败项的名字并留住全量日志）" \
+    "$REPO_ROOT/scripts/test/gate_report_smoke.sh" \
     || FAILED=$((FAILED + 1))
 
 # ---------------------------------------------------------------
