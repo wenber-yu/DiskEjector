@@ -3,18 +3,21 @@
     <channel>
         <title>DiskEjector</title>
         <item>
-            <title>2026.09.20.2</title>
-            <pubDate>Sun, 20 Sep 2026 11:29:31 +0800</pubDate>
+            <title>2026.09.21.1</title>
+            <pubDate>Mon, 21 Sep 2026 01:05:11 +0800</pubDate>
             <link>https://github.com/wenber-yu/DiskEjector</link>
-            <sparkle:version>145</sparkle:version>
-            <sparkle:shortVersionString>2026.09.20.2</sparkle:shortVersionString>
+            <sparkle:version>198</sparkle:version>
+            <sparkle:shortVersionString>2026.09.21.1</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
             <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
             <description><![CDATA[<ul>
-<li>修复「正在后台下载」卡住时设置行没有出口的问题：下载长时间没有进展时会自动转为「下载失败」，并提供「重试」按钮（此前只能退出应用）</li>
+<li>维护版：本版<strong>没有功能或界面上的可见变化</strong> —— 与 2026.09.20.2 用起来完全一样</li>
+<li>这期间的改动全部落在测试守卫、工程文档与设计稿上，其中值得一提的两条：给「下载失败」的两条回调补上「互为兜底、不会互相覆盖」的说明；给菜单栏与主窗口的「未知」状态补上设计稿样本</li>
+<li>顺带修掉一处设计稿的错：深色 + 紫 / 橙 / 绿主题时，「强调色浅底」与「内描边」被写成了蓝色（应用本身一直用的是各自的强调色，所以你不会看到这个错）</li>
+<li>更不更新都一样：这一版主要是让 appcast 与当前代码对齐，后面的版本才好发</li>
 </ul>
 ]]></description>
-            <enclosure url="https://github.com/wenber-yu/DiskEjector/releases/download/v2026.09.20.2/DiskEjector-2026.09.20.2.dmg" length="2714115" type="application/octet-stream" sparkle:edSignature="4queqUZSZF6R+eTYjaDRzfGLfrMVsPKZX8FX14RMBgDRNjJoNACmtOaveNIIldS9WLB7cLEPyIdY9V4nIEJTBg=="/>
+            <enclosure url="https://github.com/wenber-yu/DiskEjector/releases/download/v2026.09.21.1/DiskEjector-2026.09.21.1.dmg" length="2716048" type="application/octet-stream" sparkle:edSignature="iPNzux6CAbPAf7KBoxMWSk82TisGk53lZ7pYswPiscDHStF/eT/VXS3AGHzB1TImMOygke/CNQNntjRoIviVCw=="/>
         </item>
     </channel>
 </rss>
