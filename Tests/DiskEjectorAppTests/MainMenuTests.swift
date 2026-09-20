@@ -37,9 +37,20 @@ struct MainMenuTests {
         _ = NSApplication.shared
         let delegate = AppDelegate()
         NSApplication.shared.delegate = delegate
+        // ⚠️ **必须自己持有一份强引用**（2026-09-20 补）。
+        // `NSApplication.delegate` 是 **weak** ⇒ 只赋值、不持有，委托会在函数返回后
+        // 立刻释放。本文件有 5 处调用写成 `_ = installWithDelegate()`，把返回值丢了 ——
+        // 现在它们只断言 `keyEquivalent` / `title`、不看 `target`，所以**暂时**不会红；
+        // 但只要有人在其中一条里加一句 `target` 断言，它就会变成一个
+        // 「本地全绿、偶发红」的谜（取决于 ARC 何时释放）。
+        // ⇒ 与其指望每个调用点都记得持有，不如由 helper 自己持有一份，把这个坑填掉。
+        Self.retainedDelegate = delegate
         MainMenu.install()
         return delegate
     }
+
+    /// 见 ``installWithDelegate()`` —— `NSApplication.delegate` 是 weak，必须有人强持有。
+    private static var retainedDelegate: AppDelegate?
 
     @Test func 装配后主菜单有四个顶层菜单() {
         _ = installWithDelegate()
