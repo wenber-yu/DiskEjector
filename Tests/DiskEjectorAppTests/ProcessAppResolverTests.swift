@@ -150,11 +150,22 @@ struct ProcessAppResolverTests {
     ///   循环体内换成 `Task.sleep`（**让路**），连线程池的线程都不占住。
     ///
     /// 只收基本类型参数、不碰 `self` —— 这样它在 `nonisolated` 下没有任何隔离问题。
-    nonisolated static func waitForExecutablePath(pid: Int32, timeoutMS: Int = 2000) async {
+    ///
+    /// **返回「有没有等到」**（2026-09-21，§8.113.9）—— 超时**不许静默**：
+    /// 2026-09-20 CI 上它等不到就一声不吭地返回，于是下游
+    /// `#require(resolved.appBundlePath)` 炸出来的信息是「必须解析出所属 app bundle」，
+    /// 而**真因是「进程还没就绪」**（失败输出里 `executablePath: nil` 就是证据）。
+    /// 报错指错方向，排查就绕远路 —— 而**「报错指名真因」正是当初修 §8.86 装置缺陷
+    /// 的全部目的**。⇒ 等不到必须让调用方知道，由调用方自己去断言。
+    @discardableResult
+    nonisolated static func waitForExecutablePath(pid: Int32, timeoutMS: Int = 2000) async -> Bool {
         let deadline = Date().addingTimeInterval(Double(timeoutMS) / 1000)
-        while Date() < deadline, ProcessAppResolver.executablePath(forPid: pid) == nil {
+        while Date() < deadline {
+            if ProcessAppResolver.executablePath(forPid: pid) != nil { return true }
             try? await Task.sleep(nanoseconds: 50_000_000)
         }
+        // 退出循环时可能刚好是最后一拍就绪 —— 再查一次，别把「刚好赶上」误报成超时。
+        return ProcessAppResolver.executablePath(forPid: pid) != nil
     }
 
     // MARK: - ① 可执行路径 → 最外层 .app
@@ -314,7 +325,15 @@ struct ProcessAppResolverTests {
         defer { fixture.cleanUp() }
         let process = try fixture.launch()
         defer { process.terminate() }
-        await Self.waitForExecutablePath(pid: process.processIdentifier)
+        let ready = await Self.waitForExecutablePath(pid: process.processIdentifier)
+        #expect(
+            ready,
+            """
+            `proc_pidpath` 在超时前没取到可执行路径 —— 这是**「进程还没就绪」**，
+            不是「解析不出 bundle」（§8.113.9）。CI 比本地慢约 8 倍（本地 5.0s / CI 41.9s），
+            所以这一条会偶发超时：连续出现 ⇒ 该按 CI 速度重定超时阈值，
+            而不是 `enrich` 有问题。分开报，是为了下次红的时候一眼看出是哪一半。
+            """)
 
         let resolved = ProcessAppResolver.enrich(
             OccupyingProcess(
@@ -322,7 +341,13 @@ struct ProcessAppResolverTests {
                 processName: Fixture.executableFileName,
                 path: "/Volumes/Demo/clip.mp4"))
 
-        let bundle = try #require(resolved.appBundlePath, "必须解析出所属 app bundle，否则图标没来源")
+        let bundle = try #require(
+            resolved.appBundlePath,
+            """
+            解析不出所属 app bundle（图标就没来源了）。
+            ⚠️ 若上面那条「进程还没就绪」也红了，那**这一条是被它连累的** ——
+            进程还没就绪时 `enrich` 自然拿不到 bundle，先看上面那条。
+            """)
         #expect(bundle.hasSuffix("/Bunny Fixture.app"), "实际：\(bundle)")
         #expect(
             resolved.executablePath?.hasSuffix("/\(Fixture.executableFileName)") == true,
