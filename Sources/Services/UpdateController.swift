@@ -119,13 +119,49 @@ final class UpdateController: NSObject, ObservableObject {
     private var startError: String?
 
     /// 更新进行到哪一步。**设置面板与弹窗都读它**，不各自维护一份。
-    @Published private(set) var phase: UpdatePhase = .idle
+    @Published private(set) var phase: UpdatePhase = .idle {
+        didSet { syncStallWatch() }
+    }
 
     /// 弹窗的内容（`showUpdateFound` 时填充）。
     private(set) var pendingUpdate: PendingUpdate?
 
     /// 「后台下载中」那行「取消」要调的东西。
     private var downloadCancellation: (() -> Void)?
+
+    // MARK: - 下载停摆兜底（DESIGN-SPEC 第 34 行）
+
+    /// `.downloading(_, fraction: nil)` **持续超过这个时长** ⇒ 转 `.failed`（那支有「重试」）。
+    ///
+    /// **为什么要兜底**：那一支按设计**不给进度条、也不给「取消」**（§8.81 / §8.82），
+    /// 于是下载挂住时那一行会**一直**停在那儿 —— 没进度、没错误、没出口，只能退出应用。
+    /// 真机撞上过（根因是那台机器下不动 release 资产，但**症状是产品侧的**）。
+    ///
+    /// ⚠️ **N 是设计决策**（第 34 行）：这里给的 120s 是默认值，之所以提成常量，
+    /// 就是为了改一个数就能调，不必翻逻辑。
+    nonisolated static let downloadStallTimeout: TimeInterval = 120
+
+    /// 停摆检查的节拍（不是超时本身）。
+    nonisolated static let stallCheckInterval: TimeInterval = 10
+
+    /// 进入「无百分比的下载中」的时刻；离开该态即清空 ⇒ 重新进入会重新计时。
+    private var stallSince: Date?
+    private var stallTimer: Timer?
+
+    /// 停摆判定 —— **纯函数，只看入参**。
+    ///
+    /// 为什么要与定时器解耦：这样单测**不必等真的 120 秒**，也不必实例化本类
+    /// （实例化会去碰 `SPUUpdater`）。与 §8.83 把 `willDownloadUpdate` 抽纯函数是同一个理由。
+    /// ⚠️ **`nonisolated`**：它是纯函数（只看三个入参），不该被 `@MainActor` 绑住
+    /// —— 与 ``rowState`` 同理由（绑住之后单测进程里调不到它）。
+    nonisolated static func isDownloadStalled(
+        since: Date?, now: Date, timeout: TimeInterval = downloadStallTimeout
+    ) -> Bool {
+        // 「还没进入该态」不算停摆 —— 没有计时起点时判定必须恒假，
+        // 否则会把「根本没在下载」误判成「下载停摆」。
+        guard let since else { return false }
+        return now.timeIntervalSince(since) >= timeout
+    }
 
     /// 「已就绪」状态下，Sparkle 等着我们回答的那个 reply。
     ///
@@ -591,6 +627,43 @@ extension UpdateController {
 // （那条路一个 user driver 回调都不发）。两者的区别见它自己的说明。
 
 extension UpdateController: SPUUpdaterDelegate {
+
+    /// 按当前 phase 开/关停摆看门狗。挂在 `phase` 的 `didSet` 上，
+    /// 所以**不需要在每个设置 phase 的地方记得调它** —— 漏一处就会留下一个没有出口的态。
+    private func syncStallWatch(now: Date = Date()) {
+        guard case .downloading(_, nil) = phase else {
+            stopStallWatch()
+            return
+        }
+        if stallSince == nil { stallSince = now }
+        guard stallTimer == nil else { return }
+        let timer = Timer.scheduledTimer(withTimeInterval: Self.stallCheckInterval, repeats: true) {
+            [weak self] _ in
+            Task { @MainActor in self?.checkDownloadStall() }
+        }
+        // ⚠️ 加到 `.common` 而不是默认的 `.default`：菜单栏面板打开时 RunLoop 跑在
+        // 事件追踪模式里，默认模式的定时器**不 firing** ⇒ 兜底在最该生效的时候不生效。
+        RunLoop.main.add(timer, forMode: .common)
+        stallTimer = timer
+    }
+
+    private func stopStallWatch() {
+        stallTimer?.invalidate()
+        stallTimer = nil
+        stallSince = nil
+    }
+
+    /// 停摆检查：由定时器调用；测试直接调它并传 `now`，不必等真的 120 秒。
+    func checkDownloadStall(now: Date = Date()) {
+        guard case .downloading(let version, nil) = phase else { return }
+        guard Self.isDownloadStalled(since: stallSince, now: now) else { return }
+        Self.logger.error(
+            """
+            下载 \(version, privacy: .public) 停摆超过 \(Self.downloadStallTimeout, privacy: .public)s：\
+            既无进度也无回执 ⇒ 转「下载失败」，让那一行有「重试」这个出口（第 34 行兜底）
+            """)
+        phase = .failed(version: version)
+    }
 
     /// 下载失败。**这是「下载失败」那一态在文档上写明的来源**
     /// （`SPUUpdaterDelegate`：「Called after the specified update failed to download」）。

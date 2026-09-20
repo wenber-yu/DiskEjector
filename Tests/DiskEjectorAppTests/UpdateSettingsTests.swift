@@ -1033,4 +1033,55 @@ struct UpdateSettingsTests {
             head.contains("guard expectedContentLength > 0 else { return }"),
             "总长未知时直接返回，不猜百分比")
     }
+
+    // MARK: - 下载停摆兜底（DESIGN-SPEC 第 34 行）
+
+    /// 没进入「无百分比的下载中」时，判定**必须恒假**。
+    @Test func 停摆判定在没进入该态时恒为假() {
+        #expect(
+            UpdateController.isDownloadStalled(since: nil, now: Date()) == false,
+            "没有计时起点时必须恒假 —— 否则会把「根本没在下载」误判成「下载停摆」")
+    }
+
+    /// 阈值边界：`>=` 而不是 `>` —— 松到「超过」会让边界那一档永远等不到。
+    @Test func 停摆判定按阈值分档() throws {
+        let t0 = try #require(
+            Calendar.current.date(
+                from: DateComponents(year: 2026, month: 9, day: 20, hour: 3, minute: 0)))
+        let timeout: TimeInterval = 120
+        #expect(
+            UpdateController.isDownloadStalled(
+                since: t0, now: t0.addingTimeInterval(119), timeout: timeout) == false)
+        #expect(
+            UpdateController.isDownloadStalled(
+                since: t0, now: t0.addingTimeInterval(120), timeout: timeout) == true,
+            "刚好到阈值就要判停摆")
+        #expect(
+            UpdateController.isDownloadStalled(
+                since: t0, now: t0.addingTimeInterval(600), timeout: timeout) == true)
+    }
+
+    /// **接线守卫**：看门狗挂在 `phase` 的 `didSet` 上。
+    ///
+    /// 为什么必须钉：它不是在每个「设置 phase」的地方各调一次 —— 那种写法
+    /// **漏一处就留下一个没有出口的态**，而那正是第 34 行的症状本身。
+    /// 把 `didSet` 删掉之后这条会红，**而别处没有任何东西会报警**。
+    ///
+    /// ⚠️ 局限（如实记）：`phase` 是 `private(set)`，测试**造不出**「真的停摆 120 秒」
+    /// 那个场景，所以这里守的是**纯函数 + 接线**，不是端到端行为。
+    @Test func 停摆兜底挂在phase的didSet上() throws {
+        let src = try contents("Sources/Services/UpdateController.swift")
+        #expect(
+            src.contains("didSet { syncStallWatch() }"),
+            "`phase` 的 `didSet` 必须调 `syncStallWatch()`：漏一处就留下没有出口的态")
+        #expect(
+            src.contains("RunLoop.main.add(timer, forMode: .common)"),
+            "定时器必须加到 `.common` —— 默认模式在菜单栏事件追踪期间不 firing，兜底会在最该生效的时候不生效")
+        #expect(
+            src.contains("Self.isDownloadStalled(since: stallSince, now: now)"),
+            "`checkDownloadStall` 必须走那个纯函数（换成本地计算会让上面的判定测试失去意义）")
+        #expect(
+            src.contains("static let downloadStallTimeout: TimeInterval = 120"),
+            "阈值必须是**具名常量**：它是设计决策（第 34 行），改一个数就能调")
+    }
 }
