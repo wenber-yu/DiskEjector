@@ -20,7 +20,7 @@
 # 所以拖拽类诊断一律带上 `--preview-main-window --preview-settings`：
 # 那是「人工核对模式」，会把窗口上屏 + 激活应用 + **停住不退出**（带 `-keys` 才会退出）。
 #
-# 日志同时写到 $DE_BEEP_LOG（默认 /tmp/dragejector-beep.log），终端滚屏丢了也不怕。
+# 日志同时写到 ${DE_BEEP_LOG}（默认 /tmp/dragejector-beep.log），终端滚屏丢了也不怕。
 #
 set -uo pipefail
 

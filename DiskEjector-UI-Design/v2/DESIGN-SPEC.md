@@ -12610,7 +12610,61 @@ CI run **`35507037840`**（提交 `5031500`）**success**，退出码 **0**。
 ⇒ 记一条：**拿 Swift / ICU 的正则直接喂 `grep -E` 会静默失配**；
 带 `(?:` 的模式一律用 Grep 工具（ripgrep）或先改写成捕获组。
 
-**落地**：（本轮提交后补）
+### 8.108.1 ⚠️ 上面那批改动**推上去之后 CI 红了**：bash 3.2 在 UTF-8 locale 下会**连坐变量名**
+
+提交 `55a7af1` 的 CI run **`35509585072`** **failure**：门槛 4（脚本冒烟）报
+
+```
+/Users/runner/work/DiskEjector/DiskEjector/scripts/test/ci_status_smoke.sh: line 65: name: unbound variable
+```
+
+而**本地 5 道门槛全绿** —— 又一个「本地绿 / CI 红」。这次的成因此前没见过。
+
+**真因**（最小复现，逐条实测）：
+
+```
+$ LC_ALL=en_US.UTF-8 bash -c 'set -u; f(){ local n="$1"; echo "✘ $n：x"; }; f abc'
+bash: n<?>: unbound variable        ← 变量名被解析成 `n` + 全角冒号
+$ LC_ALL=C       …同上…                    ✘ abc：x          ← 换 C locale 就没事
+$ LC_ALL=en_US.UTF-8 … echo "✘ ${n}：x" …   ✘ abc：x          ← 加花括号即可
+$ LC_ALL=en_US.UTF-8 … echo "（$n）" …      bash: n<?>: unbound variable
+$ LC_ALL=en_US.UTF-8 … echo "$n，x" …       bash: n<?>: unbound variable
+```
+
+**bash 3.2 用 `isalnum(字节)` 判断变量名字符，而在多字节 locale 下它对高位字节返回真**
+⇒ `$n` 后面的**全角冒号 / 全角括号 / 全角逗号 / 中文**全被算进变量名。
+
+⇒ **它为什么躲过了本地门槛**：本机**没有** `LANG` / `LC_*`（locale 是 C），
+而 CI runner 设了 `LC_ALL: en_US.UTF-8`。**判据没变，环境变了。**
+
+⚠️ **比「红」更糟的是不红**：脚本若没开 `set -u`，bash 会把它当成**另一个不存在的变量**
+**静默展开成空** —— 输出少几个字，不报错。
+
+**实扫**：这类写法仓库里有 **18 处**，分布在 5 个脚本 ——
+`build_app.sh`（2）/ `scripts/catch-beep.sh`（1）/ `scripts/ci_status.sh`（5）/
+`scripts/make_appcast.sh`（3）/ `scripts/test/ci_status_smoke.sh`（7）。
+⚠️ 其中 `ci_status.sh` 那 5 处最阴：它**只在开发者本机跑**，而本机 locale 是 C
+⇒ 换了台机器（或哪天 CI 上也跑它）就会红/静默错。全部改成 `${变量}`。
+
+**⇒ 这类坑**只能静态扫，不能靠「跑一遍」**：它只在特定 locale 下炸，
+而**本地恰恰是那个不会炸的 locale**。守卫新增第二轴
+`活文件里变量引用不得紧跟多字节字符`（`ToolingClaimTests`）。
+
+**变异（这一条最能说明为什么必须静态扫）**：把 CI 红的那一行**原样**放回去 ——
+
+| 检查 | 结果 |
+|---|---|
+| 本地跑冒烟（C locale） | **仍绿**（3 通过 / 0 不符合） |
+| 静态守卫 | **红**：`ci_status_smoke.sh L65：$name 紧跟 ：` |
+
+⇒ **运行时抓不到的，静态守卫抓到了**。少了这一轴，下一次写脚本还会踩同一个坑。
+
+**⚠️ 顺带记一条**：CI 的 `LC_ALL: en_US.UTF-8` 是为了让脚本的中文输出不乱码而设的
+（`ci.yml` 里有注释说明）。**它同时是把这类 bug 从本地藏起来的那块布** ——
+修一个问题的设置，常常同时是另一个问题的遮罩。
+
+**落地**：提交 `55a7af1`（8 files，+362 / −23）**CI 红** run `35509585072`；
+修复提交 **（本轮补）**。
 
 ---
 

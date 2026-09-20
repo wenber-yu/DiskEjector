@@ -135,7 +135,7 @@ fi
 
 # --- 等它跑完 ---
 if [ "$status" != "completed" ] && [ "$WAIT" -eq 1 ]; then
-    echo "⏳ run $id 还在跑（$status），等它结束…（Ctrl+C 可中断；之后用 ./run.sh ci --no-wait 看状态）"
+    echo "⏳ run $id 还在跑（${status}），等它结束…（Ctrl+C 可中断；之后用 ./run.sh ci --no-wait 看状态）"
     "$GH" run watch "$id" >/dev/null 2>&1 || true
     # 等完**重新取一次**状态：watch 的退出码不作为判据
     if gh_retry run view "$id" --json "$FIELDS" --jq "$JQ_FIELDS"; then
@@ -155,7 +155,7 @@ fi
 # --- ④ 自证：我看的是哪一次？ ---
 echo "───────────────────────────────────────────────"
 echo "run     $id"
-echo "提交    $sha   （本地 HEAD $HEAD_SHORT）"
+echo "提交    $sha   （本地 HEAD ${HEAD_SHORT}）"
 echo "分支    $branch"
 echo "标题    $title"
 echo "状态    $status ／ 结论 ${conclusion:--}"
@@ -166,12 +166,12 @@ echo "────────────────────────�
 if [ -z "$sha" ]; then
     echo "⚠️ 没拿到这次 run 的提交号（字段查询不完整）—— **别**把它读成「验了别的提交」。" >&2
 elif [ "$sha" != "$HEAD_SHORT" ]; then
-    echo "⚠️ 这次 run 对应的提交（$sha）**不是**本地 HEAD（$HEAD_SHORT）"
+    echo "⚠️ 这次 run 对应的提交（${sha}）**不是**本地 HEAD（${HEAD_SHORT}）"
     echo "   ⇒ 它验的不是你刚改的代码（显式指定别的 run-id 时就会这样）。"
 fi
 
 if [ "$status" != "completed" ]; then
-    echo "⏳ 还没跑完（$status）—— **这不等于绿**。稍后再跑：./run.sh ci"
+    echo "⏳ 还没跑完（${status}）—— **这不等于绿**。稍后再跑：./run.sh ci"
     exit 2
 fi
 

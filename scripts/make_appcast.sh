@@ -96,7 +96,7 @@ if [ -n "${RELEASE_NOTES_FILE:-}" ]; then
     echo "   发布说明：$(basename "$RELEASE_NOTES_FILE") → $APP_NAME-$VERSION.$NOTES_EXT"
 fi
 
-echo "▶ 生成 appcast（版本 $VERSION，归档 $(basename "$ARCHIVE")）..."
+echo "▶ 生成 appcast（版本 ${VERSION}，归档 $(basename "$ARCHIVE")）..."
 GEN_ARGS=(--link "$REPO_URL")
 # 把说明文件**内嵌**进 `<description>`。不带 DOCTYPE/body 的 HTML 本来就会内嵌，
 # 显式加上是为了不依赖那个隐含规则 —— user driver 只读**内嵌**的 `<description>`
@@ -186,10 +186,10 @@ cat <<NEXT
 ✅ 已生成：$APPCAST
 
 下一步（三步，顺序不能反）：
-  1) 创建 GitHub Release：tag 必须是 v$VERSION，并把
+  1) 创建 GitHub Release：tag 必须是 v${VERSION}，并把
      $UPLOAD_ASSET
      作为资产上传 —— **文件名不能改**：appcast 的 enclosure 写的就是它，
      改名 = 用户点「安装更新」时 404，而 appcast 本身不会报任何错。
   2) 把 appcast.xml 提交并推送（SUFeedURL 读的是它的 raw 地址，推送后才生效）。
-  3) 老版本应用启动 → 检查更新 → 应当看到 $VERSION。
+  3) 老版本应用启动 → 检查更新 → 应当看到 ${VERSION}。
 NEXT

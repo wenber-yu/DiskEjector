@@ -82,6 +82,48 @@ import Testing
         return out
     }
 
+    // MARK: 第二轴：bash 3.2 在 UTF-8 locale 下会连坐变量名
+
+    /// ⚠️ **`$变量` 紧跟全角标点时，bash 3.2 会把那个字符算进变量名**（实测，本轮 CI 红）。
+    ///
+    /// ```
+    /// $ LC_ALL=en_US.UTF-8 bash -c 'set -u; f(){ local n="$1"; echo "✘ $n：x"; }; f abc'
+    /// bash: n?: unbound variable        ← 变量名被解析成 `n` + 全角冒号
+    /// $ LC_ALL=C       …同上…             ✘ abc：x        ← 换 C locale 就没事
+    /// $ LC_ALL=en_US.UTF-8 bash -c '… echo "✘ ${n}：x" …'  ✘ abc：x        ← 加花括号即可
+    /// ```
+    ///
+    /// 病根：bash 3.2 用 `isalnum(字节)` 判断变量名字符，而在**多字节 locale** 下
+    /// 它对高位字节返回真 ⇒ `$n` 后面的全角冒号 / 全角括号 / 全角逗号 / 中文，
+    /// 全都被当成变量名的一部分。
+    ///
+    /// **它为什么躲过了本地门槛**：本机环境**没有** `LANG` / `LC_*`（locale 是 C），
+    /// 而 CI runner 设了 `LC_ALL: en_US.UTF-8` ⇒ **本地全绿、CI 红**。
+    /// 2026-09-20 实测：门槛 4（脚本冒烟）在 CI 上报
+    /// `ci_status_smoke.sh: line 65: name: unbound variable`，本地一次都没红过。
+    ///
+    /// ⚠️ 比「红」更糟的是**不红**：脚本若没开 `set -u`，bash 会把它当成
+    /// **另一个不存在的变量**静默展开成空 —— 输出少几个字，不报错。
+    /// 本仓库 `scripts/ci_status.sh` 那几处正是这样（`set -u` 下才会红，
+    /// 而它只在**开发者本机**跑，本机 locale 是 C ⇒ 一直没暴露）。
+    static func unbracedVarBeforeMultibyte(in text: String) -> [Claim] {
+        guard let re = try? NSRegularExpression(pattern: #"\$([A-Za-z_][A-Za-z0-9_]*)"#) else { return [] }
+        var out: [Claim] = []
+        for (i, line) in text.split(separator: "\n", omittingEmptySubsequences: false).enumerated() {
+            let s = String(line)
+            for m in re.matches(in: s, range: NSRange(s.startIndex..<s.endIndex, in: s)) {
+                // `${name}` 不受影响（`$` 后面是 `{`，根本进不了这个正则）
+                guard let nameR = Range(m.range(at: 1), in: s) else { continue }
+                // 取变量名后面**那一个字符**（Swift 的 Character ⇒ 能正确处理非 BMP）
+                guard let next = s[nameR.upperBound...].first,
+                    !next.unicodeScalars.allSatisfy({ $0.isASCII })
+                else { continue }
+                out.append(Claim(line: i + 1, hit: "$\(s[nameR]) 紧跟 \(next)"))
+            }
+        }
+        return out
+    }
+
     // MARK: 范围
 
     /// `git ls-files <patterns…>`（不传 patterns = 全部被跟踪文件）；拿不到输出返回 `nil`。
@@ -157,6 +199,34 @@ import Testing
             """)
     }
 
+    /// bash 3.2 那条：**活文件里的 `$变量` 后面不许紧跟多字节字符**（改 `${变量}` 即可）。
+    ///
+    /// ⚠️ 这条**必须静态扫**，不能靠「跑一遍」：脚本只在**特定 locale** 下才炸，
+    /// 而本机 locale 是 C ⇒ 跑一遍永远是绿的。2026-09-20 的 CI 红就是这么漏出来的。
+    @Test func 活文件里变量引用不得紧跟多字节字符() async throws {
+        let listed = await Self.liveToolingFiles()
+        let live = try #require(
+            listed, "拿不到 `git ls-files` 的输出 —— 装置没跑起来（**不等于**「没有这个坑」）")
+        #expect(live.count >= 12, "只枚举到 \(live.count) 个活文件 —— 范围口径失效了（假绿）")
+
+        var claims: [String] = []
+        for rel in live {
+            claims += Self.unbracedVarBeforeMultibyte(in: try read(rel)).map { "\(rel) \($0)" }
+        }
+
+        #expect(
+            claims.isEmpty,
+            """
+            这些**活文件**里 `$变量` 紧跟了多字节字符（\(claims.count) 处）：
+            \(claims.joined(separator: "\n"))
+            bash 3.2 在 **UTF-8 locale** 下会把那个字符算进**变量名**
+            ⇒ `set -u` 时报 `unbound variable`，不开 `set -u` 则**静默展开成空**。
+            本机 locale 是 C 所以**永远不红**，CI 设了 `LC_ALL=en_US.UTF-8` 就炸
+            （2026-09-20 实测：门槛 4 在 CI 报 `name: unbound variable`，本地一次没红）。
+            改法：写成 `${变量}`。
+            """)
+    }
+
     /// ⚠️ **判据自己也要验**：拿「该报的」与「不该报的」各试一次。
     /// 少了这一步，「全绿」与「正则根本没编译成功」是分不开的（§8.96.4 的原话）。
     @Test func 门槛数量判据的双向对照() {
@@ -185,6 +255,35 @@ import Testing
         #expect(
             Self.gateCountClaims(in: "别在任何活文件里写死「N 道门槛」").isEmpty,
             "占位符 `N` 被当成了数字")
+    }
+
+    /// 第二轴的双向对照。少了它，「正则没编译成功」与「真的干净」分不开。
+    @Test func 变量引用判据的双向对照() {
+        // 该报 ①：全角冒号（本轮 CI 红的那一行就长这样）
+        #expect(
+            !Self.unbracedVarBeforeMultibyte(in: #"echo "✘ $name：期望退出码""#).isEmpty,
+            "全角冒号没被报出来 —— 判据在这一轴上是瞎的")
+        // 该报 ②：全角括号
+        #expect(
+            !Self.unbracedVarBeforeMultibyte(in: #"echo "（$status）""#).isEmpty,
+            "全角括号没被报出来")
+        // 该报 ③：直接跟中文（同样会被算进变量名）
+        #expect(
+            !Self.unbracedVarBeforeMultibyte(in: #"echo "共 $count处""#).isEmpty,
+            "变量名紧跟中文没被报出来")
+
+        // 不该报 ①：加了花括号 —— 这正是修法
+        #expect(
+            Self.unbracedVarBeforeMultibyte(in: #"echo "✘ ${name}：期望退出码""#).isEmpty,
+            "`${name}` 被误报 —— 会把正确的写法判成错")
+        // 不该报 ②：半角标点没问题
+        #expect(
+            Self.unbracedVarBeforeMultibyte(in: #"echo "✘ $name: done""#).isEmpty,
+            "半角标点被误报 —— 判据太松")
+        // 不该报 ③：`$1` 这类位置参数（首字符不是字母/下划线）
+        #expect(
+            Self.unbracedVarBeforeMultibyte(in: #"echo "$1，不是变量""#).isEmpty,
+            "位置参数 `$1` 被误报")
     }
 
     /// ⚠️ **范围本身是判据**（§8.75 / §8.105 / §8.106）。

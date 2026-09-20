@@ -62,18 +62,18 @@ run_case() {
     out="$("$@" 2>&1)"
     code=$?
     if [ "$code" != "$want_code" ]; then
-        echo "✘ $name：期望退出码 $want_code，实得 $code"
+        echo "✘ ${name}：期望退出码 ${want_code}，实得 $code"
         printf '%s\n' "$out" | tail -4 | while IFS= read -r l; do echo "      $l"; done
         fail=$((fail + 1))
         return
     fi
     case "$out" in
         *"$want_text"*)
-            echo "✓ $name（退出码 $code）"
+            echo "✓ ${name}（退出码 ${code}）"
             pass=$((pass + 1))
             ;;
         *)
-            echo "✘ $name：退出码对（$code），但输出里没有「$want_text」"
+            echo "✘ ${name}：退出码对（${code}），但输出里没有「${want_text}」"
             printf '%s\n' "$out" | tail -4 | while IFS= read -r l; do echo "      $l"; done
             fail=$((fail + 1))
             ;;

@@ -372,7 +372,7 @@ echo "▶ [3.5/4] 写入本地化应用名（Finder / 系统设置列表取本�
 # macOS 对 .app 的**显示名**优先取本地化的 `InfoPlist.strings`：只把 CFBundleDisplayName 写进
 # Info.plist，Finder 与「系统设置 › 完全磁盘访问」列表里看到的仍可能是文件名 DiskEjector。
 # 这里按语言各写一份覆盖值 —— 中文环境显示中文名，英文环境保留 DiskEjector。
-# .app 目录名与产物名仍是 $APP_NAME（下载链接与脚本路径依赖它，不能改中文）。
+# .app 目录名与产物名仍是 ${APP_NAME}（下载链接与脚本路径依赖它，不能改中文）。
 write_infoplist_strings() {
     local lproj="$1" name="$2"
     local dir="$APP_BUNDLE/Contents/Resources/${lproj}.lproj"
@@ -456,7 +456,7 @@ create_dmg() {
     staging="$(mktemp -d)"
     # staging 建在 /var/folders 下，是脚本自建目录，失败路径也要清掉，
     # 否则每次打包都在临时目录里留一份 app 副本。
-    # 双引号在此处是**故意**的：需要立即展开 $staging，而不是延迟到 trap 触发时
+    # 双引号在此处是**故意**的：需要立即展开 ${staging}，而不是延迟到 trap 触发时
     # （那时函数已返回，local 变量出作用域，trap 里取到的会是空值）。
     trap "rm -rf '$staging'" EXIT
     ditto "$APP_BUNDLE" "$staging/$APP_NAME.app"
