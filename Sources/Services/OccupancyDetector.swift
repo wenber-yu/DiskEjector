@@ -350,6 +350,17 @@ final class SubprocessOutput: @unchecked Sendable {
     /// 结束后可读到输出；`nil` = 没拿到（启动失败或超时）。
     private(set) var output: String?
 
+    /// ⚠️ 超时定时器**不共用全局队列**。
+    ///
+    /// `DispatchQueue.global()` 上同时排着本类的管道可读性回调与其它 GCD 工作；
+    /// CI 负载高时 `asyncAfter` 实测**晚了 2.4s ~ 5s**（2026-09-20：
+    /// `SubprocessOutputTests.超时是真超时而不是装饰` 把超时设成 1s，
+    /// 实测 `elapsed` 5.98s ⇒ 断言 `< 5` 红）。
+    ///
+    /// 超时是本类的**正确性前提** —— 晚了就等于「超时是装饰」那个 bug 又回来了
+    /// （用户报的「刷新一直转圈」正是那条路）。⇒ 给它一条专用队列。
+    private static let timerQueue = DispatchQueue(label: "DiskEjector.SubprocessOutput.timeout")
+
     /// 是否已经收尾（同步路径靠它轮询）。
     var isFinished: Bool {
         lock.lock()
@@ -397,7 +408,7 @@ final class SubprocessOutput: @unchecked Sendable {
             lock.unlock()
         }
 
-        DispatchQueue.global().asyncAfter(deadline: .now() + timeout) { [self] in
+        Self.timerQueue.asyncAfter(deadline: .now() + timeout) { [self] in
             // ⚠️ **先置位再 terminate**：`terminate()` 会立刻造成 EOF，
             //    而 EOF 路径此刻正盯着「输出收齐了」这条路 —— 置位晚一步就会被它抢先。
             lock.lock()
