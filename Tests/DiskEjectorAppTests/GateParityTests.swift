@@ -8,7 +8,8 @@ import Testing
 ///    **与 CI 调用同一文件**，判据不会分叉」
 /// 2. `.github/workflows/ci.yml` line 57 调用 `./scripts/preflight.sh --with-tests`
 /// 3. `ci.yml` line 52–55 的注释：本地跑的是同一个文件，「否则 13 条并发错误会潜伏三天」
-/// 4. `run.sh` line 22：`check` 分支 `exec scripts/preflight.sh`
+/// 4. `run.sh` 的 `check` 分支：`exec "$SCRIPT_DIR/scripts/preflight.sh" "$@"`
+///    （⚠️ **不写行号** —— 2026-09-20 给 `run.sh` 加了 `ci` 子命令，行号当场就漂了）
 ///
 /// ⚠️ 但**四处都是人写的字** —— 谁改了其中一处，其余三处不会有任何报错，
 /// 而后果正是注释里写的那个：本地一路绿灯、CI 判据其实更严（或更松），
@@ -85,6 +86,30 @@ struct GateParityTests {
             本地跑的与 CI 跑的从此不是同一个文件 —— 判据可以分叉，
             而两边都不会报错（本仓库曾因此让 13 条并发错误在本地绿灯下潜伏三天）。
             要改就**两边一起改**，或者让其中一个继续转调到另一个。
+            """)
+    }
+
+    /// ⚠️ `run.sh` 里 `exec "$SCRIPT_DIR/xxx.sh"` 有**两处**（`check` / `ci`），
+    /// 而上一条守卫取的是**第一个**匹配 ⇒ `check` 必须排在 `ci` 之前。
+    ///
+    /// 为什么值得单立一条：这个顺序在 2026-09-20 之前**不是假设**（当时只有一处，
+    /// 是加 `ci` 子命令才让它成为假设）。若有人把 `ci` 挪到前面，上一条守卫会静默
+    /// 改去比对 `ci_status.sh` —— 它不在 CI 调用的脚本集合里，于是报出一条
+    /// **看起来像真问题**的假红，排查方向被带偏。
+    @Test func run_sh里check分支必须排在ci分支之前() throws {
+        let body = Self.stripComments(try read("run.sh"))
+        let checkAt = body.range(of: #"= "check""#)?.lowerBound
+        let ciAt = body.range(of: #"= "ci""#)?.lowerBound
+        // 负向锚：两个子命令都得真读到（读不到 = 解析口径失效，不是「顺序对」）
+        #expect(checkAt != nil, "run.sh 里找不到 `= \"check\"` —— 子命令分发改写法了？")
+        #expect(ciAt != nil, "run.sh 里找不到 `= \"ci\"` —— ci 子命令被删了？")
+        guard let c = checkAt, let i = ciAt else { return }
+        #expect(
+            c < i,
+            """
+            `check` 分支必须排在 `ci` 分支之前：`本地门槛与CI门槛必须调用同一个脚本`
+            取的是**第一个** `exec "$SCRIPT_DIR/xxx.sh"`。顺序反了它就会去比对
+            `ci_status.sh`（不在 CI 调用的集合里）⇒ 报一条与真问题无关的假红。
             """)
     }
 
@@ -383,7 +408,12 @@ struct GateParityTests {
         }
 
         let runRaw = try read("run.sh")
-        // `exec "$SCRIPT_DIR/scripts/preflight.sh" "$@"` —— 整个仓库只有这一处这种写法。
+        // `exec "$SCRIPT_DIR/xxx.sh" "$@"` 在 run.sh 里有**两处**（2026-09-20 起）：
+        // `check` → preflight.sh、`ci` → ci_status.sh。
+        // ⚠️ 这里取 `hits.first` ⇒ **`check` 分支必须排在 `ci` 分支之前**；
+        // 否则本守卫会静默改去比对 `ci_status.sh` —— 它不在 CI 调用的脚本集合里
+        // ⇒ 报一条**与真问题无关的假红**。该顺序由下面
+        // `run_sh里check分支必须排在ci分支之前` 钉住。
         let hits = Self.allMatches(
             in: runRaw, pattern: #"exec\s+"\$SCRIPT_DIR/([A-Za-z0-9_./-]+\.sh)""#)
         scan.runScript = hits.first.map(Self.normalize)

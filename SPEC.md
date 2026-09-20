@@ -196,8 +196,12 @@ DiskEjector/
 ├── assets/icons/                    # 图标源图专用目录（放图后跑 scripts/build_icon.sh）
 ├── scripts/
 │   ├── build_icon.sh                # 源图 → AppIcon.icns（sips + iconutil）
+│   ├── catch-beep.sh                # 抓「系统提示音」用的辅助脚本
+│   ├── ci_status.sh                 # 推送**之后**看 CI 结论（`./run.sh ci`；与 check 配对）
 │   ├── coverage.sh                  # 覆盖率门槛（只统计 Models / Services / Settings）
-│   └── preflight.sh                 # CI 严格门槛预检（本地与 CI 共用的唯一实现）
+│   ├── make_appcast.sh              # 生成 Sparkle appcast
+│   ├── preflight.sh                 # CI 严格门槛预检（本地与 CI 共用的唯一实现）
+│   └── scan_stale_comments.sh       # 门槛 3：注释承诺句必须带日期
 ├── tools/
 │   ├── gen_l10n_tool/               # 独立 SPM 包：本地化代码生成器（被 Plugins 调用）
 │   └── icon_tool.swift              # 增强版图标生成器（ImageIO，当前未被脚本调用）
@@ -345,6 +349,7 @@ CI 走 `SPARKLE_PRIVATE_KEY` 从 stdin 传入（不落盘）。
 |----|------|
 | CI | `.github/workflows/ci.yml`：代码门槛（`scripts/preflight.sh --with-tests`）→ 打包验证 → 产物校验 |
 | 本地门槛 | `./run.sh check [--with-tests]`，或直接 `./scripts/preflight.sh`；**与 CI 调用同一文件**，判据不会分叉 |
+| CI 结论 | 推送后用 `./run.sh ci` 看结论（默认等它跑完；`--no-wait` 只看当前状态）。退出码 **0=绿 / 1=红 / 2=没拿到结论**（⚠️ 2 ≠ 绿）。起因：CI 曾连续 76 次红没人看 |
 | 发布前 | `STRICT_CI=1 ./build_app.sh` —— 打包前先过零警告构建 + 格式门槛 |
 | 格式 | `swift-format`，配置 `./.swift-format`（4 空格缩进 / 120 行宽） |
 | 覆盖率 | `scripts/coverage.sh`，**仅统计核心逻辑**（Models/Services/Settings），门槛 40% |
