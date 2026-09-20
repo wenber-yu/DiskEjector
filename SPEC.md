@@ -179,10 +179,9 @@ DiskEjector/
 │   │   ├── ContentView.swift        # 主窗口内容
 │   │   ├── MenuPopoverView.swift    # 菜单栏弹出面板
 │   │   ├── SettingsView.swift       # 设置面板
-│   │   ├── DesignTokens.swift       # 设计令牌（尺寸 / 配色 / 间距）
+│   │   ├── DesignTokens.swift       # 设计令牌（尺寸 / 配色 / 间距 / 字号）
 │   │   ├── DesignSystemComponents.swift # 复用组件（ProcessTag / TextButton / FdaBanner）
-│   │   ├── GlassViews.swift         # 材质与玻璃效果视图
-│   │   └── AppFont.swift            # 字体定义
+│   │   └── GlassViews.swift         # 材质与玻璃效果视图
 │   └── Localization/
 │       └── Localizable.xcstrings    # 本地化字符串（简中 / 繁中 / 英）
 ├── Tests/

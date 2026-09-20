@@ -14,6 +14,7 @@ import Testing
 /// | `UpdateController.startIfNeeded()` | updater 从未启动 → 自动更新整条链**从未跑过** |
 /// | `driverDidFailDownload` | `.failed` 那一态**没有生产者** → 下载失败时进度条无声消失 |
 /// | 三组 `*BusyBar*` 令牌**接错行** | 琥珀条短 4pt，而界面上与「本来就这么长」**逐字相同** |
+/// | `AppFont`（**整个类型**） | 49 行 / 10 个字号令牌**零消费者**，而它的注释仍宣称「视图层只引用它」—— 前两个 suite 都**看不见**（只读一个文件）⇒ 第三个 suite 补上（§8.100）|
 ///
 /// 共性是：**界面上与「功能坏了」逐字相同，读代码也看不出来。**
 /// 而 **Swift 不为字符串级常量报警** —— 删掉一个没人用的设计令牌或偏好键，
@@ -23,7 +24,7 @@ import Testing
 /// 上一轮（§8.48）删掉了 **15 个**零消费者令牌 + **2 个**零消费者文案键，
 /// 但**当时没有守卫** ⇒ 下一轮还会长出来。这两个 suite 就是来堵这个口子的。
 ///
-/// ## 两个 suite 共同的口径
+/// ## 三个 suite 共同的口径
 ///
 /// - **只看 `Sources/`**（不含 `Tests/`）：一个只在测试里出现的常量，生产代码里
 ///   没有任何地方用它 —— 那正是要人过目的事（设计令牌那边实测有 5 个属于这一类）。
@@ -235,6 +236,116 @@ struct PreferenceKeyConsumerTests {
             .filter { declared.contains($0) && SourceReader.isKeyReferenced($0, in: corpus) }
             .sorted()
         #expect(nowConsumed.isEmpty, "这些偏好键已经有生产代码消费者了：\(nowConsumed)。回来从exemptions里划掉")
+    }
+}
+
+// MARK: - 类型级：整类型零引用
+
+/// **整类型零引用** —— 上面那两条守卫的共同盲区（2026-09-20 实扫，SPEC §8.100）。
+///
+/// **为什么单开这一条**：`设计令牌的消费者` 只读**一个文件**（`DesignTokens.swift`），
+/// 所以「**整个文件**都是死代码」这种形态它**看不见**。`AppFont.swift` 就是这样：
+/// 2026-09-12 那次重构（`25d0853`）引入了 `DesignTokens` 并改写了所有视图，
+/// 却把 `AppFont.swift`（49 行 / 10 个字号令牌）留在原地 —— **此后 8 天零消费者**，
+/// 而它自己的文档注释还写着「视图层只引用语义（`cardTitle` / `label` / `minor` …）」：
+/// **这句话是假的**，且下一个读到它的人会以为还有一个地方在用。
+///
+/// **为什么扫「类型」而不是继续扫「常量」**：类型名是 CamelCase，几乎不与普通词撞名。
+/// 实测同一份代码里：
+/// - 扫 `static let/var`：`label` / `control` / `minor` 这类**通用词**会在别处（作为别的
+///   标识符）出现 ⇒ 被判成「有消费者」⇒ **漏报**（`AppFont` 的 10 个令牌里只报出 6 个）；
+/// - 扫类型名：**129 个类型 / 1 个零引用 / 0 误报**。
+///
+/// 口径：`Sources/` 里的 `enum` / `struct` / `class` / `actor` / `protocol` 声明，
+/// 在 **`Sources/` 正文**（去整行注释）里出现 **≤ 1 次**（只有声明自己）即为零引用。
+/// ⚠️ 已知的松：名字出现在**字符串字面量**里、或只被自己的 `extension` 提到，都算「有引用」。
+@Suite("类型的消费者")
+struct TypeConsumerTests {
+
+    private let sources = SourceReader()
+
+    /// 已知的零引用类型 —— **空表**。
+    ///
+    /// 空表不等于「没有用」：它让「新长出来一个」变成一条**具体的红**，
+    /// 而不是「本来就没查」。登记时必须在注释里写清**为什么留着**（照上面两条的规矩）。
+    private static let exemptions: [String: String] = [:]
+
+    /// 一条类型声明：名字 + 出处文件（失败信息里要能直接定位）。
+    private struct TypeDeclaration {
+        let name: String
+        let file: String
+    }
+
+    private static let typePattern =
+        #"^[ \t]*(?:(?:public|internal|private|fileprivate|final|open)[ \t]+)*"#
+        + #"(?:enum|struct|class|actor|protocol)[ \t]+([A-Za-z_][A-Za-z0-9_]*)"#
+
+    private static func typeDeclarations(in code: String, file: String) -> [TypeDeclaration] {
+        guard let regex = try? NSRegularExpression(pattern: typePattern) else { return [] }
+        var found: [TypeDeclaration] = []
+        for line in code.split(separator: "\n", omittingEmptySubsequences: false) {
+            let text = String(line)
+            let whole = NSRange(text.startIndex..<text.endIndex, in: text)
+            guard let match = regex.firstMatch(in: text, range: whole),
+                let range = Range(match.range(at: 1), in: text)
+            else { continue }
+            found.append(TypeDeclaration(name: String(text[range]), file: file))
+        }
+        return found
+    }
+
+    /// `Sources/` 下全部 `.swift`（递归）。
+    static func swiftFiles(under root: URL) -> [URL] {
+        guard let walker = FileManager.default.enumerator(at: root, includingPropertiesForKeys: nil)
+        else { return [] }
+        return walker.compactMap { $0 as? URL }.filter { $0.pathExtension == "swift" }
+    }
+
+    /// 名字在语料里出现**至少 2 次**（声明自己 + 至少一处引用）才算有消费者。
+    static func isReferenced(_ name: String, in corpus: String) -> Bool {
+        let pattern = "(?<![A-Za-z0-9_])\(NSRegularExpression.escapedPattern(for: name))(?![A-Za-z0-9_])"
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return true }
+        let range = NSRange(corpus.startIndex..<corpus.endIndex, in: corpus)
+        return regex.numberOfMatches(in: corpus, range: range) >= 2
+    }
+
+    @Test func 零引用的类型必须登记在案() throws {
+        let files = Self.swiftFiles(under: sources.sourcesRoot)
+        #expect(
+            files.count > 20,
+            "只枚举到 \(files.count) 个源文件 —— 枚举多半坏了，下面的结论一律作废")
+
+        var corpus = ""
+        var declarations: [TypeDeclaration] = []
+        for url in files {
+            let code = SourceReader.codeOnly(try String(contentsOf: url, encoding: .utf8))
+            corpus += "\n" + code
+            declarations += Self.typeDeclarations(in: code, file: url.lastPathComponent)
+        }
+
+        // 解析器的**自证**：少了它，「零引用」可能只是「一个类型都没解析出来」——
+        // 这两种情况在断言层面完全一样。
+        #expect(
+            declarations.count > 100,
+            "只解析到 \(declarations.count) 个类型声明 —— 解析逻辑多半退化了（实测 129）")
+
+        let zero = declarations.filter { !Self.isReferenced($0.name, in: corpus) }
+        let unregistered = zero.filter { Self.exemptions[$0.name] == nil }
+
+        #expect(
+            unregistered.isEmpty,
+            """
+            这些类型在 `Sources/` 里**没有任何消费者**（连声明自己算上只出现 1 次）：\
+            \(unregistered.map { "\($0.file)：\($0.name)" }.joined(separator: "、"))。
+            整类型的死代码会**一直骗下一个读代码的人**（`AppFont` 的文档注释就还在说「视图层只引用它」）。
+            要么删掉，要么在 `exemptions` 里登记**留着的原因**。
+            """)
+
+        // **账本不是垃圾桶**：登记了、但现在已经有消费者了 ⇒ 回来划掉。
+        let stale = Self.exemptions.keys.filter { name in
+            !zero.contains { $0.name == name }
+        }.sorted()
+        #expect(stale.isEmpty, "exemptions 里登记了这些类型，但它们已经有消费者了：\(stale)。回来划掉")
     }
 }
 
