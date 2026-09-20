@@ -158,7 +158,8 @@ DiskEjector/
 ├── .github/workflows/ci.yml         # CI：零警告构建 + 格式检查 + 覆盖率门槛 + 打包验证
 ├── Sources/
 │   ├── DiskEjectorApp/
-│   │   └── DiskEjectorApp.swift     # 应用入口 + AppDelegate（status item、popover 定位）
+│   │   ├── DiskEjectorApp.swift     # 应用入口 + AppDelegate（status item、popover 定位）
+│   │   └── WindowSelfCheck.swift    # `--preview-*` 自检里**不碰应用状态**的量测函数（7 个 static func）
 │   ├── Models/
 │   │   ├── DiskInfo.swift           # 磁盘数据模型 + 外置判定（DiskClassifier）
 │   │   ├── OccupyingProcess.swift   # 进程数据模型（原名 ProcessInfo，避免与 Foundation 同名）
