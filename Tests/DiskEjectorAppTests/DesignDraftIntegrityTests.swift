@@ -79,7 +79,7 @@ struct DesignDraftIntegrityTests {
     ///
     /// **为什么不删**：§8.52.5 的判据仍然成立 —— 设计稿是规范文档，删类会改变视觉，
     /// 零消费者只说明「现在没用到」。所以这三张表是**账本**，不是**待删清单**。
-    /// 唯一的例外见 `statusline--unknown` 那条。
+    /// （唯一的例外已于 2026-09-21 补平 —— 见 `spareUnused` 上方的说明。）
 
     /// `ds.js` 运行时创建的类。**它们有消费者**（在 JS 里），所以**不是**零消费者。
     private static let runtimeCreatedClasses: [String: String] = [
@@ -97,8 +97,9 @@ struct DesignDraftIntegrityTests {
 
     /// 纯 `ds.css` 定义、静态无消费者、`ds.js` 也不建。
     ///
-    /// 多数是**备用样式 / 工具类**（§8.52.5：零消费者 ≠ 可删）。唯一的例外是
-    /// `statusline--unknown` —— 它**不是备用，是真缺口**，见下表。
+    /// 多数是**备用样式 / 工具类**（§8.52.5：零消费者 ≠ 可删）。
+    /// （曾有的**唯一例外** `statusline--unknown` 已于 2026-09-21 补上样本、移出本表 —— §8.113；
+    /// 与它同族的 `.mrow__occ--unknown` 当时**连定义都没有**，同批补了 CSS 与样本。）
     private static let spareUnused: [String: String] = [
         "appicon--doc":
             "`.appicon` 定义了 8 个分类底色，页面只画了 5 个（finder / photo / code / backup / music）。**实现侧不按分类着色** —— `ProcessChip` 画的是真应用图标（`ProcessAppResolver.icon`）⇒ 备用样式",
@@ -112,8 +113,6 @@ struct DesignDraftIntegrityTests {
         "grid4": "四列网格。**同族的 `grid2` 有 15 个样本、`grid3` 有 4 个，只有 `grid4` 是 0** ⇒ 备用",
         "iconbtn--lg": "32×32 大号图标按钮。`iconbtn` 有 13 个样本，**没有一个是 32**（实现侧也没有这个尺寸）⇒ 备用",
         "sr-only": "**无障碍**工具类（仅供屏幕阅读器），**有意保留** —— 见 §8.52.5",
-        "statusline--unknown":
-            "⚠️ **这一条不是备用，是真缺口** —— 实现侧 `MenuBarDiskRow.statusLine` 有 `.unknown` 态（未授权 FDA 时显示「占用情况未知」），而设计稿的 `.statusline` 只画了 `--safe`。与 `.mrow__occ` 缺 `--unknown` 同族（§8.75.7 已记，**仍未补样本**）",
     ]
 
     // MARK: 守卫

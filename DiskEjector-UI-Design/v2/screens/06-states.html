@@ -358,6 +358,44 @@
     </div>
   </div>
 
+  <!-- ===================== F. 未知态样本 ===================== -->
+  <!-- ⚠️ 这两个类此前是「实现画得出来、设计稿没有样本」的两笔账（§8.75.7 / §8.76.7，2026-09-21 补）。
+       补在**本节**（手写、不带 `data-page-node-id`）而不是改既有页面 —— 既有页面的元素带
+       `data-page-node-id`（设计工具注入的属性），手改会被编辑器重写覆盖（§8.98.8）。
+       E 节就是这么存活下来的，照它的写法。 -->
+  <div class="doc__section">
+    <h2 class="doc__h2">F · 未知态样本 <em>Unknown variants</em></h2>
+    <p class="doc__h2desc">
+      「未知」= <b>没能做检测</b>（未授权 FDA，或运行环境被沙盒限制），它<b>不等于「没有占用」</b> ——
+      所以两个组件的未知态都用中性色 <code>--text-2</code>，与「可安全推出」的
+      <code>--ok-text</code> 明确分开（D 节第一条硬规则）。
+    </p>
+
+    <div class="panel">
+      <div style="display:flex;flex-direction:column;gap:18px">
+        <div>
+          <h3 class="doc__h3" style="margin-top:0">主窗口 · 行内结论（<code>.statusline--unknown</code>）</h3>
+          <span class="statusline statusline--unknown"><span data-i18n="unknownEvidenceTitle">占用情况未知</span></span>
+        </div>
+        <div>
+          <h3 class="doc__h3">菜单栏面板行 · 占用 / 状态（<code>.mrow__occ--unknown</code>）</h3>
+          <div class="mrow__occ mrow__occ--unknown" data-i18n="compactUnknown">占用未知</div>
+        </div>
+      </div>
+
+      <ul class="note-list" style="margin-top:16px">
+        <li><b>为什么两个都要画。</b>它们是两个不同的组件：前者在主窗口的磁盘行里，后者在菜单栏面板行里。
+          实现侧两处都能进 <code>.unknown</code>（<code>DiskRow.swift:203</code> 的结论文字 /
+          <code>:844</code> 的面板行），而设计稿此前<b>一处样本都没有</b>
+          ⇒ 下一个照设计稿改实现的人会把这一态改没。</li>
+        <li><b><code>.mrow__occ--unknown</code> 是本轮新加的 CSS。</b>原先 <code>ds.css</code>
+          只有基类与 <code>--safe</code>，而<b>基类的默认色是 <code>--warn-text</code>（被占用）</b>
+          ⇒ 不补这一条，未知态会画成琥珀 —— 正好踩中 D 节那条硬规则
+          （「未知」被读成「被占用」，虽然不至于读成「可安全推出」，同样是错的）。</li>
+      </ul>
+    </div>
+  </div>
+
 </div>
 </div>
 <script src="../assets/i18n.js"></script>

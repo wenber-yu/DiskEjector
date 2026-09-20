@@ -621,6 +621,9 @@ body.ds {
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .mrow__occ--safe { color: var(--ok-text); font-weight: 400; }
+/* 未知态（2026-09-21 补，§8.113）：与 `.statusline--unknown` 同一支中性色 ——
+   ⚠️ 绝不能借 `--ok-text`，否则「未知」会被读成「可安全推出」（06-states.html D 节那两条硬规则）。 */
+.mrow__occ--unknown { color: var(--text-2); font-weight: 400; }
 
 .pop__sep { height: 0.5px; background: var(--hairline); margin: var(--s-2) var(--s-3); }
 

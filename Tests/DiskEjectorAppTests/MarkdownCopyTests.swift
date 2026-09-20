@@ -78,6 +78,48 @@ struct MarkdownCopyTests {
             "`MarkdownCopy.text` 没有解析 markdown —— 星号还占着宽度，界面上会画出裸星号")
     }
 
+    /// **带加粗标记的值，`**` 必须成对**（§8.113：替掉一条守不了的路径）。
+    ///
+    /// 这一条**替换**了原本想写的「不成对标记的兜底要退回原样」。那条写不出来 ——
+    /// 实测（2026-09-21）12 种畸形输入（落单 `**` / `*` / 反引号 / `___x` / `[](` /
+    /// `<script>` / 200 个连续星号 …）**全部解析成功**，
+    /// `try? AttributedString(markdown:)` 一次都没返回 nil ⇒
+    /// `MarkdownCopy.text` 里那句 `return Text(raw)` 的兜底**不可达**。
+    /// 变异证实了这一点：把兜底改成 `Text("")`，那条测试**照样绿** —— 它守的是条没人走的路。
+    ///
+    /// ⇒ 但落单的 `**` 仍然是个真问题，只是**不在兜底那一侧**：
+    /// 解析**成功**、星号被当字面量保留 ⇒ 界面上**原样画出裸星号**，
+    /// 与「忘了包 `MarkdownCopy.text`」的结果**逐字相同**（§8.78 那个 bug 的形状）。
+    /// 所以真正该守的是**值本身**：星号必须成对。
+    ///
+    /// **判据**：先剥掉所有成对的 `**…**`，剩下的若还有 `**` ⇒ 落单。
+    /// （只数奇偶不够：`**a** 与 **b` 的 `**` 总数是 3，但真正的问题是最后那个落单的。）
+    @Test func 带加粗标记的文案值里星号必须成对() throws {
+        let marked = try markedValues()
+        #expect(
+            marked.count >= 2,
+            "只扫到 \(marked.count) 个带 `**` 的值 —— 扫描口径坏了，下面的「无落单」不可信")
+
+        var bad: [String] = []
+        for item in marked {
+            var rest = item.value
+            rest = rest.replacingOccurrences(
+                of: #"\*\*[^*]+\*\*"#, with: "", options: .regularExpression)
+            if rest.contains("**") {
+                bad.append("\(item.key)（\(item.language)）：\(item.value)")
+            }
+        }
+
+        #expect(
+            bad.isEmpty,
+            """
+            这些文案值里有**落单**的 `**`（\(bad.count) 处）：
+            \(bad.joined(separator: "\n"))
+            落单的 `**` 不会被解析成加粗 —— `AttributedString` 把它当字面量保留
+            ⇒ 界面上原样画出裸星号，与「忘了包 MarkdownCopy.text」长得一模一样。
+            """)
+    }
+
     /// 语言包里**值带 `**` 的键**，消费它的文件必须调用 markdown 渲染器。
     ///
     /// 这是**类级**的网：单靠「这条横幅现在是对的」证明不了「下一条带 `**` 的文案也对」。
@@ -211,6 +253,32 @@ struct MarkdownCopyTests {
     }
 
     /// 取某文件里所有 `message:` 实参（整行、去缩进、跳过注释行）。
+    /// 语言包里**值带 `**`**的所有 (键, 语言, 值)。
+    private func markedValues() throws -> [(key: String, language: String, value: String)] {
+        let data = try Data(contentsOf: catalogURL)
+        guard let root = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+            let strings = root["strings"] as? [String: Any]
+        else {
+            Issue.record("`Localizable.xcstrings` 解析不出 `strings` —— 结构变了？")
+            return []
+        }
+        var out: [(key: String, language: String, value: String)] = []
+        for (key, raw) in strings {
+            guard let entry = raw as? [String: Any],
+                let localizations = entry["localizations"] as? [String: Any]
+            else { continue }
+            for (language, lv) in localizations {
+                guard let l = lv as? [String: Any],
+                    let unit = l["stringUnit"] as? [String: Any],
+                    let value = unit["value"] as? String,
+                    value.contains("**")
+                else { continue }
+                out.append((key, language, value))
+            }
+        }
+        return out.sorted { $0.key < $1.key }
+    }
+
     private func messageArguments(in relativePath: String) throws -> [String] {
         let text = try String(
             contentsOf: repoRoot.appendingPathComponent(relativePath), encoding: .utf8)
