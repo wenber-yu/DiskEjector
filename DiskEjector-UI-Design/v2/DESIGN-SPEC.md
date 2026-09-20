@@ -5078,14 +5078,24 @@ Sparkle 会不会装上这次更新 —— 依据是 `showUpdateFound` 的文档
 
 ### §8.42.2 仍开着的（按「谁能关掉它」分类）
 
-> ⚠️ **本表的最后核对时刻：2026-09-20 12:55**（起点 `HEAD` = `74763b4`，工作区 0 脏；本轮改动见 §8.94）。
-> 本次核对是 §8.94 —— **没关掉任何一行**，但**新开第 39 行**，而它是本表目前**最严重的一条**：
+> ⚠️ **本表的最后核对时刻：2026-09-20 13:10**（起点 `HEAD` = `88175c8`，工作区 0 脏；本轮改动见 §8.95）。
+> 本次核对是 §8.95 —— **没关掉任何一行**，但**把第 39 行从「三个待选修法」收敛成「只剩落点要选」**：
+> abort 的调用链追到底了（六跳、逐行对上），真正的落点是 **`showUpdaterError`**；
+> 于是上一轮写的选项 ①（接 `basicDriverIsRequestingAbortUpdateWithError:`）**作废** ——
+> 它是 Sparkle **driver 之间**的内部协议，我们的 `SPUUserDriver` **不在那条链上，接不到**。
+> （上一轮那句「我们没接那个 abort 回调（全仓库 0 处）」**仍然为真**，但结论错了：
+> 「没接」不等于「该接」。详见 §8.95.4。）
+> ⇒ 判定这一族所需的**输入已现成**（错误码 1003 / 1005），**这部分没有取舍**，
+> 可以照 `isDownloadFailure` 的惯例直接抽纯函数 + 单测 + 变异。
+> ⚠️ **第 39 行与第 38 行仍建议一起拍板**（都落在「更新那一行的状态机要不要加态」上）；
+> 若都选「不加态」的方案，两行的修复量都很小。
+>
+> _（上一次核对是 §8.94 —— **没关掉任何一行**，但**新开第 39 行**，而它是本表目前**最严重的一条**：
 > 从 dmg（只读卷）直接运行时，「检查更新」是**只会说「已是最新版本」的假动作** ——
 > 零网络请求（本地 feed server 实测），界面却把「上次检查」刷新成当下并宣称已是最新。
-> 机制链三处源码都逐行对上了（`SPUUpdater.m:789` / `SPUBasicUpdateDriver.m:71` / `SUHost.m:174`），
-> 而我们**没接**那个 abort 回调（全仓库 0 处）⇒ 它连「请拷到应用程序文件夹」的提示都没有。
-> ⚠️ **第 39 行建议与第 38 行一起拍板**：两者都落在「更新那一行的状态机要不要加态」上。
+> 机制链三处源码都逐行对上了（`SPUUpdater.m:789` / `SPUBasicUpdateDriver.m:71` / `SUHost.m:174`）。
 >
+
 > _（上一次核对是 §8.93 —— **没关掉任何一行**，但**修掉一处上一轮留下的文档破损**：
 > 第 37 行被插进了 §8.43.1 的表格头里（整行变成 `| 37 | … || 位置 | 改前 | 改后 |`），
 > 已把它移回本表末尾、并恢复 §8.43.1 的表头。
@@ -5123,7 +5133,7 @@ Sparkle 会不会装上这次更新 —— 依据是 `showUpdateFound` 的文档
 > §8.34.1 的教训在这里**又成立了一次**：**连「要设计决策」都有保质期** ——
 > 上一轮要是多扫一眼 delegate 侧，这一行根本不会开。
 
-| # | 项 | 谁才能关 | 出处 | 现状（2026-09-20 12:55 核对） |
+| # | 项 | 谁才能关 | 出处 | 现状（2026-09-20 13:10 核对） |
 |---|---|---|---|---|
 | 1 | ~~EdDSA 签名~~（`generate_keys` → 公钥进 `SPARKLE_PUBLIC_ED_KEY`） | 已关闭 | §8.39.7 / §8.49 | ✅ 2026-09-18 20:39 生成密钥对（私钥进登录钥匙串，`acct=ed25519`）→ 公钥 `DZSAElJGUg13m+uorm7qlJhQKPyxk4D1DXMYGEOtbBs=` 烤进 Info.plist → appcast 带 `edSignature`；**独立验签**（OpenSSL）+ 篡改反证 + 从 Release 下载回来再验一遍，全过 |
 | 2 | ~~设计稿 `--h-settings` vs 实现 `480×800`~~ | 已关闭 | §8.43 | ✅ 拍板统一成 800，并由 `DesignSizeParityTests.设计稿与实现的尺寸必须同数` 钉住（§8.71；旧守卫在 `SettingsLayoutTests`，已迁入同源表） |
@@ -5172,7 +5182,7 @@ Sparkle 会不会装上这次更新 —— 依据是 `showUpdateFound` 的文档
 变异背书：插一行无日期 `TODO` ⇒ **红**；还原 `cmp -s` 校验通过 |
 | 37 | **`DiskEjectorApp.swift` 2351 行**：其中约 660 行是「真机自检的量测 / 比对 / 打印」，与应用装配混在一起 —— **但纯外移做不成** | 你（**取舍**：把 4 个属性改 `private(set)` 让只读对外，还是维持现状） | §8.91 | ⬜ **仍开着**（§8.91 新开）。实测挡路的三条：① `private` 是**文件级**作用域（`fileprivate` 一样）⇒ 跨文件访问必须放宽；② 自检块读 `mainWindow` / `onboardingHosting` / `statusPopover` / `statusItem` 四个私有属性，而且是**裸名**访问（不带 `self.`）⇒ 「块内没有 `self.`」这个判据**看不出**它们；③ 这些自检代码在 `Sources/DiskEjectorApp/` ⇒ **不在覆盖率分母里、也没有单测** ⇒ 外移只能靠「编译通过」验，**改坏了没有测试会红**。 |
 | 38 | **点击「检查更新」后有 3~4.5 秒界面零反馈** —— `UpdateUserDriver.showUserInitiatedUpdateCheck` 的注释写着「这一段通常只有**几百毫秒**，所以故意不画『正在检查…』」。真机实测（**dist 产物**，单时间轴 4 轮）是 **4.31 / 3.15 / 4.51 / 0.17s**，典型 **3~4.5 秒**；按下后连抓 AX 树 0.5~4.0s，更新区**零变化**，按钮仍是「检查更新」且仍 `enabled`（可反复点）⇒ **原决策的前提已被推翻**，是否补「正在检查…」中间态是**设计决策** | 你（**取舍**：补一态 vs 维持现状） | §8.93 | ⬜ **仍开着**（§8.93 新开）。补的话要动 `UpdatePhase` / `CheckRowState` / `rowState` / 设置行画法 / 本地化，并让**七态变八态**（走查图清单要加一态，且受「各态渲染出来必须一样高」那条守卫约束，§8.82）。ⓘ Sparkle 给的 `cancellation` 闭包**目前被丢弃** —— 它正好是「取消」按钮的落点；只画文案不给取消 = 又一个「点了没反应」的按钮（同 `.ready` 态那条判据） |
-| 39 | **从 dmg（只读卷）直接运行时，「检查更新」是只会说「已是最新版本」的假动作** —— `SPUUpdater.m:789` 发起 `checkForUpdates()` **即写**「上次检查时间」（不看成败）；随后 `SPUBasicUpdateDriver.m:71` 判 `isRunningOnReadOnlyVolume`（`SUHost.m:174` 用 `statfs` 查 `MNT_RDONLY`）为真 ⇒ **根本不去取 appcast**，直接 abort（错误码 1003）；而 `basicDriverIsRequestingAbortUpdateWithError:` **我们全仓库 0 处实现** ⇒ abort 无落点。实测：只读卷上点了之后**零网络请求**（本地 feed server 一行没多），而界面「上次检查」仍刷新成当下并宣称「已是最新版本」⇒ 即使 appcast 里有新版本，用户**永远看不到** | 你（**修法三选一**，见 §8.94.6） | §8.94 | ⬜ **仍开着**（§8.94 新开）。⚠️ 与第 27 行同类但更彻底：那次是「做完了没显示」，这次是**根本没做却说做过了**。选项：① 接 Sparkle 那个 abort 回调（文案它已备好，且还覆盖 App Translocation）；② 自己 `statfs` 判只读后改走打开 Releases 页（**不加态**，最小）；③ 新增一态显示「请拷到应用程序文件夹」（体验最好，代价最大）。⚠️ 三者的共同前提：**先确认 abort 落到 user driver 的哪个方法** —— 本轮只有「界面表现与 `showUpdateNotFoundWithError` 一致」这条**间接**证据 |
+| 39 | **从 dmg（只读卷）直接运行时，「检查更新」是只会说「已是最新版本」的假动作** —— `SPUUpdater.m:789` 发起 `checkForUpdates()` **即写**「上次检查时间」（不看成败）；随后 `SPUBasicUpdateDriver.m:71` 判 `isRunningOnReadOnlyVolume`（`SUHost.m:174` 用 `statfs` 查 `MNT_RDONLY`）为真 ⇒ **根本不去取 appcast**，直接 abort（错误码 1003）；而 `basicDriverIsRequestingAbortUpdateWithError:` **我们全仓库 0 处实现** ⇒ abort 无落点。实测：只读卷上点了之后**零网络请求**（本地 feed server 一行没多），而界面「上次检查」仍刷新成当下并宣称「已是最新版本」⇒ 即使 appcast 里有新版本，用户**永远看不到** | 你（**修法三选一**，见 §8.94.6） | §8.94 | ⬜ **仍开着**（§8.94 新开）。⚠️ 与第 27 行同类但更彻底：那次是「做完了没显示」，这次是**根本没做却说做过了**。选项：① 接 Sparkle 那个 abort 回调（文案它已备好，且还覆盖 App Translocation）；② 自己 `statfs` 判只读后改走打开 Releases 页（**不加态**，最小）；③ 新增一态显示「请拷到应用程序文件夹」（体验最好，代价最大）。⚠️ **§8.95 订正：选项 ① 作废** —— 调用链追到底了（六跳，逐行对上）：abort 真正落到 `showUpdaterError(_:acknowledgement:)`，**不是** `basicDriverIsRequestingAbortUpdateWithError:`（那是 Sparkle **driver 之间**的内部协议，我们的 `SPUUserDriver` 不在那条链上，接不到）。⇒ **判定这一族所需的输入已现成**（错误码 1003 / 1005），可照 `isDownloadFailure` 的惯例抽纯函数 + 单测 + 变异，**这部分没有取舍**；只剩「判出来之后显示什么」要拍板：**A** 改走打开 Releases 页（**不加态**，最小）／**B** 复用 `.failed` 但「重试」在只读卷上**必然再失败**（**不建议**，又一个点了没反应的按钮）／**C** 新增一态「请拷到应用程序文件夹」（要加态 + 本地化 + 走查图，代价最大）。三者共同点：**都不再谎报「已是最新版本」** |
 > **判据：这张「仍开着」的表本身也是承诺型的话。** 17:55 回头核对时，第 4、5 行**早已关掉
 > 而表还写着「仍开着」** —— 和 §8.33 清掉的那 6 条是同一个病：**还了账没人回来划掉**。
 > 所以它现在多了一列「现状」和一个**核对时刻**：下次谁来读，先看时刻再看结论。
@@ -10812,10 +10822,23 @@ dmg 挂载出来是**只读卷** —— 那是完全另一种运行环境，前�
 | ② | 自己用 `statfs` 判只读，在 `checkForUpdates()` 里拦下，改走 `UpdateService.openUpdateSource()` | 小（**不加态**） | 只覆盖只读卷、不覆盖 Translocation；但**至少不再谎报「已是最新」** |
 | ③ | 只在文案层区分：只读卷时设置行显示「请拷到应用程序文件夹后重试」 | 要加态（八态 / 九态）+ 本地化 + 走查图 | 体验最好，代价最大 |
 
-⚠️ **三个选项的共同前提**：先确认 abort 最终落到 user driver 的**哪个方法**。
-本轮证据显示界面表现与 `showUpdateNotFoundWithError` **一致**，但**没有直接证明**
-走了它 —— 也可能是 `dismissUserInitiatedUpdateCheck` 加上 Sparkle 自己写的时间。
-**别照界面推断调用链**（§8.79 那条教训在这儿同样成立）。
+### §8.94.7 ⚠️ 落点已查明（§8.95）：**选项 ① 作废**，真正的落点是 `showUpdaterError`
+
+写完这一节时，三个选项的共同前提是「abort 最终落到哪个方法」，当时只说
+「界面表现与 `showUpdateNotFoundWithError` 一致，但没有直接证明」。
+**§8.95 把调用链追到底了**，结论是：
+
+- abort **确实**到了我们的 `UpdateUserDriver`，而且是
+  **`showUpdaterError(_:acknowledgement:)`**（不是 `showUpdateNotFoundWithError`）。
+- **选项 ①（接 `basicDriverIsRequestingAbortUpdateWithError:`）是错的，作废** ——
+  它是 **`SPUBasicUpdateDriverDelegate`**，是 Sparkle **driver 与 driver 之间**的内部协议
+  （`SPUBasicUpdateDriver` → `SPUUIBasedUpdateDriver` → `SPUUserInitiatedUpdateDriver`），
+  我们的 `SPUUserDriver` **根本不在那条链上**，接不到它。
+- 我们在 `showUpdaterError` 里已经**拿到了这个错误**（还打了日志），
+  只是按「其余错误」把它 `driverDidReset()` 掉了。
+
+⇒ 修法收敛为：**在 `showUpdaterError` 里按错误码区分这一族**，不再把它归进「其余」。
+判定的**输入**已经现成（错误码），不需要 `statfs`、不需要新增状态位。
 
 ### §8.94.7 本轮的实验设计沉淀
 
@@ -10829,6 +10852,101 @@ dmg 挂载出来是**只读卷** —— 那是完全另一种运行环境，前�
    `http://127.0.0.1:8765/…` 取 feed ⇒ **更新功能直接坏掉**。
    本轮用 `defaults export` 备份 + 还原后**逐键 diff** 核对（14 键：无增减、无值变化），
    并确认 dmg 已 `detach`、实例已退干净。
+
+---
+## 8.95 第 38 轮：把 abort 的调用链**追到底** —— 推翻了自己上一轮写下的选项 ①
+
+### §8.95.1 为什么要追
+
+§8.94.6 列了三个修法选项，共同前提是「abort 最终落到 user driver 的哪个方法」，
+当时只有间接证据（「界面表现与 `showUpdateNotFoundWithError` 一致」）。
+**这个前提不订正，下一轮就会照着错的选项开工** —— 而错的那条（选项 ①）花的是
+「接一个回调」的代价，做完了会发现**根本接不到**。
+
+### §8.95.2 追出来的链（六跳，逐行对上）
+
+| 跳 | 位置 | 干什么 |
+|---|---|---|
+| 1 | `SPUBasicUpdateDriver.m:71` | 只读卷 ⇒ `[_delegate basicDriverIsRequestingAbortUpdateWithError:]`，错误码 `1003` |
+| 2 | — | 这个 `_delegate` 是 **`SPUUIBasedUpdateDriver`**（它声明 `<SPUBasicUpdateDriverDelegate>`） |
+| 3 | `SPUUIBasedUpdateDriver.m:440` | 转发给**自己的** delegate，注释写着「A delegate may want to handle this type of error specially」 |
+| 4 | `SPUUpdater.m:725` / `SPUUserInitiatedUpdateDriver.m:38` | 手动那条路的 delegate 是 **`SPUUserInitiatedUpdateDriver`**（`delegate:self`） |
+| 5 | `SPUUserInitiatedUpdateDriver.m:101` → `:134` | `[self abortUpdateWithError:]`：先 `dismissUserInitiatedUpdateCheck`，再 `[_uiDriver abortUpdateWithError:error showErrorToUser:YES]` |
+| 6 | `SPUUIBasedUpdateDriver.m:452` → `:483` | `_abortUpdateWithError:` 里分三支：`SUNoUpdateError` → `showUpdateNotFoundWithError`；`SUInstallationCanceled/AuthorizeLaterError` → 直接 abort；**其余（含 1003）→ `else` → `showUpdaterError`** |
+
+⇒ **落点是 `showUpdaterError`。**
+
+### §8.95.3 我们那里发生了什么
+
+`UpdateUserDriver.swift:167`：
+
+```swift
+if let controller, UpdateController.isDownloadFailure(phase: controller.phase) {
+    controller.driverDidFailDownload(version: ...)   // 只有「正在下载」时 → .failed
+} else {
+    controller?.driverDidReset()                     // ← 其余全部：回到上一态
+}
+```
+
+只读卷 abort 时 `phase == .idle` ⇒ `isDownloadFailure` 为 false ⇒ `driverDidReset()`
+⇒ 界面回到「已是最新版本」（而时间已被 `SPUUpdater.m:789` 刷成当下）。
+
+ⓘ **错误信息其实一直都在**：同一方法的 `:166` 打了
+`Self.logger.error("更新出错：\(error.localizedDescription)")`。
+只是它落在 os_log 里，而**本环境读不到应用日志**（§8.85）⇒ 界面上是空白。
+**「信息存在」与「用户看得见」不是一回事** —— 这条与 §8.93.5 那条正好互为镜像：
+那次是「界面有回执、日志读不到也能验」；这次是「日志有信息、界面却是空的」。
+
+### §8.95.4 我上一轮是怎么错的
+
+`basicDriverIsRequestingAbortUpdateWithError:` 属于 **`SPUBasicUpdateDriverDelegate`**，
+是 **Sparkle 内部 driver 与 driver 之间**的协议：
+
+```
+SPUBasicUpdateDriver → SPUUIBasedUpdateDriver → SPUUserInitiatedUpdateDriver（手动路）
+                                              → SPUScheduledUpdateDriver（自动路）
+```
+
+我们的 `UpdateUserDriver` 实现的是 **`SPUUserDriver`**，**不在这条链上**，接不到它。
+
+⚠️ **错在哪一步**：上一轮 grep 到 `SPUUIBasedUpdateDriver.h:16` 有这个方法的声明，
+就顺着推出「我们没实现它」（全仓库 0 处 —— **这是真的**），
+于是把它写成了「修法 ①：接上它」。
+但 **「我们没实现」不等于「我们该实现」** —— 它是**别的类之间**的协议，
+我们连当它 delegate 的资格都没有。
+
+⇒ **判「我们漏接了某个回调」之前，先确认那个回调所在的协议**是不是**我们自己实现的那个**。
+（与 §8.79 那条「库的注释不算证据」同类：**方法名存在 ≠ 它在我们的链上**；
+再往前一步，§8.80 那次也是「只扫了唯一调用方」就下结论。）
+
+### §8.95.5 修法收敛后：待拍板的只剩「落点」，不再是「判定」
+
+判定这一族所需的**输入已经现成**（错误码），可以照
+`isDownloadFailure(phase:)` 的惯例抽**纯函数**（`SURunningFromDiskImageError = 1003`
+与 `SURunningTranslocated = 1005` 都要算进去 —— 后者是 Gatekeeper 的「移位隔离」，
+Sparkle 对它也给了同一族文案），配单测 + 变异。这部分**没有取舍**。
+
+真正要拍板的只剩「判出来之后**显示什么**」：
+
+| | 落点 | 代价 |
+|---|---|---|
+| A | 不进「已是最新」，改走 `UpdateService.openUpdateSource()`（打开 Releases 页） | **不加态**，最小；但会把用户带离应用 |
+| B | 复用现有 `.failed` 那一态，换成这一族的文案 + 「重试」 | 不加态；⚠️ **但不建议** —— 「重试」在只读卷上**必然再失败**，那又是一个点了没反应的按钮（同 `.ready` 那条判据） |
+| C | 新增一态「请拷到应用程序文件夹后重试」，**不给按钮** | 要加态（八态 / 九态）+ 本地化 + 走查图 |
+
+ⓘ 三者的共同点：**都不再谎报「已是最新版本」**。这是这次修复的底线。
+
+### §8.95.6 方法沉淀
+
+**「我们看到某个方法没实现」这件事本身不说明任何问题** ——
+要紧的是**它在谁的协议里**。三个能立刻排除误判的问题：
+
+1. 这个方法属于哪个 `@protocol`？（别只看方法名）
+2. 谁**声明遵守**了这个协议？（grep `@...Delegate>`）
+3. 那个类的 delegate 是在哪儿**传进来**的？（看 `init...delegate:` 的调用点）
+
+本轮照这三条问了一遍，六跳就追到底了；上一轮只做了「全仓库搜方法名」，
+于是推出了一个**代价不小、且根本做不到**的选项。
 
 ---
 ## 9. 文件清单
