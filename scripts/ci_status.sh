@@ -56,13 +56,24 @@ for a in "$@"; do
 done
 
 # --- ② 带重试的 gh ---
+# ⚠️ 失败时把错误写进 `GH_ERR`，**不输出到 stdout**：否则错误文本会被当成「字段值」
+#    读进去。2026-09-20 实测（用假 gh 复现）：`run view` 网络失败时
+#    `failed to get run: … EOF` 被读成了 `id` ⇒ 表格里「run」栏显示错误文本、
+#    其余栏全空，还触发了下面那条**方向错误**的警告。
+# ⚠️ 输出走**全局变量** `GH_OUT`（不是 stdout）—— 因为调用方若写成
+#    `info="$(gh_retry …)"`，命令替换会开**子 shell**，函数里的全局赋值**出不来**
+#    （2026-09-20 实测：`X=""; f(){ X=hello; }; y="$(f)"; echo $X` ⇒ 空；
+#    换成 `if f; then …` 才有值）。⇒ 调用方一律用 `if gh_retry …; then info="$GH_OUT"; …`。
+GH_OUT=""
+GH_ERR=""
 gh_retry() {
     local i out
     for i in 1 2 3; do
-        out="$("$GH" "$@" 2>&1)" && { printf '%s' "$out"; return 0; }
+        out="$("$GH" "$@" 2>&1)" && { GH_OUT="$out"; GH_ERR=""; return 0; }
         [ "$i" -lt 3 ] && sleep 1
     done
-    printf '%s' "$out"
+    GH_OUT=""
+    GH_ERR="$out"
     return 1
 }
 
@@ -85,11 +96,13 @@ HEAD_SHORT="$(git rev-parse --short=7 HEAD)"
 # --- 定位 run ---
 if [ -n "$RUN_ID" ]; then
     # 显式指定：用户知道自己在看哪一次（可能是别的提交）
-    info="$(gh_retry run view "$RUN_ID" --json "$FIELDS" --jq "$JQ_FIELDS")" || {
+    if gh_retry run view "$RUN_ID" --json "$FIELDS" --jq "$JQ_FIELDS"; then
+        info="$GH_OUT"
+    else
         echo "错误：拿不到 run $RUN_ID 的信息（id 不对或网络）" >&2
-        echo "  gh 原始输出：$info" >&2
+        echo "  gh 原始输出：$GH_ERR" >&2
         exit 2
-    }
+    fi
     read_fields "$info"
 else
     # --- ⑤ 按**当前 HEAD 的提交**查，不是「最近一次」 ---
@@ -99,11 +112,11 @@ else
     waited=0
     last_err=""
     while :; do
-        if info="$(gh_retry run list --branch "$BRANCH" --commit "$HEAD_FULL" --limit 1 \
-                    --json "$FIELDS" --jq ".[0] // {} | $JQ_FIELDS")"; then
-            last_err=""
+        if gh_retry run list --branch "$BRANCH" --commit "$HEAD_FULL" --limit 1 \
+                    --json "$FIELDS" --jq ".[0] // {} | $JQ_FIELDS"; then
+            info="$GH_OUT"; last_err=""
         else
-            last_err="$info"; info=""
+            last_err="$GH_ERR"; info=""
         fi
         read_fields "$info"
         [ -n "${id:-}" ] && break
@@ -125,8 +138,18 @@ if [ "$status" != "completed" ] && [ "$WAIT" -eq 1 ]; then
     echo "⏳ run $id 还在跑（$status），等它结束…（Ctrl+C 可中断；之后用 ./run.sh ci --no-wait 看状态）"
     "$GH" run watch "$id" >/dev/null 2>&1 || true
     # 等完**重新取一次**状态：watch 的退出码不作为判据
-    info="$(gh_retry run view "$id" --json "$FIELDS" --jq "$JQ_FIELDS")" || true
-    read_fields "$info"
+    if gh_retry run view "$id" --json "$FIELDS" --jq "$JQ_FIELDS"; then
+        info="$GH_OUT"
+        read_fields "$info"
+    else
+        # ⚠️ **「查询失败」不能说成「还没跑完」**（2026-09-20 实测）：
+        # 两者都退出码 2，但一个是「网络没回来」、一个是「CI 还在跑」——
+        # 看的人会据此决定「要不要再等」，诊断方向完全不同。
+        echo "⚠️ run $id 的状态**查询失败**（不是「还没跑完」，也不是绿）。" >&2
+        echo "   最后一次 gh 输出：$GH_ERR" >&2
+        echo "   网络恢复后重跑：./run.sh ci" >&2
+        exit 2
+    fi
 fi
 
 # --- ④ 自证：我看的是哪一次？ ---
@@ -138,9 +161,13 @@ echo "标题    $title"
 echo "状态    $status ／ 结论 ${conclusion:--}"
 echo "───────────────────────────────────────────────"
 
-if [ "$sha" != "$HEAD_SHORT" ]; then
+# ⚠️ 空 sha 与「不匹配」是两件事：前者是**没拿到**，后者才是「验了别的提交」。
+# 2026-09-20 实测：查询失败时空 sha 被报成「它验的不是你刚改的代码」——方向完全错。
+if [ -z "$sha" ]; then
+    echo "⚠️ 没拿到这次 run 的提交号（字段查询不完整）—— **别**把它读成「验了别的提交」。" >&2
+elif [ "$sha" != "$HEAD_SHORT" ]; then
     echo "⚠️ 这次 run 对应的提交（$sha）**不是**本地 HEAD（$HEAD_SHORT）"
-    echo "   ⇒ 它验的不是你刚改的代码（只在显式指定 run-id 时才会出现）。"
+    echo "   ⇒ 它验的不是你刚改的代码（显式指定别的 run-id 时就会这样）。"
 fi
 
 if [ "$status" != "completed" ]; then
