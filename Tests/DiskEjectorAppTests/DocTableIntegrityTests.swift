@@ -56,7 +56,12 @@ import Testing
         try String(contentsOf: repoRoot.appendingPathComponent(relative), encoding: .utf8)
     }
 
-    /// 有表格的两份文档（`DESIGN-SPEC` 353 个表块、`SPEC.md` 8 个）。
+    /// 有表格的两份文档。
+    ///
+    /// ⚠️ **别在这里抄表块数** —— 2026-09-20 实测 `DESIGN-SPEC` **354** + `SPEC.md` **8**
+    /// （合计 362），而同一个数字此前在**三处**被抄成了 **353**（见 §8.104.7）。
+    /// 要真值就用 `.build/probe/round41/blocks.swift` 打 ——
+    /// **本守卫只断言下限（`>= 300`），打印不出真值**，所以「写错的数字」能在它这里活下来。
     private static let docs = [
         "DiskEjector-UI-Design/v2/DESIGN-SPEC.md",
         "SPEC.md",
