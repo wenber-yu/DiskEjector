@@ -13143,7 +13143,7 @@ $ 探查 12 种畸形输入（落单 ** / * / 反引号 / ___x / []( / ![ / <scr
 | 项 | 为什么剩下 |
 |---|---|
 | 第 32 行 | 要真机 + 本地 feed 构造一次「下载真走进度」；且最后「要不要隐藏那一瞬」是**体验判断**，要你拍板 |
-| 第 35 行 | 🟡 **2026-09-21 又跑了一轮（§8.113.8）**：「什么都不动」地连跑 3 轮，**全绿**（`6 道门槛全部通过` ×3）⇒ **仍然没拿到一次真的 flaky 证据**。⚠️ 别读成「没有 flaky」—— 3 轮只能证明**没复现**（与 §8.92「连跑 8 轮全绿只能证明没复现」同一条道理）。装置侧已能留住名字（`PREFLIGHT_FAIL_TAIL`），下次红就能拿到 |
+| 第 35 行 | 🟢 **拿到证据了（§8.113.9）**：连跑 3 轮全绿（§8.113.8）之后 **8 分钟，CI 自己红了**（run `35525346222`）；**重跑同一 commit 转绿** ⇒ 一红一绿，坐实 flaky。两个失败项**都拿到了名字**（`OccupancyStoreTests:217` / `ProcessAppResolverTests:325`，CI 上 57s / 42s，本地 5s）。根因：等待超时按本地速度定、而 CI 慢 8 倍；两个套件都 `@MainActor`，一个占住 40+ 秒其余排队。⚠️ **仍未修** —— 延长超时只降概率不消除，真修要去掉墙钟依赖，**等你拍板** |
 | ~~第 25 行残留：`edge(_:)` 视觉复核~~ | ✅ **已做（§8.113.8）**：出图逐位置看过，描边在明暗两侧都真实可见。**顺带**发现深色下 amber pill 文字疑似不是琥珀 —— **未立项**，等你定夺 |
 | 第 25 行残留：强调色**深色值** | ⚠️ **要你给一个色值**（设计决策，不能编） |
 | 第 25 行残留：`accentSoft` / `accentRing` 进同源守卫 | 能做（实测值已有，只差写进表） |
@@ -13234,6 +13234,79 @@ $ 探查 12 种畸形输入（落单 ** / * / 反引号 / ___x / []( / ![ / <scr
 > `DE_SNAPSHOTS=1 swift test --disable-sandbox --filter "导出设计快照"`，
 > 产物在 `/tmp/de-snapshots/`（**用完自己挪到稳定位置**，`/tmp` 也会清）。
 > 与 §8.78.9 那张「裸星号」对照图同一条规矩：**一次性复核产物不入库，靠命令复现**。
+
+### 8.113.9 ⚠️ 说曹操曹操到：上节写完 8 分钟，第 35 行**自己红了**（第一次拿到真的 flaky 证据）
+
+上一小节刚写完「这一行留着，但它是**等一次真红**，不是等一次连跑」——
+**8 分钟后 CI 就红了**。这是第 35 行从 §8.86 开出来以来，第一次拿到
+**有名字、有时间、有形态**的证据（此前全是「红了一次没拿到名字」或「连跑全绿没复现」）。
+
+#### 证据（run `35525346222`，2026-09-20T17:16:34Z）
+
+| 项 | 值 |
+| --- | --- |
+| 触发提交 | `8992be2`（§8.113.8）—— **只改了 `DESIGN-SPEC.md`** |
+| 失败门槛 | 门槛 6（测试与覆盖率）；门槛 1-5 **全绿** |
+| 失败规模 | 442 个测试里 **2 个** |
+| 装置表现 | ✅ `PREFLIGHT_FAIL_TAIL=0` 生效，**名字留住了**（§8.109 那次装置修复真的有用） |
+
+```text
+✘ Test "磁盘列表一变就重测占用（刷新按钮真的会刷新占用结论）"
+  recorded an issue at OccupancyStoreTests.swift:217:9: Expectation failed: arrived
+  failed after 57.068 seconds with 1 issue.
+
+✘ Test 端到端把可执行名解析成应用名()
+  recorded an issue at ProcessAppResolverTests.swift:325:26: Expectation failed:
+  (resolved → OccupyingProcess(pid: 7096, processName: "IMVIDEO-LIKE-EXEC",
+   displayName: "IMVIDEO-LIKE-EXEC", appBundlePath: nil, …)).appBundlePath → nil
+  failed after 41.948 seconds with 1 issue.
+```
+
+#### 为什么它**是** flaky，不是环境依赖
+
+前 4 个 run（`35524785730` / `35524343009` / `35522534043` …）**全绿**，
+而本次改动**只碰了文档** —— 文档不可能影响这两个测试。
+⇒ 不是「每次必红」的环境依赖（对比 §8.102：语言依赖，**每次必红**、连红 76 次没人看）。
+⇒ **这是概率性的 ⇒ 真 flaky。**
+
+#### 根因：等待超时按**本地速度**定，而 CI 慢 8 倍
+
+| 测试 | 本地 | CI | 超时设置 |
+| --- | --- | --- | --- |
+| `端到端把可执行名解析成应用名` | **5.006s** | **41.9s** | `waitForExecutablePath(timeoutMS: 2000)` |
+| `磁盘列表一变就重测占用` | <1s | **57.1s**（30s 等满） | `waitUntil(timeout: 30)` |
+
+同轮还有 `eject非占用类失败映射为failed() passed after 42.000 seconds` ——
+两个套件都标 `@MainActor`，**一个测试占住主 actor 40+ 秒，其余 `@MainActor` 测试就得排队**。
+
+#### ⚠️ 顺带挖出一个**报错误导**的缺陷（`waitForExecutablePath`）
+
+```swift
+nonisolated static func waitForExecutablePath(pid: Int32, timeoutMS: Int = 2000) async {
+    let deadline = Date().addingTimeInterval(Double(timeoutMS) / 1000)
+    while Date() < deadline, ProcessAppResolver.executablePath(forPid: pid) == nil {
+        try? await Task.sleep(nanoseconds: 50_000_000)
+    }
+}
+```
+
+**等不到就静默返回**，不告诉调用方。于是下游 `#require(resolved.appBundlePath)`
+炸出来的信息是「必须解析出所属 app bundle，否则图标没来源」——
+**指向「解析失败」，而真因是「进程还没就绪」**。
+
+⇒ 这是那条老病的新实例：**「加载完了但没数据」与「还没加载完」在同一个字段上同形，
+而这里缺一个「是否加载完」的位**（见「三个最贵的坑」第 2 条）。
+修它**不保证转绿**，但保证**下次红的时候报错指名真因** —— 而「指名真因」正是
+当初修 §8.86 装置缺陷的全部目的。⇒ **报错准，是修得快的前提。**
+
+#### 处置
+
+- ✅ **已重跑**（`gh run rerun 35525346222`）⇒ **转绿，conclusion = success**。
+  同一个 commit `8992be2` **一红一绿** ⇒ **坐实 flaky**（这是本次最硬的一条证据：
+  不是环境差异、不是代码改动，同一份代码两次跑出两种结果）。
+- ⬜ **未修**：延长超时只是「抬高门槛」，降低概率而不消除；
+  真正的修法是让这两个测试**不依赖墙钟**（等状态位 / 注入时钟）—— **要你拍板**。
+- ⬜ `waitForExecutablePath` 的「静默超时」也未修 —— 同上，等你拍板。
 
 ## 9. 文件清单
 
