@@ -160,7 +160,7 @@ final class UpdateController: NSObject, ObservableObject {
     /// 于是下载挂住时那一行会**一直**停在那儿 —— 没进度、没错误、没出口，只能退出应用。
     /// 真机撞上过（根因是那台机器下不动 release 资产，但**症状是产品侧的**）。
     ///
-    /// ⚠️ **N 是设计决策**（第 34 行）：这里给的 120s 是默认值，之所以提成常量，
+    /// ✅ **N 已拍板 = 120s**（2026-09-20，DESIGN-SPEC 第 34 行）：之所以提成常量，
     /// 就是为了改一个数就能调，不必翻逻辑。
     nonisolated static let downloadStallTimeout: TimeInterval = 120
 
