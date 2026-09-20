@@ -124,6 +124,42 @@ import Testing
         return out
     }
 
+    // MARK: 第三轴：grep 的**正则方言**（BRE / ERE 各有一个静默陷阱）
+
+    /// ⚠️ 本仓库在这两条上各踩过**多次**，而且失败都是**静默**的 ——
+    /// 命令不报错，只是「条件永远不成立」，于是**红绿一律判成绿**：
+    ///
+    /// | 写法 | 实际 | 后果 |
+    /// |---|---|---|
+    /// | `grep -q 'A\|B'`（**BRE**） | BSD grep 的 BRE **不支持 `\|` 交替** | 条件**永远不成立** ⇒ 变异装置把每一条都报成「仍绿」 |
+    /// | `grep -cE '(?:A)'`（**ERE**） | ERE 也没有**非捕获组**，被当字面量 | 计数恒 0，`&&` 链被退出码 1 吃掉 |
+    ///
+    /// 累计 8 次以上，最近一次是 2026-09-20：判「内容在不在盘上」时 `grep` 返回空，
+    /// 而内容**确实在**。⇒ 与「装置瞎了」逐字相同，是最难发现的那种失败。
+    ///
+    /// ⚠️ **注释不算**：仓库里正有一条注释写着这个坑（`# ⚠️ BSD grep 的 BRE 不支持 …`），
+    /// 它自己含 `\|`。判据按「trim 后以 `#` 开头」跳过注释行 —— 否则守卫会逼人
+    /// **删掉那条警示**，那比没有守卫更糟。
+    static func grepDialectTraps(in text: String) -> [Claim] {
+        var out: [Claim] = []
+        for (i, line) in text.split(separator: "\n", omittingEmptySubsequences: false).enumerated() {
+            let s = String(line)
+            if s.trimmingCharacters(in: .whitespaces).hasPrefix("#") { continue }
+            guard s.contains("grep") else { continue }
+            // ⚠️ **E 可能在旗标簇里**（`-cE` / `-rnE` / `-qE`…），光找 `grep -E` 会漏 ⇒ 判据瞎了一半。
+            let isERE =
+                (try? NSRegularExpression(pattern: #"grep\s+-[A-Za-z]*E[A-Za-z]*\b"#))?
+                .firstMatch(in: s, range: NSRange(s.startIndex..<s.endIndex, in: s)) != nil
+            if !isERE, s.contains(#"\|"#) {
+                out.append(Claim(line: i + 1, hit: #"grep（BRE）用了 `\|` 交替 —— 条件永远不成立"#))
+            }
+            if isERE, s.contains("(?:") {
+                out.append(Claim(line: i + 1, hit: "`grep -E` 用了 `(?:` —— ERE 没有非捕获组"))
+            }
+        }
+        return out
+    }
+
     // MARK: 范围
 
     /// `git ls-files <patterns…>`（不传 patterns = 全部被跟踪文件）；拿不到输出返回 `nil`。
@@ -227,6 +263,30 @@ import Testing
             """)
     }
 
+    /// 第三轴：grep 的方言。**同样必须静态扫** —— 这两个坑都不报错，
+    /// 只是让条件**永远不成立**，跑一遍永远是绿的（而且绿得毫无信息量）。
+    @Test func 活文件里grep的正则方言不得用错() async throws {
+        let listed = await Self.liveToolingFiles()
+        let live = try #require(
+            listed, "拿不到 `git ls-files` 的输出 —— 装置没跑起来（**不等于**「没有这个坑」）")
+        #expect(live.count >= 12, "只枚举到 \(live.count) 个活文件 —— 范围口径失效了（假绿）")
+
+        var claims: [String] = []
+        for rel in live {
+            claims += Self.grepDialectTraps(in: try read(rel)).map { "\(rel) \($0)" }
+        }
+
+        #expect(
+            claims.isEmpty,
+            """
+            这些**活文件**里的 grep 用错了正则方言（\(claims.count) 处）：
+            \(claims.joined(separator: "\n"))
+            `grep`（BRE）不支持 `\\|` 交替、`grep -E`（ERE）不支持 `(?:` ——
+            两者都**不报错**，只是让条件永远不成立（或计数恒 0）。
+            改法：交替用 `grep -E 'A|B'`，或 `-e A -e B`。
+            """)
+    }
+
     /// ⚠️ **判据自己也要验**：拿「该报的」与「不该报的」各试一次。
     /// 少了这一步，「全绿」与「正则根本没编译成功」是分不开的（§8.96.4 的原话）。
     @Test func 门槛数量判据的双向对照() {
@@ -284,6 +344,32 @@ import Testing
         #expect(
             Self.unbracedVarBeforeMultibyte(in: #"echo "$1，不是变量""#).isEmpty,
             "位置参数 `$1` 被误报")
+    }
+
+    /// 第三轴的双向对照。
+    @Test func grep方言判据的双向对照() {
+        // 该报 ①：BRE 里写 `\|`（本仓库踩过 8 次的那一条）
+        #expect(
+            !Self.grepDialectTraps(in: #"grep -q 'A\|B' file"#).isEmpty,
+            "BRE 交替没被报出来 —— 判据在这一轴上是瞎的")
+        // 该报 ②：ERE 里写 `(?:`（2026-09-20 踩过一次）
+        #expect(
+            !Self.grepDialectTraps(in: #"grep -cE '(?:A|B)' file"#).isEmpty,
+            "ERE 非捕获组没被报出来 —— 判据在这一轴上是瞎的")
+
+        // 不该报 ①：`grep -E` 里的**未转义** `|` 是对的
+        #expect(
+            Self.grepDialectTraps(in: #"grep -E 'A|B' file"#).isEmpty,
+            "`grep -E 'A|B'` 被误报 —— 那是**正确**写法，误报会逼人关掉守卫")
+        // 不该报 ②：仓库里那条**警示注释**自己含 `\|`，不能算违规
+        #expect(
+            Self.grepDialectTraps(in: "# ⚠️ BSD grep 的 BRE 不支持 `\\|` 交替 —— 一律用 `grep -E`。")
+                .isEmpty,
+            "注释里的警示被当成违规 —— 会逼人**删掉那条警示**，比没守卫更糟")
+        // 不该报 ③：`-e A -e B` 也是对的
+        #expect(
+            Self.grepDialectTraps(in: #"grep -q -e A -e B file"#).isEmpty,
+            "`-e A -e B` 被误报")
     }
 
     /// ⚠️ **范围本身是判据**（§8.75 / §8.105 / §8.106）。
