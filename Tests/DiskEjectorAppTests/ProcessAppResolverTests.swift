@@ -35,7 +35,8 @@ struct ProcessAppResolverTests {
         let bundlePath: String
         let executablePath: String
 
-        init() throws {
+        /// ⚠️ `async` 是为了 `adhocSign`（见那里的说明）：签名等待必须离开主 actor。
+        init() async throws {
             let fm = FileManager.default
             root = fm.temporaryDirectory
                 .appendingPathComponent("resolver-fixture-\(UUID().uuidString)", isDirectory: true)
@@ -76,7 +77,7 @@ struct ProcessAppResolverTests {
             // 不关心它具体在干什么。
             try fm.copyItem(atPath: "/bin/sleep", toPath: executablePath)
             try fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: executablePath)
-            Self.adhocSign(bundlePath)
+            await Self.adhocSign(bundlePath)
         }
 
         /// 给夹具打 **ad-hoc 签名**：未签名的 `.app` 会让 Gatekeeper 弹「已损坏，无法打开」。
@@ -92,7 +93,13 @@ struct ProcessAppResolverTests {
         ///
         /// ⚠️ **签名失败不要因此让测试红**：签名只是消除系统弹窗的副作用，
         /// 不是被测行为。用 `try?` + 打印，别把它变成一条会误报的断言。
-        private static func adhocSign(_ path: String) {
+        ///
+        /// ⚠️ **`nonisolated` + `async` 是必需的，不是风格问题**（2026-09-20，§8.99）：
+        /// 下面的 `waitUntilExit()` 是**同步阻塞、不让路**的。本套件整体标着 `@MainActor`
+        /// （`enrich` / `icon` 必须主 actor），所以只要它是同步的，这段等待就压在**主 actor** 上
+        /// —— 而 `OccupancyStoreTests.waitUntil` 恰恰靠主 actor 调度才能推进（§8.97.3）。
+        /// 加 `async` 后 `await` 会把它调度到**协作线程池**，主 actor 不再被占。
+        nonisolated static func adhocSign(_ path: String) async {
             let task = Process()
             task.executableURL = URL(fileURLWithPath: "/usr/bin/codesign")
             task.arguments = ["--force", "--deep", "-s", "-", path]
@@ -122,6 +129,31 @@ struct ProcessAppResolverTests {
 
         func cleanUp() {
             try? FileManager.default.removeItem(at: root)
+        }
+    }
+
+    // MARK: - 等待（⚠️ 必须离开主 actor，见下）
+
+    /// 等 `proc_pidpath` 能取到该 PID 的可执行路径（进程刚 `run()` 时可能还没就绪）。
+    ///
+    /// **为什么是 `nonisolated` + `async`，而不是一段 `usleep` 轮询**（2026-09-20，§8.99）：
+    ///
+    /// - `usleep` 是**同步阻塞、不让路**。本套件整体标着 `@MainActor`（因为 `enrich` / `icon`
+    ///   走 `NSWorkspace` / `NSRunningApplication`，只能主 actor），所以原先那两段轮询是把
+    ///   **主 actor** 占住最多 2 秒。
+    /// - 而 `OccupancyStoreTests.waitUntil` 是 `@MainActor`，靠 `await Task.sleep` 轮询推进；
+    ///   它等的链（`sink → Task { @MainActor } → refresh`）**必须由主 actor 调度**
+    ///   （§8.97.3）。主 actor 被占住时它回不到手里 —— 只能干等到超时。
+    ///   这正是 `OccupancyStoreTests.swift:38-50` 那条注释里「主 actor 被别的用例占着」的来源，
+    ///   也是 2026-09-17 CI 上「`磁盘列表一变就重测占用` 失败（`arrived` 为 false）」的候选根因。
+    /// - 加 `async` 后，`await` 会把这个函数调度到**协作线程池**上，主 actor 不再被占；
+    ///   循环体内换成 `Task.sleep`（**让路**），连线程池的线程都不占住。
+    ///
+    /// 只收基本类型参数、不碰 `self` —— 这样它在 `nonisolated` 下没有任何隔离问题。
+    nonisolated static func waitForExecutablePath(pid: Int32, timeoutMS: Int = 2000) async {
+        let deadline = Date().addingTimeInterval(Double(timeoutMS) / 1000)
+        while Date() < deadline, ProcessAppResolver.executablePath(forPid: pid) == nil {
+            try? await Task.sleep(nanoseconds: 50_000_000)
         }
     }
 
@@ -186,8 +218,8 @@ struct ProcessAppResolverTests {
     ///
     /// 变异测试（改 `localizedInfoDictionary` → `infoDictionary`）会让本断言变红：
     /// 那时拿到的是 `RAW-NAME-NOT-WANTED`。
-    @Test func 显示名取本地化值而不是原始名() throws {
-        let fixture = try Fixture()
+    @Test func 显示名取本地化值而不是原始名() async throws {
+        let fixture = try await Fixture()
         defer { fixture.cleanUp() }
 
         let name = try #require(ProcessAppResolver.appDisplayName(bundlePath: fixture.bundlePath))
@@ -234,17 +266,13 @@ struct ProcessAppResolverTests {
     /// （`FileManager.displayName` = 目录名）**总会返回非空**，于是选错样本时
     /// 「名字不为空」会被自动满足，回落分支等于没测。
     /// （变异：把 `?? process.processName` 改成 `?? ""`，本断言立刻变红。）
-    @Test func 非应用内进程回落为进程名() throws {
+    @Test func 非应用内进程回落为进程名() async throws {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/bin/sleep")
         process.arguments = ["30"]
         try process.run()
         defer { process.terminate() }
-        var waited = 0
-        while waited < 2000, ProcessAppResolver.executablePath(forPid: process.processIdentifier) == nil {
-            usleep(50_000)
-            waited += 50
-        }
+        await Self.waitForExecutablePath(pid: process.processIdentifier)
 
         let resolved = ProcessAppResolver.enrich(
             OccupyingProcess(pid: process.processIdentifier, processName: "sleep", path: ""))
@@ -281,17 +309,12 @@ struct ProcessAppResolverTests {
 
     /// 复刻用户报的现象：进程可执行名是 `IMVIDEO-LIKE-EXEC`，而它所属应用叫 `Localized Bunny`。
     /// 解析结果必须是 **应用名**，并且带上可定位图标的 bundle 路径。
-    @Test func 端到端把可执行名解析成应用名() throws {
-        let fixture = try Fixture()
+    @Test func 端到端把可执行名解析成应用名() async throws {
+        let fixture = try await Fixture()
         defer { fixture.cleanUp() }
         let process = try fixture.launch()
         defer { process.terminate() }
-        // 等进程真正起来，避免 proc_pidpath 拿到尚未就绪的 PID。
-        var waited = 0
-        while waited < 2000, ProcessAppResolver.executablePath(forPid: process.processIdentifier) == nil {
-            usleep(50_000)
-            waited += 50
-        }
+        await Self.waitForExecutablePath(pid: process.processIdentifier)
 
         let resolved = ProcessAppResolver.enrich(
             OccupyingProcess(
@@ -311,8 +334,8 @@ struct ProcessAppResolverTests {
     }
 
     /// 批量解析与单个解析必须一致（``OccupancyDetector`` 走的是批量那条）。
-    @Test func 批量解析与单个解析结果一致() throws {
-        let fixture = try Fixture()
+    @Test func 批量解析与单个解析结果一致() async throws {
+        let fixture = try await Fixture()
         defer { fixture.cleanUp() }
         let process = try fixture.launch()
         defer { process.terminate() }
@@ -333,8 +356,8 @@ struct ProcessAppResolverTests {
     }
 
     /// 有应用 bundle 时取到**真图标**：与「通用应用图标」不是同一张。
-    @Test func 应用bundle取到真图标() throws {
-        let fixture = try Fixture()
+    @Test func 应用bundle取到真图标() async throws {
+        let fixture = try await Fixture()
         defer { fixture.cleanUp() }
         let process = OccupyingProcess(
             pid: 1, processName: Fixture.executableFileName, appBundlePath: fixture.bundlePath, path: "")

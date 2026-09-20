@@ -11,7 +11,19 @@ import Testing
 /// **CI / 受限环境的处理**：挂载磁盘映像需要访问 `/Volumes` 与 `/dev`，在 CI 沙盒或
 /// 无权限环境下 `hdiutil attach` 会失败。此时**跳过而非失败**（见 `canAttachDiskImage`），
 /// 避免把环境限制误判成产品缺陷；本地开发机上有权限时会执行完整验证。
-@MainActor
+/// ⚠️ **本套件故意不标 `@MainActor`**（2026-09-20，§8.99）。
+///
+/// 它有三处 `task.waitUntilExit()`（`canAttachDiskImage` 的 `s(...)` 里、`shell(_:)` 里），
+/// 以及它们调起的 `hdiutil create/attach/detach` —— 全是**同步阻塞、不让路**的等待。
+/// 标了 `@MainActor` 就等于把这些等待压在**主 actor** 上，而
+/// `OccupancyStoreTests.waitUntil`（`@MainActor`，靠 `await Task.sleep` 轮询）恰恰要
+/// 主 actor 空闲才能推进（§8.97.3）—— 那正是 2026-09-17 CI 上
+/// 「`磁盘列表一变就重测占用` 失败（`arrived` 为 false）」的候选根因。
+///
+/// 摘掉标注后这些等待跑在**协作线程池**上，主 actor 不再被占。
+/// 逐处确认过：需要主 actor 的只有 `EjectFlowController`（`@MainActor`），
+/// 而它两处都是 `await` 调用（跨 actor 边界本来就没问题）；
+/// `DiskService` 是 `@unchecked Sendable`、非隔离 ⇒ **摘掉后没有一处需要补 `@MainActor`**。
 struct IntegrationEjectTests {
 
     @Test func 真实占用时关闭进程并推出() async throws {
