@@ -63,9 +63,11 @@ jobs:
       - name: 打包验证
         run: ./build_app.sh
 
-      - name: 校验产物
-        run: |
-          APP="dist/DiskEjector.app"
-          test -d "$APP" || { echo "::error::未生成 $APP"; exit 1; }
-          echo "产物结构:"
-          find "$APP" -maxdepth 4 \( -name "*.plist" -o -name "DiskEjectorApp" -o -name "*.icns" \) | sed 's/^/  /'
+      # ⚠️ **不是**「列出几个文件名」就完事（2026-09-20 之前正是这样）⇒
+      # 「包能构建出来」被当成了「包是对的」。而下面每一条缺失时**打包都一路绿灯**：
+      #   · 缺 `SUPublicEDKey` ⇒ Sparkle **跳过验签**（中间人可推任意版本），只在 stderr 打个警告；
+      #   · 缺 `Contents/Frameworks/Sparkle.framework` ⇒ **一运行就崩**（dyld 找不到），构建不会失败；
+      #   · 缺 `SUFeedURL` ⇒ 「检查更新」永远成功、永远说「已是最新版本」（§8.94 那个病）。
+      # ⇒ 判据读**产物**（Info.plist / 目录 / codesign），不读源码 —— 拿源码跟自己比是没牙的守卫。
+      - name: 产物自检（读打出来的包，不是读源码）
+        run: ./scripts/verify_app.sh dist/DiskEjector.app

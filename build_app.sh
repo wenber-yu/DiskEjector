@@ -285,6 +285,21 @@ echo "   ✓ 已嵌入 Sparkle.framework（取自 $(basename "$(dirname "$(dirna
 #   「要不要自动检查更新」。本应用自己有「自动更新」开关，不能先让 Sparkle 抢着问一遍。
 # ---------------------------------------------------------------
 SPARKLE_FEED_URL="${SPARKLE_FEED_URL:-https://raw.githubusercontent.com/wenber-yu/DiskEjector/master/appcast.xml}"
+
+# ⚠️ **公钥入库当默认值**（2026-09-20）。
+#
+# 为什么：它**本来就是公开的**（烤在每个发行包的 Info.plist 里，用户拿得到）；
+# 而原先「靠环境变量传」有两个真实后果 ——
+#   ① **CI 打的包不验签更新** ⇒ CI 那步「打包验证」验的**不是发行的那个东西**；
+#   ② **忘了传就静默产出不验签的包**（只往 stderr 打一行警告，没人在 CI 日志里读它）
+#      ⇒ 任何人处在中间人位置都能推一个恶意版本进来，而**打包一路绿灯**。
+# 环境变量仍可覆盖（换钥匙时用它；日常不必记着传）。
+#
+# ⚠️ **私钥不在这里**，在登录钥匙串（`acct=ed25519`）。丢了它，这个公钥就再也签不出
+#    能被验证的更新 —— 换钥匙要同时改这里和 appcast 的签名（详见 §8.39.7）。
+DEFAULT_SPARKLE_PUBLIC_ED_KEY="DZSAElJGUg13m+uorm7qlJhQKPyxk4D1DXMYGEOtbBs="
+SPARKLE_PUBLIC_ED_KEY="${SPARKLE_PUBLIC_ED_KEY:-$DEFAULT_SPARKLE_PUBLIC_ED_KEY}"
+
 SPARKLE_PUBLIC_ED_KEY_PLIST=""
 if [ -n "${SPARKLE_PUBLIC_ED_KEY:-}" ]; then
     SPARKLE_PUBLIC_ED_KEY_PLIST="    <key>SUPublicEDKey</key>
