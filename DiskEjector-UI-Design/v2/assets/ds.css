@@ -168,9 +168,15 @@
   --accent: #34c759; --accent-hover: #28a745;
   --accent-soft: rgba(52, 199, 89, 0.12); --accent-ring: rgba(52, 199, 89, 0.35);
 }
-:root[data-theme="dark"][data-accent="purple"] { --accent: #bf6ae8; --accent-hover: #cd85f0; }
-:root[data-theme="dark"][data-accent="orange"] { --accent: #ffb340; --accent-hover: #ffc163; }
-:root[data-theme="dark"][data-accent="green"]  { --accent: #4cd964; --accent-hover: #6ee083; }
+/* ⚠️ 下面三行**必须连 `--accent-soft` / `--accent-ring` 一起声明**（2026-09-21 补）：
+   原先只覆盖了 `--accent` / `--accent-hover`，于是深色 + 紫/橙/绿时，
+   `--accent-soft` / `--accent-ring` 会**继承上面 `:root[data-theme="dark"]` 里蓝色那两个值**
+   （rgba(64,156,255,…)）⇒ 文字/图标是紫色、而浅底与描边是蓝色。
+   透明度档位取实现侧已有的分档（`DesignTokens.Palette.accentSoft/accentRing`）：
+   蓝 0.16 / 0.40，其余 0.12 / 0.35 —— 深色下蓝要更重，否则那块底在 #1c1c1e 上看不出来。 */
+:root[data-theme="dark"][data-accent="purple"] { --accent: #bf6ae8; --accent-hover: #cd85f0; --accent-soft: rgba(191, 106, 232, 0.12); --accent-ring: rgba(191, 106, 232, 0.35); }
+:root[data-theme="dark"][data-accent="orange"] { --accent: #ffb340; --accent-hover: #ffc163; --accent-soft: rgba(255, 179, 64, 0.12); --accent-ring: rgba(255, 179, 64, 0.35); }
+:root[data-theme="dark"][data-accent="green"]  { --accent: #4cd964; --accent-hover: #6ee083; --accent-soft: rgba(76, 217, 100, 0.12); --accent-ring: rgba(76, 217, 100, 0.35); }
 
 /* ============================================================================
    2. 基础排版 Base

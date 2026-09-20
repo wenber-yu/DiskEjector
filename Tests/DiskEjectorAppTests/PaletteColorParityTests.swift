@@ -403,6 +403,86 @@ struct PaletteColorParityTests {
             """)
     }
 
+    /// **强调色浅底与内描边的透明度分档**（§8.77.7 的缺口，2026-09-21 补）。
+    ///
+    /// 这两个令牌此前被放进 `accentFamily` **豁免**了「新变量必须登记」那条守卫，
+    /// 而注释里写着「由 `强调色族的基色明暗不分这件事必须钉住` 单独管」——
+    /// ⚠️ **那条只测基色 `--accent`**，soft / ring **一项都没测**
+    /// ⇒ 实际上是「豁免了，却没人真的接管」（同族：§8.109.4「守卫一直在，只是指针烂了」）。
+    ///
+    /// **为什么两侧判据不同**：
+    ///
+    /// - **浅色侧全值比**：实现用 `accent.appKitColor`（= 设计稿 `--accent` 的浅色值）+ alpha
+    ///   ⇒ RGB 两侧本就相同，等于顺便把基色也钉了一遍。
+    /// - **深色侧只比 alpha**：实现侧 `accentTint` 用的仍是**浅色基色**，
+    ///   而设计稿深色基色是另一套 ⇒ RGB **已知不同**，归上面那条管。
+    ///   这里只钉**分档**（蓝 0.16 / 0.40，其余 0.12 / 0.35）——
+    ///   那才是这两个令牌真正承载的信息（深色下蓝要更重，
+    ///   否则那块底铺在 `#1c1c1e` 上看不出是「一块强调色底」）。
+    ///
+    /// ⚠️ **补这条时一并修了设计稿**：深色 + 紫 / 橙 / 绿原先**只覆盖**了
+    /// `--accent` / `--accent-hover`，`--accent-soft` / `--accent-ring` 会
+    /// **继承 `:root[data-theme="dark"]` 里蓝色那两个值** ⇒ 文字图标是紫色、浅底描边是蓝色。
+    /// 已在 `ds.css` 补上三条声明（RGB 取各门的深色基色，alpha 取实现侧分档）。
+    @Test func 强调色浅底与内描边的透明度分档必须与设计稿一致() throws {
+        let css = try loadCSS()
+        let root = try #require(Self.scopeBody(in: css, ":root"), "取不到 `:root` 块")
+        let darkRoot = try #require(
+            Self.scopeBody(in: css, #":root[data-theme="dark"]"#), "取不到暗色块")
+
+        let cases: [(String, (AccentColor) -> Color)] = [
+            ("--accent-soft", { DesignTokens.Palette.accentSoft($0) }),
+            ("--accent-ring", { DesignTokens.Palette.accentRing($0) }),
+        ]
+
+        var bad: [String] = []
+        for accent in AccentColor.allCases {
+            let lightScope =
+                accent == .blue
+                ? root
+                : try #require(
+                    Self.scopeBody(in: css, #":root[data-accent="\#(accent.rawValue)"]"#),
+                    "取不到 `\(accent.rawValue)` 的浅色块 —— 选择器改名了？")
+            let darkScope =
+                accent == .blue
+                ? darkRoot
+                : try #require(
+                    Self.scopeBody(in: css, #":root[data-theme="dark"][data-accent="\#(accent.rawValue)"]"#),
+                    "取不到 `\(accent.rawValue)` 的深色块 —— 补在 `ds.css` 的那三条声明没了？")
+
+            for (variable, token) in cases {
+                // ① 浅色：全值（RGBA）
+                let designLight = try #require(
+                    Self.colorDecl(in: lightScope, variable),
+                    "`\(accent.rawValue)` 浅色块里解析不到 `\(variable)` —— 解析口径坏了")
+                let implLight = rgba(token(accent), dark: false)
+                if !implLight.equals(designLight) {
+                    bad.append(
+                        "\(accent.rawValue) \(variable) 浅色：实现 \(implLight.text) ≠ 设计稿 \(designLight.text)")
+                }
+
+                // ② 深色：只比 alpha（RGB 归「基色明暗不分」那条管）
+                let designDark = try #require(
+                    Self.colorDecl(in: darkScope, variable),
+                    "`\(accent.rawValue)` 深色块里解析不到 `\(variable)` —— 解析口径坏了")
+                let implDark = rgba(token(accent), dark: true)
+                if abs(implDark.a - designDark.a) > 0.004 {
+                    bad.append(
+                        "\(accent.rawValue) \(variable) 深色透明度：实现 \(implDark.a) ≠ 设计稿 \(designDark.a)"
+                            + "（档位：蓝 0.16 / 0.40，其余 0.12 / 0.35）")
+                }
+            }
+        }
+
+        #expect(
+            bad.isEmpty,
+            """
+            强调色的浅底 / 内描边与设计稿不一致（\(bad.count) 处）：
+            \(bad.joined(separator: "\n"))
+            这两个令牌的**分档**是有理由的：深色下蓝要更重，否则浅底在 #1c1c1e 上看不出来。
+            """)
+    }
+
     // MARK: 断言辅助
 
     /// 把一项同源表条目与设计稿比一次（单侧）。
