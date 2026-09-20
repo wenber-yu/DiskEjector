@@ -5191,7 +5191,7 @@ Sparkle 会不会装上这次更新 —— 依据是 `showUpdateFound` 的文档
 变异背书：插一行无日期 `TODO` ⇒ **红**；还原 `cmp -s` 校验通过 |
 | 37 | **`DiskEjectorApp.swift` 2351 行**：其中约 660 行是「真机自检的量测 / 比对 / 打印」，与应用装配混在一起 —— **但纯外移做不成** | 你（**取舍**：把 4 个属性改 `private(set)` 让只读对外，还是维持现状） | §8.91 | ⬜ **仍开着**（§8.91 新开）。实测挡路的三条：① `private` 是**文件级**作用域（`fileprivate` 一样）⇒ 跨文件访问必须放宽；② 自检块读 `mainWindow` / `onboardingHosting` / `statusPopover` / `statusItem` 四个私有属性，而且是**裸名**访问（不带 `self.`）⇒ 「块内没有 `self.`」这个判据**看不出**它们；③ 这些自检代码在 `Sources/DiskEjectorApp/` ⇒ **不在覆盖率分母里、也没有单测** ⇒ 外移只能靠「编译通过」验，**改坏了没有测试会红**。 |
 | 38 | **点击「检查更新」后有 3~4.5 秒界面零反馈** —— `UpdateUserDriver.showUserInitiatedUpdateCheck` 的注释写着「这一段通常只有**几百毫秒**，所以故意不画『正在检查…』」。真机实测（**dist 产物**，单时间轴 4 轮）是 **4.31 / 3.15 / 4.51 / 0.17s**，典型 **3~4.5 秒**；按下后连抓 AX 树 0.5~4.0s，更新区**零变化**，按钮仍是「检查更新」且仍 `enabled`（可反复点）⇒ **原决策的前提已被推翻**，是否补「正在检查…」中间态是**设计决策** | 你（**取舍**：补一态 vs 维持现状） | §8.93 | ⬜ **仍开着**（§8.93 新开）。补的话要动 `UpdatePhase` / `CheckRowState` / `rowState` / 设置行画法 / 本地化，并让**七态变八态**（走查图清单要加一态，且受「各态渲染出来必须一样高」那条守卫约束，§8.82）。ⓘ Sparkle 给的 `cancellation` 闭包**目前被丢弃** —— 它正好是「取消」按钮的落点；只画文案不给取消 = 又一个「点了没反应」的按钮（同 `.ready` 态那条判据） |
-| 39 | **从 dmg（只读卷）直接运行时，「检查更新」是只会说「已是最新版本」的假动作** —— `SPUUpdater.m:789` 发起 `checkForUpdates()` **即写**「上次检查时间」（不看成败）；随后 `SPUBasicUpdateDriver.m:71` 判 `isRunningOnReadOnlyVolume`（`SUHost.m:174` 用 `statfs` 查 `MNT_RDONLY`）为真 ⇒ **根本不去取 appcast**，直接 abort（错误码 1003）；而 `basicDriverIsRequestingAbortUpdateWithError:` **我们全仓库 0 处实现** ⇒ abort 无落点。实测：只读卷上点了之后**零网络请求**（本地 feed server 一行没多），而界面「上次检查」仍刷新成当下并宣称「已是最新版本」⇒ 即使 appcast 里有新版本，用户**永远看不到** | 你（**修法三选一**，见 §8.94.6） | §8.94 | ⬜ **仍开着**（§8.94 新开）。⚠️ 与第 27 行同类但更彻底：那次是「做完了没显示」，这次是**根本没做却说做过了**。选项：① 接 Sparkle 那个 abort 回调（文案它已备好，且还覆盖 App Translocation）；② 自己 `statfs` 判只读后改走打开 Releases 页（**不加态**，最小）；③ 新增一态显示「请拷到应用程序文件夹」（体验最好，代价最大）。⚠️ **§8.95 订正：选项 ① 作废** —— 调用链追到底了（六跳，逐行对上）：abort 真正落到 `showUpdaterError(_:acknowledgement:)`，**不是** `basicDriverIsRequestingAbortUpdateWithError:`（那是 Sparkle **driver 之间**的内部协议，我们的 `SPUUserDriver` 不在那条链上，接不到）。⇒ **判定这一族所需的输入已现成**（错误码 1003 / 1005），可照 `isDownloadFailure` 的惯例抽纯函数 + 单测 + 变异，**这部分没有取舍**；只剩「判出来之后显示什么」要拍板：**A** 改走打开 Releases 页（**不加态**，最小）／**B** 复用 `.failed` 但「重试」在只读卷上**必然再失败**（**不建议**，又一个点了没反应的按钮）／**C** 新增一态「请拷到应用程序文件夹」（要加态 + 本地化 + 走查图，代价最大）。三者共同点：**都不再谎报「已是最新版本」** |
+| 39 | **从 dmg（只读卷）直接运行时，「检查更新」是只会说「已是最新版本」的假动作** —— `SPUUpdater.m:789` 发起 `checkForUpdates()` **即写**「上次检查时间」（不看成败）；随后 `SPUBasicUpdateDriver.m:71` 判 `isRunningOnReadOnlyVolume`（`SUHost.m:174` 用 `statfs` 查 `MNT_RDONLY`）为真 ⇒ **根本不去取 appcast**，直接 abort（错误码 1003）；而 `basicDriverIsRequestingAbortUpdateWithError:` **我们全仓库 0 处实现** ⇒ abort 无落点。实测：只读卷上点了之后**零网络请求**（本地 feed server 一行没多），而界面「上次检查」仍刷新成当下并宣称「已是最新版本」⇒ 即使 appcast 里有新版本，用户**永远看不到** | 你（**修法三选一**，见 §8.94.6） | §8.94 | ⬜ **仍开着**（§8.94 新开）。⚠️ 与第 27 行同类但更彻底：那次是「做完了没显示」，这次是**根本没做却说做过了**。选项：① 接 Sparkle 那个 abort 回调（文案它已备好，且还覆盖 App Translocation）；② 自己 `statfs` 判只读后改走打开 Releases 页（**不加态**，最小）；③ 新增一态显示「请拷到应用程序文件夹」（体验最好，代价最大）。⚠️ **§8.95 订正：选项 ① 作废** —— 调用链追到底了（六跳，逐行对上）：abort 真正落到 `showUpdaterError(_:acknowledgement:)`，**不是** `basicDriverIsRequestingAbortUpdateWithError:`（那是 Sparkle **driver 之间**的内部协议，我们的 `SPUUserDriver` 不在那条链上，接不到）。⇒ **判定这一族所需的输入已现成**（错误码 1003 / 1005），可照 `isDownloadFailure` 的惯例抽纯函数 + 单测 + 变异，**这部分没有取舍**；只剩「判出来之后显示什么」要拍板：**A** 改走打开 Releases 页（**不加态**，最小）／**B** 复用 `.failed` 但「重试」在只读卷上**必然再失败**（**不建议**，又一个点了没反应的按钮）／**C** 新增一态「请拷到应用程序文件夹」（要加态 + 本地化 + 走查图，代价最大）。三者共同点：**都不再谎报「已是最新版本」**。⚠️ **§8.95.7 订正：上面那句「这部分没有取舍」是错的** —— 只加纯函数不接落点就是**死代码**（本仓库有 CI 守卫专门钉「有声明、没消费者」），为了不红就得偷偷接一个没拍板的落点 ⇒ **判定与落点必须一起拍板**。好消息：判定的**技术不确定性已全部消掉**（`SPUBasicUpdateDriver.m:78/:80` 构造 + `SPUUIBasedUpdateDriver.m:462→:485` 原样传递，逐行对上；**不需要真机验证**），拍板后只剩写代码。另：Sparkle 的 `userInfo` 里**自带** `NSLocalizedDescriptionKey` / `NSLocalizedRecoverySuggestionErrorKey`（选项 C 的文案不必自己写），⚠️ 但那是 Sparkle bundle 的本地化，**语言未必跟我们的 `LanguageManager`** ⇒ 要么自己写，要么先核实它有没有中文 |
 > **判据：这张「仍开着」的表本身也是承诺型的话。** 17:55 回头核对时，第 4、5 行**早已关掉
 > 而表还写着「仍开着」** —— 和 §8.33 清掉的那 6 条是同一个病：**还了账没人回来划掉**。
 > 所以它现在多了一列「现状」和一个**核对时刻**：下次谁来读，先看时刻再看结论。
@@ -10957,7 +10957,73 @@ Sparkle 对它也给了同一族文案），配单测 + 变异。这部分**没�
 本轮照这三条问了一遍，六跳就追到底了；上一轮只做了「全仓库搜方法名」，
 于是推出了一个**代价不小、且根本做不到**的选项。
 
+### §8.95.7 判定输入**已从源码核实**（2026-09-20 补录，不必再验一遍）
+
+§8.95.5 说「判定所需的输入已经现成（错误码）」，当时只是从 `SUErrors.h` 读到了**常量定义**。
+本轮把「那两个码真的会**原样**到达我们的 driver」也逐行对上了。
+
+**这一步不需要真机验证** —— domain / code 是 Sparkle 源码里**写死的字面量**，
+不是运行时行为（真机只能验证「Sparkle 判只读判得对」，那是另一件事，§8.94 已经验过）：
+
+| 要核实的 | 证据 | 结论 |
+|---|---|---|
+| 域 | `SUConstants.m:53` `NSString *const SUSparkleErrorDomain = @"SUSparkleErrorDomain"` | 域 = `"SUSparkleErrorDomain"` |
+| 码 | `SUErrors.h:43` `= 1003`；`:45` `= 1005` | 1003 / 1005 |
+| 构造点 | `SPUBasicUpdateDriver.m:78`（Translocated ⇒ 1005）／`:80`（只读卷 ⇒ 1003） | 两处都在 `userInfo` 里带 `NSLocalizedDescriptionKey` + `NSLocalizedRecoverySuggestionErrorKey` |
+| 传递 | `SPUUIBasedUpdateDriver.m:462` `NSError *nonNullError = error;` → `:485` `[_userDriver showUpdaterError:nonNullError …]` | **原样传递**，中间没有重新包装 |
+| 分流 | 同文件 `:464` 判 `SUNoUpdateError`、`:482` 判 4007/4008，**其余走 `else`** | 1003 / 1005 都落在 `showUpdaterError` |
+
+#### ⚠️ 顺带发现：Sparkle **自带用户可读文案**
+
+`SPUBasicUpdateDriver.m:80` 的 `userInfo` 里已经有：
+
+- `NSLocalizedDescriptionKey` = "… can't be updated because it was opened from a read-only or a temporary location."
+- `NSLocalizedRecoverySuggestionErrorKey` = "Use Finder to copy … to the Applications folder, relaunch it from there, and try again."
+
+⇒ 拍板时值得知道的两件事：
+
+1. **文案不必自己写** —— 选项 C 可以直接从 `error` 的 `userInfo` 里取；
+2. ⚠️ 但那是 **Sparkle bundle 自己的本地化**，语言**未必**跟着我们的 `LanguageManager` 走 ——
+   直接取来显示，可能出现「中文界面里夹一句英文」。
+   ⇒ **要么自己写（走我们的本地化表），要么先核实 Sparkle bundle 里有没有中文**。
+
+#### ⚠️ 本轮最重要的结论：判定这部分**不能「先做一半」**
+
+我一度打算先把「抽纯函数 + 单测 + 变异」做掉（它**没有取舍**），把落点留到拍板。
+**这个做法是错的**：
+
+- 纯函数写了但**没有调用点** ⇒ 就是**死代码**；
+- 而本仓库**有 CI 守卫专门钉「有声明、没消费者」**（§8.47.6 / §8.50）；
+- ⇒ 只加不接，门槛会红；为了不红就得接一个**没拍板的落点** —— 等于把决策偷偷做了。
+
+⇒ **第 39 行的「判定」与「落点」是同一件事，必须一起拍板。**
+本轮把判定的**全部技术不确定性消掉**（上面那张表 + 下面这行符号名），
+让拍板之后**只剩写代码**。
+
+#### Swift 侧符号名（踩过一次，记下来）
+
+`NS_ENUM(OSStatus, SUError)` 的成员在 Swift 里**前缀被剥离**：
+
+| 头文件里 | Swift 里 |
+|---|---|
+| `SURunningFromDiskImageError` | `SUError.runningFromDiskImageError` |
+| `SURunningTranslocated` | `SUError.runningTranslocated` |
+| `SUSparkleErrorDomain` | `SUSparkleErrorDomain`（`String`，不剥） |
+
+⚠️ 第一版探针照头文件抄成 `SUError.SURunningFromDiskImageError` ⇒ 编译报
+「type 'SUError' has no member 'SURunningFromDiskImageError'」+「cannot find 'SURunningFromDiskImageError' in scope」，
+**照抄与裸写两种都错**。
+
+#### 单测怎么摆才「有牙」
+
+- **实现**引用 Sparkle 的**符号**（`SUError.runningFromDiskImageError`）—— 同源；
+- **单测**用**字面量** `1003` / `1005` + 域字符串 `"SUSparkleErrorDomain"` —— 另一源。
+  （测试目标不依赖 Sparkle，天然只能写字面量。）
+- ⇒ 若哪天 Sparkle 改了数字，实现跟着变、**单测红** —— 这才叫有牙；
+  两边都引符号则是「拿常量跟自己比」，等于没测。
+
 ---
+
 ## 8.96 第 38 轮续：flaky 的第二个方向**扫完了（阴性结果）** + 一个修了四次才对的扫描器
 
 ### §8.96.1 扫的是哪个方向
