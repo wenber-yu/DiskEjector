@@ -13898,8 +13898,9 @@ allows 已经是假 ⇒ **第二级根本没写**。
 ⬜ **环境阻塞已「部分解开」**（2026-09-21 15:00 更新）：查清后确认**不是「许可不许构建」**，
 而是 CLT 工具链缺两样东西（详见 §8.113.19）。现在 `source tools/clt_swift_env.sh`
 之后 `swift build` / `swift test` 都能跑，本地已跑过**全量 455 条测试（绿）**与门槛。
-⚠️ 但**正解仍是 `sudo xcodebuild -license`**：CLT 与 CI 的 Xcode 不是同一把尺子，
-本地门槛有两条会因**工具链差异**红（哪两条、为什么，见 §8.113.19 末节）。
+⚠️ 但**正解仍是 `sudo xcodebuild -license`**：CLT 与 CI 的 Xcode 不是同一把尺子。
+（原文此处写「本地门槛有两条会因**工具链差异**红」—— **2026-09-21 已订正**：
+门槛 1 那两条其实都是**真问题**、已修绿；只剩门槛 8 的 `hdiutil` 偶发，见 §8.113.20。）
 
 ✅ **缺口已由 CI 补上**（2026-09-21 14:13 实测）：`f98e070` + `978c199` 推送后
 run `35567313262` **结论 success** ⇒ 门槛 6（`scripts/coverage.sh`，含本次改动）
@@ -14013,14 +14014,15 @@ run `35567313262` **结论 success** ⇒ 门槛 6（`scripts/coverage.sh`，含�
 
 #### 7. 仍然开着的
 
-- ⬜ **`sudo xcodebuild -license`**（正解，需你敲一次）。在此之前本地门槛有两条会红，
-  **都是工具链差异、不是代码问题**，别为它们改生产代码：
-  - **门槛 1（`-warnings-as-errors`）**：CLT 的 Swift 6.4 对
-    `Sources/DiskEjectorApp/DiskEjectorApp.swift:633` 报 `ImplicitStrongCapture`
-    （`Task {}` 强捕获 self，内层闭包写 `[weak self]`），**CI 的 Xcode 不报**。
+- ⬜ **`sudo xcodebuild -license`**（正解，需你敲一次）。
+  ⚠️ **本段 2026-09-21 订正**：原来写「本地门槛有两条会红、**都是工具链差异、不是代码问题**，
+  别为它们改生产代码」—— **那句话说错了**：门槛 1 其实是**两条真问题**，两条都已修掉
+  （详见 §8.113.20）。订正后只剩一条，且与代码无关：
+  - **门槛 1（`-warnings-as-errors`）**：✅ **已转绿**（§8.113.20：显式 `[self]` + 删掉零消费者的
+    `async` 重载），本地 `exit=0`、零 `error:` 行。
   - **门槛 8 偶发**：`IntegrationEjectTests.真实占用时关闭进程并推出` 要真的
     `hdiutil attach` 一个 dmg 并让它被认成外置盘，这台机器上偶发「未找到测试盘」
-    （同一条单独跑 2/2 绿、全量 `swift test` 也绿）。属环境性。
+    （同一条单独跑 2/2 绿、全量 `swift test` 也绿）。属环境性 —— **这条仍然成立**。
 - ⬜ **「让两个依赖墙钟的测试不依赖墙钟」本身仍未动**（要你拍板）。
   本轮做的是它的**前置**：失败时能一眼分辨「排队」还是「空等」。
 - ⬜ `MEMORY.md` 已接近注入上限 ⇒ 下次做一轮精简。
@@ -14031,6 +14033,114 @@ run `35567313262` **结论 success** ⇒ 门槛 6（`scripts/coverage.sh`，含�
 run `35571137702` **结论 success**。⇒ 新代码在 **CI 的 Xcode 工具链**下也绿 ——
 与本地那次全量绿（CLT 工具链）**两把尺子各跑一遍、都对得上**，
 所以第 5 节那个 `bundleURL` 修复不是「只为了迁就 CLT」。
+
+### 8.113.20 门槛 1 的「工具链差异」原来是**两条** —— 而两条都真该修（构建在第一个错误处停下）
+
+#### 一、上一轮把结论下早了
+
+§8.113.19 第七节把它记成「**门槛 1 红是工具链差异、不是代码问题，别为它们改生产代码**」，
+且只记了**一条**：`DiskEjectorApp.swift:633` 的 `ImplicitStrongCapture`。
+本轮照那句话办之前先把门槛 1 修到绿，才发现**那句话数错了** ——
+而藏起来的那条，比露出来的那条更该修。
+
+#### 二、修掉第一条，第二条才露出来
+
+门槛 1 的命令是 `swift build --build-tests -Xswiftc -warnings-as-errors`。
+上一轮看到的唯一 `error:` 是 `DiskEjectorApp.swift:633`；把它改掉之后再跑，**又红**，
+这次换成 `TestLanguage.swift:52`。
+
+真因不是「诊断只有一条」，而是**编译顺序**：
+
+- 先编 **app 目标**，再编**测试目标**；
+- 第一个目标编不过 ⇒ 整轮中止 ⇒ **测试目标里的同类错误一个都没被打印出来**。
+
+⇒ **通用教训：「门槛红时到底有几条」在修到绿之前是数不准的。**
+与「装置的阴性结论必须配阳性对照」同源：**「只看到一条」不等于「只有一条」。**
+
+#### 三、两条各自的真因与修法
+
+| 处 | 诊断原文 | 是不是「工具链差异」 | 修法 |
+|---|---|---|---|
+| `Sources/DiskEjectorApp/DiskEjectorApp.swift:633` | `'weak' ownership of capture 'self' differs from implicitly-captured strong reference in outer scope` | **半是**：诊断本身是新工具链新增的，但它指出的**不一致是真的** | 给外层 `Task` 写出显式 `[self]`（**行为一字不变**）|
+| `Tests/DiskEjectorAppTests/TestLanguage.swift:52` | `'withValue(_:operation:isolation:file:line:)' is deprecated` | **不是**：是 deprecated API，而且那个重载**零消费者** | 删掉那个 `async` 重载（**死代码**）|
+
+#### 四、第一条：两处所有权**故意不同**，但「不一致」是真的
+
+引导面板真机自检里：
+
+- 外层 `Task { … }` **隐式**强捕获 `self`（体里要用 `self.onboardingExitHandler` / `self.onboardingWindow`）；
+- 内层 `self.onboardingExitHandler = { [weak self] exit in … }` 写 `weak`。
+
+两处所有权不同是**有意的**，而且**两边都不能改**：
+
+- 外层**必须**强持有：这个 Task 要活到预览收尾（`exit()` 才结束），弱持有会让预览中途静默停摆；
+- 内层**必须**弱持有：那个闭包**被存进 `self`**（`onboardingExitHandler`），
+  写成强捕获就是环 `self → handler → 闭包 → self`。
+
+新诊断的前提是「内层闭包活不过外层作用域」—— 这里**前提不成立**（它被存起来了），
+所以它报的**不是**「泄漏」。但**「读者会看错」这件事是真的**：看到 `[weak self]`
+容易以为整块不持有 `self`，而外层其实一直持有。
+
+⇒ 修法就是诊断自己给的那条：`add 'self' as a capture list item to silence`，
+写成 `Task { [self] in`。**这不是消音，是把本来就有的隐式强捕获写明白。**
+
+#### 五、第二条：deprecated 的成因是**重载选错了**（读接口文件确认，不靠猜）
+
+`TaskLocal.withValue` 在新工具链里有两个异步重载。出处（读的是接口文件本身）：
+`/Library/Developer/CommandLineTools/SDKs/MacOSX27.0.sdk/usr/lib/swift/_Concurrency.swiftmodule/arm64e-apple-macos.swiftinterface`
+
+| 行 | 声明要点 | 状态 |
+|---|---|---|
+| 3624 | `nonisolated(nonsending)` 版；`operation` 形参类型是 `nonisolated(nonsending) () async throws -> R` | **新** |
+| 3646 | `operation` 形参是裸的 `() async throws -> R`，另带 `isolation: isolated (any Actor)? = #isolation` | **deprecated** |
+
+⇒ 传一个裸的异步闭包（`TestLanguage.with` 的 `body` 正是 `() async throws -> T`）
+**必然**选中 deprecated 那个。**要选新的，`operation` 形参得写成 `nonisolated(nonsending)`。**
+
+但这里**不需要修，只需要删**：那个 `async` 重载**零消费者** ——
+全仓搜不到任何 `await TestLanguage.with`（`Tests/` 下 multiline 搜也是 0 命中）。
+
+⚠️ **它能活到今天，是因为 `DeclarationConsumerTests` 的口径是「只看 `Sources/`」**
+（那条口径写在它自己的文档注释里，是有理由的）⇒ `Tests/` 里的死声明**不在它的射程内**。
+这是那条守卫的**已知边界**，不是它的 bug —— 记账时别把它算成漏报。
+
+删的时候在原地留了一段注释，写清「为什么删」与「将来真要加该怎么写」
+（必须写 `nonisolated(nonsending)` 的 `operation`，否则又会掉回 deprecated 那个）。
+
+#### 六、落地与验证
+
+- `Sources/DiskEjectorApp/DiskEjectorApp.swift`：`Task {` → `Task { [self] in`，
+  并把「两处所有权为什么故意不同」写进注释（否则下一个读到的人还会想把它改回一致）。
+- `Tests/DiskEjectorAppTests/TestLanguage.swift`：删 `async` 重载，原地留「为什么删 + 将来怎么写」。
+- 两处都**不改行为**；都**没有新增守卫** —— 因为**门槛 1 本身就是守卫**
+  （`-warnings-as-errors`），而且它现在在**两把尺子**上都要绿。
+- 门槛 1 单独复跑（原样那条命令）：`exit=0`、`Build complete!`、**零 `error:` 行**。
+
+#### 七、订正：上一轮那条规则要加限定
+
+上一轮写的是「**都是工具链差异、不是代码问题，别为它们改生产代码**」。本轮实测**两半都不对**：
+
+1. **不止一条**（见第二节）；
+2. 两条**都是真事** —— 一条是**真的所有权不一致**，一条是 **deprecated API + 死代码**。
+
+⇒ 规则改成：**下「工具链差异」这个判断之前，先看清那条诊断说的是不是真事。**
+「新工具链多报了一条真问题」与「新工具链自己变了」**修法完全不同**，
+而判据是**「修到绿之后再数一遍」**，不是「看到第一条就归类」。
+
+唯一仍然成立的旧结论是**门槛 8 的 `hdiutil` 偶发**：那是环境性，与代码无关。
+
+#### 八、本地门槛结论（2026-09-21 15:35）
+
+`PREFLIGHT_FAIL_TAIL=0 DISABLE_SANDBOX=1 ./scripts/preflight.sh --with-tests` ⇒
+**exit=0，8 道门槛全部通过**（全量日志 `.build/preflight/run_20260921_1520.log`）。
+其中门槛 1 是 `Build complete! (8.92秒)`、**零 `error:` 行** —— 上一轮记的「本地门槛 1 假红」到此结束。
+
+门槛 8（测试与覆盖率）：**455 条测试全绿**，行覆盖率 62.87%（门槛 40%）。
+顺带一提，这次「最慢 3 条」正好把那两个**依赖墙钟**的用例排在了前面
+（21.532s / 19.434s / 19.421s，格式串见 `scripts/lib/test_timings.sh`）——
+与 §8.113.18 第二节的口径一致：那是「**完成时刻**」的墙钟，**不能**据此说「它自己跑了 19 秒」。
+
+⚠️ 门槛 8 那条 `hdiutil` 偶发**这次绿了**，但它是「偶发」，绿一次不构成「已修好」。
 
 
 ## 9. 文件清单
