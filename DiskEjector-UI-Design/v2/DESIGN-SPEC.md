@@ -14639,6 +14639,8 @@ CI 里测试跑在 `build_app.sh` **之前** ⇒ 它在 CI 上**永远空转**�
   **环境形状不同** —— runner 上 `git` 与 `gh` 同目录，本机不同目录。
   ⚠️ 它**既不是** locale 轴（`LC_ALL` 复现不出）、**也不是**范围轴（跟未入库文件无关）
   ⇒ **别把「本地绿 CI 红」一律归到已知的那两轴上**（§8.115 的判别表要加第三行）。
+  ✅ **订正后 CI 绿**（提交 `567db36`，run `35593507229`，结论 `success`）——
+  该提交只动了 `find_git.sh` 的 PATH 判据 + 冒烟脚本的回归用例 + 本文件。
 - 改动：`build_app.sh`、`scripts/lib/find_git.sh`、`scripts/test/find_git_smoke.sh`、
   `scripts/preflight.sh`、`scripts/verify_app.sh`、
   `Tests/DiskEjectorAppTests/AppVersionInfoTests.swift`、
