@@ -13649,6 +13649,59 @@ allows 已经是假 ⇒ **第二级根本没写**。
 `downloadsOff → 335 < checksOff → 261` 不成立。
 
 
+
+### 8.113.16 「不可点判据」全局扫了一遍，并把清单钉成守卫
+
+§8.113.14 立了一条规则：**控件的禁用条件不得依赖它自己的当前值**
+（否则是单向陷阱：拨过去就回不来）。按惯例，发现一处就要**全局扫一遍**。
+
+#### 扫法与结果（`Sources/` 下共 5 处）
+
+四类「让控件点不动」的写法：`.disabled(` / `.allowsHitTesting(false)` /
+`onTap: nil` / **点击动作计算属性条件返回 nil**（第四类要连体一起看，否则
+「恒不返回 nil」的动作会被误报）。
+
+| 位置 | 写法 | 判据性质 |
+|---|---|---|
+| `SettingsView.swift` `autoUpdateTapAction` | `guard canAutoUpdate else { return nil }` | **宿主能力**（`updater != nil`）—— 已修的那处 |
+| `ContentView.swift` | `.disabled(isRefreshing)` | **瞬态**：`defer` 复位（无 throw / 提前 return），且两条 `await` 都有上界（`lsofTimeout` 5+3s；`fetchExternalDisks` 是同步 DA 调用、**不走子进程**）|
+| `DesignSystemComponents.swift` | `.disabled(!isEnabled)` | ⚠️ `isEnabled` 默认 `true` 且**当前无调用方传入** ⇒ 恒不触发（还配了 0.45 透明度的禁用视觉）。将来若真的传入，**必须是宿主/环境条件** |
+| `DesignSystemComponents.swift` | `.allowsHitTesting(false)` | 纯装饰层（1pt 分隔线） |
+| `GlassViews.swift` | `.allowsHitTesting(false)` | 纯背景层（玻璃底） |
+
+⇒ 只有第一处是真陷阱，其余四处**都不会单向、也不会卡住**。
+
+**阳性对照**（阴性结论必须配）：拿修前版本（`911593e~1`）跑同一套扫法，
+`allowsAutomaticUpdates` 那行**确实被扫到** ⇒ 这套扫法抓得到它，
+「只有这一处」不是「装置瞎了」。
+
+#### 守卫：把清单钉住
+
+新增 `DisabledConditionInventoryTests`（4 条）：
+
+1. **扫到的必须在账本里** —— 以后新加一处禁用判据，必须来账本登记**理由**（理由短于 12 字算敷衍）；
+2. **账本里的必须真的扫到** —— 拦住「清单过期」（还了账要回来划）；
+3. **装置自证**：拿**合成源码**验四类写法都认得出、且整行注释不算、
+   「恒不返回 nil」的动作不被误报 —— 不依赖仓库当前内容。
+
+⚠️ 第 2 条同时是装置自证：扫描器若哪天瞎了（返回空），第 1 条会**静默变绿**，
+第 2 条会**立刻红** ⇒ 阴性结论不会与「装置死了」同形。
+
+**变异验证（两个方向各一次）**：
+
+| 变异 | 结果 |
+|---|---|
+| 在某视图上多插一行 `.disabled(false)` | **红**，指名 `DesignSystemComponents.swift:541  .disabled(false)` |
+| 把 `.disabled(isRefreshing)` 改成 `.disabled(isRefreshing == true)` | **红**（两条同时红：新写法没登记 + 旧账过期） |
+
+#### 已知的紧 / 松
+
+- **偏紧**：按**行**匹配，`.disabled(` 出现在**字符串字面量或行尾注释**里也算一处
+  （整行注释已排除）。选「宁可误报」是因为误报只多登记一条，漏报则是单向陷阱又长出来。
+- **偏松**：认不出「用别的写法让控件点不动」（自定义 `ButtonStyle` 读环境值、
+  或 `if` 分支干脆不渲染这个控件）。
+
+
 ## 9. 文件清单
 
 ```
