@@ -8,6 +8,11 @@ SPMPackages/
 # `swift test --enable-code-coverage` 之后直接跑一次二进制就会在仓库根留下它。
 default.profraw
 
+# `tools/clt_swift_env.sh` 在「Xcode 许可未接受」时会往**包根**放一个指向 Xcode
+# `xcstringstool` 的软链：CLT 没有这个工具，而 SwiftPM 找不到它时按**包根**回落
+# （不是调用目录，也不看 PATH —— 见该脚本注释）。只锚定包根，不匹配子目录同名文件。
+/xcstringstool
+
 # ---- Xcode / SPM 本地状态 ----
 xcuserdata/
 DerivedData/
