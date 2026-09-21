@@ -256,7 +256,7 @@ struct SettingsHeaderBar: View {
 /// **为什么需要它**：这一行有两个输入是**跑出图那个进程的环境**决定的 ——
 /// 开关值来自 Sparkle 的 `SPUUpdaterSettings`，而「宿主是否允许自动更新」
 /// 由**构建有没有正确签名**决定。走查图跑在 xctest 进程里（未签名）→
-/// `allowsAutomaticUpdates == false` → 这一行**永远画成禁用态**，
+/// 宿主不具备自动更新能力（出图进程里 updater 没建起来）→ 这一行**永远画成禁用态**，
 /// 与设计稿 `08-update.html` 里开关打开的画法对不上（§8.44.4）。
 ///
 /// 出图时按**设计稿假设的环境**（允许 + 开）渲染，这一行才能与设计稿并排比；
@@ -446,9 +446,14 @@ struct SettingsSectionsColumn: View {
             ?? UpdateController.shared.automaticallyChecksForUpdates
     }
 
-    /// 宿主是否允许自动更新（未正确签名时为假）。
+    /// 宿主是否允许自动更新。
+    ///
+    /// ⚠️ **判据不看这个开关自己的值**（2026-09-21 真机修的 bug，§8.113.14）：
+    /// 旧实现读 Sparkle 的 `allowsAutomaticUpdates`，而它在本应用里**恒等于
+    /// 「自动检查」这个开关的当前值** ⇒ 用户关一次 ⇒ 整行 `onTap` 变 `nil`
+    /// ⇒ **再也打不开**（重启也没用）。⇒ 判据是「updater 建没建起来」。
     private var canAutoUpdate: Bool {
-        autoUpdateRowOverride?.isAllowed ?? UpdateController.shared.allowsAutomaticUpdates
+        autoUpdateRowOverride?.isAllowed ?? UpdateController.shared.canAutoUpdate
     }
 
     /// 「自动更新」行的说明。不允许自动更新时**必须说明原因** ——
@@ -769,9 +774,12 @@ struct SettingsSectionsColumn: View {
                         label: L10n.tr(.autoUpdate),
                         description: autoUpdateDescription,
                         divider: false,
-                        // 不允许自动更新时**整行不可点** —— 否则用户点一下、
-                        // 开关动一下、实际什么都没发生（`allowsAutomaticUpdates` 为假时
-                        // Sparkle 不会启动更新器）。「设了没生效」与「没设」不能长得一样。
+                        // 宿主不具备能力时**整行不可点** —— 否则用户点一下、
+                        // 开关动一下、实际什么都没发生（updater 没建起来，没人会去写那两个标志）。
+                        // 「设了没生效」与「没设」不能长得一样。
+                        //
+                        // ⚠️ **这个条件不许读开关自己的值**（2026-09-21 真机修的 bug）：
+                        // 读了就变成单向开关 —— 关一次就再也打不开（§8.113.14）。
                         //
                         // ⚠️ 抽成属性而不是在这里写三元：`onTap` 的类型是 `(() -> Void)?`，
                         // 三元的两个分支是「方法引用」与 `nil`，编译器推不出那个可选闭包的

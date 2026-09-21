@@ -347,6 +347,20 @@ final class UpdateController: NSObject, ObservableObject {
         set { settings.automaticallyChecksForUpdates = newValue }
     }
 
+    /// 宿主是否**具备**自动更新的能力（设置面板「自动更新」那一行的禁用条件）。
+    ///
+    /// ⚠️ **判据不看开关当前值**（2026-09-21 真机修的 bug，§8.113.14）：
+    /// 这一行此前读 Sparkle 的 `allowsAutomaticUpdates`，而它算的是
+    /// `SUAllowsAutomaticUpdates ?? automaticallyChecksForUpdates`
+    /// （见下面 `allowsAutomaticUpdates` 那条 2026-09-19 的订正）；本应用
+    /// **没写 `SUAllowsAutomaticUpdates`** ⇒ 它**恒等于这个开关自己的值**
+    /// ⇒ 用户把开关关掉 ⇒ 那一行的 `onTap` 变 `nil` ⇒ **再也打不开**
+    /// （真机实测：重启也救不回来，`SUEnableAutomaticChecks = 0` 已写进 UserDefaults）。
+    ///
+    /// ⇒ 判据改成**只看 updater 建没建起来**：预览模式 / 构建不合规时建不起来
+    /// （见 `ensureUpdater()`），与用户把开关拨到哪一边**无关**。
+    var canAutoUpdate: Bool { updater != nil }
+
     /// 是否自动下载更新。
     ///
     /// 与设计稿那句「有新版本时自动下载，并在下次启动时安装」是同一件事。

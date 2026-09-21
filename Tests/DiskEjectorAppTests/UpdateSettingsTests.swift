@@ -334,6 +334,71 @@ struct UpdateSettingsTests {
             "只设检查不设下载的话，「自动更新」开着也不会自动下载")
     }
 
+    /// ⚠️ 「自动更新」那一行的**禁用条件不得由开关自己的值决定**（2026-09-21 真机修的 bug）。
+    ///
+    /// 真机实测（`dist` 产物，§8.113.14）：按一下开关把它关掉 ⇒ 那一行的 `onTap`
+    /// 变 `nil` ⇒ **再也点不动**（可按元素数 13 → 12，那一行整个消失），
+    /// **重启也没用** —— `SUEnableAutomaticChecks = 0` 已经写进 UserDefaults。
+    ///
+    /// 病根：旧判据读 Sparkle 的 `allowsAutomaticUpdates`，它算的是
+    /// `SUAllowsAutomaticUpdates ?? automaticallyChecksForUpdates`，
+    /// 而本应用**没写前者** ⇒ 它**恒等于这个开关自己的值** ⇒ 关一次就永久锁死。
+    ///
+    /// ⇒ 判据只能是「宿主有没有能力」（updater 建没建起来），与用户把开关拨到哪边无关。
+    ///
+    /// ⚠️ **这条守的是什么、守不住什么**：它读源码 ⇒ 守得住「这一行写成什么样」，
+    /// 守不住「运行时到底怎么走」—— 后者靠 §8.113.14 那次真机实测（一次性证据）。
+    @Test func 自动更新行的禁用条件不得由开关自己的值决定() throws {
+        let view = try contents("Sources/Views/SettingsView.swift")
+        let body = try functionBody("private var canAutoUpdate: Bool {", in: view)
+        let code = codeOnly(String(body.prefix { $0 != "}" }))
+        // ⚠️ **两个名字都要禁**（2026-09-21 变异实测）：
+        // 只禁 `automaticallyChecksForUpdates` 的话，把判据改回
+        // `UpdateController.shared.allowsAutomaticUpdates` **照样绿** —— 而后者才是
+        // 真正的病根（它恒等于前者）。⇒ 报绿时先怀疑装置，别急着相信。
+        for forbidden in ["automaticallyChecksForUpdates", "allowsAutomaticUpdates"] {
+            #expect(
+                !code.contains(forbidden),
+                """
+                「自动更新」行的禁用条件读到了 `\(forbidden)` ⇒ 关掉就再也打不开
+                （单向开关；2026-09-21 真机实测，重启也救不回来）。
+                判据只能看宿主有没有能力：`UpdateController.shared.canAutoUpdate`。
+                """)
+        }
+        #expect(
+            code.contains("canAutoUpdate"),
+            "这一行应当读 `UpdateController.shared.canAutoUpdate` —— 改名了就同步这条断言")
+
+        // ⚠️ 病根也不许只是被**搬进**新属性里（换了个地方读同一个值，等于没修）。
+        let controller = try contents("Sources/Services/UpdateController.swift")
+        // ⚠️ **只取到第一个 `}`**：`functionBody` 是「到下一个 `func` 为止」，
+        // 而 `allowsAutomaticUpdates` 这个 `var` 就在后面 ⇒ 不截断的话会把它
+        // 的声明圈进来，于是**没写依赖也算写了**（2026-09-21 变异时误报过一次）。
+        let cRaw = try functionBody("var canAutoUpdate: Bool {", in: controller)
+        let cCode = codeOnly(String(cRaw.prefix { $0 != "}" }))
+        for forbidden in ["automaticallyChecksForUpdates", "allowsAutomaticUpdates"] {
+            #expect(
+                !cCode.contains(forbidden),
+                "把旧依赖 `\(forbidden)` 搬进 `UpdateController.canAutoUpdate` 等于没修 —— 它照样随开关变")
+        }
+    }
+
+    /// Sparkle 的 `allowsAutomaticUpdates` **不是**「构建有没有签名」的意思（2026-09-19 订正）。
+    ///
+    /// 它算的是 `SUAllowsAutomaticUpdates ?? automaticallyChecksForUpdates`，
+    /// 而前者本应用没写 ⇒ **恒等于「自动检查」这个开关的当前值**。
+    /// 这正是 2026-09-21 那个单向开关 bug 的病根（见上一条）。
+    /// 保留这条断言，是为了让「它到底等于什么」有人复核 —— 别再拿它当禁用条件。
+    @Test @MainActor func 宿主允许判据恒等于自动检查的当前值() {
+        let controller = UpdateController.shared
+        #expect(
+            controller.allowsAutomaticUpdates == controller.automaticallyChecksForUpdates,
+            """
+            `allowsAutomaticUpdates` 不再等于「自动检查」的当前值了 ⇒
+            2026-09-19 那条订正的结论变了，使用它/不使用它的理由都要重新写。
+            """)
+    }
+
     /// ⚠️ **不要**在 `AppSettings` 里再存一份自动更新偏好。
     ///
     /// 真相在 Sparkle 的 `SPUUpdaterSettings`（写进同一份 UserDefaults）。
