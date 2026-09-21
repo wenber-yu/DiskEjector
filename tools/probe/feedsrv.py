@@ -13,6 +13,17 @@
    否则「日志里没有请求」会被误读成「Sparkle 没发请求」，而其实是记录坏了；
 ② 每条记录带**墙上时间戳**，好与界面变化的时间对齐；
 ③ 同时把 User-Agent 记下来 —— 能区分「这个请求是 Sparkle 发的」还是别的东西发的。
+
+## 用法
+
+```bash
+python3 tools/probe/feedsrv.py <port> [归档限速B/s] [--log <路径>]
+```
+
+`--log` 可选。⚠️ **默认必须仍是** `tools/probe/feed-hits.log`（脚本自己所在目录）——
+有人照旧用法去那儿找日志。它只是**入库目录里必然产生的脏文件**，所以实验方
+可以用 `--log .build/probe/<轮次>/feed-hits.log` 把它指到 `.build/` 下
+（`.build/` 已在 `.gitignore` 里），跑完 `git status` 就是干净的。
 """
 
 import http.server
@@ -98,11 +109,39 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
 
 def main() -> int:
-    global THROTTLE
-    port = int(sys.argv[1]) if len(sys.argv) > 1 else 8765
+    global THROTTLE, LOG
+
+    # `--log <路径>` 是**可选**的：位置参数（port / 限速）的语义一个字都不能动，
+    # 否则旧用法会静默跑歪。所以只把 `--log*` 从 argv 里摘出来，剩下的仍按位置解析。
+    argv = sys.argv[1:]
+    positional: list[str] = []
+    i = 0
+    while i < len(argv):
+        arg = argv[i]
+        if arg == "--log":
+            if i + 1 >= len(argv):
+                print("用法：feedsrv.py <port> [归档限速B/s] [--log <路径>]")
+                return 2
+            LOG = os.path.abspath(argv[i + 1])
+            i += 2
+            continue
+        if arg.startswith("--log="):
+            LOG = os.path.abspath(arg[len("--log="):])
+            i += 1
+            continue
+        positional.append(arg)
+        i += 1
+
+    port = int(positional[0]) if len(positional) > 0 else 8765
     # 第二个参数 = 归档限速（字节/秒），不给就**不限速**（兼容 §8.94 那次实验）
-    if len(sys.argv) > 2:
-        THROTTLE = int(sys.argv[2])
+    if len(positional) > 1:
+        THROTTLE = int(positional[1])
+
+    # `--log` 常指向 `.build/probe/<轮次>/` 这类还不存在的目录 —— 不建的话
+    # 第一条记录就会抛 FileNotFoundError，而 ① 自证会把它误报成「记录通路坏了」。
+    log_dir = os.path.dirname(LOG)
+    if log_dir:
+        os.makedirs(log_dir, exist_ok=True)
     if os.path.exists(LOG):
         os.remove(LOG)
 
@@ -122,7 +161,8 @@ def main() -> int:
             print("SELFCHECK-FAIL：自己请求自己都没记下来 ⇒ 记录通路坏了，本次实验作废")
             return 3
         throttle_note = f"归档限速 {THROTTLE} B/s" if THROTTLE else "不限速"
-        print(f"SELFCHECK ok（记录通路已验证）\nserving {HERE} on 127.0.0.1:{port}（{throttle_note}）")
+        print(f"SELFCHECK ok（记录通路已验证）\nserving {HERE} on 127.0.0.1:{port}"
+              f"（{throttle_note}）\nlog → {LOG}")
         try:
             while True:
                 time.sleep(1)

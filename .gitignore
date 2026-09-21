@@ -26,6 +26,15 @@ DerivedData/
 # 属工具元数据而非设计交付物；设计本身见 pages/*.html 与 colors_and_type.css。
 DiskEjector-UI-Design/runtime-*.json
 
+# ---- 真机实验装置产物 ----
+# `feedsrv.py` 的请求日志默认就落在**脚本所在目录**（tools/probe/）里，且默认路径
+# 不能改（有人照旧用法去那儿找日志）；`make_broken_appcast.py` 生成的那一份也常被
+# 拷到 tools/probe/appcast.xml，因为 feedsrv.py 只服务它自己那个目录、挪不走。
+# ⇒ 这两类是每次真机实验后必然出现的脏文件，直接忽略（只锚 tools/probe/ 下，
+#   不碰仓库根那份真 appcast.xml）。
+tools/probe/feed-hits.log
+tools/probe/appcast.xml
+
 # ---- macOS ----
 .DS_Store
 
