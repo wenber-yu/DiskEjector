@@ -119,20 +119,27 @@ run_gate "构建（-Xswiftc -warnings-as-errors，含测试目标）" \
 #             --configuration "$FORMAT_CONFIG" Sources Tests
 # ---------------------------------------------------------------
 GATE2_TITLE="格式检查（swift-format lint --strict）"
+# ⚠️ 2026-09-21：下面那句「格式问题一键修复」**曾经无条件打印**
+# （只要有任一门槛红就打）⇒ 门槛 6 红的那次，我照它去查格式门，
+# 白跑了 3 次 `swift-format lint`（全绿）才反应过来名字是假的。
+# ⇒ 单独记一个 `GATE2_FAILED`，那条提示只在格式门**真的**红时才出现。
+GATE2_FAILED=0
 if [ ! -f "$FORMAT_CONFIG" ]; then
     gate_header "$GATE2_TITLE"
     echo "   ✗ 缺少配置文件 ${FORMAT_CONFIG}" >&2
     FAILED=$((FAILED + 1))
+    GATE2_FAILED=1
 elif ! xcrun --find swift-format >/dev/null 2>&1; then
     gate_header "$GATE2_TITLE"
     echo "   ✗ 未找到 swift-format（随 Xcode 工具链提供，请确认已安装 Xcode）" >&2
     FAILED=$((FAILED + 1))
+    GATE2_FAILED=1
 else
     run_gate "$GATE2_TITLE" \
         xcrun swift-format lint --strict \
         --configuration "$FORMAT_CONFIG" \
         --recursive "$PACKAGE_DIR/Sources" "$PACKAGE_DIR/Tests" \
-        || FAILED=$((FAILED + 1))
+        || { FAILED=$((FAILED + 1)); GATE2_FAILED=1; }
 fi
 
 # ---------------------------------------------------------------
@@ -203,10 +210,19 @@ if [ "$FAILED" = "0" ]; then
         echo "    （加 --with-tests 可一并跑测试与覆盖率）"
     fi
 else
-    echo " ✗ 有 ${FAILED} 道门槛未通过（详见上方日志）"
-    echo "   格式问题一键修复："
-    echo "     xcrun swift-format format --in-place --recursive \\"
-    echo "       --configuration \"$FORMAT_CONFIG\" Sources Tests"
+    # ⚠️ **别再无条件打印「格式问题一键修复」**（2026-09-21）：它曾让我把
+    # 门槛 6 的红当成格式门去查。**失败门的名字**在上方 `✗ 未通过` 那一行里
+    # （`▶ 门槛 N` 的编号），全量日志在 `.build/preflight/门槛N.log`
+    # —— 那份日志**只在失败时**落盘，且不清理旧的 ⇒ 用 mtime 认是哪一轮。
+    # ⚠️ 别在这行里用反引号引记号（2026-09-21 实测）：双引号里的 `` `✗ 未通过` ``
+    # 会被 bash 当**命令替换**执行 ⇒ 打出 `line N: ✗: command not found`、
+    # 而 echo 照常输出（只是内容缺了一块）⇒ 错误不明显但信息是错的。
+    echo " ✗ 有 ${FAILED} 道门槛未通过（失败门的名字见上方各 ▶ 门槛 N 行）"
+    if [ "$GATE2_FAILED" = "1" ]; then
+        echo "   格式问题一键修复："
+        echo "     xcrun swift-format format --in-place --recursive \\"
+        echo "       --configuration \"$FORMAT_CONFIG\" Sources Tests"
+    fi
 fi
 echo "=================================================="
 

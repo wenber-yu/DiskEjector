@@ -60,7 +60,22 @@ struct IntegrationEjectTests {
         tail = tailProcess
 
         guard let disk = DiskService.shared.fetchExternalDisks().first(where: { $0.mountPath == vol }) else {
-            Issue.record("未找到测试盘 \(vol)")
+            // ⚠️ 2026-09-21 真红过一次（门槛 6，全量日志 `.build/preflight/门槛6.log`）。
+            // 只写「未找到测试盘」等于没说：至少三种可能，而它们的修法完全不同 ——
+            //   ① `hdiutil attach` 其实没挂上（沙箱 / 权限）；
+            //   ② 挂成了 `DiskEjectorEjectTest 1`（上一轮的挂载点还占着名字）；
+            //   ③ 挂上了，但被 `fetchExternalDisks()` 的过滤条件挡在外面。
+            // ⇒ 把能区分这三种情况的证据**一起**打出来。
+            let seenExternal = DiskService.shared.fetchExternalDisks().map(\.mountPath)
+            let systemMounts =
+                (FileManager.default.mountedVolumeURLs(includingResourceValuesForKeys: nil) ?? [])
+                .map(\.path)
+            Issue.record(
+                """
+                未找到测试盘 \(vol)
+                ① 本次看到的外部盘：\(seenExternal)
+                ② 系统挂载点：\(systemMounts)
+                """)
             return
         }
 
