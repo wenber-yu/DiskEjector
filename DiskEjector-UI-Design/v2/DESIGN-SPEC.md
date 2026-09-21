@@ -13895,16 +13895,135 @@ allows 已经是假 ⇒ **第二级根本没写**。
 **轮询次数**上限：被调度延迟堵住时轮询次数少，自己空等时次数爆；两者在**耗时**上逐字相同，
 在**轮询次数**上可分。
 
-⬜ **环境阻塞未解**：Xcode 26.4 → 27.0 后许可未重新同意
-（`IDEXcodeVersionForAgreedToGMLicense = 26.4`），`swift` / `git` / `xcodebuild` 全报
-`You have not agreed to the Xcode license agreements`。本轮**所有验证都是离线完成的**
-（shell 冒烟 + 变异 + 抽真实代码段真跑）。需要你执行一次 `sudo xcodebuild -license`。
+⬜ **环境阻塞已「部分解开」**（2026-09-21 15:00 更新）：查清后确认**不是「许可不许构建」**，
+而是 CLT 工具链缺两样东西（详见 §8.113.19）。现在 `source tools/clt_swift_env.sh`
+之后 `swift build` / `swift test` 都能跑，本地已跑过**全量 455 条测试（绿）**与门槛。
+⚠️ 但**正解仍是 `sudo xcodebuild -license`**：CLT 与 CI 的 Xcode 不是同一把尺子，
+本地门槛有两条会因**工具链差异**红（哪两条、为什么，见 §8.113.19 末节）。
 
 ✅ **缺口已由 CI 补上**（2026-09-21 14:13 实测）：`f98e070` + `978c199` 推送后
 run `35567313262` **结论 success** ⇒ 门槛 6（`scripts/coverage.sh`，含本次改动）
 **真的在 CI 上端到端跑过且没红**，两道新门槛与三条会扫活文件的守卫（`ToolingClaimTests`）
 也都没红 —— 也就是说，我在本地用「静态模拟」做的自查被 CI **独立证实**了。
 ⇒ 「本地跑不了」剩下的代价是**迭代慢**（每轮要等 CI 约 3 分钟），不是「结论不可得」。
+
+### 8.113.19 解开本机「Xcode 许可」阻塞（查清两层真因）＋ 让「等待失败」报出真因
+
+#### 1. 要解决的问题
+
+两件，一件是环境的、一件是产品的：
+
+1. **本机从 2026-09-17 起跑不了任何验证**：`swift` / `git` / `xcodebuild` 全报
+   `You have not agreed to the Xcode license agreements`，于是连续几轮只能靠
+   CI（约 3 分钟一趟）+ 离线静态自查。**这是本项目当前最贵的一件事** ——
+   它把「改一行看结果」变成「改一行等 3 分钟」。
+2. **等待失败时报错不指名真因**：唯一开着的待办是「让两个依赖墙钟的测试不依赖墙钟」。
+   上一轮已查清**日志量不出它**（`passed after` 是「完成时刻」，含并发调度等待）。
+   于是本轮先做它旁边那一半：`OccupancyStoreTests.waitUntil` /
+   `ProcessAppResolverTests.waitForExecutablePath` 失败时只报「`arrived` 为 false」，
+   而那句话把**两件修法完全不同的事**渲染成同一句 ——
+   「主 actor 被别的用例占住」还是「条件确实很久不成立」。
+
+#### 2. 先查清「到底卡在哪」——**不是许可不许构建**
+
+`DEVELOPER_DIR=/Library/Developer/CommandLineTools` 能让 `git` / `swift --version` 恢复，
+但 `swift build` 会连撞**两层**，且两层报的错都**不像许可问题**，很容易误判成「还是没过」：
+
+| 层 | 报错 | 真因 |
+|---|---|---|
+| 1 | `.../DiskEjector/xcstringstool is not an executable file` | CLT 没有 `xcstringstool`（处理 `Sources/Localization/Localizable.xcstrings`）⇒ `xcrun --find` 失败 ⇒ SwiftPM 回落到**裸名字**并按**包根**解析 |
+| 2 | `external macro implementation type 'SwiftUIMacros.StateMacro' could not be found` | `libSwiftUIMacros.dylib` 在 **platform** 目录（`MacOSX.platform/Developer/usr/lib/swift/host/plugins`），不在 toolchain 里；CLT 没有 `Platforms/` |
+
+第 1 层试了三条「放哪儿」，只有一条成立（**这是本节最值得记的一段**）：
+
+- **调用目录相对 ✗** —— 从别的目录 `swift build --package-path <仓库>`，报的仍是
+  `<仓库>/xcstringstool`：**是包根相对**。
+- **PATH ✗** —— `xcrun` 的报错文案里那句「not a developer tool **or in PATH**」是**真的**
+  （手动 `PATH=<目录>:$PATH xcrun --find xcstringstool` 确实找得到），
+  但 **SwiftPM 内部那次查找看不到 PATH**：实测子进程 env 里 `PATH` 已含该目录，
+  SwiftPM 用的仍是包根裸路径。
+- **包根软链 ✓** —— 确定性的那一条，脚本采用它，并在 `.gitignore` 里锚定 `/xcstringstool`。
+
+第 2 层要挂**三处**插件目录（少一处就有一类代码编不过，每一处都对应一个实测报错）：
+① `<CLT>/usr/lib/swift/host/plugins`（Swift/Observation）；
+② 它的 `testing/` 子目录（`libTestingMacros.dylib` —— `#expect`；⚠️ **SwiftPM 扫插件只扫顶层**，
+不挂就报 `'TestingMacros.ExpectMacro' could not be found`）；
+③ Xcode 的 platform 目录（`libSwiftUIMacros.dylib` —— `@State`）。
+
+#### 3. 三个坑（都不是「环境更烂了」，是**判据/缓存**错了）
+
+1. ⚠️ **`xcodebuild -version` 在许可未接受时退出码仍是 0**（只把警告打进输出）。
+   我第一版脚本用它判「许可是否正常」⇒ 那个分支**永远成立** ⇒ 脚本静默空操作，
+   而症状与「脚本没生效」逐字相同。**判据改成看输出**：问 `xcrun --find swiftc`
+   要一个**绝对路径**，拿到路径才算许可过了。
+2. ⚠️ **`xcrun` 有查找缓存 `$TMPDIR/xcrun_db`**：缓存里存着旧路径时，
+   `xcrun --find` 会返回一个**已经不对**的路径（实测返回了上一轮实验的临时目录）。
+   脚本顺手清掉它。
+3. ⚠️ **磁盘上的「构建计划」会记住旧结论**：若先在「包根没有软链」的状态下跑过一次
+   `swift build`，那份**解析失败**的计划会留在 `.build/` 下，之后即使软链补上，
+   它照样报同一句「`xcstringstool` is not an executable file」——
+   而这一次软链**明明是好的**（`[ -x ]` 为真）。判据是输出里那句
+   `[Using on-disk description]`（复用磁盘计划、没有重新规划）；
+   解法是 `mv .build/out .build/out.old`（**挪走，不删**）。我在这上面绕了 5 轮。
+
+#### 4. 落地
+
+- **`tools/clt_swift_env.sh`（新）** —— `source` 它即可：设 `DEVELOPER_DIR=CLT`、
+  造包根 `xcstringstool` 软链、在 `.build/clt-toolchain/bin/` 生成一个 `swift` 包装
+  （只给 `build|test|run` 追加三处 `-plugin-path`）、清 `xcrun` 缓存，并**逐项自证**。
+  ⚠️ 许可正常时它自动变成**空操作**（正路优先）。⚠️ 不写 `set -u`
+  （sourced 脚本会把 shell 选项**泄漏给调用方**）。
+- **`.gitignore`** —— 加 `/xcstringstool`（只锚包根），附「为什么会有这个文件」。
+- **`Tests/.../WaitOutcome.swift`（新）** —— `ok` / `polls` / `elapsed` / `diagnostic` /
+  `failureNote(_:)`，以及 `expectArrived(_:_:sourceLocation:)`。
+  口径写清：**`polls` 是唯一与机器负载无关的量**（判「是不是并发争抢」看它），
+  `elapsed` **含被调度拖走的时间**、只能用来**报告**不能用来下结论。
+- **`expectArrived` 是为了「漏不掉」**：手写 `#expect(x.ok, "…\(x.diagnostic)")` 时，
+  「把数字写进消息」只是一条**约定**，谁少写一次都不会有东西变红（而失败信息退化成
+  「`arrived` 为 false」正是这次要修的病）。走函数则消息由 `failureNote` **唯一决定**。
+  同 §8.113.13「能派生就别用手动开关」。
+- **`ProcessAppResolver.appBundlePath(fromRunningAppBundleURL:)`（新，真 bug 修复）** ——
+  见下节坑 4。
+
+#### 5. 顺手查出的**真 bug**：`NSRunningApplication.bundleURL` 不保证是 `.app`
+
+第一次跑全量测试（CLT 下）红了**一条**，而它**不是**我改的：
+`真实进程解析出的名字必不为空` 里 `#expect(bundle.hasSuffix(".app"))` 失败，
+值竟是 `…/CommandLineTools/usr/libexec/swift/pm/swiftpm-testing-helper` —— **一个可执行文件**。
+
+- 真因在 `enrich`：`?? directApp?.bundleURL?.path` **直接采信**了运行中应用报的 `bundleURL`，
+  而它不保证是 bundle。采信之后 `appBundlePath` 就不再是「app bundle」，
+  下游 `icon(for:)`（拿非 bundle 路径去 `NSWorkspace.icon(forFile:)`）与
+  `appDisplayName(bundlePath:)`（把**目录名**当应用名读）都会跑偏。
+- **CI 上是看不出来的**：Xcode 的 runner 住在 `/Applications/Xcode.app/…` 里，
+  路径**恰好**以 `.app` 结尾 ⇒ 那条断言**碰巧**成立。典型的「判据依赖环境」。
+- 修法：加一条纯函数过滤（**只接受 `.app`**），非 `.app` 一律走文档里写好的回落（进程名），
+  并配一条**确定性**守卫（样本就是那个真实踩到的路径）。
+
+#### 6. 装置自证与变异
+
+- 新脚本的自证：`DEVELOPER_DIR` / `which swift` / 包根软链可执行 / 三处插件目录**逐项有值**
+  ——⚠️ 特意**不报** `xcrun --find xcstringstool`：它返回什么与「SwiftPM 能不能用」无关
+  （见第 2 节），报一个与成败无关的数字只会让下一个排查的人拿它当判据。
+- 变异（`scripts/test/wait_outcome_mutation.py`，**手动跑**，沿用
+  `test_timings_mutation.py` 的口径：落地自证 + 原始输出 + `cp` 备份/还原 + `cmp` 确认，
+  不用 `git checkout`）：**5 条全部被抓住**，还原逐字节一致。
+  M1 `diagnostic` 退化成不带数字 / M2 `failureNote` 丢掉 `diagnostic` /
+  M3 `polls` 不累计 / M4 `elapsed` 报 0 / M5 去掉 `.app` 后缀过滤。
+
+#### 7. 仍然开着的
+
+- ⬜ **`sudo xcodebuild -license`**（正解，需你敲一次）。在此之前本地门槛有两条会红，
+  **都是工具链差异、不是代码问题**，别为它们改生产代码：
+  - **门槛 1（`-warnings-as-errors`）**：CLT 的 Swift 6.4 对
+    `Sources/DiskEjectorApp/DiskEjectorApp.swift:633` 报 `ImplicitStrongCapture`
+    （`Task {}` 强捕获 self，内层闭包写 `[weak self]`），**CI 的 Xcode 不报**。
+  - **门槛 8 偶发**：`IntegrationEjectTests.真实占用时关闭进程并推出` 要真的
+    `hdiutil attach` 一个 dmg 并让它被认成外置盘，这台机器上偶发「未找到测试盘」
+    （同一条单独跑 2/2 绿、全量 `swift test` 也绿）。属环境性。
+- ⬜ **「让两个依赖墙钟的测试不依赖墙钟」本身仍未动**（要你拍板）。
+  本轮做的是它的**前置**：失败时能一眼分辨「排队」还是「空等」。
+- ⬜ `MEMORY.md` 已接近注入上限 ⇒ 下次做一轮精简。
 
 
 ## 9. 文件清单
