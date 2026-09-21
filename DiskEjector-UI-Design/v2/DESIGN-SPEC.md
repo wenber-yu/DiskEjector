@@ -5246,7 +5246,7 @@ Sparkle 会不会装上这次更新 —— 依据是 `showUpdateFound` 的文档
 | 41 | ~~**CI 连续红了 76 次推送没人看**~~ —— 2026-09-17 17:44 之后到 2026-09-20 07:59 之间 **76 次 `failure` + 20 次 `cancelled`**（约 **2.5 天**），而**本机一直报绿**；根因是一条**环境依赖**测试（断言两侧的**语言来源不同**：左边读 `Locale.current`、右边钉设计稿语言），**每次必红**、**不是 flaky** | 已关闭 | §8.102 / §8.103 | ✅ **已关闭（2026-09-20）** —— ① 两侧语言都钉住（钉 `zh-Hans` + `en` **两个产品语言**）；② 落点 `./run.sh ci`（§8.103）⇒ 从「一行字」变成**每次推送都会跑的动作**。⚠️ 本行是 §8.102 ⑦ 那条建议的兑现（提出来时 CI 已转绿 ⇒ **出生即关闭**）；之所以仍然登记，是因为要记住的是**「红了 2.5 天没人看」这件事本身**，不是那个测试 |
 | 42 | ~~`IntegrationEjectTests`（1 条测试）是非 main-actor 且碰共享单例~~ —— `DiskService.shared.fetchExternalDisks()`、`EjectFlowController.shared.eject/terminateAndEject`。⚠️ **它是 §8.99 的副作用**：那轮为「不让阻塞段压在主 actor 上」把这个 suite 的 `@MainActor` **整块摘掉** ⇒ 从「不算候选」变成「算候选」 | 已关闭（§8.113 风险证否） | §8.111.3 | ✅ **已关闭（2026-09-21 00:03，§8.113）—— **风险证否**（不是「未证」）：：`EjectFlowController.shared` 是 `@MainActor` ⇒ `await` 安全；`DiskService.shared` 是 `@unchecked Sendable` 非隔离 ⇒ 并发访问**原理上**可能，但全仓库只有这一条测试碰它 ⇒ **不做没根据的修改**（为「可能」去加 `.serialized` 或改隔离，本身也会引入新的不确定性）。复跑：`python tools/probe/scan_test_actors.py`（已入库；同批 4 条候选里另 3 条是**源码文本断言的字符串字面量**，属 §8.96 已登记的已知误报） |
 | 43 | ~~安装器起不来时界面写「**网络不可用**。下次启动会自动重试」—— **但下载其实成功了**，失败的是「运行更新程序」（真机原文：`更新出错：运行更新程序时出现错误`）~~（2026-09-22 QA 真机撞出。**存量问题**，但 §8.122 的修复把它从「30ms 后被冲回、一闪而过」变成「**一直挂着**」⇒ 谎话变持久） | ✅ **已关闭**（§8.123，2026-09-22 真机复验通过） | §8.122 第 7 节 / **§8.123** | ✅ **已关闭（2026-09-22，§8.123 —— 真机复验通过）**：新增 `.installFailed` 落点与它自己的文案（不再谎报「网络不可用」），真机原文见 §8.123 第 5 节（含 **404 回归**：没被误报成「安装失败」）。⚠️ **3000 段（验签/解压）只有源码 + 单测证据**，本环境真机撞不到 ⇒ 另开第 44 行。原判据候选：`isDownloadFailure` 收窄成「`phase == .downloading` **且**错误**不在安装阶段**」（域 `SUSparkleErrorDomain`、码 `4000..<5000`，`SUErrors.h:64-71`；下载段是 `SUTemporaryDirectoryError=2000` / `SUDownloadError=2001`，`:50` / `:51`） |
-| 44 | ~~3000 段（解压 / 验签 / 校验，`SUErrors.h:54-56`）目前**只有源码 + 单测证据**，没有真机证据~~（2026-09-22 QA 复验时造了「翻 1 字节、长度不变」的 `bad.dmg`，edSignature 仍用真 dmg 的 ⇒ 必然验签失败，但结果**仍是 4005**） | 要**让安装器能跑**（Developer ID 签名 + entitlement）才能拿 | §8.123 第 6 节 | 🟡 **新开（2026-09-22）**：⚠️ 只要安装器起不来，**3000 段永远到不了** —— `SUSignatureError`(3001) / `SUValidationError`(3002) 由 `SUUpdateValidator.m` 抛，而它在 `SPUInstallerDriver.m:98` 是作为**安装器回报的 underlyingError** 被读出的 ⇒ 验签发生在安装器里，而本环境安装器的 XPC 连接建不起来（`SPUInstallerDriver.m:190`，码 `4005`，reason 明写「not adhoc signed」）。ℹ️ **不是「没守」**：判据侧有变异 P5（区间收窄到 4000 段）红 4 条兜住 |
+| 44 | **已收窄（2026-09-22，§8.124）**：`3001` 是**死码**（全仓只在 `SUErrors.h:55` 声明处出现一次）；`3002`（验签 / 校验）到达 App 前被 `SPUInstallerDriver.m:98-104` **换成 4005** ⇒ **这一半已由 QA 实测覆盖**（4005 正是实测通过的那条）。剩下未验的只有 `3000`（解压） | 让**安装器能跑**（Developer ID 签名 + entitlement）—— 解压失败的生产者**全在安装器进程内**，`SPUDownloadDriver.m` 只产 `2001` ⇒ 没有不经过安装器的路径 | §8.124 | 🟡 **仍开着（已收窄）**：只剩「解压失败」一类未验。⚠️ 但它仍落在 `3000..<5000` 区间内 ⇒ **缺这段证据不会放跑任何错误**，只影响文案精度，不影响分类。ℹ️ 不是「没守」：判据侧有变异 P5（区间收窄到 4000 段）红 4 条兜住 |
 > **判据：这张「仍开着」的表本身也是承诺型的话。** 17:55 回头核对时，第 4、5 行**早已关掉
 > 而表还写着「仍开着」** —— 和 §8.33 清掉的那 6 条是同一个病：**还了账没人回来划掉**。
 > 所以它现在多了一列「现状」和一个**核对时刻**：下次谁来读，先看时刻再看结论。
@@ -15315,6 +15315,57 @@ QA 造了「翻 1 字节、长度不变」的 `bad.dmg`（与真 dmg 等长、ed
 新增本地化键 `updateInstallFailedFormat` / `updateInstallFailedHint`（三语），
 **没动** `updateFailedFormat` / `updateFailedHint`。
 464 passed / 0 failed，门槛 11/11（覆盖率 65.90%），变异 P1–P7 全红。
+
+
+### 8.124 3000 段的可达性：**不是「这次没撞到」，是结构性到不了**（2026-09-22）
+
+账本第 43 行修完后开着的第 44 行是「3000 段只有源码 + 单测证据」。QA 造了「翻 1 字节、
+长度不变」的 `bad.dmg` 去撞验签失败，拿到的码**仍是 4005** —— 当时只记为「本环境撞不到」。
+这一节把它追到源码级，结论比那句更强。
+
+#### 1. 传递链：中途不换码
+
+`_reportInstallerError`（`SPUInstallerDriver.m:148`）→ `installerIsRequestingAbortInstallWithError:`
+（`SPUCoreBasedUpdateDriver.m:353`）→ `coreDriverIsRequestingAbortUpdateWithError:`
+（`SPUUIBasedUpdateDriver.m:446`）→ `showUpdaterError:`（`:485`，传的是**同一个** error 对象）。
+
+⇒ 我们读到的 `code` 就是 `SPUInstallerDriver` 最后构造的那个，中途没人再包一层。
+（这条是后面三条的前提 —— 若中途会换码，按码分段就无从谈起。）
+
+#### 2. `3001`（`SUSignatureError`）是死码
+
+全仓只在枚举声明处出现过一次（`SUErrors.h:55`）。
+⚠️ **阴性结论配了阳性对照**：同一个 grep 里 `3002` 在 `SUUpdateValidator.m` 出现 12 次，
+证明扫描真的跑了 —— 否则「没找到」与「装置瞎了」逐字相同。
+
+#### 3. `3002`（验签 / 校验）到不了顶层
+
+生产者是 `Sparkle/SUUpdateValidator.m` 与 `Autoupdate/SUSignatureVerifier.m`；
+validator 只在**安装器进程**里被实例化（`Autoupdate/AppInstaller.m:268`，调用点 `:284` / `:291` / `:310`）。
+安装器把校验失败塞进 `NSUnderlyingErrorKey`（`AppInstaller.m:313`），App 侧
+`SPUInstallerDriver.m:98` 命中 ⇒ `:104` **换成 4005**（文案「The update is improperly signed…」）。
+
+⇒ **验签 / 校验失败在界面上就是 4005**，而 4005 正是 QA 真机实测通过的那一条
+（`.installFailed` +「更新已下载，但没能装上」）。**这一半已由实测覆盖。**
+
+#### 4. `3000`（解压）是唯一可能成为顶层码的 3000 段码，且路径只有一条
+
+全仓 `genericErrorCode` 只有两个实参（`:194` 的 4005、`:316` 的 3000）⇒ `SPUInstallerDriver.m:316`
+是**唯一**能产出顶层 3000 的地方，触发条件是安装器发来 `SPUArchiveExtractionFailed`（`:307`）。
+生产者全在安装器进程内（`Autoupdate/AppInstaller.m:256/305`、`SUDiskImageUnarchiver.m:184`、
+`SUPipedUnarchiver.m:181/273/289`、`SUFlatPackageUnarchiver.m:59/61/72`、`SUUnarchiverNotifier.m:48`）。
+
+⚠️ **下载阶段不产 3000 段**：`SPUDownloadDriver.m` 只会抛 `:100` / `:264` 的 `SUDownloadError(2001)`
+⇒ **没有任何不经过安装器就能到达 3000 段的路径**。
+
+#### 5. 对判据的含义
+
+`isPostDownloadFailure` 认 `3000..<5000`：**没漏**（剩下未验的 3000 也在区间内）、
+**多出来的 `3001` 是死码**（无害，注释已订正）。⇒ 缺这段证据**不会放跑任何错误**，
+只影响文案精度，不影响分类。判据**未改**，改的是注释与这一节。
+
+⚠️ 仍然**未验**：解压失败（`3000`）这一类。要验须先让安装器能跑（Developer ID 签名 + entitlement）——
+与「成功路径端到端」同一个卡点。
 
 
 ## 9. 文件清单

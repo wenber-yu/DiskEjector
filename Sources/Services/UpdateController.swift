@@ -609,9 +609,11 @@ final class UpdateController: NSObject, ObservableObject {
     /// ⇒ **3000 与 4000 两段的共同点是「下载已经完了」** ⇒ 界面都不许说「网络不可用」。
     ///
     /// ⚠️ **为什么把 3000 段也算进来**（比任务书给的「4000 段」多一段）：
-    /// 验签失败（3001）时说「下载失败 / 网络不可用」同样是句谎，而且它在分段上
+    /// 解压 / 验签失败时说「下载失败 / 网络不可用」同样是句谎，而且它在分段上
     /// 属于「下载之后」；只认 4000 段的话 3000 段会掉进 else ⇒ 无声消失（同上一条理由）。
     /// 文案上两者也共用一句真话：**「已下载，但没能装上」** —— 验签没过，确实也没装上。
+    /// ℹ️ 表里那个 `SUSignatureError=3001` 其实是**死码**（下面 2026-09-22 那节有证据）：
+    /// 真正的验签失败是 `3002`，而且到达我们时已经被 Sparkle 换成了 4005。
     ///
     /// ## 域不对时怎么办（**不要假设它一定是 `SUSparkleErrorDomain`**）
     ///
@@ -627,20 +629,40 @@ final class UpdateController: NSObject, ObservableObject {
     /// ⚠️ 单测一律用**字面量**（`3000` / `4005` + 域字符串），别引这里的符号 ——
     /// 同 ``isUpdateLocationBlocked(_:)`` 那条规矩：两边同源就成了「拿常量跟自己比」。
     ///
-    /// ## ⚠️ 3000 段那一半**只有源码推断 + 单测，没有真机证据**（2026-09-22 QA 复验坐实）
+    /// ## 2026-09-22 追查：3000 段里**哪些码真能到达这里**（源码级，逐行对过）
     ///
-    /// QA 造了一个「只翻一个字节、长度不变」的 dmg（`appcast` 仍带真签名）去撞验签失败，
-    /// 拿到的码**仍是 4005**，不是 3001。源码上这是必然的（QA 逐行对过，我也核过）：
+    /// QA 造「只翻一个字节、长度不变」的 dmg 去撞验签失败，拿到的码**仍是 4005**。
+    /// 当时只记为「本环境撞不到」。追下去之后结论比那句更强 —— **是结构性到不了**：
     ///
-    /// - 「运行更新程序时出现错误」由 `SPUInstallerDriver.m:190` 抛，码是
-    ///   **4005**（`SUInstallationError`）；本环境是自签 ad-hoc ⇒ 安装器的 XPC 连接
-    ///   根本建不起来 ⇒ **所有「下载之后」的失败都退化成 4005**。
-    /// - 3000 段那三个码由 `SUUpdateValidator.m` 抛，而它是作为**安装器回报的
-    ///   underlyingError** 被读出来的（`SPUInstallerDriver.m:98`）⇒ **安装器起不来就永远到不了**。
+    /// 1. **传递链中途不换码**：`_reportInstallerError`（`SPUInstallerDriver.m:148`）→
+    ///    `installerIsRequestingAbortInstallWithError:`（`SPUCoreBasedUpdateDriver.m:353`）→
+    ///    `coreDriverIsRequestingAbortUpdateWithError:`（`SPUUIBasedUpdateDriver.m:446`）→
+    ///    `showUpdaterError:`（`:485`，传的是**同一个** error 对象）⇒ 我们读到的 `code`
+    ///    就是 `SPUInstallerDriver` 最后构造的那个，中途没人再包一层。
+    /// 2. **`3001`（`SUSignatureError`）全仓没有生产者** —— 只在枚举声明处出现过一次
+    ///    （`SUErrors.h:55`；阳性对照：同一个 grep 里 `3002` 在 `SUUpdateValidator.m`
+    ///    出现 12 次，说明扫描真的跑了）⇒ 它是**死码**，永远不会有错误带这个码。
+    /// 3. **`3002`（`SUValidationError`）到不了顶层**：由 `SUUpdateValidator.m` /
+    ///    `Autoupdate/SUSignatureVerifier.m` 抛，而 validator 只在**安装器进程**里被实例化
+    ///    （`Autoupdate/AppInstaller.m:268`，调用点 `:284` / `:291` / `:310`）；安装器把它
+    ///    塞进 `NSUnderlyingErrorKey`（`AppInstaller.m:313`），App 侧 `SPUInstallerDriver.m:98`
+    ///    一旦命中 ⇒ `:104` **换成 4005**（文案「The update is improperly signed…」）。
+    ///    ⇒ **验签 / 校验失败在界面上就是 4005**，而 4005 正是 QA 真机实测通过的那一条。
     ///
-    /// ⇒ 要拿真机证据必须先让安装器真的能跑起来（Developer ID 签名 +
-    /// Installer Connection/Status entitlement），那是另一件事。**在此之前，3000 段
-    /// 这一半的可信度是「源码推断 + 单测」，不是实测** —— 别把它读成已验证。
+    /// ⇒ 3000 段里**唯一可能成为顶层码的是 `3000`（解压）**，而且路径只有一条：
+    /// 全仓 `genericErrorCode` 只有两个实参（`:194` 的 4005、`:316` 的 3000），
+    /// 即 `SPUInstallerDriver.m:316` 是**唯一**能产出顶层 3000 的地方，触发条件是安装器
+    /// 发来 `SPUArchiveExtractionFailed`（`:307`）。它的生产者全在安装器进程内
+    /// （`Autoupdate/AppInstaller.m:256/305`、`SUDiskImageUnarchiver.m:184`、
+    /// `SUPipedUnarchiver.m:181/273/289`、`SUFlatPackageUnarchiver.m:59/61/72`、
+    /// `SUUnarchiverNotifier.m:48`）。
+    /// ⚠️ **下载阶段不产 3000 段**：`SPUDownloadDriver.m` 只会抛 `:100` / `:264` 的
+    /// `SUDownloadError(2001)` ⇒ **没有任何不经过安装器就能到达 3000 段的路径**。
+    ///
+    /// ⇒ 本环境（ad-hoc 自签 ⇒ 安装器 XPC 连不上，`SPUInstallerDriver.m:190`）**结构性**
+    /// 撞不到 3000 段 —— 不是「这次没撞到」。要真机证据须先让安装器能跑（Developer ID
+    /// 签名 + entitlement）。⚠️ **剩下没验的只剩「解压失败」这一类**，而它仍落在
+    /// `3000..<5000` 区间内 ⇒ 缺这段证据**不会放跑任何错误**，只影响文案精度，不影响分类。
     ///
     /// ✅ 有一条**阴性**证据反而支持这段区间：`SUInstallationCanceledError`(4007) /
     /// `SUInstallationAuthorizeLaterError`(4008) 虽然也落在 4000 段，但
