@@ -14454,12 +14454,19 @@ $ DEVELOPER_DIR=/Library/Developer/CommandLineTools /usr/bin/git rev-parse --sho
 
 #### 7. 仍开着
 
-⬜ **`build_app.sh` 是同一病根的第二处消费者**（`build_app.sh:73-85` 四个 `git_*` 函数，
+⬜ ~~**`build_app.sh` 是同一病根的第二处消费者**（`build_app.sh:73-85` 四个 `git_*` 函数，
 `2>/dev/null || true`）⇒ 坏 git 下**静默**产出
 `VERSION=1.0.0 / BUILD_NUMBER=1 / commit=unknown / dirty=0` 的包，且因为 `dirty=0` **不打印任何告警**。
 ⚠️ 它**没跟着改**是因为语义不同：那里的注释明说「非 git 环境返回空」是**有意**的
-（支持从 tarball 构建）⇒ 要修必须先分清「真的没有 git（容忍）」与「有 git 但它坏了（必须报错）」。
+（支持从 tarball 构建）⇒ 要修必须先分清「真的没有 git（容忍）」与「有 git 但它坏了（必须报错）」。~~
+✅ **已关闭（2026-09-21，§8.116）** —— 那个「先分清两种情形」正是 §8.116 做的事：
+`find_usable_git` 新增带出 `GIT_UNUSABLE_FOUND` 信号，判定块从两档改成**三档**，
+并配门 `scripts/test/build_app_version_smoke.sh`（门槛 10，5 档 + 4 条变异全红）。
 ⬜ §8.114 第 8 节那四条（那条 flaky 的修法）仍然要拍板。
+✅ **§8.116 顺带关掉的两项**：`verify_app.sh` 原先**没守** `DEBuildCommit`/`DEBuildDirtyCount`
+（那两条契约只有一条「产物不在就静默 return」的单测在守，而 CI 里测试跑在打包**之前**
+⇒ **在 CI 上永远空转**）；`AppVersionInfoTests` 那条守卫**硬编码绝对路径**
+（别的 checkout 上同样永远空转）。两条都在 §8.116 第 5 节修掉。
 
 #### 8. 门槛与产物（2026-09-21）
 
@@ -14474,6 +14481,141 @@ $ DEVELOPER_DIR=/Library/Developer/CommandLineTools /usr/bin/git rev-parse --sho
 - 一次性诊断（**不入库**，`.build/` 会消失）：`.build/probe/scan_unbraced_vars.py`
   （同口径复刻那条守卫，可在 `git add` **之前**扫；带阳性/阴性对照自证）。
   ⇒ 有了第 2 条修法之后**不再需要**它，所以没入库。
+
+### 8.116 `build_app.sh` 是同一病根的第二处消费者 —— 「没有 git」与「有 git 但不干活」必须分开
+
+（2026-09-21，接 §8.115。起点 `HEAD` = `3786e53`，工作区 **0 项**。）
+
+#### 1. 起点：§8.115 第 7 节留下的那一项
+
+§8.115 记下了「`build_app.sh:73-85` 的四个 `git_*` 函数同样是 `2>/dev/null || true`」，
+并写明**为什么那一轮没跟着改**：那里的注释明说「非 git 环境返回空」是**有意**的
+（支持从 tarball 构建）⇒ 要修必须先分清两种情形。本节就是那件事。
+
+#### 2. 病根：旧代码把两种「取不到版本信息」当成同一件事
+
+坏 git（Xcode 许可未接受 ⇒ `/usr/bin/git` 只打印许可警告、**零输出、退出码 0**）下，
+四个函数全返回空 ⇒ 静默产出一个自称
+
+```
+VERSION=1.0.0 · BUILD_NUMBER=1 · commit=unknown · dirty=0
+```
+
+的包，而且因为 `dirty=0` 而**一条告警都不打**。`dirty=0` 尤其糟：它的意思是
+「**工作区干净**」，而真相是「**不知道**」—— Swift 侧 `AppVersionInfo.dirtyCount`
+的注释早就写明「**不要拿 `0` 代替缺失** —— 「干净」与「不知道」是两回事」。
+⇒ **生产者在撒谎，而消费者已经写对了。**
+
+而「从 tarball 构建」（机器上根本没有 git）是**有意支持**的用法 ⇒ 不能一律报错。
+⚠️ **两种情形的旧输出逐字相同** —— 这就是本仓库最贵的那个坑。
+
+#### 3. 修法：判定块从两档改成**三档**，并补一个「有没有 git 的痕迹」信号
+
+| # | 情形 | 判据 | 处理 |
+|---|---|---|---|
+| ① | 有可用 git、HEAD 读得到 | `GIT_AVAILABLE=1` 且 `GIT_COMMIT` 非空 | 正常派生 |
+| ② | 连 git 的痕迹都没有 | `GIT_AVAILABLE=0` 且 `GIT_UNUSABLE_FOUND=0` | **容忍**（tarball），版本写「未知」 |
+| ③ | 有 git 的痕迹、但一份都跑不起来 | `GIT_AVAILABLE=0` 且 `GIT_UNUSABLE_FOUND=1` | **硬报错** |
+| ③′ | 有可用 git，但它取不到 HEAD | `GIT_AVAILABLE=1` 且 `GIT_COMMIT` 为空 | **硬报错** |
+
+③ 与 ③′ 的逃生门是同一条：**显式给了 `VERSION` + `BUILD_NUMBER` 就继续**
+（只打一行警告，说明产物里 `DEBuildCommit` 会是 `unknown`、`DEBuildDirtyCount` 会是空）。
+
+⚠️ **本节真正的关键点是那个信号**：`find_usable_git` 原先只回一个「找到 / 没找到」，
+而「没找到」对 ②③ **都成立** ⇒ 调用方**不可能**分开它们。
+⇒ 现在它一并带出 **`GIT_UNUSABLE_FOUND`**（0/1：候选里**存在**但没一个能干活）。
+**「没有」与「有但没用」在输出上逐字相同** —— 不给信号，就只能二选一。
+
+另有三处：
+
+- `BUILD_DIRTY="${GIT_DIRTY}"`（**不写 `:-0`**）—— 「不知道」写**空串**，
+  Swift 侧 `value(forKey:)` 把空/全空白读成 `nil` ⇒ 界面显示「未知」，那才是真话。
+- `git_dirty_count` **先收输出再判成败** —— **退出码不能被 `wc` 吃掉**
+  （`git status --porcelain | wc -l` 在 git 失败时打印 `0`，与「工作区干净」**逐字相同**）。
+- 新增**自证行**：`ⓘ 版本派生：git=… · 提交=… · 提交数=… · 未提交=…`，
+  且**打的是 `BUILD_DIRTY`（将要写进 Info.plist 的那个值）**，不是中间变量 `GIT_DIRTY`。
+  ⚠️ 第一版打的是 `GIT_DIRTY` ⇒ 自证行**替产物说谎**，把下面那条变异 c **照绿放过去了**。
+
+#### 4. 门与变异：`scripts/test/build_app_version_smoke.sh`（门槛 10）
+
+**装置**：往 PATH 最前放一个假 `swift`（`exit 97`）。版本派生（`build_app.sh:84-166`）
+在 `swift build`（299 行）与 `rm -rf "$APP_BUNDLE"`（305 行）**之前** ⇒ 全部用例都在
+构建处停下，**产物目录一个字节都不动**。每条「应该走到构建处」的用例都断言输出里
+**有**那句假 `swift` 的自证 —— 否则「在构建处停下」与「因为别的原因提前退出」
+在退出码上可能撞车。
+
+五档：① 好 git（自造，五个调用点各给确定答案）⇒ 派生正常；
+② 有 git 取不到 HEAD（复用 `scripts/test/fake-git-headless/git`）⇒ 退出 1；
+③ ②+显式 `VERSION`/`BUILD_NUMBER` ⇒ 退出 97（逃生门）；
+④ 有 git 痕迹但都跑不起来（许可桩）⇒ 退出 1；
+⑤ **连 git 痕迹都没有（tarball）⇒ 必须容忍**（这是 ④ 的**反向守卫** ——
+没有它，「硬报错」很容易被写成「一律报错」，把支持的用法一起打死）。
+
+**四条变异，全部判红，且红的范围都对得上**（`cp` 备份 + `cmp -s` 两次还原）：
+
+| 变异 | 结果 |
+|---|---|
+| a. 判定块**整块替换**回旧行为（`VERSION_UNTRUSTED_REASON=""`） | 红 **11 条**（②③④ 全线） |
+| b. 移除 `find_git.sh` 的 `GIT_UNUSABLE_FOUND` 信号 | 红 **5 条**，且**只有 ④** |
+| c. `BUILD_DIRTY="${GIT_DIRTY}"` → `"${GIT_DIRTY:-0}"` | 红 **1 条**，**只有 ⑤**（dump 出的原始输出正是现场：`未提交=0`） |
+| d. `find_git.sh` 的 PATH 处理退回「去重跳过」（见第 5 节） | 红 **1 条**（新回归用例） |
+
+⚠️ 变异 a 的原始输出正好是**旧行为的现场证据**：
+`ⓘ 版本派生：git=（无可用 git） · 提交=未知 · 提交数=未知 · 未提交=未知` 之后**照常往下构建**。
+
+⚠️ 变异 c 是**唯一一条「修了自证行才抓得住」的**：它守的是 Swift 侧注释明令禁止的那件事
+（「不要拿 `0` 代替缺失」），而它在产物里的落点（`DEBuildDirtyCount`）**只有在打包之后**
+才看得到 —— 所以自证行必须显示**将要落进产物的那个值**，而不是中间变量。
+
+#### 5. 顺带修的三处（都是「静默空转」同族）
+
+**① `find_git.sh` 的 PATH 处理漏了「已在 PATH 里但排在后面」**（门槛 9 判红抓到的）。
+原实现是「PATH 里已经有这个目录就跳过前置」⇒ 好的那份**排在坏桩后面**时，
+跳过 = **什么都没修**，而 `gh` 用 `command -v git` 取的是**第一个** ⇒ 照样用坏的。
+⚠️ 触发条件很刁：我那条命令里恰好已经 `export PATH` 带了好的那份目录 ⇒ 门槛 9 红了。
+改成「**先摘掉全部旧出现位置、再前置**」（`rest="${rest//:$d:/:}"`），
+并把判据从「PATH 字符串里有没有它」收紧到「**`command -v git` 解析到哪一份**」——
+后者才是 `gh` 真正做的事。新增一条**回归用例**（好的那份原本排在坏桩后面 ⇒ 必须挪到最前），
+变异 d 判红 1 条、精准命中它。
+
+**② `verify_app.sh` 原先**没守** `DEBuildCommit`/`DEBuildDirtyCount`。**
+那两条契约**只有一条单测在守**，而那条单测在**没有产物时会静默 `return`** ——
+CI 里测试跑在 `build_app.sh` **之前** ⇒ 它在 CI 上**永远空转**。
+⇒ 在 `verify_app.sh`（CI 在打包**之后**跑它）补一节 3b：读**产物**的 Info.plist。
+⚠️ 判据是「**键存在**」而不是「值非空」：没有可用 git 时值是**空串**，那是**真话**。
+`pb()`（PlistBuddy）**分不出「缺键」与「空串」**（都返回空）⇒ 改用
+`plutil -extract` 的**退出码**（实测：空串键 → 0，缺失键 → 1）。
+变异：删掉键 ⇒ 判红；把值改成空串 ⇒ **不判红**（反向守卫）。
+
+**③ `AppVersionInfoTests.打包产物里确实写入了版本号与构建号` 硬编码绝对路径**
+（`/Users/wenbo/MyCode/AppleProject/DiskEjector/dist/DiskEjector.app`）⇒
+在任何别的 checkout（CI runner / 另一台机器 / 另一个目录）上 `fileExists` 都是 false
+⇒ 整条用例**静默空转**，与「查过了没问题」**逐字相同**。
+⇒ 改成从 `#filePath` 派生仓库根，并把**跳过打出来**
+（`[打包产物] 跳过：… —— 本用例**未执行**`）。
+另加一条自证：派生出的路径必须 `hasSuffix("/dist/DiskEjector.app")`，
+否则「路径算错了」与「产物不存在」会走同一个 `return`（两者诊断方向完全不同）。
+
+#### 6. 仍开着
+
+⬜ **`sudo xcodebuild -license`** —— 正解，**需要用户敲一次**（AI 做不了：
+写 `/Library/Preferences/com.apple.dt.Xcode.plist`，需交互式 sudo）。
+在此之前本地跑门槛要 `source tools/clt_swift_env.sh`。
+⬜ §8.114 第 8 节那四条（那条 flaky 的修法）仍然要拍板。
+⬜ 测试套件里 `hdiutil` 的偶发（绿一次 ≠ 修好）。
+⬜ `MEMORY.md` 注入余量只剩几百字符 ⇒ 下一轮加东西前先量。
+
+#### 7. 门槛与产物（2026-09-21）
+
+- 门槛 **11/11 通过**（新增「build_app.sh 版本派生」为门槛 10，测试与覆盖率成为门槛 11）。
+- ⚠️ 门槛 9 在这一轮**先红了一次** —— 那次红是**真红**（第 5 节 ①），不是噪声。
+- 改动：`build_app.sh`、`scripts/lib/find_git.sh`、`scripts/test/find_git_smoke.sh`、
+  `scripts/preflight.sh`、`scripts/verify_app.sh`、
+  `Tests/DiskEjectorAppTests/AppVersionInfoTests.swift`；
+  新增：`scripts/test/build_app_version_smoke.sh`。
+- 测试缝：`FIND_GIT_ONLY`（设了就只试一个候选）—— 它存在的唯一理由是让
+  「**一个可用 git 都没有**」这一档**可构造**，否则本机兜底候选里总有能跑的一份，
+  那条判据永远没人验过。⚠️ 生产路径**不设**它。
 
 
 ## 9. 文件清单

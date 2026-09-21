@@ -106,6 +106,17 @@ import Testing
     /// **另一个不存在的变量**静默展开成空 —— 输出少几个字，不报错。
     /// 本仓库 `scripts/ci_status.sh` 那几处正是这样（`set -u` 下才会红，
     /// 而它只在**开发者本机**跑，本机 locale 是 C ⇒ 一直没暴露）。
+    ///
+    /// ⚠️ **口径：只管「具名变量」，不管位置参数** —— 这是实测出来的，不是猜的
+    /// （2026-09-21 判别实验，同一个脚本两种 locale 各跑一遍）：
+    /// ```
+    /// $ST（期望 1）   → C locale 正常 / en_US.UTF-8 报 `ST�: unbound variable`
+    /// $1（尾注）      → **两种 locale 都正常**
+    /// ```
+    /// 原因：位置参数不会被延长（`$1` 后面跟的非数字字符本来就终止它）。
+    /// ⇒ 正则写成 `\$([A-Za-z_][A-Za-z0-9_]*)` 就够，**别去管 `$1`**；
+    /// 也**别**把它扩成「`$` 后面跟任何东西」，那会制造一堆假阳性。
+    /// （这条口径有**负向对照**：`变量引用判据的双向对照` 的「不该报 ③」。）
     static func unbracedVarBeforeMultibyte(in text: String) -> [Claim] {
         guard let re = try? NSRegularExpression(pattern: #"\$([A-Za-z_][A-Za-z0-9_]*)"#) else { return [] }
         var out: [Claim] = []

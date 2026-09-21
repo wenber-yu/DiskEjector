@@ -110,6 +110,13 @@ done
 # ---- ③ 端到端：坏 git 排在 PATH 最前时，find_usable_git 必须绕过它 ----
 # 这一条测的是**本文件存在的理由**：`command -v git` 拿到的是坏的，
 # 而函数要能继续往下找到一份真的，并把它的目录放进 PATH（`gh` 只认 PATH）。
+#
+# ⚠️ 判据是「**`command -v git` 解析到哪一份**」，不是「PATH 字符串里有没有它」：
+#    `gh` 内部就是 `command -v git` 取**第一个**。2026-09-21 门槛 9 实测判红
+#    （我的 shell 里恰好已经含了好的那份目录）⇒ 暴露出旧实现的漏洞：
+#    它写成「PATH 里已经有这个目录就跳过前置」⇒ 好的那份排在坏桩**后面**时，
+#    跳过 = **什么都没修**，而「有没有前置」这个较松的判据还会报绿。
+#    ⇒ 实现改成「先摘掉全部旧出现位置、再前置」，判据也收紧到「解析到哪一份」。
 ln -sfn "$TMP/license-stub" "$TMP/git"
 OLD_PATH="$PATH"
 PATH="$TMP:$PATH"
@@ -118,12 +125,18 @@ if find_usable_git; then
         fail "find_usable_git 选中了坏的桩（${GIT_BIN}）⇒ 绕过逻辑没生效"
     else
         echo "   [端到端] 绕过坏桩，选中：$GIT_BIN"
+        RESOLVED="$(command -v git)"
+        if [ "$RESOLVED" = "$GIT_BIN" ]; then
+            echo "   [端到端] \`command -v git\` 解析到它（gh 的取法）✓"
+        else
+            fail "\`command -v git\` 解析到 ${RESOLVED}，而不是 ${GIT_BIN} ⇒ gh 仍会用坏的 git"
+        fi
         case "$PATH" in
             "$(dirname "$GIT_BIN")":*)
-                echo "   [端到端] PATH 已前置它的目录（gh 需要）✓"
+                echo "   [端到端] PATH 已前置它的目录 ✓"
                 ;;
             *)
-                fail "PATH 没有被前置 $(dirname "$GIT_BIN") ⇒ gh 仍会用坏的 git"
+                fail "PATH 没有被前置 $(dirname "$GIT_BIN")"
                 ;;
         esac
         if [ -n "$("$GIT_BIN" rev-parse HEAD 2>/dev/null)" ]; then
@@ -140,6 +153,27 @@ else
     FAILS=$((FAILS + 1))
 fi
 PATH="$OLD_PATH"
+
+# ---- ④ 端到端回归：**好的那份已经在 PATH 里，但排在坏桩后面** ----
+# 这是 ③ 抓不到的那一半：③ 里好的那份原本**不在** PATH，所以「前置」必然成立。
+# 真实场景是「PATH 里两份都有、坏的在前」⇒ 必须把好的**挪到最前**，
+# 而不是「已经在 PATH 里了就跳过」。用同一对假 git 构造，判据同上。
+if [ -n "${GIT_BIN:-}" ] && [ "$GIT_BIN" != "$TMP/git" ]; then
+    PATH="$TMP:$(dirname "$GIT_BIN"):$OLD_PATH"   # 坏桩在前、好的在后
+    if find_usable_git; then
+        RESOLVED="$(command -v git)"
+        if [ "$RESOLVED" = "$GIT_BIN" ]; then
+            echo "   [回归] 好的那份原本排在坏桩后面 → 已挪到最前（gh 会取到它）✓"
+        else
+            fail "[回归] 好的那份已在 PATH 里但排在坏桩后面时没被挪前：\`command -v git\` → ${RESOLVED}"
+        fi
+    else
+        fail "[回归] 装置异常：坏桩在前、好的在后时 find_usable_git 返回了失败"
+    fi
+    PATH="$OLD_PATH"
+else
+    echo "   [回归] 跳过（本机没有可用的真 git，③ 已判红）"
+fi
 
 if [ "$FAILS" -gt 0 ]; then
     echo "   ✗ 未通过（$FAILS 条）："

@@ -33,14 +33,18 @@
 #    `gh` 自己也要调 `git`，否则报
 #    `failed to determine base repo: failed to run git: …license…`。
 #
-# ## 已知未修的消费者（2026-09-21 扫描所得）
+# ## 消费者
 #
-# `build_app.sh:73-85` 的四个 `git_*` 函数（`2>/dev/null || true`）同样取不到值，
-# 症状是**静默**产出 `VERSION=1.0.0 / BUILD_NUMBER=1 / commit=unknown / dirty=0`
-# 的包，且因为 `dirty=0` 而**不打印任何告警**。
-# 它没跟着改，是因为它的语义与本文件不同：那里的注释明说「非 git 环境返回空」
-# 是**有意**的（支持从 tarball 构建）⇒ 要修必须先分清
-# 「真的没有 git（容忍）」与「有 git 但它坏了（必须报错）」两种情形，另起一轮。
+# - `scripts/ci_status.sh` —— 本文件最初的动因（它那三处 `git rev-parse` 拿到空串后
+#   会打印「等提交␣␣的 run 出现」，**看起来像「run 还没创建」**）。
+# - `build_app.sh`（2026-09-21 接上）—— 它的四个 `git_*` 函数原先 `2>/dev/null || true`，
+#   坏 git 下**静默**产出 `VERSION=1.0.0 / BUILD_NUMBER=1 / commit=unknown / dirty=0`
+#   的包，且因为 `dirty=0` 而**不打印任何告警**（`dirty=0` 的意思是「工作区干净」，
+#   而真相是「**不知道**」—— Swift 侧 `AppVersionInfo.dirtyCount` 的注释早就写明
+#   「不要拿 0 代替缺失」）。
+#   ⇒ 现在它**区分两种情形**：「一个可用 git 都没有」（容忍，写空）与
+#     「有 git 但它取不到 HEAD」（**硬报错**，除非显式给了 `VERSION` + `BUILD_NUMBER`）。
+#     判据与门见 `scripts/test/build_app_version_smoke.sh`。
 # =============================================================
 
 # ⚠️ **不要 `set -e` / `set -u`**：本文件是 source 用的，`set` 会**泄漏给调用方**
@@ -64,32 +68,61 @@ git_usable() {
 # 逐个候选**试跑**，第一个能干的胜出。
 # 成功：`GIT_BIN` 有值、`PATH` 已含它的目录、返回 0；失败返回 1（**不** exit，
 # 由调用方决定怎么说这句话 —— 报错文案要贴调用方的上下文）。
+#
+# ⚠️ 返回 1 时，调用方**还差一个信息**才能说对话：失败是「这台机器上没有 git」
+#    还是「有 git，但它不干活」？两者**有意分开处理**（前者 = 从 tarball 构建，
+#    是支持的用法；后者 = 环境坏了，必须大声）。⇒ 一并把
+#    **`GIT_UNUSABLE_FOUND`**（0/1：候选里**存在**但没一个能干活）带出去。
+#    这正是本仓库最贵的那个坑：**「没有」与「有但没用」在输出上逐字相同**。
 find_usable_git() {
     GIT_BIN=""
+    GIT_UNUSABLE_FOUND=0
     local c
-    # ⚠️ 候选按「越通用越靠前」排：PATH 里那份若正常，本函数就是个空操作。
-    #    后两个是本环境（许可未接受）的兜底，都按**实际试跑**判，不按存在性判。
-    for c in "$(command -v git 2>/dev/null || true)" \
-        "$(xcode-select -p 2>/dev/null || true)/usr/bin/git" \
-        /Applications/Xcode.app/Contents/Developer/usr/bin/git \
-        /Library/Developer/CommandLineTools/usr/bin/git; do
-        [ -n "$c" ] || continue
-        if git_usable "$c"; then
-            GIT_BIN="$c"
-            break
+
+    # ⚠️ **测试缝**（2026-09-21）：`FIND_GIT_ONLY` 设了就**只试这一个候选**。
+    #    它存在的唯一理由是让「**一个可用 git 都没有**」这一档**可构造** ——
+    #    否则那条判据永远没人验过（本机兜底候选里总有能跑的一份）。
+    #    ⚠️ 生产路径**不设**它；别拿它当开关用。
+    if [ -n "${FIND_GIT_ONLY:-}" ]; then
+        if git_usable "$FIND_GIT_ONLY"; then
+            GIT_BIN="$FIND_GIT_ONLY"
+        else
+            # 「存在但不可用」与「根本不存在」必须分开记
+            if [ -e "$FIND_GIT_ONLY" ]; then GIT_UNUSABLE_FOUND=1; fi
+            return 1
         fi
-    done
+    else
+        # ⚠️ 候选按「越通用越靠前」排：PATH 里那份若正常，本函数就是个空操作。
+        #    后两个是本环境（许可未接受）的兜底，都按**实际试跑**判，不按存在性判。
+        for c in "$(command -v git 2>/dev/null || true)" \
+            "$(xcode-select -p 2>/dev/null || true)/usr/bin/git" \
+            /Applications/Xcode.app/Contents/Developer/usr/bin/git \
+            /Library/Developer/CommandLineTools/usr/bin/git; do
+            [ -n "$c" ] || continue
+            if git_usable "$c"; then
+                GIT_BIN="$c"
+                break
+            fi
+            if [ -e "$c" ]; then GIT_UNUSABLE_FOUND=1; fi
+        done
+    fi
     [ -n "$GIT_BIN" ] || return 1
 
-    # 放进 PATH（去重），给「内部还会再调 git」的工具（`gh`）用。
+    # 放进 PATH（**先摘掉所有旧出现位置，再前置**），给「内部还会再调 git」的
+    # 工具（`gh`）用。
+    # ⚠️ **不能写成「PATH 里已经有它就跳过」**（2026-09-21 门槛 9 实测判红）：
+    #    `gh` 用 `command -v git` 取的是 PATH 里**第一个**。如果好的那份已经
+    #    在 PATH 里、但排在坏的那份**后面**，跳过前置就等于**什么都没修** ——
+    #    而判据（「有没有前置」）会判红，暴露的正是这个「看似修好了」的假象。
+    #    ⇒ 必须先把它从 PATH 里全部摘掉，再放到最前面。
     local d
     d="$(dirname "$GIT_BIN")"
-    case ":$PATH:" in
-        *":$d:"*) ;;
-        *)
-            PATH="$d:$PATH"
-            export PATH
-            ;;
-    esac
+    local rest
+    rest=":${PATH}:"
+    rest="${rest//:$d:/:}"   # 摘掉全部旧出现位置（含开头/结尾，靠两侧补的 `:`）
+    rest="${rest#:}"
+    rest="${rest%:}"
+    PATH="$d:$rest"
+    export PATH
     return 0
 }

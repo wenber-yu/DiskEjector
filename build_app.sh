@@ -69,19 +69,55 @@ EXECUTABLE="DiskEjectorApp"                 # SPM 可执行 target 名
 #    `2026.09.13.1 / 44`，看起来像 9/13 那个正式构建，实际跑的却是今天的工作区。
 #    所以额外把 **commit 短哈希**与**未提交改动数**写进 Info.plist，
 #    设置窗口据此标出「这不是 tag 对应的那个构建」。
+#
+# ⚠️⚠️ **「一个可用 git 都没有」与「有 git 但它不干活」是两件事**（2026-09-21，§8.116）：
+#    - 前者是**有意支持**的（从 tarball 构建）⇒ **容忍**，但版本信息按「未知」写；
+#    - 后者是**环境坏了**（本机实测：Xcode 许可未接受 ⇒ `/usr/bin/git` 只打印许可警告、
+#      **零输出、退出码 0**）。它原先的症状是**静默**产出一个自称
+#      `1.0.0 / 1 / unknown / dirty=0` 的包 —— `dirty=0` 尤其糟：它的意思是
+#      「**工作区干净**」，而真相是「**不知道**」（Swift 侧 `AppVersionInfo.dirtyCount`
+#      的注释早就写明「不要拿 `0` 代替缺失 —— 「干净」与「不知道」是两回事」）。
+#    ⇒ 判据只能**试跑**（`[ -x ]` / `command -v` / 退出码三条都判不出来），
+#      实现见 `scripts/lib/find_git.sh`；本段的门见 `scripts/test/build_app_version_smoke.sh`。
 # ---------------------------------------------------------------
+# shellcheck source=scripts/lib/find_git.sh
+. "$SCRIPT_DIR/scripts/lib/find_git.sh"
+if find_usable_git; then
+    GIT_AVAILABLE=1
+else
+    GIT_AVAILABLE=0
+    GIT_BIN=""
+fi
+
+# ⚠️ 下面四个函数在**没有可用 git** 时一律返回空 —— 调用方必须分清
+#    「空 = 本来就没有 git」与「空 = 有 git 但取不到」（见下面的硬报错）。
 git_tag_version() {
-    git describe --tags --abbrev=0 2>/dev/null | sed 's/^v//' || true
+    [ "$GIT_AVAILABLE" = "1" ] || return 0
+    # 空是**合法**的：仓库还没有任何 tag
+    "$GIT_BIN" describe --tags --abbrev=0 2>/dev/null | sed 's/^v//' || true
 }
 git_commit_count() {
-    git rev-list --count HEAD 2>/dev/null || true
+    [ "$GIT_AVAILABLE" = "1" ] || return 0
+    "$GIT_BIN" rev-list --count HEAD 2>/dev/null || true
 }
 git_commit_short() {
-    git rev-parse --short HEAD 2>/dev/null || true
+    [ "$GIT_AVAILABLE" = "1" ] || return 0
+    "$GIT_BIN" rev-parse --short HEAD 2>/dev/null || true
 }
-# 未提交改动数（含未跟踪文件）。非 git 环境返回空。
+# 未提交改动数（含未跟踪文件）。
+# ⚠️ **退出码不能被 `wc` 吃掉**：`git status --porcelain | wc -l` 在 git 失败时打印 `0`
+#    —— 与「工作区干净」**逐字相同**（本仓库在别处踩过多次）⇒ 先收输出、再判成败。
 git_dirty_count() {
-    git status --porcelain 2>/dev/null | wc -l | tr -d ' ' || true
+    [ "$GIT_AVAILABLE" = "1" ] || return 0
+    local out
+    if ! out="$("$GIT_BIN" status --porcelain 2>/dev/null)"; then
+        return 0  # 取不到 ⇒ 输出空 = 「未知」，**不是** 0
+    fi
+    if [ -z "$out" ]; then
+        printf '0\n'
+        return 0
+    fi
+    printf '%s\n' "$out" | wc -l | tr -d ' '
 }
 
 DERIVED_VERSION="$(git_tag_version)"
@@ -89,14 +125,59 @@ DERIVED_BUILD="$(git_commit_count)"
 GIT_COMMIT="$(git_commit_short)"
 GIT_DIRTY="$(git_dirty_count)"
 
+# ---- 版本信息可不可信？三档，只有第一档能直接往下走 ----
+# 判据：`rev-parse --short HEAD` 与 `rev-list --count HEAD` 在有效仓库里**永远有值**
+# （除非仓库一个提交都没有）⇒ 空 = 这份 git 没干活。
+#
+# ⚠️ **必须把「没有 git」与「有 git 但不干活」分开**（2026-09-21，§8.116）：
+#   ① 有可用 git、HEAD 读得到         ⇒ 正常，往下走
+#   ② 连 git 的痕迹都没有             ⇒ **有意支持**（从 tarball 构建）⇒ 容忍，写「未知」
+#   ③ 有 git 的痕迹，但一份都跑不起来 ⇒ **环境坏了** ⇒ 硬报错（除非显式给了两个值）
+# ②③ 混成一句「取不到就算了」正是本仓库反复踩的坑：**「没有」与「有但没用」在输出上逐字相同**。
+if [ "$GIT_AVAILABLE" = "1" ] && [ -z "$GIT_COMMIT" ]; then
+    VERSION_UNTRUSTED_REASON="找得到 git（${GIT_BIN}），但它取不到 HEAD"
+elif [ "$GIT_AVAILABLE" = "0" ] && [ "${GIT_UNUSABLE_FOUND:-0}" = "1" ]; then
+    VERSION_UNTRUSTED_REASON="找到了 git，但一份都跑不起来（许可未接受 / 安装损坏）"
+else
+    VERSION_UNTRUSTED_REASON=""
+fi
+
+if [ -n "$VERSION_UNTRUSTED_REASON" ]; then
+    # 它后面给的任何读数都不可信 —— 尤其 `status --porcelain` 那个「0 处改动」
+    GIT_DIRTY=""
+    if [ -n "${VERSION:-}" ] && [ -n "${BUILD_NUMBER:-}" ]; then
+        echo "⚠️  ${VERSION_UNTRUSTED_REASON}，但你已显式指定 VERSION 与 BUILD_NUMBER ⇒ 继续。" >&2
+        echo "    产物里 DEBuildCommit 会是 unknown、DEBuildDirtyCount 会是空（界面显示「未知」）。" >&2
+    else
+        echo "错误：${VERSION_UNTRUSTED_REASON} —— 版本信息不可信，拒绝产出包。" >&2
+        echo "      常见原因：Xcode 许可未接受 ⇒ git 只打印许可警告、**零输出、退出码 0**。" >&2
+        echo "      正解：sudo xcodebuild -license（或先 source tools/clt_swift_env.sh）。" >&2
+        echo "      若确实要跳过版本派生，显式指定两个值：" >&2
+        echo "          VERSION=… BUILD_NUMBER=… ./build_app.sh" >&2
+        exit 1
+    fi
+fi
+
 VERSION="${VERSION:-${DERIVED_VERSION:-1.0.0}}"
 BUILD_NUMBER="${BUILD_NUMBER:-${DERIVED_BUILD:-1}}"
-# 写进 Info.plist 的构建元信息（可空；读取方要容忍缺失）。
+# 写进 Info.plist 的构建元信息。
+# ⚠️ **「不知道」写**空串**，不写 `0`**：`0` 的意思是「工作区干净」。
+#    空串在 Swift 侧读成 `nil`（`AppVersionInfo.value(forKey:)` 把空/全空白当读不到）
+#    ⇒ 界面显示「未知」，那才是真话。
 BUILD_COMMIT="${GIT_COMMIT:-unknown}"
-BUILD_DIRTY="${GIT_DIRTY:-0}"
+BUILD_DIRTY="${GIT_DIRTY}"
+
+# ---- 自证：把**实际用到的那份 git** 与派生结果打出来 ----
+# ⚠️ 必须有：否则「派生失败」与「派生成功但值恰好是兜底值」在输出上分不开
+#    （本仓库反复踩这个 —— 判据一律要带自证字段）。
+# ⚠️ 打印的是 **`BUILD_DIRTY`**（= 将要写进 Info.plist 的那个值），**不是**中间变量
+#    `GIT_DIRTY`：两者一旦被改得不同，自证行就会**替产物说谎**。
+#    （2026-09-21 实测踩过：第一版打印 `GIT_DIRTY`，于是把
+#     `BUILD_DIRTY="${GIT_DIRTY:-0}"` 这个「拿 0 代替缺失」的变异**照绿放过去了**。）
+echo "ⓘ 版本派生：git=${GIT_BIN:-（无可用 git）} · 提交=${GIT_COMMIT:-未知} · 提交数=${DERIVED_BUILD:-未知} · 未提交=${BUILD_DIRTY:-未知}"
 
 # 工作区不干净时**明确告警**：版本号指向的是 tag 那次提交，不是本次构建的代码。
-if [ "${BUILD_DIRTY}" != "0" ] && [ -n "${BUILD_DIRTY}" ]; then
+if [ -n "${BUILD_DIRTY}" ] && [ "${BUILD_DIRTY}" != "0" ]; then
     echo "⚠️  工作区有 ${BUILD_DIRTY} 处未提交改动"
     echo "    版本号 ${VERSION} 取自 tag「${DERIVED_VERSION:-无}」，指向的是提交 ${BUILD_COMMIT}"
     echo "    它**不代表本次构建的实际代码**；设置窗口会标出这一点。"

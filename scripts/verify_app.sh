@@ -82,6 +82,44 @@ else
 fi
 
 # ---------------------------------------------------------------
+# 3b. 构建元信息（DEBuildCommit / DEBuildDirtyCount）
+#
+# **为什么必须在这里守**：`build_app.sh` 把「提交短哈希」与「未提交改动数」写进
+# Info.plist，设置窗口据此标出「这不是 tag 对应的那个构建」（§8.116）。
+# 这两个键**原先只有一条单测在守**（`AppVersionInfoTests.打包产物里确实写入了版本号与构建号`），
+# 而那条单测在**没有产物时会静默 return** —— 而 CI 里测试跑在 `build_app.sh` **之前**，
+# 所以它在 CI 上**永远空转**。⇒ 真正端到端的那条判据必须落在这里（CI 会跑本脚本）。
+#
+# ⚠️ 判据是「**键存在**」，不是「值非空」：
+#    - 没有可用 git（从 tarball 构建）时值是**空串**，那是**真话**（「不知道」）；
+#      `AppVersionInfo` 把空串读成 `nil`、界面显示「未知」。
+#    - 而 `0` 才是有意义的答案（工作区干净）—— 把「不知道」写成 `0` 是**生产者在撒谎**，
+#      正是 §8.116 修掉的那个病。
+#    ⇒ 空串只提示、不判红；**缺键**才判红（说明 build_app.sh 根本没写）。
+#
+# ⚠️ `pb()` 分不出「缺键」与「空串」（两者都返回空）⇒ 这里改用 `plutil -extract`
+#    的**退出码**（实测：空串键 → 0，缺失键 → 1）。
+# ---------------------------------------------------------------
+for KEY in DEBuildCommit DEBuildDirtyCount; do
+    if plutil -extract "$KEY" raw -o - "$PLIST" >/dev/null 2>&1; then
+        good "Info.plist 有 ${KEY}"
+    else
+        bad "Info.plist 缺 ${KEY} ⇒ 设置窗口无法提示「这不是 tag 对应的那个构建」（build_app.sh 没写）"
+    fi
+done
+COMMIT_VAL="$(pb DEBuildCommit)"
+DIRTY_VAL="$(pb DEBuildDirtyCount)"
+if [ -z "$COMMIT_VAL" ] || [ -z "$DIRTY_VAL" ]; then
+    # 不判红：这是「从 tarball 构建」或「显式指定 VERSION/BUILD_NUMBER」的正常结果。
+    # 但必须**打出来** —— 否则「值是真话『未知』」与「键被写坏了」在回显上分不开。
+    note "⚠️ 构建元信息为空（提交='${COMMIT_VAL}' 未提交='${DIRTY_VAL}'）——"
+    note "   说明本次打包**没有可用的 git**（或显式指定了 VERSION/BUILD_NUMBER），"
+    note "   界面会显示「未知」。这是真话，不是缺漏（§8.116）。"
+else
+    note "构建元信息：提交 ${COMMIT_VAL} · 未提交 ${DIRTY_VAL}"
+fi
+
+# ---------------------------------------------------------------
 # 4. SUFeedURL —— 丢了它「检查更新」会**永远成功且永远说已是最新版本**
 # ---------------------------------------------------------------
 FEED="$(pb SUFeedURL)"

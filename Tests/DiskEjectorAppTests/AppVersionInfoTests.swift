@@ -127,12 +127,32 @@ struct AppVersionInfoTests {
     ///
     /// 守的是「构建脚本哪天不再写版本号」——那种情况界面会静默显示 `1.0.0 / 1`，
     /// 用户照着报一个查不到的构建号。产物不在（没打包过 / 被移走）时跳过。
+    ///
+    /// ⚠️ **路径必须从本文件位置派生，不能写死绝对路径**（2026-09-21 修）：
+    /// 原先写死 `/Users/wenbo/…/dist/DiskEjector.app` ⇒ 在任何别的 checkout
+    /// （CI runner、另一台机器、另一个目录）上 `fileExists` 都是 false
+    /// ⇒ 整条用例**静默空转**，而它与「查过了没问题」在输出上**逐字相同**。
+    ///
+    /// ⚠️ **跳过时必须把「跳过」打出来**：CI 里测试跑在 `build_app.sh` **之前**，
+    /// 所以这条用例在 CI 上**永远是空转的** —— 真正端到端的那条判据在
+    /// `scripts/verify_app.sh`（CI 在打包之后跑它，读同一个键）。
+    /// 两条一起才是「有牙」的：本用例守本地（产物在手时），verify_app 守 CI。
     @Test func 打包产物里确实写入了版本号与构建号() throws {
-        let appPath = "/Users/wenbo/MyCode/AppleProject/DiskEjector/dist/DiskEjector.app"
-        guard FileManager.default.fileExists(atPath: appPath),
-            let bundle = Bundle(path: appPath)
-        else {
-            return  // 没有产物就跳过，不制造假红
+        // #filePath = <仓库根>/Tests/DiskEjectorAppTests/AppVersionInfoTests.swift
+        let repoRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let appPath = repoRoot.appendingPathComponent("dist/DiskEjector.app").path
+        // 自证：派生出来的路径得**像**仓库里的产物，否则「路径算错了」
+        // 与「产物不存在」会走同一个 return（两者诊断方向完全不同）。
+        guard appPath.hasSuffix("/dist/DiskEjector.app") else {
+            Issue.record("派生的产物路径不像仓库里的产物：\(appPath) —— 装置算错了，本次结论作废")
+            return
+        }
+        guard FileManager.default.fileExists(atPath: appPath), let bundle = Bundle(path: appPath) else {
+            print("  [打包产物] 跳过：\(appPath) 不存在（本次没构建过产物）—— 本用例**未执行**")
+            return
         }
         let version = try #require(
             AppVersionInfo.shortVersion(in: bundle),
@@ -141,7 +161,8 @@ struct AppVersionInfoTests {
             AppVersionInfo.build(in: bundle),
             "打包产物 \(appPath) 的 Info.plist 里没有 CFBundleVersion")
         print(
-            "  [打包产物] 版本 \(version) · 构建 \(build) · 提交 \(AppVersionInfo.commit(in: bundle) ?? "—")"
+            "  [打包产物] \(appPath) → 版本 \(version) · 构建 \(build)"
+                + " · 提交 \(AppVersionInfo.commit(in: bundle) ?? "—")"
                 + " · 未提交 \(AppVersionInfo.dirtyCount(in: bundle).map(String.init) ?? "未知")")
         #expect(version != "1.0.0", "打包产物里的版本号落到了兜底值 —— 说明 Info.plist 没被写入")
         // 构建元信息两个键必须被 `build_app.sh` 写入 —— 缺了界面就无法提示脏构建。
