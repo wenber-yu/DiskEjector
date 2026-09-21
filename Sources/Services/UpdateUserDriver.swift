@@ -147,7 +147,7 @@ final class UpdateUserDriver: NSObject, SPUUserDriver {
     }
 
     func showUpdaterError(_ error: Error, acknowledgement: @escaping () -> Void) {
-        // 更新流程出错。**分四种，落点不同**（四种按下面的顺序判，命中即停）：
+        // 更新流程出错。**分五种，落点不同**（五种按下面的顺序判，命中即停）：
         //
         // - **位置不允许更新**（只读卷 / App Translocation，错误码 `1003` / `1005`）
         //   → `.locationBlocked`。**这一支必须排在最前**：只读卷上 Sparkle 连 appcast
@@ -164,6 +164,15 @@ final class UpdateUserDriver: NSObject, SPUUserDriver {
         //   落点，与当前 `phase` 无关，不该被「已经在终态」挡住。
         //   ⚠️ **这一支护不住 30ms 后那一下**：末尾的 `acknowledgement()` 会让 Sparkle
         //   接着调 `dismissUpdateInstallation()`，那一支也得装同一个闸门（见它自己的注释）。
+        //   ⚠️ 终态现在是**三个**：`.failed` / `.installFailed` / `.locationBlocked`。
+        // - **下载成功之后那一步失败**（解压 / 验签 / 安装，码 3000 / 4000 段）
+        //   → `.installFailed`（2026-09-22 新增，账本第 43 行）。
+        //   **这一支必须排在「下载失败」之前**：两者都发生在 `phase == .downloading` 期间
+        //   （下载完成到安装完成之间 `phase` 还是 `.downloading(version: 1)`），
+        //   只能靠**错误码**区分。不分开的话界面会写「网络不可用」——
+        //   而下载其实是成功的（QA 真机实测：真签名 dmg + 安装器起不来）。
+        //   ⚠️ 它**不看 `phase`**：安装失败也可能在 `.ready` 之后再到达
+        //   （用户点了「立即重启」、安装器失败）—— 那时说「安装失败」同样是对的。
         // - **正在下载时出错 = 下载失败** → `.failed`（界面：文案 + 「重试」按钮）。
         //   这是 `.failed` 在 user driver 这条路上的来源 ——
         //   2026-09-18 实扫发现 `driverDidFailDownload` 当时**全仓库没有调用点**，
@@ -176,9 +185,9 @@ final class UpdateUserDriver: NSObject, SPUUserDriver {
         // （设置行 + 日志）。给一个「更新失败」弹窗会打断用户拔盘，
         // 而这件事与他此刻在做的事无关。
         //
-        // 判据走三个**纯函数**（`isUpdateLocationBlocked(_:)` / `isTerminalPhase(_:)` /
-        // `isDownloadFailure(phase:)`，都有单测）—— 不新增「这一错是什么错」的位：
-        // 能派生就别用「手动开关」。
+        // 判据走四个**纯函数**（`isUpdateLocationBlocked(_:)` / `isTerminalPhase(_:)` /
+        // `isPostDownloadFailure(_:)` / `isDownloadFailure(phase:error:)`，都有单测）——
+        // 不新增「这一错是什么错」的位：能派生就别用「手动开关」。
         Self.logger.error("更新出错：\(error.localizedDescription, privacy: .public)")
         if let controller, UpdateController.isUpdateLocationBlocked(error) {
             controller.driverDidBlockAtLocation()
@@ -194,7 +203,13 @@ final class UpdateUserDriver: NSObject, SPUUserDriver {
                 已处于终态 \(String(describing: controller.phase), privacy: .public)，\
                 本次错误不改写状态（后到的回调不覆盖先到的结果，§8.121）
                 """)
-        } else if let controller, UpdateController.isDownloadFailure(phase: controller.phase) {
+        } else if let controller, UpdateController.isPostDownloadFailure(error) {
+            controller.driverDidFailInstall(version: controller.pendingUpdate?.version)
+        } else if let controller,
+            UpdateController.isDownloadFailure(
+                phase: controller.phase, error: error
+            )
+        {
             controller.driverDidFailDownload(version: controller.pendingUpdate?.version)
         } else {
             controller?.driverDidReset()

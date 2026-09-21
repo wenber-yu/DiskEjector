@@ -343,6 +343,9 @@ struct SettingsLayoutTests {
             ("下载中（无百分比）", row(.downloading(version: "1.1.0", fraction: nil))),
             ("已就绪", row(.ready(version: "1.1.0"))),
             ("失败", row(.failed(version: "1.1.0"))),
+            // 2026-09-22 加的那一态（账本第 43 行）：**下载成功、但之后那一步失败**
+            // （解压 / 验签 / 安装）。文案是「%@ 安装失败」+ 一句说明 —— 也**必须有第二行**。
+            ("安装失败", row(.installFailed(version: "1.1.0"))),
             // 2026-09-20 加的那一态（§8.94 / §8.95.7）：只读卷 / App Translocation。
             // 文案是「请把应用拷到『应用程序』文件夹」+ 一句说明 —— 也**必须有第二行**。
             ("位置不允许更新", row(.locationBlocked)),

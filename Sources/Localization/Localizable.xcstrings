@@ -624,6 +624,20 @@
         "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "背景下載並重新啟動" } }
       }
     },
+    "updateInstallFailedFormat" : {
+      "localizations" : {
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "%@ 安装失败" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Failed to install %@" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "%@ 安裝失敗" } }
+      }
+    },
+    "updateInstallFailedHint" : {
+      "localizations" : {
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "更新已下载，但没能装上。可以重试。" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "It downloaded, but couldn't be installed. Try again." } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "更新已下載，但沒能裝上。可以重試。" } }
+      }
+    },
     "updateLocationBlocked" : {
       "localizations" : {
         "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "请把应用拷到「应用程序」文件夹" } },

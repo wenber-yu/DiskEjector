@@ -566,6 +566,8 @@ struct SnapshotRenderTests {
             ("downloading-unknown", row(.downloading(version: "1.1.0", fraction: nil))),
             ("ready", row(.ready(version: "1.1.0"))),
             ("failed", row(.failed(version: "1.1.0"))),
+            // 2026-09-22 加的那一态（账本第 43 行）：下载成功、但没装上。
+            ("install-failed", row(.installFailed(version: "1.1.0"))),
             // 2026-09-20 加的那一态（§8.94 / §8.95.7）：只读卷 / App Translocation。
             ("location-blocked", row(.locationBlocked)),
         ]

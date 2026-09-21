@@ -610,6 +610,19 @@ struct SettingsSectionsColumn: View {
                 description: L10n.tr(.updateFailedHint)
             ) { retryUpdateButton }
 
+        case .installFailed(let version):
+            // ⚠️ **不复用 `updateFailedFormat` / `updateFailedHint`**（2026-09-22，账本第 43 行）：
+            // 那两条写的是「下载失败 / 网络不可用」，而这一态**下载是成功的**
+            // （失败的是解压 / 验签 / 安装）。用户照着「网络不可用」会去查网络，
+            // 而真相跟他网络无关 —— 那是句谎，且这一态会一直挂着（不会一闪而过）。
+            //
+            // 「重试」仍然是同一个按钮：它走 `retryDownload()` ⇒ 重新检查并再走一遍
+            // ⇒ 对「装不上去」是一次**真的**重试（不是点了没反应）。
+            line(
+                label: String(format: L10n.tr(.updateInstallFailedFormat), version),
+                description: L10n.tr(.updateInstallFailedHint)
+            ) { retryUpdateButton }
+
         case .locationBlocked:
             // ⚠️ **不给按钮**：我们没法替用户把 `.app` 搬进「应用程序」文件夹，
             // 而「重试」在只读卷上**必然再失败**（Sparkle 连 appcast 都不会去取，

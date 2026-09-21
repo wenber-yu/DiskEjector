@@ -5,7 +5,7 @@
    来源：Sources/Localization/Localizable.xcstrings
        + DiskEjector-UI-Design/v2/assets/i18n-extra.json
    ----------------------------------------------------------------------------
-   源指纹 4f279e25bddb15e01499ebb0f149e36e972a2cf0543a510fc159a5e1994f84d3
+   源指纹 6a32e0f0c9681429f7e180fc912fc6ce14c23ad7a9b3ca22811725724d746cba
      = sha256(xcstrings + extra + 本脚本) —— 任一方变了它就是旧的，
        由 DesignDraftIntegrityTests 拦下「改了源忘了重跑」。
    ----------------------------------------------------------------------------
@@ -223,6 +223,8 @@ window.DS_L10N = {
       "updateFoundFormat": "发现 %@ · 上次检查：%@",
       "updateFoundShortFormat": "发现 %@",
       "updateInstallAndRestart": "后台更新并重启",
+      "updateInstallFailedFormat": "%@ 安装失败",
+      "updateInstallFailedHint": "更新已下载，但没能装上。可以重试。",
       "updateLocationBlocked": "请把应用拷到「应用程序」文件夹",
       "updateLocationBlockedHint": "应用当前所在的磁盘位置不允许它更新自己。",
       "updateNeverChecked": "尚未检查",
@@ -433,6 +435,8 @@ window.DS_L10N = {
       "updateFoundFormat": "%@ available · Last checked: %@",
       "updateFoundShortFormat": "%@ available",
       "updateInstallAndRestart": "Update in Background & Restart",
+      "updateInstallFailedFormat": "Failed to install %@",
+      "updateInstallFailedHint": "It downloaded, but couldn't be installed. Try again.",
       "updateLocationBlocked": "Move the app to your Applications folder",
       "updateLocationBlockedHint": "The app can't update itself from where it is right now.",
       "updateNeverChecked": "Not checked yet",
@@ -643,6 +647,8 @@ window.DS_L10N = {
       "updateFoundFormat": "發現 %@ · 上次檢查：%@",
       "updateFoundShortFormat": "發現 %@",
       "updateInstallAndRestart": "背景下載並重新啟動",
+      "updateInstallFailedFormat": "%@ 安裝失敗",
+      "updateInstallFailedHint": "更新已下載，但沒能裝上。可以重試。",
       "updateLocationBlocked": "請把應用程式拷到「應用程式」資料夾",
       "updateLocationBlockedHint": "應用程式目前所在的磁碟位置不允許它更新自己。",
       "updateNeverChecked": "尚未檢查",

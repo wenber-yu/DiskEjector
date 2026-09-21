@@ -29,6 +29,15 @@ struct UpdateSettingsTests {
         try String(contentsOf: repoRoot.appendingPathComponent(relative), encoding: .utf8)
     }
 
+    /// 造一个 Sparkle 域的错误。
+    ///
+    /// ⚠️ **用字面量**（`SUSparkleErrorDomain` 字符串 + 码），别引 `SUError.*`：
+    /// 两边同源就成了「拿常量跟自己比」，Sparkle 哪天改了数字也测不出来
+    /// （同 `isUpdateLocationBlocked` 那条规矩）。
+    private func sparkleError(_ code: Int) -> NSError {
+        NSError(domain: "SUSparkleErrorDomain", code: code)
+    }
+
     /// 取一个成员函数的方法体（签名之后、下一个同缩进的成员声明之前）。
     ///
     /// **为什么不直接对整份源码 `contains`**：整文件搜索会被**别处的一句注释或死代码**
@@ -472,27 +481,84 @@ struct UpdateSettingsTests {
     /// 「分支写反了」或「被删掉了」都不会有任何断言变红
     /// —— 2026-09-18 实扫发现 `driverDidFailDownload` 当时**全仓库没有调用点**，就是这么发生的。
     @Test func 只有正在下载时出错才算下载失败() {
-        #expect(UpdateController.isDownloadFailure(phase: .downloading(version: "1.1.0", fraction: 0)))
-        #expect(UpdateController.isDownloadFailure(phase: .downloading(version: "1.1.0", fraction: 0.97)))
+        // ⚠️ 一律用**字面量**造错误码，别引 `SUError.*` —— 两边同源就成了「拿常量跟自己比」
+        // （同 `isUpdateLocationBlocked` 那条规矩）。
+        let download = sparkleError(2001)  // SUDownloadError
+        #expect(
+            UpdateController.isDownloadFailure(phase: .downloading(version: "1.1.0", fraction: 0), error: download))
+        #expect(
+            UpdateController.isDownloadFailure(phase: .downloading(version: "1.1.0", fraction: 0.97), error: download))
 
         // 其余每一态都不是「下载失败」——**尤其 `.failed` 自己**：
         // 它已经在这一态里了，再判一次会让错误处理递归地停不下来。
-        #expect(!UpdateController.isDownloadFailure(phase: .idle))
-        #expect(!UpdateController.isDownloadFailure(phase: .found(version: "1.1.0")))
-        #expect(!UpdateController.isDownloadFailure(phase: .ready(version: "1.1.0")))
-        #expect(!UpdateController.isDownloadFailure(phase: .failed(version: "1.1.0")))
+        #expect(!UpdateController.isDownloadFailure(phase: .idle, error: download))
+        #expect(!UpdateController.isDownloadFailure(phase: .found(version: "1.1.0"), error: download))
+        #expect(!UpdateController.isDownloadFailure(phase: .ready(version: "1.1.0"), error: download))
+        #expect(!UpdateController.isDownloadFailure(phase: .failed(version: "1.1.0"), error: download))
         // 2026-09-20 补的两态：**尤其 `.checking`** —— 用户点「检查更新」之后、
         // Sparkle 还没答的那几秒，`showUpdaterError` 是可能到的（feed 拿不到）。
         // 若被算成「下载失败」，界面会写「1.1.0 下载失败」—— 而**根本还没开始下载**。
         #expect(
-            !UpdateController.isDownloadFailure(phase: .checking),
+            !UpdateController.isDownloadFailure(phase: .checking, error: download),
             "「正在检查」被算成「下载失败」了 —— 那一刻还没开始下载，文案会凭空冒出「%@ 下载失败」")
         #expect(
-            !UpdateController.isDownloadFailure(phase: .locationBlocked),
+            !UpdateController.isDownloadFailure(phase: .locationBlocked, error: download),
             "「位置不允许更新」被算成「下载失败」了 —— 它不是网络问题，重试在只读卷上必然再失败（§8.94）")
+        #expect(
+            !UpdateController.isDownloadFailure(phase: .installFailed(version: "1.1.0"), error: download),
+            "「安装失败」被算成「下载失败」了 —— 下载其实是成功的（账本第 43 行）")
+
+        // ⚠️ **下载 / 之后那一步的分流**：同样是「正在下载」期间，靠**错误码**区分。
+        // 不分开的话界面会写「网络不可用」，而下载其实完成了（QA 2026-09-22 真机实测）。
+        for code in [3000, 3001, 3002, 4000, 4003, 4005, 4012] {
+            #expect(
+                !UpdateController.isDownloadFailure(
+                    phase: .downloading(version: "1.1.0", fraction: 1), error: sparkleError(code)),
+                "码 \(code)（解压 / 验签 / 安装段）在「正在下载」期间被判成**下载失败**了 —— 界面会写「网络不可用」，而下载已完成")
+        }
     }
 
-    /// **终态的真值表** —— 七个 case 逐个钉一遍，一个不漏。
+    /// **「下载已完成，但之后那一步失败」的分段判据**（账本第 43 行）—— 纯函数真值表。
+    ///
+    /// ⚠️ **单测用字面量**（域字符串 + 码），别引 `SUError.*`：两边同源就成了「拿常量跟自己比」，
+    /// Sparkle 哪天改了数字也测不出来（同 `isUpdateLocationBlocked` 那条规矩）。
+    @Test func 只有下载之后的那些错误才算安装失败() {
+        // ① 3000 段（解压 / 验签 / 校验）+ 4000 段（安装）⇒ **是**。
+        for code in [3000, 3001, 3002, 4000, 4003, 4005, 4012] {
+            #expect(
+                UpdateController.isPostDownloadFailure(sparkleError(code)),
+                "码 \(code) 属于「下载之后」那段（`SUErrors.h:54-71`），判成不是 ⇒ 界面会写「网络不可用」")
+        }
+
+        // ② 其余每一段都**不是**。
+        for code in [1000, 1003, 1005, 2000, 2001, 5000] {
+            #expect(
+                !UpdateController.isPostDownloadFailure(sparkleError(code)),
+                "码 \(code) 不属于「下载之后」那段 —— 判成是的话，真正的下载失败会被写成「安装失败」")
+        }
+
+        // ③ **域不对 ⇒ 一概不算**（这是任务书点名要写清的一条）。
+        //    码的分段只在 `SUSparkleErrorDomain` 里成立；拿别的域的码去套 3000/4000 是在猜，
+        //    猜错的代价是谎话。⇒ 无法分类的错误交给 `isDownloadFailure(phase:error:)` 那边。
+        #expect(
+            !UpdateController.isPostDownloadFailure(
+                NSError(domain: "NSURLErrorDomain", code: 4005, userInfo: nil)),
+            "别的域的 4005 被当成「安装失败」了 —— 码的分段只在 `SUSparkleErrorDomain` 里成立")
+        #expect(
+            !UpdateController.isPostDownloadFailure(
+                NSError(domain: "SomeOtherDomain", code: 3001, userInfo: nil)),
+            "别的域的 3001 被当成「安装失败」了 —— 同上")
+
+        // ④ **无法分类的错误在「正在下载」期间仍算下载失败** —— 这是有意的选择：
+        //    宁可给一个「下载失败 + 重试」的可操作态，也不让它掉进 else ⇒ `.idle` ⇒ 无声消失
+        //    （§8.121 + QA 复验修掉的那个病，不许再犯）。
+        let unknown = NSError(domain: "NSURLErrorDomain", code: -1001, userInfo: nil)
+        #expect(
+            UpdateController.isDownloadFailure(phase: .downloading(version: "1.1.0", fraction: 0.5), error: unknown),
+            "无法分类的错误被推出「下载失败」了 ⇒ 它会掉进 else ⇒ `.idle` ⇒ 无声消失（前两轮刚修掉的病）")
+    }
+
+    /// **终态的真值表** —— 每个 case 逐个钉一遍，一个不漏。
     ///
     /// 为什么必须逐个钉：这个判据的**全部**内容就是「哪个 case 算终态」，而它防的那件事
     /// （弹窗路下载失败被后到的回调冲回 `.idle`，§8.121 + QA 2026-09-22 复验）
@@ -502,13 +568,22 @@ struct UpdateSettingsTests {
     ///
     /// ⚠️ **判据是「这一态说的是过去的事实，还是对一个还活着的会话的主张」**：
     /// 只有前者收 UI 也抹不掉（详见 ``UpdateController/isTerminalPhase(_:)``）。
-    @Test func 终态只含已成事实的那两态() {
+    ///
+    /// ⚠️ **名字里不写数量**（原来叫「那三态」/「那两态」）：加一态就要改一次名字，
+    /// 而改漏的那次它就成了假话（同 `更新行各态渲染出来必须一样高` 那条的理由）。
+    @Test func 终态只含已成事实的那些态() {
         // ① 终态：**已经发生的事实** ⇒ 收 UI 不许抹掉它。
         #expect(
             UpdateController.isTerminalPhase(.failed(version: "1.1.0")),
             """
             `.failed` 不算终态 ⇒ 弹窗路下载失败会被后到的那条冲回 `.idle`
             —— 这正是 §8.121 实测到的 bug 本身
+            """)
+        #expect(
+            UpdateController.isTerminalPhase(.installFailed(version: "1.1.0")),
+            """
+            `.installFailed` 不算终态 ⇒ 「下载成功但没装上」会无声消失（账本第 43 行）。
+            它与 `.failed` 是同一个病的两半：都是「已经发生了、且必须让用户看见」的结果
             """)
         #expect(
             UpdateController.isTerminalPhase(.locationBlocked),
@@ -614,6 +689,85 @@ struct UpdateSettingsTests {
             """)
         // 还原：消费掉本用例自己攥住的那个 reply（`driverDidReset()` 不清它）。
         controller.installReadyUpdate()
+
+        // ④ `.installFailed`：与 `.failed` 同一个病的两半，一样不许被冲掉。
+        controller.driverDidFailInstall(version: "2026.09.21.1")
+        driver.showUpdaterError(error, acknowledgement: acknowledge)
+        #expect(
+            controller.phase == .installFailed(version: "2026.09.21.1"),
+            """
+            这一串跑完后 `.installFailed` 变成了 \(controller.phase) ——
+            「下载成功但没装上」又会无声消失（账本第 43 行）
+            """)
+    }
+
+    /// ⚠️ **账本第 43 行的行为复现**（2026-09-22）：**下载成功、安装失败**必须有自己的落点。
+    ///
+    /// 真机（QA）：真签名 dmg 下载成功、EdDSA 验签过了，界面走到「正在后台下载 …」之后报
+    /// `运行更新程序时出现错误`。此时 `phase` 仍是 `.downloading` ⇒ 旧判据判成**下载失败**
+    /// ⇒ 界面写「网络不可用」—— 而**下载其实是成功的**，那是句谎。
+    ///
+    /// ⚠️ **两个不许**（两个方向都要钉，只钉一个是没用的）：
+    /// 1. **不许落到 `.failed`** ⇒ 否则界面写「网络不可用」；
+    /// 2. **更不许落到 `.idle`** ⇒ 否则**又一次无声消失**（§8.121 + QA 复验修掉的那个病）。
+    ///    这一半尤其要紧：只把安装失败从下载失败里**排除**、却不给它落点的话，
+    ///    它掉进的是 else ⇒ `driverDidReset()`。
+    ///
+    /// ⚠️ acknowledgement **不许留空**（上一轮那条瞎测试的教训）。
+    @MainActor
+    @Test func 下载成功但安装失败必须落到安装失败那一态() {
+        let controller = UpdateController.shared
+        let driver = UpdateUserDriver(controller: controller)
+        defer { controller.driverDidReset() }
+
+        let acknowledge = { driver.dismissUpdateInstallation() }
+
+        // 真机上 `pendingUpdate` 由 `showUpdateFound` 填好（版本号就来自它）。
+        // 不填的话 `driverDidFailInstall` 会退化成 `"?"` ⇒ 断言测不到版本。
+        let update = PendingUpdate(
+            version: "2026.09.21.1",
+            newBuild: "999",
+            currentVersion: "2026.09.21.1",
+            currentBuild: "235",
+            date: nil,
+            sizeBytes: 0,
+            notes: [])
+        controller.driverDidFindUpdate(update, autoDownloads: false, reply: { _ in })
+
+        // ① 下载**已开始**（真机上到安装完成之前 `phase` 一直是 `.downloading`），
+        //    但错误是**安装段**（4005 `SUInstallationError`）。
+        controller.driverDidStartDownload(version: update.version, cancellation: {})
+        #expect(controller.phase == .downloading(version: "2026.09.21.1", fraction: 0))
+        driver.showUpdaterError(sparkleError(4005), acknowledgement: acknowledge)
+        #expect(
+            controller.phase == .installFailed(version: "2026.09.21.1"),
+            """
+            下载中报了安装段的错，落点是 \(controller.phase) ——
+            必须是 `.installFailed`：落到 `.failed` 会写「网络不可用」（谎话），
+            落到 `.idle` 就是又一次无声消失（§8.121）
+            """)
+
+        // ② 3000 段（解压 / 验签）同理：下载也完成了，不许写「网络不可用」。
+        controller.driverDidStartDownload(version: "2026.09.21.1", cancellation: {})
+        driver.showUpdaterError(sparkleError(3001), acknowledgement: acknowledge)
+        #expect(
+            controller.phase == .installFailed(version: "2026.09.21.1"),
+            "验签失败（3001）同样发生在下载之后 —— 文案不许提网络")
+
+        // ③ 反过来：**真正的下载失败仍要落 `.failed`**（不许被安装那一支抢走）。
+        controller.driverDidStartDownload(version: "2026.09.21.1", cancellation: {})
+        driver.showUpdaterError(sparkleError(2001), acknowledgement: acknowledge)
+        #expect(
+            controller.phase == .failed(version: "2026.09.21.1"),
+            "真的下载失败（2001）落到了 \(controller.phase) —— 那一态的文案才是对的（可以提网络）")
+
+        // ④ 安装失败在 `.ready` 之后到达（用户点了「立即重启」、安装器失败）也要接住。
+        controller.driverIsReady(version: "2026.09.21.1") { _ in }
+        driver.showUpdaterError(sparkleError(4003), acknowledgement: acknowledge)
+        #expect(
+            controller.phase == .installFailed(version: "2026.09.21.1"),
+            "「已就绪」之后安装失败，落点是 \(controller.phase) —— 那时说「安装失败」才是对的")
+        controller.installReadyUpdate()
     }
 
     /// **收 UI 那一支（`dismissUpdateInstallation`）单独钉一遍** —— 它是真机上**真正**
@@ -682,9 +836,18 @@ struct UpdateSettingsTests {
             （§8.121 实测），后到的这条不判终态就会把 delegate 设好的 `.failed` 冲回 `.idle`。实得：
             \(body)
             """)
+        // ⚠️ 只搜 `isDownloadFailure(`，**不搜** `isDownloadFailure(phase:` ——
+        // 后者会因为 `swift-format` 把入参折到下一行而**静默找不到**（实测：2026-09-22 加
+        // `error:` 入参后这条断言就这么假红过一次），症状却是「闸门被删了」。
         let downloadAt = try #require(
-            body.range(of: "isDownloadFailure(phase:")?.lowerBound,
-            "showUpdaterError 里没有 `isDownloadFailure(phase:` —— 改名了就要同步这条断言")
+            body.range(of: "isDownloadFailure(")?.lowerBound,
+            "showUpdaterError 里没有 `isDownloadFailure(` —— 改名了就要同步这条断言")
+        let installAt = try #require(
+            body.range(of: "isPostDownloadFailure(")?.lowerBound,
+            """
+            showUpdaterError 里没有 `isPostDownloadFailure(` —— 少了这一支，安装失败会被写成
+            「网络不可用」（账本第 43 行）
+            """)
 
         #expect(
             terminalAt < downloadAt,
@@ -692,6 +855,14 @@ struct UpdateSettingsTests {
             终态闸门必须排在「是不是正在下载」**之前**。两者互斥，所以顺序当前不影响结果；
             但「已出结果的一律不动」要优先于「再分流一次」——
             将来 `isDownloadFailure` 的口径放宽时，反过来写会让终态重新变成可覆盖。实得：
+            \(body)
+            """)
+        #expect(
+            installAt < downloadAt,
+            """
+            「下载之后那一步失败」那一支必须排在**下载失败**之前：两者都发生在
+            `phase == .downloading` 期间，只能靠错误码区分；反过来写的话安装失败会被判成下载失败
+            ⇒ 界面写「网络不可用」，而下载其实是成功的（账本第 43 行）。实得：
             \(body)
             """)
 
@@ -835,8 +1006,11 @@ struct UpdateSettingsTests {
         let driverSource = try contents("Sources/Services/UpdateUserDriver.swift")
         let errorBody = codeOnly(try functionBody("func showUpdaterError(", in: driverSource))
 
+        // ⚠️ 只搜 `isDownloadFailure(`，**不搜** `isDownloadFailure(phase:` ——
+        // `swift-format` 会把入参折到下一行（2026-09-22 加 `error:` 入参后实测），
+        // 带入参名的那个串就找不到了 ⇒ 断言假红，而症状看着像「分流被删了」。
         #expect(
-            errorBody.contains("isDownloadFailure(phase:"),
+            errorBody.contains("isDownloadFailure("),
             """
             showUpdaterError 没有按「是不是正在下载」分流。
             不分流的话任何错误（feed 拿不到、签名不匹配…）都落进 driverDidReset()，

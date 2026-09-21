@@ -43,6 +43,24 @@ enum UpdatePhase: Equatable {
     case ready(version: String)
     /// 下载失败。
     case failed(version: String)
+    /// **下载成功了，但之后那一步失败** —— 解压 / 验签 / 安装（账本第 43 行，2026-09-22）。
+    ///
+    /// ## 为什么它必须**单独成态**，不能并进 ``failed(version:)``
+    ///
+    /// 真机实测（QA，2026-09-22）：用真签名 dmg 造成功下载时，下载与 EdDSA 验签都过了，
+    /// 界面走到「正在后台下载 …」之后报 `运行更新程序时出现错误`。此时 `phase` 仍是
+    /// `.downloading` ⇒ 旧判据判成「下载失败」⇒ 界面写「**网络不可用**。下次启动会自动重试」
+    /// —— **而下载其实是成功的**，用户会去查网络。
+    ///
+    /// ⚠️ **这一态是被上一轮的修复「放大」后才显眼的**：以前那句谎 30ms 后就被冲回
+    /// `.idle`（一闪而过），现在会**一直挂着**。所以必须给它自己的落点 + 不撒谎的文案。
+    ///
+    /// ⚠️ **不能只是「把安装失败挡掉」**：排除之后它若落进 `showUpdaterError` 的 else
+    /// ⇒ `driverDidReset()` ⇒ `.idle` ⇒ **又一次无声消失**，正是前两轮修掉的那个病
+    /// （§8.121 / QA 复验）。⇒ 排除与落点必须**同一轮一起做**。
+    ///
+    /// 判定见 ``UpdateController/isPostDownloadFailure(_:)``。
+    case installFailed(version: String)
     /// **应用当前所在的位置不允许更新** —— 只读卷（dmg 挂载点）或 App Translocation（§8.94）。
     ///
     /// 这一态**不是「错误处理的细节」，是「不许说谎」**：`SPUUpdater` 发起检查时**即写**
@@ -434,6 +452,10 @@ final class UpdateController: NSObject, ObservableObject {
         case ready(version: String)
         /// 下载失败。
         case failed(version: String)
+        /// **下载成功了，但之后那一步失败**（解压 / 验签 / 安装），见 ``UpdatePhase/installFailed(version:)``。
+        ///
+        /// ⚠️ 文案**不许提网络** —— 下载是成功的，用户会照着「网络不可用」去查网络。
+        case installFailed(version: String)
         /// **应用当前所在的位置不允许更新**（只读卷 / App Translocation，见 ``UpdatePhase/locationBlocked``）。
         ///
         /// ⚠️ **也不给按钮**：我们没法替用户把 `.app` 搬进「应用程序」文件夹 ——
@@ -492,6 +514,8 @@ final class UpdateController: NSObject, ObservableObject {
             return .ready(version: version)
         case .failed(let version):
             return .failed(version: version)
+        case .installFailed(let version):
+            return .installFailed(version: version)
         case .locationBlocked:
             return .locationBlocked
         case .found(let version):
@@ -526,6 +550,21 @@ final class UpdateController: NSObject, ObservableObject {
     /// **判据取自我们自己的状态**（是不是正在下载），不新增一个「这一错是不是下载错」的位 ——
     /// 能派生就别用「手动开关」（同 §「能派生就别用『手动开关』」）。
     ///
+    /// ⚠️ **2026-09-22 加了 `error` 这个入参**（账本第 43 行）：只有「正在下载」还不够 ——
+    /// 下载成功之后（解压 / 验签 / 安装）的失败也发生在 `.downloading` 期间，
+    /// 判成「下载失败」就会写出「网络不可用」这种谎话。⇒ 先排除
+    /// ``isPostDownloadFailure(_:)``，剩下的才算下载失败。
+    ///
+    /// ⚠️ **为什么是「排除安装类」而不是「只认下载段（2000..<3000）」**（与任务书口径的一处偏离，
+    /// 理由必须留着）：只认下载段的话，**不认识的域**（例如某个非 `SUSparkleErrorDomain` 的
+    /// 网络错误）与 **3000 段**（解压 / 验签 / 校验）都会掉进 `showUpdaterError` 的 **else**
+    /// ⇒ `driverDidReset()` ⇒ `.idle` ⇒ **又一次无声消失** —— 那正是前两轮刚修掉的病
+    /// （§8.121 + QA 2026-09-22 复验）。
+    /// ⇒ 无法分类时**宁可给一个可操作的失败态**（`.failed` + 「重试」），也不静默消失：
+    /// 文案不够精确，比「什么都没发生」轻得多。
+    /// （真机侧的风险是有限的：`SPUDownloadDriver.m:100` / `:264` 把下载错误**统一包成**
+    /// `SUSparkleErrorDomain` + `SUDownloadError(2001)`，所以真实下载失败总是能落到这一支。）
+    ///
     /// **为什么抽成纯函数**：真实环境里「下载中报错」**构造不出来**（要真的下载、且真的失败），
     /// 而它正是 `.failed` 那一态的来源。留成驱动里一句 `if case` 的话，
     /// 「分支写反了」或「被删掉了」都不会有任何断言变红
@@ -548,9 +587,71 @@ final class UpdateController: NSObject, ObservableObject {
     ///
     /// ⚠️ **别把它改成「`.failed` 也算」**：那会让两条路互相覆盖 —— 第二条路拿
     /// `pendingUpdate?.version` 再写一次，而这个值为 nil 时会把已知版本号冲成 `"?"`。
-    nonisolated static func isDownloadFailure(phase: UpdatePhase) -> Bool {
-        if case .downloading = phase { return true }
-        return false
+    nonisolated static func isDownloadFailure(phase: UpdatePhase, error: Error) -> Bool {
+        guard case .downloading = phase else { return false }
+        // 「正在下载」+「不是下载之后那一步的错」⇒ 下载失败。
+        // 反过来写（`error` 必须落在 2000 段）会把无法分类的错误送进 else ⇒ 无声消失（见上面）。
+        return !Self.isPostDownloadFailure(error)
+    }
+
+    /// 这个错误是不是「**下载已经成功、但之后那一步失败了**」—— 解压 / 验签 / 安装。
+    ///
+    /// ## 码的分段（`SUErrors.h` 逐行对过，不是转述）
+    ///
+    /// | 段 | 码 | 含义 |
+    /// |---|---|---|
+    /// | 1000 | `SUAppcastParseError` … `SUReleaseNotesError`（`:40-47`） | 取 feed 阶段 |
+    /// | **2000** | `SUTemporaryDirectoryError=2000`、`SUDownloadError=2001`（`:50-51`） | **下载阶段** |
+    /// | **3000** | `SUUnarchivingError=3000`、`SUSignatureError=3001`、`SUValidationError=3002`（`:54-56`） | **解压 / 验签** |
+    /// | **4000** | `SUFileCopyFailure=4000` … `SUInstallationWriteNoPermissionError=4012`（`:59-71`） | **安装阶段** |
+    /// | 5000 | `SUIncorrectAPIUsageError`（`:73`） | 我们用错 API |
+    ///
+    /// ⇒ **3000 与 4000 两段的共同点是「下载已经完了」** ⇒ 界面都不许说「网络不可用」。
+    ///
+    /// ⚠️ **为什么把 3000 段也算进来**（比任务书给的「4000 段」多一段）：
+    /// 验签失败（3001）时说「下载失败 / 网络不可用」同样是句谎，而且它在分段上
+    /// 属于「下载之后」；只认 4000 段的话 3000 段会掉进 else ⇒ 无声消失（同上一条理由）。
+    /// 文案上两者也共用一句真话：**「已下载，但没能装上」** —— 验签没过，确实也没装上。
+    ///
+    /// ## 域不对时怎么办（**不要假设它一定是 `SUSparkleErrorDomain`**）
+    ///
+    /// 域不是 `SUSparkleErrorDomain` ⇒ 一概**不算**这一类（返回 `false`）。理由：
+    /// 码的分段只在那个域里成立，拿别的域的码去套 3000/4000 是在**猜**；
+    /// 而猜错的代价是「安装失败被写成下载失败」（或反过来）—— 谎话。
+    /// ⇒ 无法分类的错误走 ``isDownloadFailure(phase:error:)`` 那半边（若当时在下载）
+    /// 或 else，都不会被本函数截走。
+    ///
+    /// **为什么抽成纯函数**：与 ``isDownloadFailure(phase:error:)`` /
+    /// ``isUpdateLocationBlocked(_:)`` 同一个理由 —— 「真的下载成功、真的安装失败」
+    /// 在测试进程里**构造不出来**（QA 是靠真签名 dmg + 本环境安装器起不来才撞到的）。
+    /// ⚠️ 单测一律用**字面量**（`3000` / `4005` + 域字符串），别引这里的符号 ——
+    /// 同 ``isUpdateLocationBlocked(_:)`` 那条规矩：两边同源就成了「拿常量跟自己比」。
+    ///
+    /// ## ⚠️ 3000 段那一半**只有源码推断 + 单测，没有真机证据**（2026-09-22 QA 复验坐实）
+    ///
+    /// QA 造了一个「只翻一个字节、长度不变」的 dmg（`appcast` 仍带真签名）去撞验签失败，
+    /// 拿到的码**仍是 4005**，不是 3001。源码上这是必然的（QA 逐行对过，我也核过）：
+    ///
+    /// - 「运行更新程序时出现错误」由 `SPUInstallerDriver.m:190` 抛，码是
+    ///   **4005**（`SUInstallationError`）；本环境是自签 ad-hoc ⇒ 安装器的 XPC 连接
+    ///   根本建不起来 ⇒ **所有「下载之后」的失败都退化成 4005**。
+    /// - 3000 段那三个码由 `SUUpdateValidator.m` 抛，而它是作为**安装器回报的
+    ///   underlyingError** 被读出来的（`SPUInstallerDriver.m:98`）⇒ **安装器起不来就永远到不了**。
+    ///
+    /// ⇒ 要拿真机证据必须先让安装器真的能跑起来（Developer ID 签名 +
+    /// Installer Connection/Status entitlement），那是另一件事。**在此之前，3000 段
+    /// 这一半的可信度是「源码推断 + 单测」，不是实测** —— 别把它读成已验证。
+    ///
+    /// ✅ 有一条**阴性**证据反而支持这段区间：`SUInstallationCanceledError`(4007) /
+    /// `SUInstallationAuthorizeLaterError`(4008) 虽然也落在 4000 段，但
+    /// `SPUUIBasedUpdateDriver.m:482` 对这两个码是**直接 `abortUpdate()`、根本不调
+    /// `showUpdaterError`** ⇒ 「用户取消安装」不会被误报成「安装失败」（QA 复验核过）。
+    nonisolated static func isPostDownloadFailure(_ error: Error) -> Bool {
+        let nsError = error as NSError
+        guard nsError.domain == SUSparkleErrorDomain else { return false }
+        // 3000 段（解压 / 验签 / 校验）与 4000 段（安装）之间**没有别的段**，
+        // 所以这一段可以写成一个连续区间（`SUErrors.h:54-71` 逐行对过）。
+        return (3000..<5000).contains(nsError.code)
     }
 
     /// 这个 `phase` 是不是**终态** —— 即「这一格陈述的是一件**已经发生的事实**，
@@ -582,6 +683,9 @@ final class UpdateController: NSObject, ObservableObject {
     ///
     /// - `.failed(version)` → **是**。「1.1.0 **下载失败了**」是一件已经发生的事，
     ///   收 UI 抹不掉它。把它冲回 `.idle` 正是 §8.121 那个 bug 本身。
+    /// - `.installFailed(version)` → **是**（2026-09-22 新增，账本第 43 行）。
+    ///   「**下载成功了，但没装上**」同样是一件已经发生的事；而且它与 `.failed`
+    ///   是同一个病的两半：冲回 `.idle` 会让「装不上去」这件事无声消失。
     /// - `.locationBlocked` → **是**。「**这个位置不允许更新**」同样已成事实
     ///   （它的文档写明「**没有自动出口，也不该有**」）。冲回 `.idle` 就是 §8.94 那句谎 ——
     ///   Sparkle 已把「上次检查时间」写成当下，而它在只读卷上**一次 appcast 都没去取**。
@@ -601,7 +705,7 @@ final class UpdateController: NSObject, ObservableObject {
     ///   把它当终态 ⇒ 界面停在「正在检查更新…」且**没有任何出口** —— 比冲回 `.idle` 糟得多。
     /// - `.idle` → **不是**。它本来就是「什么都没在进行」，reset 到它**不丢任何信息**。
     ///
-    /// ⚠️ **两个终态都有用户侧的出口** —— 「重试」走 `checkForUpdates()`
+    /// ⚠️ **每个终态都有用户侧的出口** —— 「重试」走 `checkForUpdates()`
     /// （它开头就把 `phase` 设回 `.idle`）、位置受限则是用户把 `.app` 拷进「应用程序」
     /// 后重新打开（**新进程**，`phase` 从 `.idle` 起）。⇒ 「收 UI 不动它」**不会把用户锁死**。
     ///
@@ -615,7 +719,7 @@ final class UpdateController: NSObject, ObservableObject {
     /// ⇒ 「终态口径」失效是红的，不是静默的。
     nonisolated static func isTerminalPhase(_ phase: UpdatePhase) -> Bool {
         switch phase {
-        case .failed, .locationBlocked:
+        case .failed, .installFailed, .locationBlocked:
             return true
         case .idle, .checking, .found, .downloading, .ready:
             return false
@@ -745,6 +849,20 @@ extension UpdateController {
         let resolved = version ?? pendingUpdate?.version ?? "?"
         downloadCancellation = nil
         phase = .failed(version: resolved)
+    }
+
+    /// **下载成功了，但之后那一步失败**（解压 / 验签 / 安装）→ ``UpdatePhase/installFailed(version:)``。
+    ///
+    /// ⚠️ 这一态**不能并进 ``driverDidFailDownload(version:)``**：那一态的文案是
+    /// 「%@ 下载失败 / 网络不可用」，而这里的**下载是成功的** —— 那是句谎（账本第 43 行）。
+    ///
+    /// ⚠️ **也不能不落点**：把安装失败从下载失败里排除掉、却不给它一个落点的话，
+    /// 它会掉进 `showUpdaterError` 的 else ⇒ `driverDidReset()` ⇒ `.idle`
+    /// ⇒ 又一次「无声消失」（§8.121 + QA 2026-09-22 复验修掉的那个病）。
+    func driverDidFailInstall(version: String?) {
+        let resolved = version ?? pendingUpdate?.version ?? "?"
+        downloadCancellation = nil
+        phase = .installFailed(version: resolved)
     }
 
     /// 下载并校验完成，等重启。
