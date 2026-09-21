@@ -14338,6 +14338,143 @@ swift-testing 在**创建测试任务**时就发 `started`，**不是在抢到�
 - ⚠️ **本轮的读数全部来自 CLT 工具链**（本机 Xcode 许可仍未接受，见 §8.113.19）——
   它是「没写坏」的证据，不是 CI 的同一把尺子。
 
+### 8.115 推上去才红的那次：**守卫的枚举漏了未入库文件** —— 顺带查清 `/usr/bin/git` 是按 `DEVELOPER_DIR` 分派的
+
+#### 1. 起点：`16ebaf1` 推上去 CI 红，本地 10/10 全绿
+
+推 §8.114 的改动（时间线装置 + 门槛 8）之后 CI 红，两道门没过，而**本地两轮全绿**：
+
+| 门槛 | CI 上 | 本地 |
+|---|---|---|
+| 门槛 8 时间线打点 | `stamp_lines_smoke.sh: line 67: PY…: unbound variable` | 绿 |
+| 测试与覆盖率 | `ToolingClaimTests` 1 个 issue | 绿 |
+
+第二道门**准确地点了名**（这是项目早就有的一条守卫，而且它是对的）：
+
+```
+✘ Test 活文件里变量引用不得紧跟多字节字符() recorded an issue at ToolingClaimTests.swift:253:9:
+  Expectation failed: (claims → ["scripts/test/stamp_lines_smoke.sh L62：$PYTHON 紧跟 、",
+                                 "scripts/test/stamp_lines_smoke.sh L67：$PY 紧跟 （"]).isEmpty → false
+```
+
+⇒ 根因不是「新引入的坑」，是我在**新写的脚本**里又犯了 §8.113 那条老毛病
+（`$变量` 紧跟全角标点）。真正要回答的是：**它为什么没在本地红**。
+
+#### 2. 两条**互不相干**的轴，让同一处躲过了本地门槛
+
+⚠️ 这里最容易含混过去：**同一处代码、两个机制、两条复现路径**。
+
+| 轴 | 谁在红 | 为什么本地绿 | 本地怎么复现 |
+|---|---|---|---|
+| **locale** | 门槛 8（脚本**真的跑**起来） | 本机 locale 是 **C** ⇒ bash 不把全角括号算进变量名 | **能**：跑之前 `export LC_ALL=en_US.UTF-8` |
+| **范围** | `ToolingClaimTests`（**静态**扫文件） | 与 locale **无关**；它**根本没扫到那个文件** | **不能** —— 见下 |
+
+范围那条的机理：
+
+| 环节 | 事实 |
+|---|---|
+| 枚举口径 | `liveToolingFiles()` = `git ls-files`，**默认只看 `--cached`（已入库）** |
+| 本地跑门槛时 | `stamp_lines_smoke.sh` 是**新写的、还没 `git add`** ⇒ untracked ⇒ 不在范围里 |
+| CI 上 | 它已随 `16ebaf1` 入库 ⇒ 在范围里 ⇒ 红 |
+
+**「范围窄了」与「那个文件干净」在输出上逐字相同**（§8.105 的原话）——
+这次它咬的是**守卫自己**。⚠️ 而那条守卫本来就有「范围自证」：
+拿 `git ls-files '*.sh' …` 跟 `git ls-files` 比 —— 两条**共享同一个盲点**，
+所以它对「漏了未入库文件」**一个字都说不出来**。
+
+⇒ **可操作的结论（两条都要做）**：
+① 新文件**先 `git add` 再跑门槛**（把范围轴补上）；
+② 需要时再加 `LC_ALL=en_US.UTF-8`（把 locale 轴补上）。
+⚠️ 只做 ② 会以为「已经按 CI 复现了」—— 而这次 ② **复现不出**守卫那条。
+
+#### 3. 顺带订正：「本机 `/usr/bin/git` 是坏的」这句话不准确
+
+排查范围那条时先要确认「本地那次 git 到底跑没跑」。实测：
+
+```
+$ /usr/bin/git rev-parse --short HEAD
+You have not agreed to the Xcode license agreements. …      ← 零输出、退出码 0
+$ DEVELOPER_DIR=/Library/Developer/CommandLineTools /usr/bin/git rev-parse --short HEAD
+16ebaf1                                                     ← 好的
+```
+
+`/usr/bin/git` 是**按 `DEVELOPER_DIR` 分派**的桩，而 Xcode 许可只卡住 Xcode 那一侧。
+本机跑门槛前会 `source tools/clt_swift_env.sh`（它设 `DEVELOPER_DIR=CLT`）
+⇒ 那次 git 是好的（189 个已入库文件全扫到了，所以 `live.count >= 12` 那条正向锚是绿的）；
+**不 source 时**它才是坏的。
+
+⚠️ 这条把 §8.113.19 的表述钉得更准了：不是「许可挡住了 `/usr/bin/git`」，
+而是「**许可挡住了 Xcode 那一侧，而 `DEVELOPER_DIR` 决定用哪一侧**」——
+它也解释了一个反复出现的困惑：同一个脚本「本地好好的、CI 也好的」，换个上下文就坏。
+
+#### 4. 修法：四处
+
+| # | 改哪儿 | 怎么改 | 治的轴 |
+|---|---|---|---|
+| 1 | `scripts/test/stamp_lines_smoke.sh` | 两处 `$PY` / `\$PYTHON` → `${PY}` / `\${PYTHON}` | locale |
+| 2 | `ToolingClaimTests.gitLsFiles` | 枚举加 `--cached --others --exclude-standard` | 范围 |
+| 3 | `ToolingClaimTests.扫描范围必须覆盖全部活工具文件` | 新增第 ③ 条：用**另一条命令**（`status --porcelain`）交叉自证未入库文件也在范围里 | 范围（**把「范围自证」自己补上牙**） |
+| 4 | `ToolingClaimTests.isLiveToolingFile` | 从 `liveToolingFiles()` 里抽出来，让两条命令用**同一个判据**筛 | 防判据写两份各自漂 |
+
+⚠️ 第 2 条只加 `--others` 而**不**加 `--exclude-standard` 会把构建产物扫进来；
+加上之后实测 `189 → 191`，多的正是两个新脚本。`.build/` 由 `.gitignore` 管（`.gitignore:3`）。
+
+⚠️ 第 3 条的读数必须**打出来**：`[范围自证] 未入库文件 N 个，其中活文件 M 个`。
+它在 **CI 上是空转的**（那时新文件都已入库）—— 不打印的话，「空转」与「查过了没问题」逐字相同。
+
+#### 5. 门与变异
+
+**新增门槛 9「git 判据（必须试跑：坏桩不许被判成可用）」** —— 起因是排查途中撞到的第二个坑：
+`ci_status.sh` 的三处 `git rev-parse` 在坏 git 下**静默拿到空串**，
+回显成「等提交␣␣的 run 出现」（短号位置是空的）、拿 `--commit ""` 去查
+—— **看起来像「run 还没创建」，而真实原因是「自家工具坏了」**。
+（`gh` 内部也要调 `git`，报 `failed to determine base repo: failed to run git: …license…`，
+而它**只认 PATH** ⇒ 修 git 必须排在 gh 之前、并把找到的那份放进 PATH。）
+
+- 新增 `scripts/lib/find_git.sh`（`git_usable` 的判据是**试跑看输出**：
+  `[ -x ]`、`command -v`、退出码**三条都判不出来**）+ `scripts/test/find_git_smoke.sh`。
+- 判据是**一对正负对照**：自造「能干活的假 git」必须判为可用（阳性），
+  两个「存在、可执行、退出码 0 但不干活」的桩必须判为不可用（阴性）——
+  只有阳性的话，`git_usable() { [ -x "$1" ]; }` 这种实现**同样通过**，而那正是要修掉的坏法。
+- **变异验证**：把判据换成 `[ -x "$1" ]` ⇒ 门判红 3 条，且红在**对的那几条**上
+  （两个坏桩 + 端到端绕过失败）。`cp` 备份 + `cmp -s` 两次还原。
+- **范围那条的变异**：放一个 untracked 的违规探针 ⇒ 去掉 `--others` 后必须红，
+  实测**逐条点名**了三个未入库活文件；还原后 `cmp -s` 一致。
+  修前对照也做了：探针在时跑旧枚举 ⇒ **7 条测试全绿**（漏掉了）。
+- 另给 `ci_status_smoke.sh` 加一条**正负对照**用例：假 git 取不到 HEAD ⇒ 必须
+  「取不到本地 HEAD」大声报错，而不是「等 run 出现」。
+  配套新装置 `scripts/test/fake-git-headless/git`（能过 `git_usable` 的探针、但 HEAD 零输出）。
+
+#### 6. 顺带修的两处小坑
+
+- `ci_status_smoke.sh --help` 原来写死 `sed -n '3,30p'` ⇒ 抬头一改就**静默截断**，
+  而截断后的帮助**看起来仍像一份完整的帮助**。改成 `awk 'NR >= 3 { if ($0 !~ /^#/) exit; print }'`。
+- ⚠️ **新建的脚本要 `chmod +x`**：`Write` 不设可执行位，而 `run_gate` 是**直接执行**它的。
+  实测门槛 9 第一次红就是 `Permission denied` —— 与「脚本内容错了」**逐字不同**，容易看错方向。
+
+#### 7. 仍开着
+
+⬜ **`build_app.sh` 是同一病根的第二处消费者**（`build_app.sh:73-85` 四个 `git_*` 函数，
+`2>/dev/null || true`）⇒ 坏 git 下**静默**产出
+`VERSION=1.0.0 / BUILD_NUMBER=1 / commit=unknown / dirty=0` 的包，且因为 `dirty=0` **不打印任何告警**。
+⚠️ 它**没跟着改**是因为语义不同：那里的注释明说「非 git 环境返回空」是**有意**的
+（支持从 tarball 构建）⇒ 要修必须先分清「真的没有 git（容忍）」与「有 git 但它坏了（必须报错）」。
+⬜ §8.114 第 8 节那四条（那条 flaky 的修法）仍然要拍板。
+
+#### 8. 门槛与产物（2026-09-21）
+
+- 门槛 **10/10 通过**（新增「git 判据」为门槛 9，测试与覆盖率成为门槛 10），
+  覆盖率 **62.87%**。
+- ⚠️ 门槛 9 第一次是红的（`Permission denied`），补 `chmod +x` 之后**重跑**才通过 ——
+  纪律是「最后一次改动之后必须重跑」。
+- 新增入库：`scripts/lib/find_git.sh`、`scripts/test/find_git_smoke.sh`、
+  `scripts/test/fake-git-headless/git`；改动：`scripts/ci_status.sh`、
+  `scripts/preflight.sh`、`scripts/test/ci_status_smoke.sh`、
+  `Tests/DiskEjectorAppTests/ToolingClaimTests.swift`。
+- 一次性诊断（**不入库**，`.build/` 会消失）：`.build/probe/scan_unbraced_vars.py`
+  （同口径复刻那条守卫，可在 `git add` **之前**扫；带阳性/阴性对照自证）。
+  ⇒ 有了第 2 条修法之后**不再需要**它，所以没入库。
+
 
 ## 9. 文件清单
 

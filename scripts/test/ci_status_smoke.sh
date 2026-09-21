@@ -24,6 +24,12 @@
 # ✅ **本装置「有牙」的证明**（2026-09-20，见 SPEC §8.107）：把 `ci_status.sh` 的
 #    「查询失败」那一段**整块**退回修复前的写法 ⇒ 本脚本**红**（退出码 1），
 #    且红在**对的那条**用例上，并把错误输出（「还没跑完」而非「查询失败」）打了出来。
+#
+# ✅ 2026-09-21 追加一条：**假 git 取不到 HEAD ⇒ 必须大声报错**。
+#    它守的是 `ci_status.sh` ⓪ 段（找一份真能跑的 git）与「空 HEAD / 空分支名报错」，
+#    背景见 `scripts/lib/find_git.sh`。⚠️ 它与「假 gh：自动路径 ⇒ 查询失败」
+#    构成**正负对照**：那条走「HEAD 拿到了、卡在 gh」，这条走「HEAD 就没拿到」——
+#    少了任一条，都分不出坏在哪一环。
 # ⚠️ 做这个变异时有个陷阱（我踩过一次）：把 `if gh_retry …; then A else B fi` 改成
 #    `info="$(gh_retry …)" || true; …; if false; then A else B fi` **不是**模拟旧行为
 #    —— `if false` ⇒ 走 `else`，**保留的正是新行为** ⇒ 变异会「假绿」，
@@ -36,7 +42,10 @@ for arg in "$@"; do
     case "$arg" in
         --offline) OFFLINE=1 ;;
         -h | --help)
-            sed -n '3,30p' "${BASH_SOURCE[0]}"
+            # ⚠️ **别写死行号区间**（原来是 `sed -n '3,30p'`）：抬头一改，`--help`
+            #    就会**静默截断**（2026-09-21 在抬头加了两段才发现 —— 而截断后的
+            #    帮助文本看起来仍然「像一份完整的帮助」）。改成「从第 3 行打到第一个非注释行」。
+            awk 'NR >= 3 { if ($0 !~ /^#/) exit; print }' "${BASH_SOURCE[0]}"
             exit 0
             ;;
         *)
@@ -86,6 +95,21 @@ run_case "假 gh：自动路径 ⇒ 查询失败" 2 "查询失败" \
 run_case "假 gh：显式 run-id ⇒ 拿不到 run" 2 "拿不到 run" \
     env PATH="$FAKE:$PATH" "$REPO/run.sh" ci 999999999
 run_case "未知参数" 2 "未知参数" "$REPO/run.sh" ci --definitely-not-a-flag
+
+# ---- git 取不到 HEAD 时必须**大声报错**，不能说成「run 还没创建」----
+# 2026-09-21 实测：本环境 `/usr/bin/git` 是 `xcrun` 桩（存在、可执行、退出码 0、
+# 无输出）⇒ 三处 `git rev-parse` 静默拿到空串 ⇒ 回显「等提交␣␣的 run 出现」
+# （短号位置是空的）、拿 `--commit ""` 去查 —— **看起来像「run 还没创建」**。
+# ⚠️ 与上面第一条用例构成**正负对照**：上面那条走的是「HEAD 拿到了、卡在 gh」，
+#    这一条走的是「HEAD 就没拿到」。少了任一条，都分不出是哪一环坏的。
+FAKE_GIT="$REPO/scripts/test/fake-git-headless"
+if [ -x "$FAKE_GIT/git" ]; then
+    run_case "假 git：取不到 HEAD ⇒ 大声报错（不是「等 run 出现」）" 2 "取不到本地 HEAD" \
+        env PATH="$FAKE_GIT:$FAKE:$PATH" "$REPO/run.sh" ci
+else
+    echo "✘ 找不到 $FAKE_GIT/git —— 这条用例**未执行**（跳过 ≠ 通过）"
+    fail=$((fail + 1))
+fi
 
 echo
 if [ "$OFFLINE" = "1" ]; then

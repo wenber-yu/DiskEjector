@@ -1,0 +1,18 @@
+#!/bin/bash
+# 假 git：**能过 `git_usable` 的探针，却取不到 HEAD**。
+#
+# 为什么需要它（2026-09-21）：`ci_status.sh` 里那三处 `git rev-parse` 拿到**空串**时，
+# 原先会照常往下走 —— 回显成「等提交␣␣的 run 出现」（短号位置是空的）、
+# 拿 `--commit ""` 去查。那个形状**看起来像「run 还没创建」**，
+# 而真实原因是「自家 git 调用没出结果」—— 两者诊断方向完全相反。
+# 现在它必须先撞上「取不到本地 HEAD」那条**大声报错**。
+#
+# 用法（见 `scripts/test/ci_status_smoke.sh`）：
+#     env PATH="<本目录>:$PATH" ./run.sh ci
+# ⚠️ 必须排在 PATH **最前**，否则会解析到真的 git，这条用例就变成空转。
+case "${2:-}" in
+    # `git_usable` 的探针：给一个正常输出 ⇒ 判为「可用」
+    --git-dir) echo ".git" ;;
+    # 其余（含 `HEAD` / `--short=7 HEAD` / `--abbrev-ref HEAD`）一律**零输出**
+    *) exit 0 ;;
+esac

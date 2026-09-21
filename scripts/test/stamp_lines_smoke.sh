@@ -59,12 +59,12 @@ pick_python() {
 }
 
 if ! PY="$(pick_python)"; then
-    echo "   ✗ 找不到**能跑的** python3（试过 \$PYTHON、/usr/bin/python3、CLT、PATH）——"
+    echo "   ✗ 找不到**能跑的** python3（试过 \${PYTHON}、/usr/bin/python3、CLT、PATH）——"
     echo "     本次冒烟**未执行**。⚠️ 注意 `[ -x ]` 为真不等于跑得起来：本机上"
     echo "     /usr/bin/python3 就是被 Xcode 许可桩挡住的（只打印许可警告）。"
     exit 1
 fi
-echo "   [自证] 解释器：$PY（$("$PY" --version 2>&1)）"
+echo "   [自证] 解释器：${PY}（$("$PY" --version 2>&1)）"
 if [ ! -f "$STAMPER" ]; then
     echo "   ✗ 找不到 $STAMPER"
     exit 1

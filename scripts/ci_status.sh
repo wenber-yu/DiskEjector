@@ -15,7 +15,14 @@
 # 本地门槛每轮都报「全部门槛通过」，于是「推完就走」这件事没有任何落点。
 # 本地门槛 ≠ CI（本地中文 / runner 英文）⇒ **验收是 CI 自己**。
 #
-# 设计上刻意避开的六个坑（都实测踩过）：
+# 设计上刻意避开的七个坑（都实测踩过）：
+#   ⓪ ⚠️ **`git` 本身可能是个「存在、可执行、退出码 0、但没有输出」的桩**
+#      （Xcode 许可未接受 ⇒ `/usr/bin/git` 是 xcrun 桩）。2026-09-21 实测：
+#      三处 `git rev-parse` 静默拿到空串 ⇒ 回显「等提交␣␣的 run 出现」、
+#      拿 `--commit ""` 去查 —— **看起来像「run 还没创建」**。
+#      且 `gh` 内部也要调 `git`（`failed to determine base repo: failed to run git`）。
+#      ⇒ 修 git 必须排在 gh **之前**，判据是**试跑看输出**（见 `scripts/lib/find_git.sh`）；
+#        并给 HEAD / BRANCH 空值各配一条**大声报错**。
 #   ① `gh` 不在 PATH 里（本环境 PATH 无 /opt/homebrew/bin）→ 绝对路径兜底
 #   ② api.github.com 常见 `unexpected EOF`（约 2/3）→ 每次调用重试 3 次
 #   ③ **「没找到 run」与「绿」在朴素写法下长得一样** → 单列一个退出码 2
@@ -35,6 +42,25 @@ set -uo pipefail
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_DIR" || exit 2
+
+# --- ⓪ 可用的 git（⚠️ 必须排在 `gh` 之前）---
+#
+# 2026-09-21 实测撞到：本环境 `/usr/bin/git` 是 `xcrun` 桩（Xcode 许可未接受）——
+# `[ -x ]` 为真、退出码 0，但**只打印许可警告、标准输出为空**。于是：
+#   ① 下面三处 `git rev-parse` 静默拿到**空串** ⇒ 回显成「等提交␣␣的 run 出现」
+#      （短号位置是空的）、拿 `--commit ""` 去查 —— **看起来像「run 还没创建」，
+#      实际是自家工具坏了**；
+#   ② `gh` 自己也要调 `git`，报 `failed to determine base repo: failed to run git`。
+# ⇒ 修 git 必须排在 gh **之前**：`gh` 只认 PATH，先修好 PATH 它才用得对。
+# 判据与候选见 `scripts/lib/find_git.sh`（判据是**试跑看输出**，不是存在性）。
+. "$(dirname "${BASH_SOURCE[0]}")/lib/find_git.sh"
+if ! find_usable_git; then
+    echo "错误：找不到一个**真能跑**的 git（每个候选都试跑过了）。" >&2
+    echo "      常见原因：Xcode 许可未接受 ⇒ /usr/bin/git 成了 xcrun 桩" >&2
+    echo "      （存在且可执行、退出码 0，但只打印许可警告、没有输出）。" >&2
+    echo "      正解：sudo xcodebuild -license（需要你自己敲一次）。" >&2
+    exit 2
+fi
 
 # --- ① gh 定位 ---
 GH="$(command -v gh 2>/dev/null || true)"
@@ -90,8 +116,22 @@ read_fields() {
 # 而 shell 因此退出时**退出码是 1** —— 与「CI 红」的退出码**相同** ⇒ 会被误读成「CI 红」。
 id=""; status=""; conclusion=""; sha=""; branch=""; title=""
 
-HEAD_FULL="$(git rev-parse HEAD)"
-HEAD_SHORT="$(git rev-parse --short=7 HEAD)"
+# ⚠️ 一律用 `$GIT_BIN`（⓪ 段试跑选出来的那份），不要裸写 `git`：
+#    「找到了一份能跑的」与「这次调用真的用它跑出了东西」是**两件事**，
+#    而 PATH 有可能在中间被别的东西改掉。
+HEAD_FULL="$("$GIT_BIN" rev-parse HEAD)"
+HEAD_SHORT="$("$GIT_BIN" rev-parse --short=7 HEAD)"
+
+# ⚠️ **这两个值不能为空**：空串不会让脚本停，只会让回显**少一个短号**
+#    （「等提交␣␣的 run 出现」）、拿 `--commit ""` 去查 —— 那个形状
+#    **看起来像「run 还没创建」**，与「自家 git 坏了」逐字相同。
+#    2026-09-21 就是这么被带偏的（当时以为是网络/刚推完）。
+#    ⇒ 取不到就**大声报错**，别让它往下走。
+if [ -z "$HEAD_FULL" ] || [ -z "$HEAD_SHORT" ]; then
+    echo "错误：取不到本地 HEAD（$GIT_BIN rev-parse 返回空）—— 无法确定该看哪一次 CI。" >&2
+    echo "      这**不是**「run 还没创建」：是本地 git 调用没出结果。" >&2
+    exit 2
+fi
 
 # --- 定位 run ---
 if [ -n "$RUN_ID" ]; then
@@ -106,7 +146,12 @@ if [ -n "$RUN_ID" ]; then
     read_fields "$info"
 else
     # --- ⑤ 按**当前 HEAD 的提交**查，不是「最近一次」 ---
-    BRANCH="$(git rev-parse --abbrev-ref HEAD)"
+    BRANCH="$("$GIT_BIN" rev-parse --abbrev-ref HEAD)"
+    # 同上：空分支名会让 `--branch ""` 静默查成别的东西
+    if [ -z "$BRANCH" ]; then
+        echo "错误：取不到当前分支名（$GIT_BIN rev-parse --abbrev-ref 返回空）。" >&2
+        exit 2
+    fi
     if [ "$WAIT" -eq 1 ]; then LIMIT=90; else LIMIT=0; fi
 
     waited=0

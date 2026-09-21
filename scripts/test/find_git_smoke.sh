@@ -1,0 +1,148 @@
+#!/usr/bin/env bash
+# =============================================================
+# 冒烟：`scripts/lib/find_git.sh` 的核心契约 ——
+# **「git 跑不跑得起来」只能靠试跑看输出判，不能靠存在性/可执行位/退出码。**
+#
+# 【为什么这条契约必须被守】
+# 本环境（Xcode 许可未接受）实测：`/usr/bin/git` **存在**（`[ -x ]` 为真、
+# `command -v git` 也返回它），但它是 `xcrun` 桩 —— 跑起来只打印一句
+# 「You have not agreed to the Xcode license agreements」、**退出码仍是 0**、
+# **标准输出为空**。2026-09-21 就是这么被带偏的：
+#   - `ci_status.sh` 的三处 `git rev-parse` 静默拿到**空串** ⇒ 回显
+#     「等提交␣␣的 run 出现」（短号位置是空的）、拿 `--commit ""` 去查
+#     ⇒ **看起来像「run 还没创建」，实际是自家工具坏了**；
+#   - `git status --porcelain | wc -l` 更坏：退出码被 `wc` 吃掉 ⇒ 打印 `0`
+#     ⇒ 与「工作区干净」**逐字相同**。
+#
+# 【判据为什么是「一对正负」而不是「一条」】
+# 只断言「对真 git 返回 0」守不住它 —— 那个断言在
+# `git_usable() { [ -x "$1" ]; }` 这种实现上**同样通过**（而那种实现正是
+# 本次要修掉的坏法）。⇒ 必须配**阴性对照**：一个「存在、可执行、退出码 0、
+# 但不干活」的桩，必须被判为**不可用**。两条一起才说明：
+# **是「试跑」在起作用**，而不是「碰巧存在」。
+#
+# 【本脚本不依赖机器上有没有可用的 git】
+# 阳性/阴性对照全部用**自造的假 git**（本目录下现写现用）⇒ 装置是确定的。
+# 只有最后那条端到端用例需要机器上真有一份可用 git；找不到时**判红并说清**
+# （与 `stamp_lines_smoke.sh` 找不到 python3 时同款），**不许静默通过**。
+#
+# 【用法】scripts/test/find_git_smoke.sh
+# 退出码：0 = 通过；1 = 未通过。
+# =============================================================
+set -uo pipefail
+
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+LIB="$REPO_ROOT/scripts/lib/find_git.sh"
+if [ ! -f "$LIB" ]; then
+    echo "   ✗ 找不到 $LIB"
+    exit 1
+fi
+# ⚠️ source 而不是执行：本文件要测的就是那两个函数（它们靠全局变量传结果）。
+# shellcheck source=scripts/lib/find_git.sh
+. "$LIB"
+
+TMP="$(mktemp -d -t find-git-smoke)"
+trap 'rm -rf "$TMP"' EXIT
+
+FAILS=0
+fail() {
+    echo "   ✗ $1"
+    FAILS=$((FAILS + 1))
+}
+
+# ---- 造三个假 git（都**存在且可执行**，区别只在跑起来干什么）----
+# ① 能干活的：输出一个正常的 `rev-parse --git-dir` 结果
+cat > "$TMP/good-git" <<'SH'
+#!/bin/bash
+case "${1:-}" in
+    rev-parse) echo ".git" ;;
+    *) echo ".git" ;;
+esac
+exit 0
+SH
+# ② xcrun 桩的坏法：打印许可警告、**退出码 0**
+cat > "$TMP/license-stub" <<'SH'
+#!/bin/bash
+echo "You have not agreed to the Xcode license agreements. Please run 'sudo xcodebuild -license'." >&2
+echo "You have not agreed to the Xcode license agreements. Please run 'sudo xcodebuild -license'."
+exit 0
+SH
+# ③ 另一种坏法：什么都不打印、退出码 0（只按退出码判的实现会把它当好的）
+cat > "$TMP/silent-stub" <<'SH'
+#!/bin/bash
+exit 0
+SH
+chmod +x "$TMP/good-git" "$TMP/license-stub" "$TMP/silent-stub"
+
+# ---- 装置自证：三个假 git 的**存在性**必须都为真 ----
+# 否则下面「判为不可用」可能只是因为文件没造出来（与「判据生效」逐字相同）。
+for f in good-git license-stub silent-stub; do
+    if [ ! -x "$TMP/$f" ]; then
+        echo "   ✗ 装置坏了：$TMP/$f 不存在或不可执行 ⇒ 本次结论作废"
+        exit 1
+    fi
+done
+echo "   [自证] 三个假 git 都已造出且可执行（${TMP}）"
+echo "   [自证] 许可桩的原始输出（前两行）："
+"$TMP/license-stub" 2>&1 | head -2 | sed 's/^/          /'
+echo "   [自证] 许可桩的退出码：$("$TMP/license-stub" >/dev/null 2>&1; echo $?)（⚠️ 是 0 —— 所以退出码判不出来）"
+
+# ---- ① 阳性：能干活的必须判为可用 ----
+if git_usable "$TMP/good-git"; then
+    echo "   [阳性] 能干活的假 git → 可用 ✓"
+else
+    fail "能干活的假 git 被判成了不可用 ⇒ 判据过严，会把好 git 也挡掉"
+fi
+
+# ---- ② 阴性：三种「看起来有、实际不干活」的必须判为不可用 ----
+for case_spec in "license-stub:打印许可警告（xcrun 桩的坏法）" \
+    "silent-stub:零输出（只按退出码判的实现会放过它）" \
+    "nope-does-not-exist:根本不存在"; do
+    name="${case_spec%%:*}"
+    desc="${case_spec#*:}"
+    if git_usable "$TMP/$name"; then
+        fail "「${desc}」被判成了可用 ⇒ 判据没在**试跑**（本目录下 ${name}）"
+    else
+        echo "   [阴性] 「${desc}」→ 不可用 ✓"
+    fi
+done
+
+# ---- ③ 端到端：坏 git 排在 PATH 最前时，find_usable_git 必须绕过它 ----
+# 这一条测的是**本文件存在的理由**：`command -v git` 拿到的是坏的，
+# 而函数要能继续往下找到一份真的，并把它的目录放进 PATH（`gh` 只认 PATH）。
+ln -sfn "$TMP/license-stub" "$TMP/git"
+OLD_PATH="$PATH"
+PATH="$TMP:$PATH"
+if find_usable_git; then
+    if [ "$GIT_BIN" = "$TMP/git" ]; then
+        fail "find_usable_git 选中了坏的桩（${GIT_BIN}）⇒ 绕过逻辑没生效"
+    else
+        echo "   [端到端] 绕过坏桩，选中：$GIT_BIN"
+        case "$PATH" in
+            "$(dirname "$GIT_BIN")":*)
+                echo "   [端到端] PATH 已前置它的目录（gh 需要）✓"
+                ;;
+            *)
+                fail "PATH 没有被前置 $(dirname "$GIT_BIN") ⇒ gh 仍会用坏的 git"
+                ;;
+        esac
+        if [ -n "$("$GIT_BIN" rev-parse HEAD 2>/dev/null)" ]; then
+            echo "   [端到端] 用它取到了 HEAD：$("$GIT_BIN" rev-parse --short=7 HEAD 2>/dev/null) ✓"
+        else
+            fail "选中的 git 取不到 HEAD ⇒ 「可用」的判据太松"
+        fi
+    fi
+else
+    echo "   ✗ 本机找不到任何**真能跑**的 git（候选都试跑过了）——"
+    echo "     本次端到端用例**未执行**。⚠️ 这不是「代码问题」："
+    echo "     正解是 sudo xcodebuild -license（需要你自己敲一次），"
+    echo "     或装 Command Line Tools。"
+    FAILS=$((FAILS + 1))
+fi
+PATH="$OLD_PATH"
+
+if [ "$FAILS" -gt 0 ]; then
+    echo "   ✗ 未通过（$FAILS 条）："
+    exit 1
+fi
+echo "   ✓ 通过：判据是「试跑」而非「存在」；坏 git 会被绕过并接上可用的那份"

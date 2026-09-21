@@ -162,21 +162,58 @@ import Testing
 
     // MARK: 范围
 
-    /// `git ls-files <patterns…>`（不传 patterns = 全部被跟踪文件）；拿不到输出返回 `nil`。
+    /// `git ls-files --cached --others --exclude-standard <patterns…>`；拿不到输出返回 `nil`。
     ///
     /// ⚠️ **用 git，而不是自己遍历文件系统**：`.gitignore` 的规则**由 git 自己解释**，
     /// 自己写一份「跳过哪些目录」等于又添一份会漂的手写清单 —— 那正是本节要防的病（§8.105）。
+    ///
+    /// ⚠️ **必须带 `--others`（未入库文件也在范围内）** —— 2026-09-21 实测踩到：
+    /// 只写 `ls-files`（= 只看 `--cached`）时，**刚建、还没 `git add` 的新脚本不进范围**。
+    /// 于是同一条违规在**本地全绿**（`stamp_lines_smoke.sh` 当时是 untracked）、
+    /// **推上去才红**（CI 上它已入库）。「范围窄了」与「那个文件干净」在输出上
+    /// **逐字相同** —— 正是 §8.105 那句原话，这次它咬的是**守卫自己**。
+    /// ⚠️ 而 `.build/` 之类**被忽略**的目录靠 `--exclude-standard` 排除，
+    /// 所以加了 `--others` 也不会把构建产物扫进来（实测：189 → 191，多的正是两个新脚本）。
     static func gitLsFiles(_ patterns: [String] = []) async -> [String]? {
         let output = await withCheckedContinuation { (c: CheckedContinuation<String?, Never>) in
             let run = SubprocessOutput(
                 executableURL: URL(fileURLWithPath: "/usr/bin/git"),
-                arguments: ["-C", repoRoot.path, "-c", "core.quotePath=false", "ls-files"] + patterns,
+                arguments: [
+                    "-C", repoRoot.path, "-c", "core.quotePath=false",
+                    "ls-files", "--cached", "--others", "--exclude-standard",
+                ] + patterns,
                 timeout: 15
             ) { c.resume(returning: $0) }
             run.start()
         }
         guard let output else { return nil }
         return output.split(separator: "\n").map(String.init).filter { !$0.isEmpty }
+    }
+
+    /// **未入库**文件的清单 —— 用**另一条 git 命令**取（`status --porcelain` 默认就报
+    /// 未跟踪文件）。拿不到输出返回 `nil`。
+    ///
+    /// ⚠️ 存在的理由：给「枚举范围」做交叉自证时，**不能拿 `ls-files` 跟 `ls-files` 对拍** ——
+    /// 两条同源命令会**共享同一个盲点**（2026-09-21：`扫描范围必须覆盖全部活工具文件`
+    /// 原本就是这样，于是它对「漏了未入库文件」这件事**一个字都说不出来**）。
+    static func gitUntrackedFiles() async -> [String]? {
+        let output = await withCheckedContinuation { (c: CheckedContinuation<String?, Never>) in
+            let run = SubprocessOutput(
+                executableURL: URL(fileURLWithPath: "/usr/bin/git"),
+                arguments: [
+                    "-C", repoRoot.path, "-c", "core.quotePath=false",
+                    "status", "--porcelain", "--untracked-files=all",
+                ],
+                timeout: 15
+            ) { c.resume(returning: $0) }
+            run.start()
+        }
+        guard let output else { return nil }
+        // 每行形如 `?? path`；只取未跟踪那一类（改/删的文件不影响本判据）。
+        return
+            output.split(separator: "\n").map(String.init)
+            .filter { $0.hasPrefix("?? ") }
+            .map { String($0.dropFirst(3)) }
     }
 
     /// 文件首行；读不到返回 `nil`。只读 512 字节 —— 判断 shebang 用不着整个文件
@@ -188,24 +225,24 @@ import Testing
         return String(decoding: data, as: UTF8.self).prefix { $0 != "\n" }.description
     }
 
-    /// 「活文件」清单：被 git 跟踪，且（扩展名是 `yml`/`yaml` **或** 首行是 `#!`）。
+    /// 单个文件算不算「活文件」：扩展名是 `yml`/`yaml` **或** 首行是 `#!`。
+    ///
+    /// ⚠️ 抽成函数是为了让「范围交叉自证」能用**同一个判据**去筛**另一条** git 命令的输出 ——
+    /// 判据若各写一份，两边会各自漂（那正是本节要防的病）。
+    static func isLiveToolingFile(_ rel: String) -> Bool {
+        let url = repoRoot.appendingPathComponent(rel)
+        var isDir: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDir), !isDir.boolValue
+        else { return false }
+        if ["yml", "yaml"].contains(url.pathExtension) { return true }
+        return firstLine(of: url)?.hasPrefix("#!") == true
+    }
+
+    /// 「活文件」清单：**入库的与未入库的都要**（只要没被 `.gitignore` 排掉），
+    /// 且满足 `isLiveToolingFile`。⚠️ 为什么必须含未入库的，见 `gitLsFiles` 的抬头。
     static func liveToolingFiles() async -> [String]? {
         guard let all = await gitLsFiles() else { return nil }
-        var live: [String] = []
-        for rel in all {
-            let url = repoRoot.appendingPathComponent(rel)
-            var isDir: ObjCBool = false
-            guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDir), !isDir.boolValue
-            else { continue }
-            if ["yml", "yaml"].contains(url.pathExtension) {
-                live.append(rel)
-                continue
-            }
-            if firstLine(of: url)?.hasPrefix("#!") == true {
-                live.append(rel)
-            }
-        }
-        return live
+        return all.filter { Self.isLiveToolingFile($0) }
     }
 
     // MARK: 守卫
@@ -381,6 +418,12 @@ import Testing
     /// 1. 交叉自证：`git ls-files '*.sh' '*.yml' '*.yaml'` 的结果必须**全在**枚举结果里
     ///    （若 shebang 判定坏了、或只认 `.yml`，这里当场报出来）；
     /// 2. **无扩展名的脚本必须在范围里** —— 它正是「不能用扩展名当判据」的理由。
+    /// 3. **未入库（untracked）的活文件也必须在范围里** —— 2026-09-21 实测：
+    ///    原先只枚举 `--cached`，新脚本在 `git add` **之前**不在范围里，
+    ///    于是同一条违规**本地全绿、推上去才红**（`stamp_lines_smoke.sh` 就是这么红的）。
+    ///    ⚠️ 这一条的对照物是**另一条 git 命令**（`status --porcelain`）：
+    ///    拿 `ls-files` 跟 `ls-files` 对拍等于**共享同一个盲点**，对这件事一个字都说不出来。
+    ///    ⚠️ 它在 CI 上是**空转**的（那时新文件都已入库）—— 它守的正是「推之前」那一刻。
     @Test func 扫描范围必须覆盖全部活工具文件() async throws {
         let listed = await Self.liveToolingFiles()
         let live = try #require(listed, "拿不到 `git ls-files` 的输出 —— 装置没跑起来（**不等于**「范围没问题」）")
@@ -405,6 +448,24 @@ import Testing
             无扩展名的 `scripts/test/fake-gh/gh` 没进范围 ——
             枚举退化成「只看扩展名」了。它是**可执行脚本**（首行 `#!`），
             正是「不能拿扩展名当判据」的理由。
+            """)
+
+        // ---- ③ 未入库文件：换一条 git 命令交叉自证 ----
+        let untracked = try #require(
+            await Self.gitUntrackedFiles(),
+            "拿不到 `git status --porcelain` 的输出 —— 交叉自证没跑起来（**不等于**「范围没问题」）")
+        let untrackedLive = untracked.filter { Self.isLiveToolingFile($0) }
+        let missedUntracked = untrackedLive.filter { !live.contains($0) }
+        // ⚠️ 把读数打出来：一个未入库活文件都没有时，下面那条断言是**空转**的
+        //    （报绿 ≠ 扫过了）—— 不打印的话，「空转」与「查过了没问题」逐字相同。
+        print("   [范围自证] 未入库文件 \(untracked.count) 个，其中活文件 \(untrackedLive.count) 个")
+        #expect(
+            missedUntracked.isEmpty,
+            """
+            这些**未入库**的活文件没进范围：\(missedUntracked.joined(separator: "、"))
+            ⇒ 新写的脚本在 `git add` 之前不被扫 ⇒ **本地全绿、推上去才红**
+            （2026-09-21 实测：`scripts/test/stamp_lines_smoke.sh`）。
+            改法：`gitLsFiles` 的枚举带 `--others --exclude-standard`。
             """)
     }
 }
