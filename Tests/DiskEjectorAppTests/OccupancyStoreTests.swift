@@ -48,17 +48,30 @@ private func makeDisk(_ path: String) -> DiskInfo {
 /// 真根因是「这条链路没有可等待的信号」，只能轮询；
 /// 若哪天它开始常态化超时，该做的是给 `OccupancyStore` 加一个可 await 的刷新句柄，
 /// 而不是继续加超时。
+///
+/// ⚠️ **返回值从 `Bool` 改成 ``WaitOutcome``**（2026-09-21）：上面那句
+/// 「失败：`arrived` 为 false」正是**报错不指名真因** —— 它分不清「主 actor 被占住、
+/// 条件没被轮到」与「条件确实很久不成立」，而两者修法完全不同（见 ``WaitOutcome`` 文件头）。
+/// 现在失败信息里带上「等了多久、求值几次」，下次红了一眼能定位。
 @MainActor
 private func waitUntil(
     timeout: TimeInterval = 30,
     _ condition: () async -> Bool
-) async -> Bool {
-    let deadline = Date().addingTimeInterval(timeout)
+) async -> WaitOutcome {
+    let started = Date()
+    var polls = 0
+    let deadline = started.addingTimeInterval(timeout)
     while Date() < deadline {
-        if await condition() { return true }
+        polls += 1
+        if await condition() {
+            return WaitOutcome(ok: true, polls: polls, elapsed: Date().timeIntervalSince(started))
+        }
         try? await Task.sleep(nanoseconds: 10_000_000)
     }
-    return await condition()
+    // 退出循环时可能刚好是最后一拍就绪 —— 再查一次，别把「刚好赶上」误报成超时。
+    polls += 1
+    let ok = await condition()
+    return WaitOutcome(ok: ok, polls: polls, elapsed: Date().timeIntervalSince(started))
 }
 
 /// 造一个不跑真实 lsof 的 store。`pollInterval` 默认给足，避免轮询干扰断言。
@@ -214,9 +227,12 @@ struct OccupancyStoreTests {
 
         diskStore.replaceDisksForTesting([disk])
         let arrived = await waitUntil { store.result(for: disk) == .none }
-        #expect(
+        // ⚠️ 走 ``expectArrived`` 而不是手写 `#expect(arrived.ok, "…")`：
+        // 消息里那句「等了多久、求值几次」由 ``WaitOutcome`` 唯一决定，调用处漏不掉。
+        expectArrived(
             arrived,
-            "DiskListStore.disks 一变，占用结论必须重测；否则「刷新磁盘列表」只刷新容量数字、刷不动占用结论")
+            "DiskListStore.disks 一变，占用结论必须重测；"
+                + "否则「刷新磁盘列表」只刷新容量数字、刷不动占用结论。")
 
         // 同一份列表再发一次（内容完全相同）：`.onChange` 会漏掉，`sink` 不会。
         let counter = CallCounter()
@@ -231,7 +247,7 @@ struct OccupancyStoreTests {
         diskStore.replaceDisksForTesting([disk])  // 内容一模一样
 
         let retested = await waitUntil { await counter.count > afterFirst }
-        #expect(retested, "内容相同的一次重新枚举也必须重测——这正是 `.onChange` 漏掉的那种情况")
+        expectArrived(retested, "内容相同的一次重新枚举也必须重测——这正是 `.onChange` 漏掉的那种情况。")
     }
 
     @Test("stop 之后不再响应磁盘列表变化")
@@ -258,5 +274,51 @@ struct OccupancyStoreTests {
         #expect(
             afterStop == baseline,
             "stop() 之后订阅已解除，不该再有检测（实际多了 \(afterStop - baseline) 次）")
+    }
+
+    // MARK: - 等待 helper 自己的守卫
+
+    /// `waitUntil` 的返回值必须**带得出数字**。
+    ///
+    /// **为什么这条值得单独写**：它是本文件里唯一「守装置而不是守产品」的测试。
+    /// 少了它，「失败信息里到底有没有数字」这件事只能靠**下次 CI 真红**才发现 ——
+    /// 而那正是 2026-09-17 发生过的（报出「`arrived` 为 false」，什么都没说明）。
+    /// ⇒ 与 §8.113.12「门槛红了却拿到一个假名字」同一条轴。
+    ///
+    /// ⚠️ 样本是**确定性**的：极短超时（50ms）+ 恒不成立的条件，不依赖机器快慢、
+    /// 也不依赖任何被测逻辑 ⇒ 它自己不会变成一条新的 flaky。
+    @Test("等待超时时必须报出轮询次数与耗时")
+    func 等待超时时必须报出轮询次数与耗时() async {
+        let timedOut = await waitUntil(timeout: 0.05) { false }
+
+        #expect(!timedOut.ok, "条件恒不成立，`ok` 必须是 false")
+        #expect(
+            timedOut.polls >= 2,
+            "至少要有「循环里那次」与「超时后那次补查」两次求值，实得 \(timedOut.polls)")
+        #expect(timedOut.elapsed >= 0.05, "墙钟不小于超时值，实得 \(timedOut.elapsed)")
+
+        // ⚠️ 只断言 ok/polls/elapsed **还不够**：`diagnostic` 才是给下一个排查的人看的
+        // 那句话，而它完全可能被写成一句不带数字的空话（那样等于没改）。
+        #expect(
+            timedOut.diagnostic.contains("\(timedOut.polls)") && timedOut.diagnostic.contains("s、"),
+            "诊断串里没带出实际数字：\(timedOut.diagnostic)")
+
+        // ⚠️ `diagnostic` 有数字**还不够**：真正给排查的人看的是 `failureNote` 拼出来的
+        // 那句话（``expectArrived`` 用它当 `#expect` 的消息），它完全可能把 `diagnostic`
+        // 整个丢掉 —— 那样等于没改，而且不会有任何东西变红。所以这里直接断言拼出来的结果。
+        // （断言只挑**与 locale 无关**的部分：`%.2f` 的小数点在某些 locale 下会变逗号。）
+        let note = WaitOutcome(ok: false, polls: 7, elapsed: 1.25).failureNote("在等 X")
+        #expect(
+            note.contains("在等 X") && note.contains("7") && note.contains("s、"),
+            "失败信息没把「在等什么」与数字拼在一起：\(note)")
+
+        // 阴性对照（反向）：条件立刻成立时，拍数应当很小、也不该报「始终不成立」——
+        // 否则上面那条 `polls >= 2` 可能只是恒真。
+        let immediate = await waitUntil(timeout: 0.05) { true }
+        #expect(immediate.ok, "条件立刻成立，`ok` 必须是 true")
+        #expect(immediate.polls == 1, "第一次求值就成立 ⇒ 恰好 1 拍，实得 \(immediate.polls)")
+        #expect(
+            !immediate.diagnostic.contains("始终不成立"),
+            "成立的等待不该报「始终不成立」：\(immediate.diagnostic)")
     }
 }

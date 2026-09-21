@@ -51,6 +51,26 @@ enum ProcessAppResolver {
         return nil
     }
 
+    /// 运行中应用报的 `bundleURL` **只有真的是 `.app` 时才可信**。
+    ///
+    /// **为什么必须过滤**（2026-09-21 实测）：`NSRunningApplication.bundleURL`
+    /// **不保证**是 bundle —— 在 Command Line Tools 工具链下，测试进程
+    /// `…/CommandLineTools/usr/libexec/swift/pm/swiftpm-testing-helper` 的
+    /// `bundleURL` 返回的就是**可执行文件自己的路径**（不带 `.app`）。
+    /// 直接采信会让 `appBundlePath` 不再是「app bundle」，而下游两处都会跑偏：
+    /// - ``icon(for:)`` 拿一个非 bundle 路径去 `NSWorkspace.icon(forFile:)`；
+    /// - ``appDisplayName(bundlePath:)`` 把**目录名**当成应用名读出来。
+    ///
+    /// ⚠️ 这条缺口在 CI 上是**看不出来**的：Xcode 的 runner 住在
+    /// `/Applications/Xcode.app/Contents/Developer/…` 里，路径**恰好**以 `.app` 结尾，
+    /// 于是 `真实进程解析出的名字必不为空` 那条断言**碰巧**成立。
+    /// 换 CLT 工具链跑就红了 —— 典型的「判据依赖环境」。
+    /// ⇒ 过滤后，非 `.app` 的情况一律走文档里写好的回落（进程名）。
+    static func appBundlePath(fromRunningAppBundleURL path: String?) -> String? {
+        guard let path, path.hasSuffix(".app") else { return nil }
+        return path
+    }
+
     /// 把候选名规整成可显示形式：去首尾空白，并剥掉 `FileManager.displayName` 附带的 `.app`。
     ///
     /// 实测 `FileManager.default.displayName(atPath: "/Applications/IMVIDEO.app")` 返回
@@ -128,7 +148,7 @@ enum ProcessAppResolver {
         // 用户认知里的主应用。
         let bundlePath =
             executablePath.flatMap(Self.owningAppBundlePath(executablePath:))
-            ?? directApp?.bundleURL?.path
+            ?? Self.appBundlePath(fromRunningAppBundleURL: directApp?.bundleURL?.path)
 
         var candidates: [String?] = []
         if let bundlePath {

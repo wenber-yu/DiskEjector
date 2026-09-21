@@ -157,15 +157,30 @@ struct ProcessAppResolverTests {
     /// 而**真因是「进程还没就绪」**（失败输出里 `executablePath: nil` 就是证据）。
     /// 报错指错方向，排查就绕远路 —— 而**「报错指名真因」正是当初修 §8.86 装置缺陷
     /// 的全部目的**。⇒ 等不到必须让调用方知道，由调用方自己去断言。
+    ///
+    /// ⚠️ **返回值从 `Bool` 换成 ``WaitOutcome``**（2026-09-21）：上一条只做到
+    /// 「知道没等到」，没做到「知道为什么没等到」。失败时 `ready` 为 false 同样分不清
+    /// 「进程真没起来」与「主 actor 被别的用例占住、这几拍没轮到」——
+    /// 现在带上「等了多久、求值几次」，两条路的区别一眼可见（口径见 ``WaitOutcome``）。
     @discardableResult
-    nonisolated static func waitForExecutablePath(pid: Int32, timeoutMS: Int = 2000) async -> Bool {
-        let deadline = Date().addingTimeInterval(Double(timeoutMS) / 1000)
+    nonisolated static func waitForExecutablePath(
+        pid: Int32, timeoutMS: Int = 2000
+    ) async -> WaitOutcome {
+        let started = Date()
+        var polls = 0
+        let deadline = started.addingTimeInterval(Double(timeoutMS) / 1000)
         while Date() < deadline {
-            if ProcessAppResolver.executablePath(forPid: pid) != nil { return true }
+            polls += 1
+            if ProcessAppResolver.executablePath(forPid: pid) != nil {
+                return WaitOutcome(
+                    ok: true, polls: polls, elapsed: Date().timeIntervalSince(started))
+            }
             try? await Task.sleep(nanoseconds: 50_000_000)
         }
         // 退出循环时可能刚好是最后一拍就绪 —— 再查一次，别把「刚好赶上」误报成超时。
-        return ProcessAppResolver.executablePath(forPid: pid) != nil
+        polls += 1
+        let ok = ProcessAppResolver.executablePath(forPid: pid) != nil
+        return WaitOutcome(ok: ok, polls: polls, elapsed: Date().timeIntervalSince(started))
     }
 
     // MARK: - ① 可执行路径 → 最外层 .app
@@ -205,6 +220,28 @@ struct ProcessAppResolverTests {
         #expect(ProcessAppResolver.owningAppBundlePath(executablePath: "tail") == nil)
         // 目录名里带 `.app` 但不是后缀（`notes.app.txt`）不算 bundle。
         #expect(ProcessAppResolver.owningAppBundlePath(executablePath: "/Users/me/notes.app.txt/x") == nil)
+    }
+
+    /// `NSRunningApplication.bundleURL` **不保证**是 bundle：只有 `.app` 才配当 `appBundlePath`。
+    ///
+    /// ⚠️ 样本是**真实踩到**的那一个（2026-09-21）：CLT 工具链下测试进程是
+    /// `…/CommandLineTools/usr/libexec/swift/pm/swiftpm-testing-helper`，
+    /// 它的 `bundleURL` 返回的就是**可执行文件自己的路径**。
+    /// 少了这条过滤，`appBundlePath` 会变成「一个可执行文件」，
+    /// 图标与显示名两处下游都会跑偏（详见 ``ProcessAppResolver/appBundlePath(fromRunningAppBundleURL:)``）。
+    ///
+    /// （变异：把 `hasSuffix(".app")` 那半句去掉，本断言立刻变红。）
+    @Test func 非app的运行中应用路径不被当成bundle() {
+        let helper =
+            "/Library/Developer/CommandLineTools/usr/libexec/swift/pm/swiftpm-testing-helper"
+        #expect(
+            ProcessAppResolver.appBundlePath(fromRunningAppBundleURL: helper) == nil,
+            "非 `.app` 的路径不许被当成应用 bundle，实际：\(helper)")
+        #expect(ProcessAppResolver.appBundlePath(fromRunningAppBundleURL: nil) == nil)
+        #expect(
+            ProcessAppResolver.appBundlePath(fromRunningAppBundleURL: "/Applications/Bunny.app")
+                == "/Applications/Bunny.app",
+            "真正的 `.app` 必须原样保留（否则上面那条可能只是恒 nil）")
     }
 
     // MARK: - ② 显示名规整与优先级
@@ -326,7 +363,9 @@ struct ProcessAppResolverTests {
         let process = try fixture.launch()
         defer { process.terminate() }
         let ready = await Self.waitForExecutablePath(pid: process.processIdentifier)
-        #expect(
+        // ⚠️ 走 ``expectArrived``：消息里那句「等了多久、求值几次」由 ``WaitOutcome``
+        // 唯一决定，调用处漏不掉（手写 `#expect(ready.ok, "…")` 就会漏）。
+        expectArrived(
             ready,
             """
             `proc_pidpath` 在超时前没取到可执行路径 —— 这是**「进程还没就绪」**，
@@ -399,5 +438,47 @@ struct ProcessAppResolverTests {
         #expect(
             format.components(separatedBy: "%@").count - 1 == 2,
             "格式串应有 2 个 %@，实际：\(format)")
+    }
+
+    // MARK: - 等待 helper 自己的守卫
+
+    /// `waitForExecutablePath` 的返回值必须**带得出数字**（与
+    /// `OccupancyStoreTests.等待超时时必须报出轮询次数与耗时` 成对，两边同一个 ``WaitOutcome``）。
+    ///
+    /// ⚠️ 「`failureNote` 拼出来的那句话里有没有数字」的断言**只写在
+    /// `OccupancyStoreTests` 那一条里**（一处真相 + 一处指针）：两边断的是同一个纯函数，
+    /// 抄两遍只会漂，而不会多守住任何东西。
+    ///
+    /// **为什么这条值得单独写**：本文件里唯一「守装置而不是守产品」的测试。少了它，
+    /// 「失败信息里到底有没有数字」只能靠**下次 CI 真红**才发现 —— 而 2026-09-20 CI
+    /// 上真红过一次，当时报的是「必须解析出所属 app bundle」，真因却是「进程还没就绪」
+    /// （见 `waitForExecutablePath` 的文档注释）。报错指错方向，排查就绕远路。
+    ///
+    /// ⚠️ 样本是**确定性**的，不依赖机器快慢，也不依赖被测逻辑：
+    /// - 正路：一个**不可能存在**的 PID（`kern.maxproc` 上限约 10 万，所以 `999_999` 必不存在）
+    ///   + 极短超时 ⇒ 一定超时，且轮询次数下界由代码结构决定；
+    /// - 反路（阴性对照）：**当前进程自己的 PID** ⇒ 第一次求值就成立，恰好 1 拍。
+    @Test func 等待可执行路径超时时必须报出轮询次数与耗时() async {
+        let timedOut = await Self.waitForExecutablePath(pid: 999_999, timeoutMS: 50)
+
+        #expect(!timedOut.ok, "999999 不可能有进程，`ok` 必须是 false")
+        #expect(
+            timedOut.polls >= 2,
+            "至少要有「循环里那次」与「超时后那次补查」两次求值，实得 \(timedOut.polls)")
+        #expect(timedOut.elapsed >= 0.05, "墙钟不小于超时值，实得 \(timedOut.elapsed)")
+        // ⚠️ 只断言 ok/polls/elapsed **还不够**：`diagnostic` 才是给下一个排查的人看的那句话，
+        // 而它完全可能被写成一句不带数字的空话（那样等于没改）。
+        #expect(
+            timedOut.diagnostic.contains("\(timedOut.polls)") && timedOut.diagnostic.contains("s、"),
+            "诊断串里没带出实际数字：\(timedOut.diagnostic)")
+
+        // 阴性对照（反向）：上面那条 `polls >= 2` 必须能区分「等到了」与「没等到」，
+        // 否则它可能只是恒真。
+        let immediate = await Self.waitForExecutablePath(pid: getpid(), timeoutMS: 2000)
+        #expect(immediate.ok, "当前进程自己的可执行路径必须取得到")
+        #expect(immediate.polls == 1, "第一次求值就成立 ⇒ 恰好 1 拍，实得 \(immediate.polls)")
+        #expect(
+            !immediate.diagnostic.contains("始终不成立"),
+            "成立的等待不该报「始终不成立」：\(immediate.diagnostic)")
     }
 }
