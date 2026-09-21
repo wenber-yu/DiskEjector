@@ -147,7 +147,7 @@ final class UpdateUserDriver: NSObject, SPUUserDriver {
     }
 
     func showUpdaterError(_ error: Error, acknowledgement: @escaping () -> Void) {
-        // 更新流程出错。**分三种，落点不同**：
+        // 更新流程出错。**分四种，落点不同**（四种按下面的顺序判，命中即停）：
         //
         // - **位置不允许更新**（只读卷 / App Translocation，错误码 `1003` / `1005`）
         //   → `.locationBlocked`。**这一支必须排在最前**：只读卷上 Sparkle 连 appcast
@@ -155,6 +155,15 @@ final class UpdateUserDriver: NSObject, SPUUserDriver {
         //   `phase` 停在 `.idle`，于是走 `driverDidReset()` 会让界面回到「已是最新版本」——
         //   而 `SPUUpdater.m:789` 早就把「上次检查时间」写成了当下（不看成败）。
         //   结果就是**根本没检查却说检查过了**（§8.94 实测：零网络请求）。
+        // - **已经落在终态**（`.failed` / `.locationBlocked`）→ **不动**，只记日志。
+        //   **这一支必须排第二**（2026-09-22 真机实测，§8.121）：下载失败时 Sparkle 两条回调
+        //   **相差 1ms 都到**，delegate 先到设好 `.failed`，本方法后到 —— 它若照旧往
+        //   `driverDidReset()` 掉，就把前一条的结果**冲回 `.idle`**，界面无声回到
+        //   「已是最新版本」。判据见 ``UpdateController/isTerminalPhase(_:)``。
+        //   ⚠️ 它排在「位置受限」**之后**是有意的：位置受限是一个**按错误码就能定**的
+        //   落点，与当前 `phase` 无关，不该被「已经在终态」挡住。
+        //   ⚠️ **这一支护不住 30ms 后那一下**：末尾的 `acknowledgement()` 会让 Sparkle
+        //   接着调 `dismissUpdateInstallation()`，那一支也得装同一个闸门（见它自己的注释）。
         // - **正在下载时出错 = 下载失败** → `.failed`（界面：文案 + 「重试」按钮）。
         //   这是 `.failed` 在 user driver 这条路上的来源 ——
         //   2026-09-18 实扫发现 `driverDidFailDownload` 当时**全仓库没有调用点**，
@@ -167,11 +176,24 @@ final class UpdateUserDriver: NSObject, SPUUserDriver {
         // （设置行 + 日志）。给一个「更新失败」弹窗会打断用户拔盘，
         // 而这件事与他此刻在做的事无关。
         //
-        // 判据走两个**纯函数**（`isUpdateLocationBlocked(_:)` / `isDownloadFailure(phase:)`，
-        // 都有单测）—— 不新增「这一错是什么错」的位：能派生就别用「手动开关」。
+        // 判据走三个**纯函数**（`isUpdateLocationBlocked(_:)` / `isTerminalPhase(_:)` /
+        // `isDownloadFailure(phase:)`，都有单测）—— 不新增「这一错是什么错」的位：
+        // 能派生就别用「手动开关」。
         Self.logger.error("更新出错：\(error.localizedDescription, privacy: .public)")
         if let controller, UpdateController.isUpdateLocationBlocked(error) {
             controller.driverDidBlockAtLocation()
+        } else if let controller, UpdateController.isTerminalPhase(controller.phase) {
+            // ⚠️ **已落在终态 ⇒ 一动不动**（2026-09-22 真机实测，§8.121）。
+            // 这不是「吞掉错误」—— 上面那行日志已经把它记下了 —— 而是
+            // 「不让后到的回调覆盖先到的结果」。不这么写的后果（实测）：
+            // 弹窗路（**默认就是这条**）下载失败时两条回调相差 1ms 都到，delegate 先
+            // 设好 `.failed`，后到的这条却把它冲回 `.idle` ⇒ 界面无声回到「已是最新版本」：
+            // 没有失败文案、也没有「重试」入口，用户不知道失败了。
+            Self.logger.error(
+                """
+                已处于终态 \(String(describing: controller.phase), privacy: .public)，\
+                本次错误不改写状态（后到的回调不覆盖先到的结果，§8.121）
+                """)
         } else if let controller, UpdateController.isDownloadFailure(phase: controller.phase) {
             controller.driverDidFailDownload(version: controller.pendingUpdate?.version)
         } else {
@@ -237,8 +259,39 @@ final class UpdateUserDriver: NSObject, SPUUserDriver {
         acknowledgement()
     }
 
+    /// Sparkle 在**收掉**这一轮更新 UI（「Stop and tear down everything」，
+    /// `SPUUserDriver.h:262-267`）。
+    ///
+    /// ## ⚠️ 它不是一个「很少走到的收尾」，而是错误路上**必经的一步**
+    ///
+    /// 2026-09-22 QA 真机复验（build 235）实测：下载失败时它比 `showUpdaterError`
+    /// **晚 30ms** 到达，而此时 `phase` 还是 `.failed` ——
+    /// 这一支原先无条件 `driverDidReset()` ⇒ **刚被终态闸门保住的 `.failed` 又被冲回 `.idle`**，
+    /// 界面与修复前**逐字相同**（「上次检查：… · 已是最新版本」，没有失败文案、没有「重试」）。
+    ///
+    /// 为什么会到：我们**必须**调 `showUpdaterError` 给的 `acknowledgement()`（不调会话就挂着），
+    /// 而 Sparkle 把 `abortUpdate()` 塞在那个块里 —— 它 `dispatch_async` 回主队列后
+    /// **必定**调本方法（`SPUUIBasedUpdateDriver.m:456`，`showErrorToUser` 为真时无条件，
+    /// 与错误是否为 nil 无关）。⇒ 闸门只装在 `showUpdaterError` 上**不够**。
+    ///
+    /// ⇒ 同一个终态闸门也装在这里：已落在终态就**不 reset**（判据与理由见
+    /// ``UpdateController/isTerminalPhase(_:)``）。
+    ///
+    /// ⚠️ **非终态照旧 reset**（`.downloading` / `.found` / `.checking` / `.ready` / `.idle`）——
+    /// 那正是「收掉 UI」的原意：流程没了，界面不该还挂着半截状态。
+    /// 特别是 `.ready`：会话被拆之后 `readyReply` 已作废，留着就是一个点了没反应的
+    /// 「立即重启」（设计稿点名不许）。
     func dismissUpdateInstallation() {
-        controller?.driverDidReset()
+        guard let controller else { return }
+        if UpdateController.isTerminalPhase(controller.phase) {
+            Self.logger.error(
+                """
+                收 UI 时已处于终态 \(String(describing: controller.phase), privacy: .public)，\
+                不回到「已是最新版本」（§8.121 / QA 2026-09-22 复验）
+                """)
+            return
+        }
+        controller.driverDidReset()
     }
 }
 

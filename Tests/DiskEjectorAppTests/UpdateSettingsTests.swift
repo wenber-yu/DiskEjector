@@ -492,6 +492,229 @@ struct UpdateSettingsTests {
             "「位置不允许更新」被算成「下载失败」了 —— 它不是网络问题，重试在只读卷上必然再失败（§8.94）")
     }
 
+    /// **终态的真值表** —— 七个 case 逐个钉一遍，一个不漏。
+    ///
+    /// 为什么必须逐个钉：这个判据的**全部**内容就是「哪个 case 算终态」，而它防的那件事
+    /// （弹窗路下载失败被后到的回调冲回 `.idle`，§8.121 + QA 2026-09-22 复验）
+    /// **在测试进程里构造不出来** —— 那次是靠重打包 + 本地坏 feed + AX 点击才复现的。
+    /// 只钉 `.failed` 的话，`return true` 这种实现也照样绿 ——
+    /// 而那会把「正在检查」锁死在一个**不给按钮**的态上（§8.93），比原来那个 bug 更难发现。
+    ///
+    /// ⚠️ **判据是「这一态说的是过去的事实，还是对一个还活着的会话的主张」**：
+    /// 只有前者收 UI 也抹不掉（详见 ``UpdateController/isTerminalPhase(_:)``）。
+    @Test func 终态只含已成事实的那两态() {
+        // ① 终态：**已经发生的事实** ⇒ 收 UI 不许抹掉它。
+        #expect(
+            UpdateController.isTerminalPhase(.failed(version: "1.1.0")),
+            """
+            `.failed` 不算终态 ⇒ 弹窗路下载失败会被后到的那条冲回 `.idle`
+            —— 这正是 §8.121 实测到的 bug 本身
+            """)
+        #expect(
+            UpdateController.isTerminalPhase(.locationBlocked),
+            "`.locationBlocked` 不算终态 ⇒ 只读卷上会掉回「已是最新版本」，那是一句谎（§8.94）")
+
+        // ② **不是**终态：对活会话的主张 / 中间态 / 无事发生。
+        #expect(
+            !UpdateController.isTerminalPhase(.ready(version: "1.1.0")),
+            """
+            ⚠️ 2026-09-22 改判（QA 真机复验）：`.ready` 说的是「**现在**有个装好的更新等你重启」，
+            而走到本判据的两处都紧接着 `abortUpdateAndShowNextUpdateImmediately:`
+            （`SPUUIBasedUpdateDriver.m:458`）⇒ 会话被拆、`readyReply` 作废。
+            把它留着 ⇒ 界面继续显示「立即重启」而那一按什么都不会发生
+            —— 死按钮比「已是最新版本」糟
+            """)
+        #expect(
+            !UpdateController.isTerminalPhase(.downloading(version: "1.1.0", fraction: 0.42)),
+            "`.downloading` 被算成终态 ⇒ 真正的下载失败再也进不了 `.failed`，那一态又变成孤儿")
+        #expect(
+            !UpdateController.isTerminalPhase(.found(version: "1.1.0")),
+            """
+            `.found` 被算成终态 ⇒ 留下一个指向**已被 abort** 的会话的「后台更新并重启」
+            —— 点了没反应的按钮，设计稿点名不许
+            """)
+        #expect(
+            !UpdateController.isTerminalPhase(.checking),
+            """
+            `.checking` 被算成终态 ⇒ 界面停在「正在检查更新…」，而那一态**不给按钮**
+            ⇒ 用户没有任何出口（比冲回 `.idle` 更糟）
+            """)
+        #expect(
+            !UpdateController.isTerminalPhase(.idle),
+            "`.idle` 被算成终态 ⇒ 任何错误都不再复位，上一轮的残留态会一直挂在界面上")
+    }
+
+    /// ⚠️ **本轮要修的那个 bug 的行为复现**（§8.121 + QA 2026-09-22 复验）。
+    ///
+    /// 真机时序（弹窗路 —— `SUAutomaticallyUpdate` 未设置时**默认就是这条**）：
+    ///
+    /// ```text
+    /// .923  下载失败：… not found (404)      ← delegate 先到       ⇒ phase = .failed
+    /// .923  更新出错：下载更新时出现错误…      ← user driver 1ms 后到
+    /// .953  dismissUpdateInstallation        ← acknowledgement 之后 30ms ⇒ 原先无条件 .idle
+    /// ```
+    ///
+    /// ## ⚠️ 第一版这条测试是**瞎的**，已按 QA 的复验改掉（值得留着当教训）
+    ///
+    /// 第一版写的是 `driver.showUpdaterError(error) {}` —— acknowledgement 传的是**空块**，
+    /// 而真机上 Sparkle 传进来的正是那个会调 `dismissUpdateInstallation` 的块
+    /// （`SPUUIBasedUpdateDriver.m:484-489`：`showUpdaterError:acknowledgement:` 的块里
+    /// `dispatch_async` 回主队列执行 `abortUpdate()`）。⇒ 只模拟了那 1ms 的**前一半**，
+    /// 结构上就不可能复现这个 bug —— **测试全绿而 bug 还在**，QA 真机复验才抓到。
+    /// ⇒ **教训**：模拟第三方回调时，回调**参数本身**（尤其 acknowledgement 这类块）
+    /// 也是契约的一部分，不能留空。
+    ///
+    /// **不需要 Sparkle** 就能重现这一串：`showUpdaterError` / `dismissUpdateInstallation`
+    /// 都是 `UpdateUserDriver` 自己的方法，先用 `driverDidFailDownload` 摆出 delegate 的落点即可。
+    @MainActor
+    @Test func 后到的错误回调不许把已设好的终态冲回idle() {
+        let controller = UpdateController.shared
+        let driver = UpdateUserDriver(controller: controller)
+        defer { controller.driverDidReset() }
+
+        // 故意用**非** 1003 / 1005 的码：这一支要防的是「任何后到的错误」，
+        // 与错误码无关（位置受限那一支由 `isUpdateLocationBlocked` 单独处理）。
+        let error = NSError(domain: "SUSparkleErrorDomain", code: 0)
+
+        // ⚠️ acknowledgement **不是空块** —— 真机上它里面就是 `dismissUpdateInstallation`。
+        // （真机是 `dispatch_async` 到下一个主队列 turn，这里同步调：同一串回调、更严。）
+        let acknowledge = { driver.dismissUpdateInstallation() }
+
+        // ① `.failed`：delegate 先设好了「下载失败」。
+        controller.driverDidFailDownload(version: "2026.09.21.1")
+        #expect(controller.phase == .failed(version: "2026.09.21.1"))
+        driver.showUpdaterError(error, acknowledgement: acknowledge)
+        #expect(
+            controller.phase == .failed(version: "2026.09.21.1"),
+            """
+            这一串跑完后 `.failed` 变成了 \(controller.phase) ——
+            界面于是无声回到「已是最新版本」：没有失败文案、也没有「重试」
+            （§8.121 + QA 2026-09-22 复验：弹窗路默认就走这条，且这一态的画法本身是对的）
+            """)
+
+        // ② `.locationBlocked`：位置不允许更新。
+        controller.driverDidBlockAtLocation()
+        driver.showUpdaterError(error, acknowledgement: acknowledge)
+        #expect(
+            controller.phase == .locationBlocked,
+            """
+            这一串跑完后 `.locationBlocked` 变成了 \(controller.phase) ——
+            只读卷上会掉回「已是最新版本」，而 Sparkle 连 appcast 都没去取（§8.94）
+            """)
+
+        // ③ `.ready`：**必须**回到 `.idle`（2026-09-22 改判）——
+        //    会话已 abort，`readyReply` 作废；留着就是「点了没反应的立即重启」。
+        controller.driverIsReady(version: "1.1.0") { _ in }
+        driver.showUpdaterError(error, acknowledgement: acknowledge)
+        #expect(
+            controller.phase == .idle,
+            """
+            会话已 abort 后 `.ready` 还留着（\(controller.phase)）——
+            攥在手里的 `readyReply` 已经作废，界面上的「立即重启」就是点了没反应的按钮
+            """)
+        // 还原：消费掉本用例自己攥住的那个 reply（`driverDidReset()` 不清它）。
+        controller.installReadyUpdate()
+    }
+
+    /// **收 UI 那一支（`dismissUpdateInstallation`）单独钉一遍** —— 它是真机上**真正**
+    /// 把失败态抹掉的那一步（QA 2026-09-22 复验：比 `showUpdaterError` 晚 30ms、无条件 reset）。
+    ///
+    /// 为什么上一条之外还要这条：上一条走的是「错误 → acknowledgement → 收 UI」这一串，
+    /// 守不住两件事 —— ① 有人**直接**调 `dismissUpdateInstallation()`（用户取消那条路）；
+    /// ② **非终态必须照旧 reset**。后者尤其要紧：本方法的原意是
+    /// 「Stop and tear down everything」（`SPUUserDriver.h:262-267`），
+    /// 若 `.ready` / `.downloading` 不再复位，界面会挂着半截状态。
+    @MainActor
+    @Test func 收UI时只有已成事实的失败态能留下() {
+        let controller = UpdateController.shared
+        let driver = UpdateUserDriver(controller: controller)
+        defer { controller.driverDidReset() }
+
+        // ① 终态：留下。
+        controller.driverDidFailDownload(version: "2026.09.21.1")
+        driver.dismissUpdateInstallation()
+        #expect(
+            controller.phase == .failed(version: "2026.09.21.1"),
+            """
+            收 UI 把 `.failed` 冲成了 \(controller.phase) ——
+            这正是 QA 复验到的那 30ms（§8.121）：失败文案与「重试」一起消失
+            """)
+
+        controller.driverDidBlockAtLocation()
+        driver.dismissUpdateInstallation()
+        #expect(
+            controller.phase == .locationBlocked,
+            "收 UI 把 `.locationBlocked` 冲成了 \(controller.phase) —— 只读卷上会谎报「已是最新版本」（§8.94）")
+
+        // ② 非终态：照旧 reset。
+        controller.driverIsReady(version: "1.1.0") { _ in }
+        driver.dismissUpdateInstallation()
+        #expect(
+            controller.phase == .idle,
+            """
+            收 UI 后 `.ready` 还留着（\(controller.phase)）——
+            会话已拆，那是个点了没反应的「立即重启」
+            """)
+        controller.installReadyUpdate()
+
+        controller.driverDidStartDownload(version: "1.1.0", cancellation: {})
+        driver.dismissUpdateInstallation()
+        #expect(
+            controller.phase == .idle,
+            "收 UI 后 `.downloading` 还留着（\(controller.phase)）—— 进度条会一直挂在设置行上")
+    }
+
+    /// **接线守卫**：终态闸门真的接在 `showUpdaterError` 上，而且那一支**不许写任何状态**。
+    ///
+    /// ⚠️ 为什么行为测试之外还要这条：上一条钉的是「现在这样调不会冲掉」，守不住
+    /// 「那一支被整段删掉」或「被人往里多加一句 `driverDidReset()`」——
+    /// 前者让终态重新可覆盖（回到 §8.121 的 bug），后者是「表面不动、实际动」。
+    /// 两条合起来才是同一处判据的**两半**（行为 + 接线），少一半都不完整
+    /// （同 `下载失败必须真的接到界面那一态` 那条的理由）。
+    @Test func 终态闸门接在showUpdaterError上且那一支不写状态() throws {
+        let source = try contents("Sources/Services/UpdateUserDriver.swift")
+        let body = codeOnly(try functionBody("func showUpdaterError(", in: source))
+
+        let terminalAt = try #require(
+            body.range(of: "isTerminalPhase(")?.lowerBound,
+            """
+            showUpdaterError 没有判终态。弹窗路下载失败时两条回调相差 1ms 都到
+            （§8.121 实测），后到的这条不判终态就会把 delegate 设好的 `.failed` 冲回 `.idle`。实得：
+            \(body)
+            """)
+        let downloadAt = try #require(
+            body.range(of: "isDownloadFailure(phase:")?.lowerBound,
+            "showUpdaterError 里没有 `isDownloadFailure(phase:` —— 改名了就要同步这条断言")
+
+        #expect(
+            terminalAt < downloadAt,
+            """
+            终态闸门必须排在「是不是正在下载」**之前**。两者互斥，所以顺序当前不影响结果；
+            但「已出结果的一律不动」要优先于「再分流一次」——
+            将来 `isDownloadFailure` 的口径放宽时，反过来写会让终态重新变成可覆盖。实得：
+            \(body)
+            """)
+
+        // 那一支的正文：它只能记日志，不许写任何状态。
+        let branch = try #require(
+            slice(after: "UpdateController.isTerminalPhase(controller.phase) {", upTo: "} else", in: body),
+            "取不到终态那一支的正文 —— 改了这一支的写法就要同步这条断言（口径失效必须是红的）")
+        for forbidden in [
+            "driverDidReset()", "driverDidFailDownload(", "driverDidBlockAtLocation()", "phase =",
+        ] {
+            #expect(
+                !branch.contains(forbidden),
+                """
+                终态那一支里出现了 `\(forbidden)` —— 那一支的**全部**语义就是「不动」，
+                写任何状态都会让后到的回调重新覆盖先到的结果。实得：
+                \(branch)
+                """)
+        }
+        #expect(
+            branch.contains("logger.error"),
+            "终态那一支必须把这次错误记进日志 —— 「不动状态」不等于「不记录」。实得：\n\(branch)")
+    }
+
     /// **「位置不允许更新」的判定**：域 + 码，**单测写字面量**。
     ///
     /// ⚠️ 这里**故意不引 `SUError.runningFromDiskImageError`**：实现引符号、测试写字面量，

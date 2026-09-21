@@ -538,6 +538,11 @@ final class UpdateController: NSObject, ObservableObject {
     /// **delegate 先到**（`:273` 在 `:276` 之前）并把 `phase` 设成 `.failed`；
     /// 等第二条路进门时 `phase` 已经不是 `.downloading` ⇒ 这里返回 false ⇒ **不会第二次写**。
     /// ⇒ 两条路是**互为兜底**，不是叠加。
+    ///
+    /// ⚠️ **2026-09-22 订正（§8.121）**：上面只说了「不会第二次写」这一半，**另一半是错的** ——
+    /// 后到的那条**没有停在这里**，它掉进 `showUpdaterError` 的 **else** 分支 ⇒
+    /// `driverDidReset()` ⇒ 把 `.failed` 冲回 `.idle`。「互为兜底」是靠
+    /// ``isTerminalPhase(_:)`` 才真正成立的（终态不动），**不是**这个闸门自带的。
     /// （自动那条路是例外：`SPUAutomaticUpdateDriver.m:146-152` 只调 `_coreDriver abort…`、
     /// **不调** `showUpdaterError` ⇒ delegate 是它唯一的一条。）
     ///
@@ -546,6 +551,75 @@ final class UpdateController: NSObject, ObservableObject {
     nonisolated static func isDownloadFailure(phase: UpdatePhase) -> Bool {
         if case .downloading = phase { return true }
         return false
+    }
+
+    /// 这个 `phase` 是不是**终态** —— 即「这一格陈述的是一件**已经发生的事实**，
+    /// 收掉更新 UI 也抹不掉它」。
+    ///
+    /// ## 它防的是什么（2026-09-22 真机实测，§8.121 + QA 复验）
+    ///
+    /// 弹窗那条路（`SUAutomaticallyUpdate` 未设置 ⇒ **默认就是这条**）下载失败时，
+    /// Sparkle 是**一串**回调，不是一个：
+    ///
+    /// ```text
+    /// .923  下载失败：… not found (404)        ← delegate，先到 ⇒ phase = .failed
+    /// .923  更新出错：下载更新时出现错误…        ← user driver，1ms 后到
+    /// .953  dismissUpdateInstallation          ← 我们调 acknowledgement() 之后，30ms
+    /// ```
+    ///
+    /// 第三条是关键：``UpdateUserDriver/showUpdaterError(_:acknowledgement:)``
+    /// **必须**调 `acknowledgement()`（不调会话就挂着），而 Sparkle 把 `abortUpdate()`
+    /// 放在那个块里 ⇒ 它 `dispatch_async` 回主队列后**必定**调用
+    /// `dismissUpdateInstallation()`（`SPUUIBasedUpdateDriver.m:456`，`showErrorToUser`
+    /// 为真时**无条件**、与错误是否为 nil 无关）。那一支原先无条件 `driverDidReset()`
+    /// ⇒ **刚保住的 `.failed` 在 30ms 后又被冲回 `.idle`**。
+    ///
+    /// ⇒ 闸门只装在 `showUpdaterError` 上**不够**：它守住的那一瞬，紧接着就被
+    /// acknowledgement 里的这一步抹掉。同一个闸门必须也装在 `dismissUpdateInstallation` 上。
+    /// （第一版只装了前者 ⇒ QA 复验：界面落点与修复前**逐字相同**。）
+    ///
+    /// ## 「终态」怎么划 —— 判据是「这一态说的是**过去的事实**还是**活着的会话**」
+    ///
+    /// - `.failed(version)` → **是**。「1.1.0 **下载失败了**」是一件已经发生的事，
+    ///   收 UI 抹不掉它。把它冲回 `.idle` 正是 §8.121 那个 bug 本身。
+    /// - `.locationBlocked` → **是**。「**这个位置不允许更新**」同样已成事实
+    ///   （它的文档写明「**没有自动出口，也不该有**」）。冲回 `.idle` 就是 §8.94 那句谎 ——
+    ///   Sparkle 已把「上次检查时间」写成当下，而它在只读卷上**一次 appcast 都没去取**。
+    /// - `.ready(version)` → **不是**。⚠️ **这一条 2026-09-22 由 QA 真机复验后改判**
+    ///   （我第一版把它划成了终态，**错了**）。它说的是「**现在**有个装好的更新等你重启」，
+    ///   是一个**对还活着的会话的主张**；而走到本判据的这两处（`showUpdaterError` /
+    ///   `dismissUpdateInstallation`）都紧接着 `abortUpdateAndShowNextUpdateImmediately:`
+    ///   （`SPUUIBasedUpdateDriver.m:458`，就在 `dismissUpdateInstallation` 的**下一行**）
+    ///   ⇒ 会话被拆掉、我们攥着的 `readyReply` 已经作废。
+    ///   留着 `.ready` ⇒ 界面继续显示「立即重启」，而那一按**什么都不会发生**
+    ///   —— 设计稿点名不许的那种按钮。**宁可回到「已是最新版本」，也不留一个死按钮。**
+    /// - `.downloading(version:fraction:)` → **不是**。中间态，结果正是 `.failed` / `.ready`；
+    ///   这一态由 ``isDownloadFailure(phase:)`` 单独处理。
+    /// - `.found(version)` → **不是**。它是「等用户拍板」的中间态，不是结果。
+    ///   把它当终态会留下「查看更新 / 后台更新并重启」的入口，而 Sparkle 那一轮已经 abort。
+    /// - `.checking` → **不是，而且这一条最关键**。它**不给按钮**（§8.93），
+    ///   把它当终态 ⇒ 界面停在「正在检查更新…」且**没有任何出口** —— 比冲回 `.idle` 糟得多。
+    /// - `.idle` → **不是**。它本来就是「什么都没在进行」，reset 到它**不丢任何信息**。
+    ///
+    /// ⚠️ **两个终态都有用户侧的出口** —— 「重试」走 `checkForUpdates()`
+    /// （它开头就把 `phase` 设回 `.idle`）、位置受限则是用户把 `.app` 拷进「应用程序」
+    /// 后重新打开（**新进程**，`phase` 从 `.idle` 起）。⇒ 「收 UI 不动它」**不会把用户锁死**。
+    ///
+    /// **为什么抽成纯函数**：与 ``isDownloadFailure(phase:)`` / ``isUpdateLocationBlocked(_:)``
+    /// 同一个理由 —— 「三条回调隔 30ms」在测试进程里**构造不出来**
+    /// （§8.121 + QA 复验是靠重打包 + 本地坏 feed + AX 点击才复现的）。留成驱动里一句 `if case`，
+    /// 「哪个 case 算终态」写错了**不会有任何断言变红**；而且它必须 `nonisolated`，
+    /// 否则单测从非主 actor 上下文调不到（同 ``rowState(phase:skippedVersion:lastCheck:)``）。
+    ///
+    /// ⚠️ **用 `switch` 而不是 `if case`**：`UpdatePhase` 将来加 case 时这里**编译不过**
+    /// ⇒ 「终态口径」失效是红的，不是静默的。
+    nonisolated static func isTerminalPhase(_ phase: UpdatePhase) -> Bool {
+        switch phase {
+        case .failed, .locationBlocked:
+            return true
+        case .idle, .checking, .found, .downloading, .ready:
+            return false
+        }
     }
 
     /// 这个错误是不是「**应用当前所在的位置不允许更新**」（只读卷 / App Translocation）。
@@ -795,10 +869,17 @@ extension UpdateController: SPUUpdaterDelegate {
     /// `driverDidReset()` → `phase = .idle`，表现是「进度条无声消失」，
     /// 与「下载完成了」长得一模一样。
     ///
-    /// ⚠️ **未核实**（2026-09-19 登记；DESIGN-SPEC「仍开着」第 10 行）：下载失败时 Sparkle 到底走 user driver 那条、还是 delegate 这条
-    /// （也可能两条都走）。本环境读不到应用日志、`--preview-*` 又不建 updater，
-    /// 真机验证需要一个「真的下载、且真的失败」的场景。**两条都接上，是为了不依赖这个假设**；
-    /// 万一两条都触发，也只是把同一个状态设两遍（幂等）。
+    /// ⚠️ **已核实**（2026-09-22 真机实测，§8.121；它关掉 2026-09-19 登记的那条「未核实」）：
+    /// 下载失败时 Sparkle **两条都走**，而且**相差 1ms**（delegate 先、user driver 后）。
+    ///
+    /// ⇒ 这里原来那句「万一两条都触发，也只是把同一个状态设两遍（幂等）」**是错的**：
+    /// 两条触发的是**两个不同的方法**，后到的那条走的是 `showUpdaterError` 的 **else**
+    /// 分支 ⇒ `driverDidReset()` ⇒ 把 delegate 刚设好的 `.failed` **冲回 `.idle`**
+    /// ⇒ 界面无声回到「已是最新版本」（没有失败文案、也没有「重试」）。
+    /// **「被闸门挡掉」不等于「无害」** —— 挡掉之后它掉进的是 else。
+    ///
+    /// ⇒ 所以光「两条都接上」**不够**，还得让后到的那条**不覆盖先到的结果**：
+    /// `showUpdaterError` 在 `phase` 已是终态时不动，判据见 ``isTerminalPhase(_:)``。
     ///
     /// ⚠️ 选择器必须与 ObjC 侧逐字对上。**2026-09-18 实测**：把 `failedToDownloadUpdate`
     /// 改一个字母（`…Updates`），**编译照过、测试全绿、什么都不崩** —— 编译器只给一条
