@@ -787,10 +787,16 @@ enum DesignTokens {
         /// **不能用 `accent.swiftUIColor.opacity(α)`**：`.opacity` 只能给一个固定 α，
         /// 而设计稿给浅色/深色配了两个值。这里直接用带 alpha 的 `NSColor` 构造。
         private static func accentTint(_ accent: AccentColor, light: CGFloat, dark: CGFloat) -> Color {
-            let base = accent.appKitColor
+            // 两侧**各构造一次**，而不是「取动态基色再改 alpha」。
+            //
+            // ⚠️ **实测（2026-09-21，§8.113.11）：后者也成立** —— AppKit 的
+            // `withAlphaComponent` **会保留动态 provider**，两种写法结果逐值相同
+            // （变异验证：换成后者守卫照样绿）。
+            // ⇒ 保留这种显式写法只是**不依赖 AppKit 那个隐式行为**，
+            //   别把它当成「修了个 bug」—— 它不是。
             return adaptive(
-                light: base.withAlphaComponent(light),
-                dark: base.withAlphaComponent(dark))
+                light: accent.appKitColorLight.withAlphaComponent(light),
+                dark: accent.appKitColorDark.withAlphaComponent(dark))
         }
 
         /// 强调色浅底（图标容器、hover）。设计稿 `--accent-soft`。

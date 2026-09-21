@@ -344,17 +344,17 @@ struct PaletteColorParityTests {
             """)
     }
 
-    /// **登记为钉不住的那一项**：强调色族的**基色**明暗不分。
+    /// **强调色族的基色：两侧各钉各的**（2026-09-21 从「明暗不分」翻过来，§8.113.11）。
     ///
-    /// 设计稿里 `--accent` / `--accent-soft` / `--accent-ring` 在暗色下**是另一个值**
-    /// （蓝 `#409cff`、紫 `#bf6ae8`、橙 `#ffb340`、绿 `#4cd964`），而实现的
-    /// `AccentColor.hex` 只有**一套**值 ⇒ 深色下主窗口约 20 处强调色元素
-    /// 用的是浅色值。**浅色侧四门全部一致**，深色侧四门全部不一致。
+    /// 设计稿里 `--accent` 在暗色下**是另一个值**（蓝 `#409cff`、紫 `#bf6ae8`、
+    /// 橙 `#ffb340`、绿 `#4cd964`）。2026-09-21 之前实现侧只有 `hex` 一套值，
+    /// 深色下约 20 处强调色元素用的是浅色值 —— 那时这条守卫钉的是
+    /// **「基色明暗不分」这个事实**（旧名：`强调色族的基色明暗不分这件事必须钉住`）。
     ///
-    /// ⚠️ **这一条不是在「守」它，是把它钉成一个「已知且可检测」的事实**：
-    /// 一旦有人给强调色加上深色值，这条会红 —— 那时正确的动作是
-    /// **同时**把设计稿那一侧接上并删掉这条登记，而不是把这条删掉。
-    @Test func 强调色族的基色明暗不分这件事必须钉住() throws {
+    /// 现在实现侧加了 `hexDark` ⇒ 断言**反过来**：**两侧都必须等于设计稿各自的值**。
+    /// ⚠️ 旧断言的失败消息里本就写着「别只删掉这条断言」—— 所以这里是**改判据**，
+    /// 不是删守卫（把守卫删掉的话，"改了却看不出效果"就没人会红了）。
+    @Test func 强调色族的基色两侧各钉各的() throws {
         let css = try loadCSS()
         let root = try #require(Self.scopeBody(in: css, ":root"), "取不到 `:root` 块")
 
@@ -383,42 +383,61 @@ struct PaletteColorParityTests {
             浅色侧本来是钉住的 —— 这里红了说明 `AccentColor.hex` 被改动了。
             """)
 
-        // ② 深色侧：基色必须与浅色**相同**（= 明暗不分）。这条红了说明有人加了深色值。
-        var gained: [String] = []
+        // ② 深色侧：基色必须等于设计稿的**深色** `--accent`（§8.113.11）。
+        //
+        //    2026-09-21 之前这一半是「基色必须与浅色相同」= 钉住「明暗不分」那个事实。
+        //    现在两侧各钉各的 ⇒ 判据**反过来**：深色侧必须**等于设计稿深色值**。
+        var darkBad: [String] = []
         for accent in AccentColor.allCases {
-            let light = rgba(accent.swiftUIColor, dark: false)
-            let dark = rgba(accent.swiftUIColor, dark: true)
-            if !light.equals(RGBA(r: dark.r, g: dark.g, b: dark.b, a: light.a)) {
-                gained.append("\(accent.rawValue)：浅 \(light.text) / 深 \(dark.text)")
+            let scope =
+                accent == .blue
+                ? try #require(
+                    Self.scopeBody(in: css, #":root[data-theme="dark"]"#),
+                    "取不到深色 `:root` 块 —— 选择器改名了？")
+                : try #require(
+                    Self.scopeBody(
+                        in: css, #":root[data-theme="dark"][data-accent="\#(accent.rawValue)"]"#),
+                    "取不到 `\(accent.rawValue)` 的深色强调色块 —— 选择器改名了？")
+            let design = try #require(
+                Self.colorDecl(in: scope, "--accent"),
+                "`\(accent.rawValue)` 的深色块里解析不到 `--accent` —— 解析口径坏了")
+            let impl = rgba(accent.swiftUIColor, dark: true)
+            if !impl.equals(design) {
+                darkBad.append("\(accent.rawValue)：实现 \(impl.text) ≠ 设计稿 \(design.text)")
             }
         }
         #expect(
-            gained.isEmpty,
+            darkBad.isEmpty,
             """
-            强调色的基色**已经明暗不同**了（\(gained.count) 门）：
-            \(gained.joined(separator: "\n"))
-            设计稿那一侧有 4 门 × `--accent` / `--accent-soft` / `--accent-ring` 的深色值，
-            请顺手把 §8.77 里「强调色缺深色值」这条登记改成「已钉住」，
-            并把 `PaletteColorParityTests` 的深色比对接上 —— **别只删掉这条断言**。
+            强调色**深色侧**与设计稿不一致（\(darkBad.count) 门）：
+            \(darkBad.joined(separator: "\n"))
+            深色基色在 `AccentColor.hexDark`。
+            ⚠️ 别把这条断言删掉 —— 删了就没人会红，"加了深色值却没生效"会静默过去。
             """)
     }
 
     /// **强调色浅底与内描边的透明度分档**（§8.77.7 的缺口，2026-09-21 补）。
     ///
     /// 这两个令牌此前被放进 `accentFamily` **豁免**了「新变量必须登记」那条守卫，
-    /// 而注释里写着「由 `强调色族的基色明暗不分这件事必须钉住` 单独管」——
+    /// 而注释里写着「由 `强调色族的基色两侧各钉各的`（旧名：…明暗不分…）单独管」——
     /// ⚠️ **那条只测基色 `--accent`**，soft / ring **一项都没测**
     /// ⇒ 实际上是「豁免了，却没人真的接管」（同族：§8.109.4「守卫一直在，只是指针烂了」）。
     ///
     /// **为什么两侧判据不同**：
     ///
-    /// - **浅色侧全值比**：实现用 `accent.appKitColor`（= 设计稿 `--accent` 的浅色值）+ alpha
-    ///   ⇒ RGB 两侧本就相同，等于顺便把基色也钉了一遍。
-    /// - **深色侧只比 alpha**：实现侧 `accentTint` 用的仍是**浅色基色**，
-    ///   而设计稿深色基色是另一套 ⇒ RGB **已知不同**，归上面那条管。
-    ///   这里只钉**分档**（蓝 0.16 / 0.40，其余 0.12 / 0.35）——
-    ///   那才是这两个令牌真正承载的信息（深色下蓝要更重，
-    ///   否则那块底铺在 `#1c1c1e` 上看不出是「一块强调色底」）。
+    /// - **浅色侧全值比**：实现用 `accent.appKitColorLight`（= 设计稿 `--accent` 的浅色值）+ alpha。
+    /// - **深色侧 2026-09-21 起也是全值比**（§8.113.11）：实现侧加了 `hexDark` 后，
+    ///   深色基色不再是浅色基色 ⇒ **RGB 两侧都该相等了**。
+    ///
+    ///   ⇒ 「只比 alpha」是当初「基色明暗不分」那个前提下的妥协；
+    ///   **前提没了，判据就得跟着改**（否则深色基色写错了也看不出来）。
+    ///
+    ///   ⚠️ **一次归因错误，值得记**：改完判据后我做过一个变异 —— 把 `accentTint`
+    ///   换成「单动态基色 + `withAlphaComponent`」，守卫**是绿的**。
+    ///   我差点写成「判据有漏洞」。实测后才知道：AppKit 的 `withAlphaComponent`
+    ///   **会保留动态 provider**，两种写法结果逐值相同。
+    ///   ⇒ **变异绿 ≠ 判据没牙，也可能只是「两种写法等价」**。
+    ///   别把「没红」直接读成「守卫不行」—— 先问是不是变异本身没制造出差异。
     ///
     /// ⚠️ **补这条时一并修了设计稿**：深色 + 紫 / 橙 / 绿原先**只覆盖**了
     /// `--accent` / `--accent-hover`，`--accent-soft` / `--accent-ring` 会
@@ -461,15 +480,16 @@ struct PaletteColorParityTests {
                         "\(accent.rawValue) \(variable) 浅色：实现 \(implLight.text) ≠ 设计稿 \(designLight.text)")
                 }
 
-                // ② 深色：只比 alpha（RGB 归「基色明暗不分」那条管）
+                // ② 深色：全值（RGBA）—— 两侧基色分开之后 RGB 也该相等了（§8.113.11）
                 let designDark = try #require(
                     Self.colorDecl(in: darkScope, variable),
                     "`\(accent.rawValue)` 深色块里解析不到 `\(variable)` —— 解析口径坏了")
                 let implDark = rgba(token(accent), dark: true)
-                if abs(implDark.a - designDark.a) > 0.004 {
+                if !implDark.equals(designDark) {
                     bad.append(
-                        "\(accent.rawValue) \(variable) 深色透明度：实现 \(implDark.a) ≠ 设计稿 \(designDark.a)"
-                            + "（档位：蓝 0.16 / 0.40，其余 0.12 / 0.35）")
+                        "\(accent.rawValue) \(variable) 深色：实现 \(implDark.text) ≠ 设计稿 \(designDark.text)"
+                            + "（档位：蓝 0.16 / 0.40，其余 0.12 / 0.35；"
+                            + "RGB 应取各门的**深色**基色 `AccentColor.hexDark`）")
                 }
             }
         }

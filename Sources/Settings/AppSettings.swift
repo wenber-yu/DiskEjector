@@ -75,11 +75,44 @@ enum AccentColor: String, CaseIterable, Sendable {
         }
     }
 
-    /// SwiftUI 侧色值（主窗口用，匹配设计稿色值而非系统 .blue/.purple 等命名色）。
-    var swiftUIColor: Color { Color(hex: hex) ?? .blue }
+    /// 深色侧 16 进制基色（`ds.css` 的 `:root[data-theme="dark"] --accent`）。
+    ///
+    /// **为什么要单开一套**：深色下浅色那套基色铺在 `#1c1c1e` 上偏暗、不够醒目，
+    /// 设计稿四门都给了**更亮的**深色值。2026-09-21 之前两侧共用浅色基色、
+    /// 只靠 alpha 分档拉开（§8.113.7 曾把「基色明暗不分」当作已知事实钉住）；
+    /// 现在改成两侧各钉各的，那条守卫也一并翻过来（§8.113.11）。
+    var hexDark: String {
+        switch self {
+        case .blue: return "#409cff"
+        case .purple: return "#bf6ae8"
+        case .orange: return "#ffb340"
+        case .green: return "#4cd964"
+        }
+    }
 
-    /// AppKit 侧色值（菜单栏用，与设计稿十六进制一致）。
-    var appKitColor: NSColor { NSColor(hex: hex) ?? .systemBlue }
+    /// 浅色侧基色。
+    var appKitColorLight: NSColor { NSColor(hex: hex) ?? .systemBlue }
+
+    /// 深色侧基色。
+    var appKitColorDark: NSColor { NSColor(hex: hexDark) ?? .systemBlue }
+
+    /// SwiftUI 侧色值（主窗口用）。**深浅各一套基色**，随主题切换。
+    var swiftUIColor: Color {
+        DesignTokens.Palette.adaptive(light: appKitColorLight, dark: appKitColorDark)
+    }
+
+    /// AppKit 侧色值（菜单栏用）。**深浅各一套基色**，随主题切换。
+    ///
+    /// ⚠️ 这是**动态色**（`NSColor(name:dynamicProvider:)`）。
+    /// 别对它调 `withAlphaComponent` 后再当固定色用 —— 那样会把两侧的基色差异
+    /// 抹平（`accentTint` 因此必须**两侧各构造一次**，见 DesignTokens）。
+    var appKitColor: NSColor {
+        NSColor(name: nil) { appearance in
+            appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+                ? self.appKitColorDark
+                : self.appKitColorLight
+        }
+    }
 
     /// 设置面板里的显示名（本地化）。
     var displayName: String {
