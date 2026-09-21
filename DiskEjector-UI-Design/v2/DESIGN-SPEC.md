@@ -14023,6 +14023,12 @@ run `35567313262` **结论 success** ⇒ 门槛 6（`scripts/coverage.sh`，含�
   - **门槛 8 偶发**：`IntegrationEjectTests.真实占用时关闭进程并推出` 要真的
     `hdiutil attach` 一个 dmg 并让它被认成外置盘，这台机器上偶发「未找到测试盘」
     （同一条单独跑 2/2 绿、全量 `swift test` 也绿）。属环境性 —— **这条仍然成立**。
+    ⚠️ **§8.117 订正（2026-09-21 稍后）：「属环境性」这半句被推翻了。**
+    拿到那次红的现场日志后查明：`guard` 的查询没看到测试盘、而**紧接着的第二次查询**
+    看到了它，且写入 `/Volumes/DiskEjectorEjectTest/x.txt` **已经成功**
+    ⇒ 是**测试自己假设了「`hdiutil attach` 返回 ⇒ 盘立刻可见」**，
+    而那比产品的判定时点（`NSWorkspace.didMountNotification` 之后的 `refresh()`）**更严**。
+    ⇒ 修在**测试侧**（等它出现），已关闭。见 §8.117 第 2、3 节。
 - ⬜ **「让两个依赖墙钟的测试不依赖墙钟」本身仍未动**（要你拍板）。
   本轮做的是它的**前置**：失败时能一眼分辨「排队」还是「空等」。
 - ⬜ `MEMORY.md` 已接近注入上限 ⇒ 下次做一轮精简。
@@ -14128,6 +14134,7 @@ run `35571137702` **结论 success**。⇒ 新代码在 **CI 的 Xcode 工具链
 而判据是**「修到绿之后再数一遍」**，不是「看到第一条就归类」。
 
 唯一仍然成立的旧结论是**门槛 8 的 `hdiutil` 偶发**：那是环境性，与代码无关。
+⚠️ **§8.117 订正**：这半句**也不成立** —— 它是**测试侧的假设**问题（已修），不是环境。
 
 #### 八、本地门槛结论（2026-09-21 15:35）
 
@@ -14141,6 +14148,8 @@ run `35571137702` **结论 success**。⇒ 新代码在 **CI 的 Xcode 工具链
 与 §8.113.18 第二节的口径一致：那是「**完成时刻**」的墙钟，**不能**据此说「它自己跑了 19 秒」。
 
 ⚠️ 门槛 8 那条 `hdiutil` 偶发**这次绿了**，但它是「偶发」，绿一次不构成「已修好」。
+→ ✅ **§8.117 已关闭**（2026-09-21 稍后）：根因是**测试的假设**，不是环境 ——
+   「绿一次不算证据」这句**仍然对**，真正算证据的是那次红的**现场日志**。
 
 #### 九、CI 结论（2026-09-21 16:05）：**红了一次**，红的正是那条已知 flaky —— 而这次拿到了决定性证据
 
@@ -14625,7 +14634,9 @@ CI 里测试跑在 `build_app.sh` **之前** ⇒ 它在 CI 上**永远空转**�
 写 `/Library/Preferences/com.apple.dt.Xcode.plist`，需交互式 sudo）。
 在此之前本地跑门槛要 `source tools/clt_swift_env.sh`。
 ⬜ §8.114 第 8 节那四条（那条 flaky 的修法）仍然要拍板。
-⬜ 测试套件里 `hdiutil` 的偶发（绿一次 ≠ 修好）。
+🟢 测试套件里 `hdiutil` 的偶发 —— **已关闭（§8.117）**。
+拿到现场日志后查明：病根**不是环境**，是**测试的假设比产品契约更严**
+（`hdiutil attach` 返回 ≠ 盘立刻可见；产品等的是挂载通知）。修在测试侧，生产代码一行未动。
 ⬜ `MEMORY.md` 注入余量只剩几百字符 ⇒ 下一轮加东西前先量。
 
 #### 7. 门槛、CI 与产物（2026-09-21）
@@ -14654,6 +14665,143 @@ CI 里测试跑在 `build_app.sh` **之前** ⇒ 它在 CI 上**永远空转**�
 - 测试缝：`FIND_GIT_ONLY`（设了就只试一个候选）—— 它存在的唯一理由是让
   「**一个可用 git 都没有**」这一档**可构造**，否则本机兜底候选里总有能跑的一份，
   那条判据永远没人验过。⚠️ 生产路径**不设**它。
+
+
+### 8.117 「`hdiutil` 偶发」不是环境问题 —— 是**测试的假设比产品契约更严**（2026-09-21）
+
+#### 1. 起点：先拿现场证据，不改代码
+
+§8.116 第 6 节留的 ⬜ 是「测试套件里 `hdiutil` 的偶发（绿一次 ≠ 修好）」；
+§8.113.20 第七节把它记成「**属环境性 —— 这条仍然成立**」。
+⇒ 这一轮的第一步**不是改代码**，是去找那次红的现场 —— 因为 §8.113.20 第 10 条
+把失败文本从「未找到测试盘」升级成「打出三种可能」，那次红**正好赶上了新诊断**。
+
+现场在 `.build/preflight/门槛8.log`（14:58 那次红）。
+
+#### 2. 决定性证据：同一个函数、相隔几微秒、**两次调用结果不同**
+
+```
+✘ Test 真实占用时关闭进程并推出() recorded an issue at IntegrationEjectTests.swift:73:25
+↳ 未找到测试盘 /Volumes/DiskEjectorEjectTest
+  ① 本次看到的外部盘：["/Volumes/wenbo-data", "/Volumes/DiskEjectorEjectTest"]
+  ② 系统挂载点：[…, "/Volumes/wenbo-data", "/Volumes/DiskEjectorEjectTest"]
+```
+
+`guard` 那次 `fetchExternalDisks()` **没看到**测试盘；紧接着（同一个 `else` 分支里）
+诊断的**第二次** `fetchExternalDisks()` 看到了它。而同一段代码上一行的
+`try "hi".write(toFile: "\(vol)/x.txt")` **已经成功** ⇒ 卷在**文件系统层面确实已挂载**。
+
+⇒ §8.113.20 第 10 条列的三种可能，当场排除两种：
+
+| # | 可能 | 现场判定 |
+|---|---|---|
+| ① | `hdiutil attach` 其实没挂上（沙箱 / 权限） | ✗ 排除 —— 写入 `x.txt` 成功了 |
+| ② | 挂成了 `DiskEjectorEjectTest 1`（旧挂载点还占着名字） | ✗ 排除 —— 列表里就是原名 |
+| ③ | 挂上了，但那一刻枚举不到 | ✓ **就是这个** |
+
+⚠️ **这一步是这一轮的全部价值**：原诊断只打「本次看到的外部盘」，
+而那是一次**重新查询** —— 它拿到的是「现在的状态」，说明不了「失败那一刻为什么没看到」。
+（它**恰好**因为多查了一次才把真相露出来，纯属运气。）
+
+#### 3. 病根：DiskArbitration 的传播延迟 vs 测试假设的「立即可见」
+
+`DiskService.fetchExternalDisks()` 三段：`FileManager.mountedVolumeURLs` →
+`DADiskCreateFromVolumePath` + `DADiskCopyDescription` → `DiskClassifier.isExternalVolume`。
+磁盘映像（虚拟设备，没有 `DADeviceInternal`）走判定**第 4 条**，要求
+`DAMediaEjectable == true` 且挂载点在 `/Volumes` 下 —— 而那个属性由
+**DiskArbitration 异步补全**。
+
+**产品自己的判定时点更晚**：`DiskListStore` 订阅 `NSWorkspace.didMountNotification`，
+**收到之后**才 `refresh()`（`DiskListStore.swift:58-67`）。
+⇒ 产品从没假设「`hdiutil attach` 返回即可见」。
+⇒ **原测试的假设比产品契约更严**，偶发正是这条更严的假设造成的 —— **不是产品缺陷**。
+
+#### 4. 修法（全在测试侧，生产代码一行未动）
+
+**(1) `waitForDisk(timeout:probe:)`** —— 轮询到盘出现为止；返回 ``WaitOutcome`` ＋ **等到的那块盘**。
+
+- **复用既有的 ``WaitOutcome``**（`Tests/DiskEjectorAppTests/WaitOutcome.swift`），
+  **不造第三套**等待口径（另两处是 `OccupancyStoreTests.waitUntil` /
+  `ProcessAppResolverTests.waitForExecutablePath`）。
+- 探针走 `Task.detached`，与 `DiskListStore.refresh()` **同一条路**（不占协作线程池的线程）。
+- 判超时用 `Date()`、让路用 `Task.sleep`（**不是** `usleep` 那种同步阻塞）。
+- ⚠️ 盘**从轮询里带出来**，不在外面再查一次 —— 再查一次正是第 2 节那个诊断的毛病。
+
+**(2) `notFoundDiagnostic(vol:outcome:)`** —— 失败文本抽成**纯函数**，好让它**可被断言**
+（`Issue.record` 里的字符串在测试里取不到；同 ``WaitOutcome/failureNote(_:)`` 抽出来的理由）。
+四条证据，正好把第 2 节那张表变成**每次失败都会自动打出来**的东西：
+
+| # | 打什么 | 能分开什么 |
+|---|---|---|
+| ① | `mountListHas(vol)` | 「根本没挂上」与「挂上了」 |
+| ② | **只喂它一个 URL** 给 `fetchExternalDisks()` | 挂载表有它、但 DiskArbitration 还描述不出它（空）／枚举本身能认它（非空） |
+| ③ | 现在看到的外部盘 | 上下文（有哪些盘、名字对不对） |
+| ④ | 系统挂载点 | 上下文（系统眼里的挂载表长什么样） |
+
+⚠️ **② 用的是 `fetchExternalDisks(mountedVolumeURLs:)` 这个既有的注入点** ——
+诊断**不需要在生产代码里加任何东西**（这个口子本来就是为可测性留的）。
+
+**(3) 超时 15s**：实测传播延迟在**亚秒级**，15s 足够；真的 15s 都不出现，
+那是**环境或产品**的问题，必须硬失败（不是「等久一点就绿」）。
+
+#### 5. 门与变异
+
+新增两条守卫（都在 `IntegrationEjectTests`，都**不碰真磁盘**、恒可运行）：
+
+- `等待测试盘的装置必须真的轮询并且能超时` —— 探针可注入（`ScriptedProbe`，一个 `actor`，
+  因为 `probe` 是 `@Sendable`，裸 `var` 计数器过不了编译）：
+  ① 前两拍 `nil`、第三拍给盘 ⇒ **恰好 3 拍** ＋ 带出那块盘；
+  ② 恒 `nil` ⇒ **放弃**（不挂住）且 `polls >= 2`；③ 第一拍就出现 ⇒ **恰好 1 拍**（反向对照）。
+- `未找到测试盘时的诊断必须带上四条证据与数字` —— 断言文本含卷名、求值次数、`①②③④`
+  四条标签；另加**装置自证**（`systemMounts()` 必须看到 `/`）与**反向对照**
+  （`mountListHas` 对不存在的卷必须为 `false`，否则 ① 恒真、没有信息量）。
+
+**变异装置入库**：`scripts/test/integration_wait_mutation.py`（照
+`scripts/test/wait_outcome_mutation.py` 的房式：`cp` 备份、**落地自证**、打印**原始尾部**、
+**判红看退出码**、还原后 `cmp` 确认；`python3` 直接跑，不进 CI）。
+
+| # | 变异 | 结果 | 红的范围 |
+|---|---|---|---|
+| M1 | `waitForDisk` 退回「只查一次」（**整块替换**，模拟旧行为） | ✅ 判红（4 issues） | **只有**等待装置守卫 |
+| M2 | 诊断里删掉 ② 与 ④ 两条证据 | ✅ 判红（2 issues） | **只有**诊断守卫 |
+| M3 | `systemMounts()` 恒返回空（诊断装置瞎掉） | ✅ 判红（1 issue） | **只有**诊断守卫的装置自证 |
+
+⚠️ **M1 下真机那条测试照样是绿的** —— 说明这个偶发确实罕见（~1/几十 的量级）。
+⇒ **变异只证明「守卫有牙」，不证明「那个偶发已经消失」**。这句写进了变异装置的文档串，
+免得下一轮把「变异全红」读成「flaky 已修好」。
+
+⚠️ 顺带订正**一处注释里的错数**：`IntegrationEjectTests` 文件头写着
+「它有**三处** `task.waitUntilExit()`」，实际是**两处**
+（`canAttachDiskImage` 的 `s(...)`、`shell(_:)`）—— 注释里的事实也是待证事实。
+
+#### 6. 为什么不去改产品
+
+- **产品不缺这一环**：`NSWorkspace.didMountNotification` → `refresh()` 这条链
+  **比 `hdiutil attach` 返回更晚**，而 `unmountAndEjectDevice` 是**同步阻塞**的
+  （`EjectService.eject` 返回即卸载完成）⇒ 第 3 步那句「推出后卷应已消失」
+  **不存在对称的传播延迟**，不用加等待。
+- **用户的兜底本来就有**：菜单栏每次展开与「刷新」按钮都会重新枚举；
+  一次枚举早了只会「这次没列出来」，下一次就对了。
+- ⇒ 真去改产品（比如给枚举加「重试到 DA 就绪」）是**为一个测试的假设**改产品，
+  而且会把「枚举一次」这个**契约**变得含糊。**不做。**
+
+#### 7. 门槛与产物（2026-09-21）
+
+- 门槛 **11/11 通过**（`PREFLIGHT_FAIL_TAIL=0 DISABLE_SANDBOX=1 ./scripts/preflight.sh --with-tests`，
+  `LC_ALL=en_US.UTF-8`，退出码 0；全量日志 `.build/probe/gate_run.log`）。
+  覆盖率 **62.87%**（门槛 40%）。
+- ⚠️ **第一次跑是「3 道门槛未通过」，而那是我的操作错** —— 忘了先
+  `source tools/clt_swift_env.sh`，门槛 1/2/11 一起报
+  `You have not agreed to the Xcode license agreements`（§8.113.19 那条）。
+  ⇒ **门槛红 ≠ 代码红**：先看失败门的**名字**（这次三条同因，一眼能认），
+  再决定要不要看代码。
+- 改动：`Tests/DiskEjectorAppTests/IntegrationEjectTests.swift`（测试侧）；
+  新增 `scripts/test/integration_wait_mutation.py`（变异装置，入库）；本文件。
+  **生产代码一行未动** —— 这也是这一轮「要不要改产品」那个问题的答案。
+- ⚠️ 最慢 3 条第 1 条 `真实占用时关闭进程并推出()` 记的是 **21.604s** —— 那是
+  **墙钟＝完成时刻距 run 开始**（含并发调度等待），**不是**该测试自身耗时
+  （单跑它 ~4.9s）。上一轮（§8.113.20 第八节）同一位置是 **21.532s** ⇒ 基本没变，
+  **别把这一栏读成「这条变慢了」**。
 
 
 ## 9. 文件清单
