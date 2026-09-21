@@ -21,6 +21,23 @@
 不证明「那个偶发已经消失」**；这条测试的偶发本来就只有 ~1/几十 的概率。
 别把「变异全红」当成「flaky 已修好」的证据。
 
+## ⚠️ 第二次实测：**守卫自己也会 flaky**（2026-09-21，§8.118）
+
+第一版守卫写的是「探针 `[nil, nil, disk]` ⇒ 恰好 3 拍」，本地全绿，**CI 上红了 3 条 issue**
+（`IntegrationEjectTests.swift:304 / :305 / :308`）：
+
+    ✘ Expectation failed: (waited.outcome → WaitOutcome(ok: false, polls: 2, elapsed: 6.140589952468872)).ok → false
+
+两次求值之间那次 `await`（`Task.sleep` / actor 跳转）**只保证下界** —— runner 上实测拖了 ~6.1s
+⇒ `timeout: 5` 的窗口被整个吃掉 ⇒ 第 3 拍**永远没发生**。
+
+⇒ 守卫里**不许**写「第 N 拍才成立」（N ≥ 3）：那是把机器的调度延迟写进判据。
+现在 ① 改成 `[nil, disk]`（第 **2** 拍 —— 「循环里那拍」与「补查那拍」两条路都在第 2 次
+求值拿到盘，所以与调度无关），并新增 ④（`timeout: 0`）钉「超时后那次补查」。
+
+**M4 就是为 ④ 准备的**：删掉补查后，② 的 `polls >= 2` 可能仍然成立（循环自己跑了两拍
+就够了），只有 ④ 会红。
+
 ## 用法
 
 ```bash
@@ -105,6 +122,23 @@ MUTATIONS = [
         """        (FileManager.default.mountedVolumeURLs(includingResourceValuesForKeys: nil) ?? [])
             .map(\\.path)""",
         """        []""",
+        FILTER_SUITE,
+    ),
+    (
+        "M4",
+        "删掉「超时后那次补查」（`timeout: 0` 时盘就再也拿不到了）",
+        INTEGRATION,
+        """        // 退出循环时可能刚好是最后一拍就绪 —— 再查一次，别把「刚好赶上」误报成超时。
+        polls += 1
+        let found = await probe()
+        return (
+            WaitOutcome(ok: found != nil, polls: polls, elapsed: Date().timeIntervalSince(started)),
+            found
+        )""",
+        """        return (
+            WaitOutcome(ok: false, polls: polls, elapsed: Date().timeIntervalSince(started)),
+            nil
+        )""",
         FILTER_SUITE,
     ),
 ]

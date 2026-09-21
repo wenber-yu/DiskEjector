@@ -132,9 +132,14 @@ struct IntegrationEjectTests {
     /// （同族：§8.113.12「报错必须指名真因」）。
     ///
     /// ⚠️ `probe` 由调用方注入 ⇒ 这条「等到可见为止」的策略**本身可以被确定性地验**：
-    /// 喂一个「前两拍 nil、第三拍给盘」的探针必须成功且恰好 3 拍；喂一个「永远 nil」的
+    /// 喂一个「第 1 拍 nil、第 2 拍给盘」的探针必须成功且恰好 2 拍；喂一个「永远 nil」的
     /// 探针必须在超时后**放弃**（而不是挂住），且拍数 ≥ 2（证明是**轮询**，不是「查一次就睡」）。
     /// 见 `等待测试盘的装置必须真的轮询并且能超时`。
+    ///
+    /// ⚠️ **注入探针只隔离了「被测逻辑」，没隔离「循环退出条件里的墙钟」**：拍数只有在
+    /// 迭代次数由**条件**决定时才与负载无关。两次求值之间那次 `await` 只保证**下界**
+    /// （CI 上实测 `Task.sleep(50ms)` 拖到 ~6.1s）⇒ 守卫里不许出现「第 N 拍才成立」
+    /// （N ≥ 3）。这条踩坑记录见 §8.118。
     ///
     /// 判超时用 `Date()`、报数用 ``WaitOutcome`` —— 与既有两个等待 helper
     /// （`OccupancyStoreTests.waitUntil` / `ProcessAppResolverTests.waitForExecutablePath`）
@@ -284,6 +289,11 @@ struct IntegrationEjectTests {
     /// 没有它，「`waitForDisk` 等到了」与「`waitForDisk` 只查了一次」在输出上**逐字相同** ——
     /// 而后者会让这条测试重新变成 2026-09-21 那次偶发（那次的病根正是「只查一次」）。
     /// 探针可注入，所以这条守卫**不碰任何真磁盘**、恒可运行。
+    ///
+    /// ⚠️ **但探针只隔离了被测逻辑，没隔离「退出条件里的墙钟」** —— 2026-09-21 这条守卫
+    /// 自己在 CI 上红过一次（§8.118）：`[nil, nil, disk]` + `timeout: 5` 要求「第 3 拍」，
+    /// 而两次求值之间那次 `await` 只保证**下界**（runner 上实测拖了 ~6.1s）⇒ 第 3 拍永远没发生。
+    /// ⇒ 下面每条断言都只用**第 1 或第 2 拍**成立，见各条的注释。
     @Test func 等待测试盘的装置必须真的轮询并且能超时() async {
         let probePath = "/Volumes/DiskEjectorWaitProbe"
         let disk = DiskInfo(
@@ -298,14 +308,29 @@ struct IntegrationEjectTests {
             deviceModel: nil
         )
 
-        // ① 第三拍才出现 —— 必须等到。这条**同时**证明它是轮询（不是查一次就返回）。
-        let late = ScriptedProbe([nil, nil, disk])
+        // ① 第 1 拍 nil、第 2 拍给盘 —— 必须等到，且恰好 2 拍。
+        //
+        // ⚠️ **别写「第三拍才出现」（`[nil, nil, disk]`）** —— 2026-09-21 这条守卫在 CI 上
+        // 就是这么红的：两次求值之间那次 `await`（`Task.sleep` 或 actor 跳转）**只保证下界**，
+        // runner 上实测拖了 ~6.1s ⇒ `timeout: 5` 的窗口被整个吃掉 ⇒ 第 3 拍**永远没发生**
+        // （实得 `WaitOutcome(ok: false, polls: 2, elapsed: 6.14)`）。见 §8.118。
+        //
+        // 判据：``WaitOutcome/polls`` 只有「循环的迭代次数由**条件**决定」时才与负载无关；
+        // 一旦**退出由截止时间决定**，它就变成负载相关。
+        //
+        // 为什么 2 拍是安全的：`[nil, disk]` 下**两条路都在第 2 次求值拿到盘** ——
+        //   快路：循环里第 1 拍 nil → 睡 → 第 2 拍拿到盘（在循环里 `return`）；
+        //   慢路：第 1 拍 nil → 睡过头 ⇒ 退出循环 → **超时后那次补查**（也是第 2 拍）拿到盘。
+        // ⇒ `polls == 2` 与调度无关，而「求值了不止一次」仍被钉住（M1 变异仍红）。
+        let late = ScriptedProbe([nil, disk])
         let waited = await Self.waitForDisk(timeout: 5) { await late.next() }
-        #expect(waited.outcome.ok, "第三拍才出现的盘没被等到：\(waited.outcome.diagnostic)")
+        #expect(waited.outcome.ok, "第 2 拍才出现的盘没被等到：\(waited.outcome.diagnostic)")
         #expect(
             waited.disk == disk,
             "等到的那块盘必须从轮询里带出来（不是外面再查一次），实得 \(String(describing: waited.disk))")
-        #expect(waited.outcome.polls == 3, "前两拍为 nil ⇒ 恰好 3 次求值，实得 \(waited.outcome.polls)")
+        #expect(
+            waited.outcome.polls == 2,
+            "第 1 拍 nil、第 2 拍给盘 ⇒ 恰好 2 次求值，实得 \(waited.outcome.polls)")
 
         // ② 恒不出现：必须**放弃**（不挂住），且拍数 ≥ 2。
         let never = ScriptedProbe([])
@@ -316,11 +341,28 @@ struct IntegrationEjectTests {
             timedOut.outcome.polls >= 2,
             "至少要有「循环里那次」与「超时后那次补查」两次求值，实得 \(timedOut.outcome.polls)")
 
-        // ③ 第一拍就出现 ⇒ 恰好 1 拍。**反向对照**：证明 ① 的 `polls == 3` 不是恒真。
+        // ③ 第 1 拍就出现 ⇒ 恰好 1 拍。**反向对照**：证明 ① 的 `polls == 2` 不是恒真。
         let immediate = ScriptedProbe([disk])
         let fast = await Self.waitForDisk(timeout: 5) { await immediate.next() }
-        #expect(fast.outcome.polls == 1, "第一拍就出现 ⇒ 恰好 1 拍，实得 \(fast.outcome.polls)")
-        #expect(fast.disk != nil, "第一拍就出现的盘必须被带出来")
+        #expect(fast.outcome.polls == 1, "第 1 拍就出现 ⇒ 恰好 1 拍，实得 \(fast.outcome.polls)")
+        #expect(fast.disk != nil, "第 1 拍就出现的盘必须被带出来")
+
+        // ④ `timeout: 0` ⇒ **循环体一次都不跑**，盘只能靠「超时后那次补查」拿到。
+        //
+        // 这条钉的是 ② 钉不住的那一半：② 的 `polls >= 2` 在「循环自己跑了两拍」时同样成立，
+        // 所以**把补查整块删掉不会有任何东西变红**（M4）。这里循环没有机会跑，
+        // 拿到盘就只可能是补查干的 ⇒ `polls == 1` 与调度无关（循环跑没跑都是 1）。
+        let noLoop = ScriptedProbe([disk])
+        let caughtUp = await Self.waitForDisk(timeout: 0) { await noLoop.next() }
+        #expect(
+            caughtUp.disk != nil,
+            "循环没机会跑时，盘必须靠补查拿到（补查被删就退化成 nil）")
+        #expect(
+            caughtUp.outcome.ok,
+            "循环没机会跑时 `ok` 仍应为 true：\(caughtUp.outcome.diagnostic)")
+        #expect(
+            caughtUp.outcome.polls == 1,
+            "循环没跑 + 补查 1 次 ⇒ 恰好 1 拍，实得 \(caughtUp.outcome.polls)")
     }
 
     /// **失败诊断的守卫**：那段文本必须带上「在找哪个卷」、求值次数，以及**四条证据**。
