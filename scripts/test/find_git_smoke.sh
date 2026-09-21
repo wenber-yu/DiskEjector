@@ -175,6 +175,55 @@ else
     echo "   [回归] 跳过（本机没有可用的真 git，③ 已判红）"
 fi
 
+# ---- ⑤ 回归：**PATH 重排不许连带顶掉同目录的别的工具** ----
+# 2026-09-21 **CI 门槛 4 判红**抓到的（本地全绿）。CI runner 上 `git` 与 `gh`
+# 同在 Homebrew 的 `/opt/homebrew/bin` ⇒ 当时那条「无条件摘掉旧位置再前置」的实现
+# 把那个目录**整体挪到最前**，连带把 `ci_status_smoke.sh` 注入的**假 `gh` 顶掉了**
+# ⇒ 门槛 4 判红（本地不红：本机 git 与 gh **不在**同一个目录）。
+# ⇒ 判据：`command -v git` **已经**解析到它时，PATH 必须**一个字节都不改**。
+SHARED="$TMP/shared"
+mkdir -p "$SHARED" "$TMP/fakegh"
+cp "$TMP/good-git" "$SHARED/git"
+cat >"$SHARED/gh" <<'SH'
+#!/bin/bash
+echo "SHARED_GH"
+SH
+cat >"$TMP/fakegh/gh" <<'SH'
+#!/bin/bash
+echo "FAKE_GH"
+SH
+chmod +x "$SHARED/git" "$SHARED/gh" "$TMP/fakegh/gh"
+if [ ! -x "$SHARED/git" ] || [ ! -x "$TMP/fakegh/gh" ]; then
+    fail "装置坏了：⑤ 的假 git / 假 gh 没造出来 ⇒ 本次结论作废"
+else
+    PATH="$TMP/fakegh:$SHARED:$OLD_PATH"   # 假 gh 在前；同目录里同时有「好 git」和「真 gh」
+    PATH_BEFORE="$PATH"
+    if find_usable_git; then
+        RESOLVED_GH="$(command -v gh)"
+        if [ "$RESOLVED_GH" = "$TMP/fakegh/gh" ]; then
+            echo "   [回归] 同目录的 \`gh\` 没被顶掉（仍解析到注入的那份）✓"
+        else
+            fail "[回归] PATH 重排把同目录的 \`gh\` 顶掉了：\`command -v gh\` → ${RESOLVED_GH}（期望 ${TMP}/fakegh/gh）—— 这会顶掉测试注入的假 gh（CI 门槛 4 就是这么红的）"
+        fi
+        if [ "$(command -v git)" = "$SHARED/git" ]; then
+            echo "   [回归] \`command -v git\` 仍解析到那份能用的 ✓"
+        else
+            fail "[回归] \`command -v git\` → $(command -v git)，期望 $SHARED/git"
+        fi
+        # 自证：把「改没改 PATH」打出来 —— 只报「gh 没被顶掉」时，
+        # 「没改」与「改了但恰好没影响」分不开（后者下次就会咬人）。
+        if [ "$PATH" = "$PATH_BEFORE" ]; then
+            echo "   [回归] PATH 未被改动（本来就解析正确 ⇒ 不该动它）✓"
+        else
+            # ⚠️ 只报**首项**：把整条 PATH 打出来会有几百个字符，淹掉真正的信息
+            fail "[回归] PATH 被改了（本来就没坏，不该动）：首项 ${PATH_BEFORE%%:*} → ${PATH%%:*}"
+        fi
+    else
+        fail "[回归] 装置异常：同目录里有能用的 git，find_usable_git 却返回失败"
+    fi
+    PATH="$OLD_PATH"
+fi
+
 if [ "$FAILS" -gt 0 ]; then
     echo "   ✗ 未通过（$FAILS 条）："
     exit 1
