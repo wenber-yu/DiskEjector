@@ -5207,7 +5207,7 @@ Sparkle 会不会装上这次更新 —— 依据是 `showUpdateFound` 的文档
 | 7 | ~~appcast 里没有 `<description>`~~（→ 新版本弹窗的「本次更新」是空的） | 已关闭 | §8.46.4 | ✅ 传了 `RELEASE_NOTES_FILE`，实测解析出 **4 条**；并补 3 条守卫 |
 | 8 | ~~已打包的 `v2026.09.18.3` 里没有 §8.47 那个修复~~ | 已关闭 | §8.47.5 | ✅ 拍板改发 **`v2026.09.18.4`**；后又重打成 build **78**（§8.47.7） |
 | 9 | ~~「下载失败」这一态**没有生产者**（`driverDidFailDownload` 零引用）~~ | 已关闭 | §8.47.6 | ✅ 实扫查出并修好（接 delegate + 分流），补 3 条守卫、逐条变异验证；同批删掉真死代码 `contentHeightBudget`（提交 `dfbafeb`） |
-| 10 | ~~「下载失败时 Sparkle 走 delegate 还是 user driver」~~ | 已关闭（源码级，§8.113） | §8.47.6 | ✅ **已关闭（源码级，§8.113 —— 不需要真机）**：两条**都会**收到信号，但**只有第一条生效**（后到的被 `isDownloadFailure` 闸门挡掉）；自动那条路上 **delegate 是唯一的一条** ⚠️ **§8.86 订正**：不只是「要有网」—— 两条路**都会聚到 `driverDidFailDownload`**，**光看界面分不出来** ⇒ 要分清必须有**应用日志**，而本环境 `log stream` 用不了 ⇒ 换台机器才关得掉 ⚠️ **§8.101.1 追加（2026-09-20 15:15）**：「`log` 用不了」已从「试过不行」升级为**机制上不行** —— `sandbox_check(getpid(), NULL)` 内核直答 **1（在沙箱里）**，**提权前后逐字相同**，且 `APP_SANDBOX_CONTAINER_ID` 未设置 ⇒ 是**从宿主 app 继承的 seatbelt**、不是 App Sandbox。四条逃逸路线（无提权 / 提权 / 最宽松 `sandbox-exec` profile / `launchctl asuser`+`submit`）**输出逐字相同**。⇒ **与「用户有没有给权限」无关**（那是应用级授权，够不到 seatbelt 这一层），**换台机器仍是唯一路径**，但理由变了 |
+| 10 | ~~「下载失败时 Sparkle 走 delegate 还是 user driver」~~ | 已关闭（源码级，§8.113） | §8.47.6 | ✅ **已关闭（源码级，§8.113 —— 不需要真机）**：两条**都会**收到信号，但**只有第一条生效**（后到的被 `isDownloadFailure` 闸门挡掉）；自动那条路上 **delegate 是唯一的一条** ⚠️ **§8.86 订正**：不只是「要有网」—— 两条路**都会聚到 `driverDidFailDownload`**，**光看界面分不出来** ⇒ 要分清必须有**应用日志**，而本环境 `log stream` 用不了 ⇒ 换台机器才关得掉 ⚠️ **§8.101.1 追加（2026-09-20 15:15）**：「`log` 用不了」已从「试过不行」升级为**机制上不行** —— `sandbox_check(getpid(), NULL)` 内核直答 **1（在沙箱里）**，**提权前后逐字相同**，且 `APP_SANDBOX_CONTAINER_ID` 未设置 ⇒ 是**从宿主 app 继承的 seatbelt**、不是 App Sandbox。四条逃逸路线（无提权 / 提权 / 最宽松 `sandbox-exec` profile / `launchctl asuser`+`submit`）**输出逐字相同**。⇒ **与「用户有没有给权限」无关**（那是应用级授权，够不到 seatbelt 这一层），**换台机器仍是唯一路径**，但理由变了 ⚠️ **§8.120 追加（2026-09-22 00:45 实测）**：**前提没了** —— 应用日志**读得到了**（用户关掉宿主沙箱）。已用「本地 feed + 必然 404 的 enclosure」造出一次**真的下载失败** ⇒ **自动那条路只有 delegate 触发**（打 `下载失败：…`），user driver 那条（会打 `更新出错：…`）**一声没吭** ⇒ 「自动路上 delegate 是唯一的一条」从**源码推断**升级为**实测**。⚠️ **弹窗那条路仍未实测**（要等用户点「安装更新」才开始下载，需驱动界面） |
 | 11 | ~~build 74 里没有 `dfbafeb` 那个修复~~ | 已关闭 | §8.47.7 | ✅ 拍板**重打 .4**（tag 移到 `7da076b`、build **78**）；三层验真 + 线上 appcast 回读全过 |
 | 12 | ~~复验时「25s 内没写 `SULastCheckTime`」看着像回归~~ | 已关闭 | §8.47.8 | ✅ 查出是**探针残留**（用户域 `SUEnableAutomaticChecks=0` 盖过 Info.plist 的 `true`）；已恢复 + 写进探针 |
 | 13 | ~~三组 `*BusyBar*` 令牌**接错行**（菜单行拿 3/8、紧凑行拿 3/10）~~ | 已关闭 | §8.48 | ✅ 各自接回自己的令牌；新增 `MenuDiskRowLayoutTests/三种行的琥珀条各用自己那组的规格`（量像素，期望值取设计稿字面值），两条轴**逐条变异**验证过 |
@@ -14947,6 +14947,79 @@ CI 里测试跑在 `build_app.sh` **之前** ⇒ 它在 CI 上**永远空转**�
 
 **两者都是纯代码提交**（这次**没写** SPEC 章节）。补记在此，免得下一轮把
 「提交里有 § 编号」当成「有章节」。
+
+
+### 8.120 第 10 行的实测：下载失败时**自动那条路只有 delegate 触发**（2026-09-22）
+
+#### 1. 为什么现在能做了
+
+第 10 行那句「未核实」的理由是「**本环境读不到应用日志**」（§8.101.1 还把它升级成
+「机制上不行」）。2026-09-21 实测：用户关掉宿主沙箱后 **`/usr/bin/log show` 读得到了**
+（订正记在 `ENGINEERING-NOTES.md`「订正：应用日志**读得到**」章）⇒ **前提没了**。
+（仍然成立的只有一半：`log` 是 **zsh 内建**，一律写绝对路径。）
+
+#### 2. 判据：两条路的日志文案**本来就不同**
+
+| 路 | 代码 | 打的日志 |
+|---|---|---|
+| delegate | `UpdateController.swift:810` | `下载失败：…` |
+| user driver | `UpdateUserDriver.swift:172` | `更新出错：…` |
+
+两条都是 `subsystem=com.diskejector.app` / `category=Update` / `privacy: .public`
+⇒ **读日志就能分清走的是哪条**，不需要碰界面。
+
+#### 3. 怎么造出一次「真的下载、且真的失败」
+
+不改网络、不用真机探针，全靠三件事（都可逆）：
+
+1. **`SUFeedURL` 能被 user defaults 覆盖** —— Sparkle 源码 `SPUUpdater.m:179` / `:1155`
+   读 `objectForUserDefaultsKey:SUFeedURLKey` ⇒ 可以指到**本地 feed**。
+2. **本地 feed 照抄真 appcast**，只改两处：`<sparkle:version>` 198 → **999**
+   （产物 build 是 **209**，不改的话 app 根本不会发现有更新）；
+   `<enclosure url=…>` → `http://127.0.0.1:8899/missing.dmg`（**必然 404**）。
+   ⚠️ **EdDSA 签名不用管**：`sparkle:edSignature` 签的是**下载到的那个文件**，
+   而这里第一步就 404 ⇒ **走不到验签**。
+   ⚠️ **要改的是 `<sparkle:version>`，不是 `<sparkle:shortVersionString>`**：
+   前者参与**版本比较**，后者只管**显示**（`SUAppcastItem.m:747`）。
+   而真 appcast 里后者是**元素**不是属性 ⇒ 按属性写正则会**静默匹配不到**（本轮踩过）。
+3. `SUEnableAutomaticChecks=1` + `SUAutomaticallyUpdate=1` ⇒ 选
+   `SPUAutomaticUpdateDriver`（静默后台下载），**全程不用点界面**。
+
+**装置已入库**（§8.111：被反复引用的诊断装置必须入库，别让它躺在 `.build/` 里）：
+`tools/probe/make_broken_appcast.py`（造 feed，带 4 条自证）+ 既有的
+`tools/probe/feedsrv.py`（带自证的本地服务器）。下次做**弹窗那条路**直接复用。
+
+⚠️ 一个小坑：Sparkle 只在「距上次检查超过间隔」时才在启动检查 ⇒ 还要删掉
+`SULastCheckTime` 才会真的去查。
+
+#### 4. 结果（`log show --predicate 'subsystem == "com.diskejector.app"'`）
+
+```
+00:45:37.690 I [Update] Sparkle 已启动，feed: http://127.0.0.1:8899/appcast.xml
+00:45:37.826 I [Update] 自动更新开始后台下载：2026.09.21.1
+00:45:37.833 E [Update] 下载失败：A network error occurred while downloading http://127.0.0.1:8899/missing.dmg. not found (404)
+```
+
+⇒ **自动那条路上，delegate 是唯一的一条** —— user driver 那条（会打 `更新出错：…`）
+**一声没吭**。这把 §8.113「自动路上 delegate 是唯一的一条」从**源码推断**升级成**实测**。
+
+ℹ️ 日志里的版本号是 `2026.09.21.1` 而不是 999，是因为
+`displayVersionString` 取 `<sparkle:shortVersionString>` **元素**（`SUAppcastItem.m:747`），
+而我这个 feed 只改了 `<sparkle:version>`；**版本比较用的正是后者** ⇒ 更新照样被找到。
+
+#### 5. ⚠️ 边界：还没验的那一半
+
+**弹窗那条路仍未实测** —— `SUAutomaticallyUpdate=0` 时下载要等用户点「安装更新」才开始，
+需要驱动界面（点击）。§8.113 对这条路的结论（「两条都发、只有第一条生效，
+后到的被 `isDownloadFailure` 闸门挡掉」）**仍只是源码推断**。
+⇒ 下次要做：**同一套本地 feed** + `SUAutomaticallyUpdate=0` + 点一下弹窗，读同一条 predicate。
+
+#### 6. 清理（已做）
+
+实验后 `SUFeedURL` / `SUEnableAutomaticChecks` / `SUAutomaticallyUpdate` **三个键已全部删除**
+（实验前它们本来就是「未设置」）⇒ 不影响正常的更新检查。
+本地 HTTP 服务已停、app 已退出。
+ℹ️ `SULastCheckTime` 被 app 自己重设成实验那一刻 —— 那是它**真的检查过一次**，语义正确。
 
 
 ## 9. 文件清单
