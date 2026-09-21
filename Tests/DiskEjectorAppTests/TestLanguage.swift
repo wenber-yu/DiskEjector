@@ -43,14 +43,22 @@ enum TestLanguage {
     static let design = "zh-Hans"
 
     /// 在指定语言下执行 `body`（同步）。
+    ///
+    /// ⚠️ **这里曾经还有一个 `async` 重载，2026-09-21 删掉了**（SPEC §8.113.20）——
+    /// 两条独立的理由，任一条都够：
+    ///
+    /// 1. **零消费者**：全仓搜不到任何 `await TestLanguage.with`。它能活这么久，是因为
+    ///    `DeclarationConsumerTests` 的口径是「**只看 `Sources/`**」（那里写着为什么），
+    ///    所以 `Tests/` 里的死声明**不在它的射程内** —— 这是那条守卫的已知边界，不是它的 bug。
+    /// 2. **踩了 deprecated API**：它调 `TaskLocal.withValue(_:operation:)`，而 CLT 的
+    ///    Swift 6.4 把那个重载标成 deprecated（要改用 `nonisolated(nonsending)` 的那个），
+    ///    `-warnings-as-errors` 下直接编译不过。
+    ///
+    /// ⇒ **将来真需要异步版时别照抄旧写法**：`operation` 参数必须写成
+    /// `nonisolated(nonsending) () async throws -> T` 才会选中新重载，
+    /// 写成裸的 `() async throws -> T` 又会掉回 deprecated 那个（这正是当初中招的写法）。
     static func with<T>(_ identifier: String, _ body: () throws -> T) rethrows -> T {
         try L10n.$forcedLocale.withValue(Locale(identifier: identifier), operation: body)
-    }
-
-    /// 在指定语言下执行 `body`（异步）。
-    static func with<T>(_ identifier: String, _ body: () async throws -> T) async rethrows -> T {
-        try await L10n.$forcedLocale.withValue(
-            Locale(identifier: identifier), operation: body)
     }
 
     /// 取**设计稿语言**下的文案。

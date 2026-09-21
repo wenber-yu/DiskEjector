@@ -620,7 +620,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             exit(1)
         }
 
-        Task {
+        // `[self]` 是把**本来就有的**隐式强捕获写成显式（行为一字不变）。
+        // 本 Task 要活到预览收尾（`exit()` 才结束），期间必须能碰 `self` 的窗口与出口处理器；
+        // 而下面那个**存进 `self.onboardingExitHandler` 的**闭包**故意**写 `[weak self]`
+        // （否则 self → handler → 闭包 → self 成环）—— 两处所有权不同是**有意的**。
+        // 不写这个 `[self]` 时，CLT 的 Swift 6.4 会报 `ImplicitStrongCapture`
+        // （「内层 weak 捕获与外层**隐式**强捕获不一致」，见 SPEC §8.113.20），
+        // 配上 `-warnings-as-errors` 就成了 error；CI 的旧 Xcode 不报 ⇒ 本地门槛 1 假红。
+        Task { [self] in
             var mismatches: [String] = []
 
             await waitUntilOnboardingIsKey()
