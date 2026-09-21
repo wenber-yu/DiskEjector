@@ -50,6 +50,92 @@ import Testing
         return out
     }
 
+    // MARK: 第二向：未退役的行**必须**表态（2026-09-21 补，填 §8.113.13 承认的洞）
+
+    /// 账本表块的判据：表头里必须含这个词。
+    ///
+    /// 用它把「仍开着」表和文档里**别的**编号表（§8.57.6 的守卫清单、§8.69.3 的判据表……）
+    /// 区分开 —— 那些表的「最后一格」是变异编号或备注，**本来就不表态**。
+    private static let ledgerHeaderMarker = "谁才能关"
+
+    /// 状态列允许出现的标记。
+    ///
+    /// ⚠️ **四个都收**：`🟢` 整项关闭 / `✅` 子项或老式关闭 / `⬜` 仍开着 / `🟡` 部分关闭。
+    /// 这一向问的是「**有没有表态**」，不是「表的是什么态」——
+    /// 表态的**精度**交给上面那条 `drift`（它只认 🟢，见文件头那段权衡）。
+    private static let statusMarkers = ["🟢", "✅", "⬜", "🟡"]
+
+    /// 按**未转义**的 `|` 切单元格。
+    ///
+    /// ⚠️ **不能直接 `split("|")`**：本仓库在单元格里写 `尚未\|还没`、`` `\| tail -10` ``
+    /// 这类**转义**管道，naive 切分会把它当列分隔符 ⇒ 凭空多出一格。
+    /// 2026-09-21 实测：账本第 35 行被误判成 6 格（真值 5 格），据此差点报出一个假缺陷。
+    static func splitCells(_ line: String) -> [String] {
+        var cells: [String] = []
+        var current = ""
+        var escaped = false
+        for ch in line {
+            if escaped {
+                current.append(ch)
+                escaped = false
+                continue
+            }
+            if ch == "\\" {
+                escaped = true
+                current.append(ch)
+                continue
+            }
+            if ch == "|" {
+                cells.append(current)
+                current = ""
+                continue
+            }
+            current.append(ch)
+        }
+        cells.append(current)
+        if let first = cells.first, first.trimmingCharacters(in: .whitespaces).isEmpty { cells.removeFirst() }
+        if let last = cells.last, last.trimmingCharacters(in: .whitespaces).isEmpty { cells.removeLast() }
+        return cells.map { $0.trimmingCharacters(in: .whitespaces) }
+    }
+
+    /// 纯函数：喂**原始文档**，返回「账本行未退役、而状态列**一个标记都没有**」的行号（1 起）。
+    ///
+    /// 【为什么需要】文件头那条「抓不到什么」写的就是这一向：
+    /// 「描述列写了结论、状态列**压根没写**『仍开着』」的行，`drift` **看不见**。
+    /// 2026-09-21 回头核对时人肉做过一遍（当时零漂移），本条把那次核对**固化成机器判据**。
+    ///
+    /// 【口径】
+    /// - 只认**账本表块**（表头含 ``ledgerHeaderMarker``）；
+    /// - **退役行不要求表态**：项那格以 `~~` 开头 = 整行划掉；
+    /// - ⚠️ **必须先 `stripFences`**：§8.104.5 里**引用**了那段坏行当样本
+    ///   （围栏内的 `| 35 | … | ⚠️ **§8.89 追加**：… |`，最后一格没有标记）。
+    ///   不去围栏的话，**引用本身**会被报成缺陷。
+    static func unmarkedLedgerRows(inRaw raw: String) -> [Int] {
+        let lines = DocTableIntegrityTests.stripFences(raw)
+        var out: [Int] = []
+        var i = 0
+        while i < lines.count {
+            guard lines[i].hasPrefix("|") else {
+                i += 1
+                continue
+            }
+            let start = i
+            while i < lines.count, lines[i].hasPrefix("|") { i += 1 }
+            guard lines[start].contains(ledgerHeaderMarker) else { continue }
+            for j in (start + 1)..<i {
+                let cells = splitCells(lines[j])
+                guard cells.count >= 3 else { continue }
+                guard Int(cells[0]) != nil else { continue }  // 分隔线 / 非编号行
+                if cells[1].hasPrefix("~~") { continue }  // 退役行
+                let status = cells[cells.count - 1]
+                if !statusMarkers.contains(where: { status.contains($0) }) {
+                    out.append(j + 1)
+                }
+            }
+        }
+        return out
+    }
+
     /// 仓库根：`#filePath` = <仓库根>/Tests/DiskEjectorAppTests/DocStatusMarkerTests.swift
     private static var repoRoot: URL {
         URL(fileURLWithPath: #filePath)
@@ -85,6 +171,32 @@ import Testing
             \(hits.map(\.description).joined(separator: "\n"))
             正确的处置是**把状态列划成已关闭**（写清核对时刻与依据章节），
             不是把那行里的 🟢 删掉 —— 删了就等于把「已经做完」这件事也一起删了。
+            """)
+    }
+
+    @Test func 账本里未退役的行必须在状态列里有标记() async throws {
+        let files = try #require(
+            await DocTableIntegrityTests.trackedMarkdownFiles(),
+            "拿不到 `git ls-files '*.md'` 的输出 —— 扫描范围也拿不到了（范围本身就是判据）")
+        #expect(!files.isEmpty, "被跟踪的 `.md` 一份都没有 —— 范围坏了")
+
+        var hits: [Hit] = []
+        for f in files {
+            let url = Self.repoRoot.appendingPathComponent(f)
+            guard let raw = try? String(contentsOf: url, encoding: .utf8) else { continue }
+            for lineNo in Self.unmarkedLedgerRows(inRaw: raw) {
+                hits.append(Hit(file: f, line: lineNo))
+            }
+        }
+
+        #expect(
+            hits.isEmpty,
+            """
+            这些账本行**既没退役、状态列又没表态** —— 读的人不知道它到底关没关：
+            \(hits.map(\.description).joined(separator: "\n"))
+            处置二选一：① 真关了 ⇒ 状态列写清标记（`🟢`/`✅`）＋核对时刻＋依据章节；
+            ② 真还开着 ⇒ 状态列写 `⬜ **仍开着**`；
+            ③ 整项作废 ⇒ 把「项」那格划上删除线（`~~…~~`），退役行不要求表态。
             """)
     }
 
@@ -131,5 +243,61 @@ import Testing
         #expect(
             Self.drift(in: prose).isEmpty,
             "阴性对照失败：散文里讨论这两个标记不该被当成漂移")
+    }
+
+    @Test func 未退役行的判据的双向对照() throws {
+        // ① 阳性：未退役的行**状态列没表态** ⇒ 必须命中（否则装置瞎了）
+        let ledger = [
+            "| # | 项 | 谁才能关 | 出处 | 现状 |",
+            "|---|---|---|---|---|",
+            "| 1 | ~~旧账~~ | 我 | §8.1 | 早就关了 |",
+            "| 2 | 新账 | 我 | §8.2 | 还在查 |",
+        ].joined(separator: "\n")
+        #expect(
+            Self.unmarkedLedgerRows(inRaw: ledger) == [4],
+            "阳性对照失败：未退役、状态列又没标记的行没被抓出来 ⇒ 这一向等于没有")
+
+        // ② 阴性：退役行（项那格划了删除线）**不要求表态**
+        let retired = [
+            "| # | 项 | 谁才能关 | 出处 | 现状 |",
+            "|---|---|---|---|---|",
+            "| 1 | ~~旧账~~ | 我 | §8.1 | 早就关了 |",
+        ].joined(separator: "\n")
+        #expect(
+            Self.unmarkedLedgerRows(inRaw: retired).isEmpty,
+            "阴性对照失败：退役行不该被要求表态")
+
+        // ③ 阴性：**别的**编号表（表头没有「谁才能关」）不归这一向管 ——
+        //    那些表的最后一格是变异编号 / 备注，本来就不表态。
+        let otherTable = [
+            "| # | 判据 | 变异 |",
+            "|---|---|---|",
+            "| 57 | 挂了 `data-i18n` 的元素，祖先里不许再有一层 | M100 |",
+        ].joined(separator: "\n")
+        #expect(
+            Self.unmarkedLedgerRows(inRaw: otherTable).isEmpty,
+            "阴性对照失败：非账本的编号表被误报 ⇒ 守卫会喊狼来了")
+
+        // ④ 阴性：**围栏内引用的坏行样本** ⇒ 不得命中。
+        //    §8.104.5 正是把那段坏行抄进代码围栏里当样本的，而它最后一格没有标记。
+        //    不去围栏的话，**引用本身**会被报成缺陷。
+        let fencedQuote = [
+            "核对到一半时发现：",
+            "```",
+            "| # | 项 | 谁才能关 | 出处 | 现状 |",
+            "|---|---|---|---|---|",
+            "| 2 | 新账 | 我 | §8.2 | 还在查 |",
+            "```",
+            "以上是引用。",
+        ].joined(separator: "\n")
+        #expect(
+            Self.unmarkedLedgerRows(inRaw: fencedQuote).isEmpty,
+            "阴性对照失败：围栏内引用的坏行被当成真缺陷 ⇒ 必须先去围栏")
+
+        // ⑤ 转义管道不算列分隔符（naive `split(\"|\")` 会凭空多出一格）
+        let escaped = Self.splitCells("| 35 | 门槛输出 `\\| tail -10` 了 | 我 | §8.86.7 | 🟢 已关闭 |")
+        #expect(
+            escaped.count == 5,
+            "转义管道被当成了列分隔符：切出 \(escaped.count) 格（应为 5）—— 2026-09-21 实测踩过这个假缺陷")
     }
 }
