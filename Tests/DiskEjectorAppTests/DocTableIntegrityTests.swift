@@ -58,11 +58,12 @@ import Testing
         try String(contentsOf: Self.repoRoot.appendingPathComponent(relative), encoding: .utf8)
     }
 
-    /// 扫描范围 = **仓库里被 git 跟踪的 `.md`**（`git ls-files '*.md'`，当前 4 个）。
+    /// 扫描范围 = **「会被 git 带进版本库的 `.md`」**（已入库 ∪ 未入库但未被忽略，当前 4 个）。
+    /// 范围由 `trackedMarkdownFiles()` 一条命令给出（含 `--others`，理由见那里的注释）。
     ///
     /// ⚠️ **范围本身是判据**（§8.75）：2026-09-20 实测 —— `git ls-files '*.md'` 只有 4 个，
     /// 而此前这里只列了 2 个，**漏掉了 `README.md`（它有一个 10 行的「能力」表）**。
-    /// ⇒ 凡是**被 git 跟踪**的 `.md` 都要进来；漏一份 = 那份文档里的表格永远没人守。
+    /// ⇒ 凡是**在范围内**的 `.md` 都要进来；漏一份 = 那份文档里的表格永远没人守。
     ///
     /// **不进范围的**（有依据，不是漏）：`.workbuddy*/memory/*.md` —— 被 `.gitignore`
     /// 排除（`.gitignore:28` / `:30`）⇒ **CI 上根本不存在**，扫它们只会在 CI 上读不到文件。
@@ -79,7 +80,21 @@ import Testing
         "release-notes/README.md",
     ]
 
-    /// 仓库里**被 git 跟踪**的 `.md`（`git ls-files '*.md'`）；拿不到输出返回 `nil`。
+    /// **会被 git 带进版本库的 `.md`**；拿不到输出返回 `nil`。
+    ///
+    /// ⚠️ **必须带 `--others`（未入库文件也在范围内）** —— 2026-09-21 实测踩到，
+    /// 而且咬的是**守卫自己**：只写 `ls-files`（= 只看 `--cached`）时，
+    /// **刚建、还没 `git add` 的新文档不进范围** ⇒ 它里面的表格违规在**本地全绿**、
+    /// **推上去才红**（CI 上它已入库）。「范围窄了」与「那份文档干净」在输出上**逐字相同**。
+    /// 同一课在 `ToolingClaimTests.gitLsFiles` 上先咬过一次（那边当时逃掉的是新脚本）。
+    ///
+    /// ⚠️ **加了 `--others` 也不会把构建产物扫进来**：`.build/`(`.gitignore:3`)、
+    /// `.workbuddy/`(`:33`)、`.workbuddy-ai/`(`:35`) 全被忽略，靠 `--exclude-standard` 排除。
+    /// 本机实测：旧范围 4 个、新范围**也是 4 个**（此刻盘上无未入库的 `.md`）。
+    ///
+    /// ⚠️ 副作用（**故意的**）：本地若躺着一个**未声明**的未入库 `.md`，
+    /// `扫描范围必须覆盖所有会被提交的文档` 会红 ⇒ 逼你「要么加进 `docs`、要么写清为什么不扫」。
+    /// 这是安全方向 —— 红比静默漏扫好。
     ///
     /// ⚠️ **用 git，而不是自己遍历文件系统**：判据的原话是「**凡被 git 跟踪的 `.md`
     /// 都要在列表里**」（§8.105）—— 而 `.gitignore` 的规则**由 git 自己解释**。
@@ -91,7 +106,10 @@ import Testing
         let output = await withCheckedContinuation { (c: CheckedContinuation<String?, Never>) in
             let run = SubprocessOutput(
                 executableURL: URL(fileURLWithPath: "/usr/bin/git"),
-                arguments: ["-C", repoRoot.path, "-c", "core.quotePath=false", "ls-files", "*.md"],
+                arguments: [
+                    "-C", repoRoot.path, "-c", "core.quotePath=false",
+                    "ls-files", "--cached", "--others", "--exclude-standard", "*.md",
+                ],
                 timeout: 15
             ) { c.resume(returning: $0) }
             run.start()
@@ -263,13 +281,17 @@ import Testing
     }
 
     /// ⚠️ **`docs` 是手写的 ⇒ 会腐化**：§8.105 实测漏了 `README.md`（它有一个 10 行的
-    /// 「能力」表，而当时没人发现）。这条把「**凡被 git 跟踪的 `.md` 都要在列表里**」
+    /// 「能力」表，而当时没人发现）。这条把「**凡在范围内的 `.md` 都要在列表里**」
     /// 从一句判据变成**可执行**的断言 —— 判据只写在注释里没人执行，等于没有。
     ///
-    /// 两个方向都查：**漏**（跟踪了却没进列表）与**多**（列表里有、但不是被跟踪的文档）。
+    /// 两个方向都查：**漏**（在范围内却没进列表）与**多**（列表里有、但不在范围内）。
     /// 后者看着无害，其实最阴：路径拼错 / 文件已删 ⇒ 这条守卫一直「绿」，
     /// 而那份文档**一次都没被扫过**。
-    @Test func 扫描范围必须覆盖所有被跟踪的文档() async throws {
+    ///
+    /// ⚠️ **名字里的「会被提交」= `trackedMarkdownFiles()` 的口径**
+    /// （已入库 ∪ 未入库但未被忽略）。2026-09-21 之前它叫「必须覆盖所有**被跟踪**的文档」——
+    /// 加了 `--others` 之后那个名字**不再准确**（未入库的新文档也在范围内），故更名。
+    @Test func 扫描范围必须覆盖所有会被提交的文档() async throws {
         let listed = await Self.trackedMarkdownFiles()
         let tracked = try #require(
             listed, "拿不到 `git ls-files` 的输出 —— 装置没跑起来（**不等于**「范围没问题」）")
@@ -281,7 +303,7 @@ import Testing
         #expect(
             missing.isEmpty,
             """
-            这些**被 git 跟踪**的 `.md` 没进扫描范围：\(missing.joined(separator: "、"))
+            这些**在扫描范围内**的 `.md` 没进 `docs` 列表：\(missing.joined(separator: "、"))
             漏一份 = 那份文档里的表格**永远没人守**（§8.105 实测漏了 `README.md`）。
             请把它们加进 `docs`；若确实不该扫，就在 `docs` 的注释里写明**为什么**。
             """)
@@ -290,7 +312,7 @@ import Testing
         #expect(
             unknown.isEmpty,
             """
-            `docs` 里有 \(unknown.count) 个**不是**被跟踪的 `.md`：\(unknown.joined(separator: "、"))
+            `docs` 里有 \(unknown.count) 个**不在**扫描范围内的 `.md`：\(unknown.joined(separator: "、"))
             路径拼错 / 文件已删 / 已被 gitignore ⇒ 守卫一直「绿」，而那份文档其实没被扫过。
             """)
     }
