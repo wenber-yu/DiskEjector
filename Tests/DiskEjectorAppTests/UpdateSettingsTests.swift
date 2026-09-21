@@ -324,14 +324,29 @@ struct UpdateSettingsTests {
     /// 却发现从没自动下载过 —— 那不是他要的。
     @Test func 自动更新开关同时驱动检查与下载() throws {
         let source = try contents("Sources/Views/SettingsView.swift")
-        let body = try #require(
-            source.range(of: "func toggleAutoUpdate()").map { String(source[$0.lowerBound...]) },
-            "找不到 toggleAutoUpdate() —— 改名了就要同步这条断言")
-        let head = String(body.prefix(600))
-        #expect(head.contains("automaticallyChecksForUpdates = newValue"))
+        let code = codeOnly(try functionBody("func toggleAutoUpdate()", in: source))
+        for flag in ["automaticallyChecksForUpdates", "automaticallyDownloadsUpdates"] {
+            #expect(code.contains("\(flag) = true"), "开的时候没写 \(flag) —— 只开一半等于没开")
+            #expect(code.contains("\(flag) = false"), "关的时候没写 \(flag) —— 只关一半会留下半开状态")
+        }
+
+        // ⚠️ **顺序也是判据**（2026-09-21 真机实测，§8.113.15）：
+        // Sparkle 的 downloads setter 在 `allowsAutomaticUpdates` 为假时**空操作**，
+        // 而它跟着 checks 走 ⇒ **关的时候必须先写 downloads**（此时 allows 还为真），
+        // 否则 `SUAutomaticallyUpdate` 停在旧值，读 defaults 的人会被骗。
+        let downloadsOff = try #require(
+            code.range(of: "automaticallyDownloadsUpdates = false")?.lowerBound,
+            "关的分支里找不到 downloads —— 改名了就同步这条断言")
+        let checksOff = try #require(
+            code.range(of: "automaticallyChecksForUpdates = false")?.lowerBound,
+            "关的分支里找不到 checks —— 改名了就同步这条断言")
         #expect(
-            head.contains("automaticallyDownloadsUpdates = newValue"),
-            "只设检查不设下载的话，「自动更新」开着也不会自动下载")
+            downloadsOff < checksOff,
+            """
+            关的分支里 downloads 必须写在 checks **之前** —— 反过来的话
+            `SUAutomaticallyUpdate` 根本写不进去（setter 在 allows 为假时空操作），
+            存下来的仍是旧值（2026-09-21 真机实测）。
+            """)
     }
 
     /// ⚠️ 「自动更新」那一行的**禁用条件不得由开关自己的值决定**（2026-09-21 真机修的 bug）。

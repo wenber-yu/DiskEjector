@@ -471,10 +471,28 @@ struct SettingsSectionsColumn: View {
     ///
     /// ⚠️ **不碰 `SUAutomaticallyUpdate` 的「静默强装」语义**：Sparkle 只在应用**退出时**
     /// 安装，不会在用户干活时重启（设计稿那句「并在下次启动时安装」说的就是这件事）。
+    ///
+    /// ⚠️ **两级都要写，且顺序见函数体**（2026-09-21）：早先这里写的是「两级一起关」，
+    /// 实测**只关掉了一级**（`SUAutomaticallyUpdate` 的 setter 在 allows 为假时空操作）。
     private func toggleAutoUpdate() {
         let newValue = !autoUpdateOn
-        UpdateController.shared.automaticallyChecksForUpdates = newValue
-        UpdateController.shared.automaticallyDownloadsUpdates = newValue
+        // ⚠️ **两个标志的写入顺序有讲究**（2026-09-21 真机实测，§8.113.15）：
+        // Sparkle 的 `automaticallyDownloadsUpdates` setter 在 `allowsAutomaticUpdates`
+        // 为假时是**空操作**（连键都不写）—— 而它算的是
+        // `SUAllowsAutomaticUpdates ?? automaticallyChecksForUpdates`，本应用没写前者
+        // ⇒ 它**跟着 checks 走**。于是：
+        //   - **开**：先写 checks（让 allows 变真）再写 downloads ⇒ 两个键都写得进去；
+        //   - **关**：**反过来**，先写 downloads（此时 allows 还为真）再写 checks。
+        // 顺序写反 ⇒ 关掉之后 `SUAutomaticallyUpdate` 停在旧值 1（实测：干净的关
+        // 只写了 `SUEnableAutomaticChecks = 0`）。有效行为目前被 getter 与 allows
+        // 相与掩盖，但**存储与意图不一致**，读 defaults 的人会被它骗（我自己就中过）。
+        if newValue {
+            UpdateController.shared.automaticallyChecksForUpdates = true
+            UpdateController.shared.automaticallyDownloadsUpdates = true
+        } else {
+            UpdateController.shared.automaticallyDownloadsUpdates = false
+            UpdateController.shared.automaticallyChecksForUpdates = false
+        }
         autoUpdateOverride = newValue
     }
 

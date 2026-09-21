@@ -13608,6 +13608,46 @@ green  浅 rgba(52,199,89)   深 rgba(76,217,100)    #34c759 / #4cd964
 （有效行为大概仍是关的 —— Sparkle 的 getter 与 `allowsAutomaticUpdates` 相与 ——
 但**没验**，且存储层面确实留着半开。）⇒ 记为待查，不猜。
 
+✅ **同日结案（§8.113.15）**：查清了 —— `SUAutomaticallyUpdate` 的 setter 在
+`allowsAutomaticUpdates` 为假时**空操作**（连键都不写）；有效行为确实是对的
+（getter 与 allows 相与），但**存储与意图不一致**这件事是真的，且已经骗过我一次。
+
+
+
+### 8.113.15 「自动更新」只关掉了一级 —— Sparkle 的 setter 在 allows 为假时是**空操作**
+
+上一节留下一个待查：拨到 OFF 后 `SUAutomaticallyUpdate` 仍是 `1`。
+本轮做成**决定性实验**（先把两个键 `defaults delete` 清干净，再拨）：
+
+| 方向 | 拨之前 | 拨之后（实测） |
+|---|---|---|
+| 开 → 关 | 两个键都不存在 | **只写了 `SUEnableAutomaticChecks = 0`** |
+| 关 → 开 | 只有 checks = 0 | 两个都写：`SUAutomaticallyUpdate = 1` / `SUEnableAutomaticChecks = 1` |
+
+⇒ `automaticallyDownloadsUpdates` 的 setter **在 `allowsAutomaticUpdates` 为假时什么都不做**
+（连键都不写），而它算的是 `SUAllowsAutomaticUpdates ?? automaticallyChecksForUpdates`
+⇒ **跟着 checks 走**。我们原来的写法是先 checks 后 downloads ⇒ 关的时候 writes 进去时
+allows 已经是假 ⇒ **第二级根本没写**。
+
+**有效行为其实一直是对的**（Sparkle 的 getter 与 allows 相与，关掉时恒为假），
+所以**这不是用户可见的 bug** —— 但**存储与意图不一致**，而读 `defaults` 的人会被它骗
+（上一节我自己就据此写了「半开」的推测）。⇒ 修的是**可诊断性**，不是行为。
+
+#### 修：写入顺序
+
+- **开**：先 checks（让 allows 变真）→ 再 downloads；
+- **关**：**反过来**，先 downloads（此时 allows 还为真）→ 再 checks。
+
+**真机验证（重打包后）**：干净的「关」⇒ `SUAutomaticallyUpdate = 0` 与
+`SUEnableAutomaticChecks = 0`**两个都写了**；拨回「开」⇒ 两个都是 `1`；连跑两圈稳定。
+
+#### 守卫
+
+`自动更新开关同时驱动检查与下载` 原来只断言「两个标志都被写」（当时是 `= newValue`），
+现在加上**两个方向都要写**与**关的分支里 downloads 必须在 checks 之前**。
+⇒ 变异（把「关」分支两行互换）**红**，且指名
+`downloadsOff → 335 < checksOff → 261` 不成立。
+
 
 ## 9. 文件清单
 
