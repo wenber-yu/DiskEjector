@@ -118,9 +118,33 @@ PERCENT="${LINE_COVER%\%}"
 echo
 echo "   行覆盖率: $LINE_COVER   门槛: ${MIN_COVERAGE}%"
 
+# ---------------------------------------------------------------
+# 最慢的几条测试（**诊断信息，不是判据**）。
+#
+# 为什么需要：测试输出只落 `TEST_LOG`（mktemp），成功时只回显最后 3 行、
+# 文件随即被 trap 删掉 ⇒ 测试的**耗时分布没有任何观测窗口**。2026-09-21
+# 「本地 <1s / CI 57.1s」那组数字来自一次**红**跑，之后想再看就得再造一次失败。
+#
+# ⚠️ **口径（别把这个数字当成该测试自身的耗时）**：`passed after X seconds`
+#    是「完成时刻距 run 开始」的墙钟，测试并行执行 ⇒ 早开始晚结束的那条会把
+#    整轮时长算进去。实测 `.build/preflight/门槛6.log`（2026-09-21 10:40 本机）：
+#    最慢单条 22.030 秒 vs 汇总行 `Test run with 442 tests ... failed after
+#    22.032 seconds` —— **单条值 ≈ 整轮值**。详见 `scripts/lib/test_timings.sh`。
+#
+# ⚠️ **位置不能动**：门槛 6 由 `run_gate` 执行，成功时只回显**最后 3 行**
+#    （`scripts/lib/gate_report.sh` 的 `tail -3`）。这里的三行是
+#    「行覆盖率 / 最慢名单 / ✅ 覆盖率达标」—— 放到更前面等于白打。
+#    `scripts/test/coverage_tail_smoke.sh` 会**真做一次 `tail -3`** 守这件事。
+#
+# 解析不到时**只警告、不返回非 0** —— 它是诊断输出不是判据；让「测试全绿但
+# swift 改了输出格式」把门槛判红，与覆盖率毫无关系（「门槛会自己烂掉」的源头）。
+# 可见性由自证字段 `［耗时行 N/M］` 提供：格式一变 N 会塌成 0 而 M 不变。
+# ---------------------------------------------------------------
+source "$REPO_ROOT/scripts/lib/coverage_tail.sh"
+
 # awk 做浮点比较，避免依赖 bc
 if awk -v c="$PERCENT" -v m="$MIN_COVERAGE" 'BEGIN { exit !(c >= m) }'; then
-    echo "✅ 覆盖率达标"
+    coverage_success_tail "$TEST_LOG" 3
     exit 0
 else
     echo "✗ 覆盖率未达标：当前 ${LINE_COVER} < 门槛 ${MIN_COVERAGE}%" >&2
