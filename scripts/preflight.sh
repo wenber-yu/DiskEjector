@@ -35,6 +35,31 @@ PACKAGE_DIR="$REPO_ROOT"
 FORMAT_CONFIG="$REPO_ROOT/.swift-format"
 COVERAGE_MIN="${COVERAGE_MIN:-40}"
 
+# ⚠️ **runner 级变量：本地必须和 CI 设成同一个值**（2026-09-21 新增）。
+#
+# 起因：CI 顶层 `env:` 设了 `LC_ALL: en_US.UTF-8`，而**本地没人设** ——
+# 本机 `locale` 是 `LC_COLLATE=C`（`LANG` 为空）⇒ 本地门槛跑在**另一个 shell locale** 下。
+#
+# 以前这是靠**手动**补的：`1f611d9` 的提交正文写着「门槛 11/11 通过（本地 LC_ALL=en_US.UTF-8）」
+# —— 也就是说「本地门槛 = CI 门槛」这条承诺，**靠人记得在命令行前面加那一段**。
+# 忘了加（2026-09-21 本轮就忘了一次）就悄悄降级，而**两边都不报错**。
+# 真出过事：`b530f68`（§8.108.1）—— bash 3.2 在 UTF-8 locale 下会把紧跟变量名的
+# **全角括号**算进变量名 ⇒ `set -u` 报 unbound；本机 locale 是 C 所以**永远不红**。
+#
+# ⚠️ **别把它当成「能复现 CI 的文案类断言失败」**：`LC_ALL` **不会改变 `Locale.current`**
+# （CI 自己在 ci.yml 里实测过：设了它，`Locale.current` 仍是 `zh_CN`）。
+# 那 76 次连红走的是 **Swift 侧 `Locale.current`** 那条轴，与这里**不是同一件事**，别混。
+#
+# ⚠️ 为什么以前没有任何东西拦住它：`LC_ALL` 的消费者是 runner 本身（不是某个脚本里的
+# `${VAR:-默认}`），所以它被 `GateParityTests.runnerLevelEnv` **白名单化**，
+# 而白名单同时把它排除在两条既有检查之外 ⇒ 「本地这侧设了吗」从来没人查。
+# 现在由 `GateParityTests.门槛必须把CI的runner级变量设成同一个值` 钉住。
+#
+# ⚠️ 这里**无条件设**（不写 `${LC_ALL:-…}`）：写默认值的话，谁在 shell 里预置一个别的
+# `LC_ALL`，本地就悄悄退回「与 CI 不同环境」—— 而那正是本条要防的。
+# 要做 locale 判别实验时，在**具体命令前**临时覆盖（同 `scripts/test/test_timings_smoke.sh`）。
+export LC_ALL="en_US.UTF-8"
+
 # DISABLE_SANDBOX=1：跳过 SwiftPM 自带的 sandbox-exec。
 # 受管执行环境自身已在一层沙箱内时，嵌套 sandbox-exec 会报
 # "sandbox_apply: Operation not permitted" 并让构建失败（与代码无关）。

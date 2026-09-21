@@ -312,6 +312,56 @@ struct GateParityTests {
         }
     }
 
+    /// ⚠️ **门槛脚本必须把 CI 的 runner 级变量设成同一个值**（2026-09-21 新增）。
+    ///
+    /// 为什么需要它：`runnerLevelEnv` 把 `LC_ALL` 白名单成「消费者是 CI runner，不由脚本读」
+    /// —— 而白名单**同时**把它排除在两条既有检查之外
+    /// （`CI必须按契约声明门槛变量` 只查 ci.yml 那侧；`CI声明的变量必须被脚本读` 又跳过白名单）
+    /// ⇒ 「**本地这侧设了吗**」**没有任何机器检查**。
+    ///
+    /// 而它以前是靠**手动**补的：`1f611d9` 的提交正文写着「门槛 11/11 通过
+    /// （本地 LC_ALL=en_US.UTF-8）」—— 「本地门槛 = CI 门槛」这条承诺**靠人记得加那一段**；
+    /// 忘了加就悄悄降级，而两边都不报错。真出过事：`b530f68`（§8.108.1）——
+    /// bash 3.2 在 UTF-8 locale 下会把紧跟变量名的**全角括号**算进变量名 ⇒ `set -u` 报 unbound；
+    /// 本机 locale 是 C 所以**永远不红**，推上去才炸。
+    ///
+    /// ⚠️ **别读成「它能复现 CI 的文案类断言失败」**：`LC_ALL` **不会改变 `Locale.current`**
+    /// （ci.yml 自己实测过：设了它，`Locale.current` 仍是 `zh_CN`）⇒ 那 76 次连红走的是
+    /// Swift 侧 `Locale.current` 那条轴，与这里**不是同一件事**。
+    ///
+    /// 判据：ci.yml 顶层 env 里的 runner 级变量，门槛脚本必须设成**逐字相同的值**。
+    @Test func 门槛必须把CI的runner级变量设成同一个值() throws {
+        let env = try loadEnv()
+        let gate = Self.stripComments(try read("scripts/preflight.sh"))
+
+        // 负向锚：两边都得真读到（读不到 = 口径失效，不是「一致」）
+        #expect(!Self.runnerLevelEnv.isEmpty, "runner 级白名单是空的 —— 守卫自己被清空了（假绿）")
+        let contracted = Self.runnerLevelEnv.filter { env.declared[$0] != nil }.sorted()
+        #expect(
+            !contracted.isEmpty,
+            """
+            ci.yml 顶层 env 里找不到任何 runner 级变量（白名单 \(Self.runnerLevelEnv.sorted())）。
+            口径失效：变量名改了、或 `env:` 块解析坏了 —— 这一条会静默退化成「无事可查」（假绿）。
+            """)
+
+        for name in contracted {
+            guard let value = env.declared[name] else { continue }
+            let assigned = gate.split(separator: "\n", omittingEmptySubsequences: false).contains { line in
+                let l = String(line)
+                return l.contains("\(name)=") && l.contains(value)
+            }
+            #expect(
+                assigned,
+                """
+                门槛脚本 `scripts/preflight.sh` 没有把 `\(name)` 设成 CI 那个值（`\(value)`）。
+                它被 `runnerLevelEnv` 白名单排除在「脚本必须读」之外 ⇒ **断了不会有任何东西变红**。
+                后果：本地门槛跑在与 CI **不同的 shell locale** 下（本机 LC_COLLATE=C、
+                CI en_US.UTF-8）—— 这类差异曾让 `b530f68`（§8.108.1）**推上去才炸**，
+                本机因为 locale 是 C 而永远不红。
+                """)
+        }
+    }
+
     // MARK: 第三族：门槛的**输入**不得被实验状态污染（2026-09-20）
 
     /// 「本地复现 CI 英文环境」那个实验开关，必须处于**正式值**。
