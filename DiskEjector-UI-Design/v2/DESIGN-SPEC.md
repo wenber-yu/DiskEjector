@@ -13898,8 +13898,13 @@ allows 已经是假 ⇒ **第二级根本没写**。
 ⬜ **环境阻塞未解**：Xcode 26.4 → 27.0 后许可未重新同意
 （`IDEXcodeVersionForAgreedToGMLicense = 26.4`），`swift` / `git` / `xcodebuild` 全报
 `You have not agreed to the Xcode license agreements`。本轮**所有验证都是离线完成的**
-（shell 冒烟 + 变异 + 抽真实代码段真跑），**门槛 6 的端到端跑没做过**
-⇒ 提交后必须看 CI 结论（`./run.sh ci`，**2 ≠ 绿**）。需要你执行一次 `sudo xcodebuild -license`。
+（shell 冒烟 + 变异 + 抽真实代码段真跑）。需要你执行一次 `sudo xcodebuild -license`。
+
+✅ **缺口已由 CI 补上**（2026-09-21 14:13 实测）：`f98e070` + `978c199` 推送后
+run `35567313262` **结论 success** ⇒ 门槛 6（`scripts/coverage.sh`，含本次改动）
+**真的在 CI 上端到端跑过且没红**，两道新门槛与三条会扫活文件的守卫（`ToolingClaimTests`）
+也都没红 —— 也就是说，我在本地用「静态模拟」做的自查被 CI **独立证实**了。
+⇒ 「本地跑不了」剩下的代价是**迭代慢**（每轮要等 CI 约 3 分钟），不是「结论不可得」。
 
 
 ## 9. 文件清单
