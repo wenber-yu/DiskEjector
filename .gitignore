@@ -42,3 +42,7 @@ tools/probe/appcast.xml
 .workbuddy/
 # 新一代记忆目录（与 .workbuddy/ 并存，同样不入库）
 .workbuddy-ai/
+
+# ---- Python（tools/ 下的探针脚本跑一次就会生成）----
+__pycache__/
+*.pyc
