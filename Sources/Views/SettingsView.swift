@@ -255,8 +255,10 @@ struct SettingsHeaderBar: View {
 ///
 /// **为什么需要它**：这一行有两个输入是**跑出图那个进程的环境**决定的 ——
 /// 开关值来自 Sparkle 的 `SPUUpdaterSettings`，而「宿主是否允许自动更新」
-/// 由**构建有没有正确签名**决定。走查图跑在 xctest 进程里（未签名）→
-/// 宿主不具备自动更新能力（出图进程里 updater 没建起来）→ 这一行**永远画成禁用态**，
+/// 由 **updater 建没建起来** 决定（``UpdateController/canAutoUpdate`` = `updater != nil`，
+/// **与签名无关** —— 早先记成「由签名决定」是错的，dist 产物其实是签了的，§8.113.14）。
+/// 走查图跑在 xctest 进程里 ⇒ `Bundle.main` 不是合规的 app bundle ⇒ updater 建不起来 ⇒
+/// 这一行**永远画成禁用态**，
 /// 与设计稿 `08-update.html` 里开关打开的画法对不上（§8.44.4）。
 ///
 /// 出图时按**设计稿假设的环境**（允许 + 开）渲染，这一行才能与设计稿并排比；
@@ -268,7 +270,7 @@ struct SettingsHeaderBar: View {
 struct AutoUpdateRowState: Equatable {
     /// 开关是不是开着的。
     var isOn: Bool
-    /// 宿主是否允许自动更新（真实环境下由签名状态决定）。
+    /// 宿主是否允许自动更新（真实环境下由 **updater 建没建起来** 决定，不是签名状态）。
     var isAllowed: Bool
 }
 
@@ -458,6 +460,12 @@ struct SettingsSectionsColumn: View {
 
     /// 「自动更新」行的说明。不允许自动更新时**必须说明原因** ——
     /// 否则用户看到的是一个拨不动的开关，却不知道为什么。
+    ///
+    /// ⚠️ **说的原因必须是 `canAutoUpdate` 真的代表的那件事**：它现在只表示
+    /// 「updater 没建起来」（原因有多种：预览模式、宿主不是合规 app bundle、
+    /// Sparkle 配置不合规），**与签名无关**。
+    /// 2026-09-21 前这里写的是「当前构建未签名」，而 dist 产物其实**是签了的**
+    /// （§8.113.14）—— **编一个具体原因比不写原因更糟**：用户会照着错的原因去修。
     private var autoUpdateDescription: String {
         canAutoUpdate ? L10n.tr(.autoUpdateHint) : L10n.tr(.autoUpdateUnavailableHint)
     }

@@ -38,9 +38,9 @@
     },
     "autoUpdateUnavailableHint" : {
       "localizations" : {
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "当前构建未签名，系统不允许自动更新。" } },
-        "en" : { "stringUnit" : { "state" : "translated", "value" : "This build is not signed, so automatic updates are unavailable." } },
-        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "目前建置未簽章，系統不允許自動更新。" } }
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "自动更新组件未能启动，暂不可用；仍可手动检查更新。" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "The update component failed to start; you can still check for updates manually." } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "自動更新元件未能啟動，暫不可用；仍可手動檢查更新。" } }
       }
     },
     "cancel" : {

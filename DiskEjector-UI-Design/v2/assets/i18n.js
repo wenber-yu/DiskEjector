@@ -5,7 +5,7 @@
    来源：Sources/Localization/Localizable.xcstrings
        + DiskEjector-UI-Design/v2/assets/i18n-extra.json
    ----------------------------------------------------------------------------
-   源指纹 6a32e0f0c9681429f7e180fc912fc6ce14c23ad7a9b3ca22811725724d746cba
+   源指纹 128781c7ff0b2d69a64446a15ec1b6c2d90f39c8c1074ddb9a78a2645c8de93a
      = sha256(xcstrings + extra + 本脚本) —— 任一方变了它就是旧的，
        由 DesignDraftIntegrityTests 拦下「改了源忘了重跑」。
    ----------------------------------------------------------------------------
@@ -38,7 +38,7 @@ window.DS_L10N = {
       "appName": "磁盘推出助手",
       "autoUpdate": "自动更新",
       "autoUpdateHint": "有新版本时自动下载，并在下次启动时安装。",
-      "autoUpdateUnavailableHint": "当前构建未签名，系统不允许自动更新。",
+      "autoUpdateUnavailableHint": "自动更新组件未能启动，暂不可用；仍可手动检查更新。",
       "busyEvidenceTitleFallback": "有程序正在占用",
       "busyEvidenceTitleFormat": "%d 个程序正在占用",
       "cancel": "取消",
@@ -250,7 +250,7 @@ window.DS_L10N = {
       "appName": "DiskEjector",
       "autoUpdate": "Automatically Update",
       "autoUpdateHint": "Downloads new versions in the background and installs them on the next launch.",
-      "autoUpdateUnavailableHint": "This build is not signed, so automatic updates are unavailable.",
+      "autoUpdateUnavailableHint": "The update component failed to start; you can still check for updates manually.",
       "busyEvidenceTitleFallback": "This disk is in use",
       "busyEvidenceTitleFormat": "%d apps are using this disk",
       "cancel": "Cancel",
@@ -462,7 +462,7 @@ window.DS_L10N = {
       "appName": "磁碟推出助手",
       "autoUpdate": "自動更新",
       "autoUpdateHint": "有新版本時自動下載，並在下次啟動時安裝。",
-      "autoUpdateUnavailableHint": "目前建置未簽章，系統不允許自動更新。",
+      "autoUpdateUnavailableHint": "自動更新元件未能啟動，暫不可用；仍可手動檢查更新。",
       "busyEvidenceTitleFallback": "有程式正在使用",
       "busyEvidenceTitleFormat": "%d 個程式正在使用",
       "cancel": "取消",
