@@ -280,6 +280,18 @@ helper 的登录项方案。（「符合 MAS 要求」这条理由随不上架�
 > 产物 Info.plist 里 `SUFeedURL` 指向它（实测 200）、`SUPublicEDKey` **尚未写入**（不验签）、
 > `SUEnableAutomaticChecks=true`。
 > **唯一还差的一步**：`v2026.09.18.3` 这个 Release 还没建 → enclosure 现在 **404**。
+>
+> ⚠️ **2026-09-23 订正：上面这段「现状」是 2026-09-18 的时点快照，别拿它当当前状态**
+> （原句保留、不删历史 —— 它是那一天的实况）：
+> - **`SUPublicEDKey` 已写入**：`build_app.sh` 里有 `DEFAULT_SPARKLE_PUBLIC_ED_KEY`
+>   （2026-09-20「公钥入库当默认值」—— 它本来就烤在每个发行包里、是公开的）
+>   ⇒ 产物 Info.plist 会带上它，现在是**验签**的。
+> - **Release 已建、enclosure 不再 404**：仓库根 `appcast.xml` 现在的 enclosure 指向
+>   `v2026.09.21.1/DiskEjector-2026.09.21.1.dmg` 且带 `sparkle:edSignature`。
+>   （`v2026.09.18.3` 那个 Release **确实没建过** —— 当时改发 `.4`，见账本 #8。）
+> - 判据落在 `scripts/verify_app.sh`：它校验 `SUPublicEDKey` 存在且与仓库里的默认值同源，
+>   缺了 / 不一致都算产物不合格。⚠️ 它是**打包后手跑**的，**不在 preflight 门槛里**。
+> ⇒ 「唯一还差的一步」这句话在 2026-09-18 是对的，**今天已经不成立**。
 > 上传时**必须用** `dist/updates/DiskEjector-<VERSION>.dmg` 这个文件名（改名即 404，
 > 而 appcast 本身不报任何错）。`make_appcast.sh` 现在会打印该路径，并有一条守卫
 > 比对「enclosure 末段」与「待上传文件名」是否逐字相同 —— 这条守卫是补的，
