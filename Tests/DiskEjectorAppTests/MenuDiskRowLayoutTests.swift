@@ -441,11 +441,10 @@ struct MenuDiskRowLayoutTests {
 
     /// 琥珀像素判据：`r − max(g, b) > 60`。与 `MainWindowDiskListTests.isAmber` 同一套阈值 ——
     /// 琥珀文字 `#B25000` 是 98（算）、琥珀浅底 ≈13（不算）。
-    private func isAmber(_ c: NSColor) -> Bool {
-        let r = c.redComponent * 255
-        let g = c.greenComponent * 255
-        let b = c.blueComponent * 255
-        return Int(r - max(g, b)) > 60
+    ///
+    /// ⚠️ 收的是**非预乘** RGB（0…1）而不是 `NSColor`，理由同 `MainWindowDiskListTests.isAmber`。
+    private func isAmber(_ r: Double, _ g: Double, _ b: Double) -> Bool {
+        Int(r * 255 - max(g * 255, b * 255)) > 60
     }
 
     /// 量一条忙盘琥珀条：**宽**、起止 y、段长，外加该行的高（pt，原点左上）。
@@ -458,15 +457,19 @@ struct MenuDiskRowLayoutTests {
         let rowHeight = renderedSize(view, width: width).height
         let size = CGSize(width: width, height: rowHeight)
         guard let rep = OffscreenRender.bitmap(view, size: size),
-            let box = OffscreenRender.boundingBox(view, size: size, matching: isAmber)
+            let box = OffscreenRender.boundingBox(rep, scale: scale, matchingRGB: isAmber)
         else { return nil }
 
         let x0 = Int(box.minX * scale)
         let yMid = Int(box.midY * scale)
         guard x0 >= 0, x0 < rep.pixelsWide, yMid >= 0, yMid < rep.pixelsHigh else { return nil }
 
+        func amberAt(_ x: Int, _ y: Int) -> Bool {
+            OffscreenRender.rgb(rep, x: x, y: y).map { isAmber($0.0, $0.1, $0.2) } ?? false
+        }
+
         var px = 0
-        while x0 + px < rep.pixelsWide, rep.colorAt(x: x0 + px, y: yMid).map(isAmber) == true {
+        while x0 + px < rep.pixelsWide, amberAt(x0 + px, yMid) {
             px += 1
         }
 
@@ -474,7 +477,7 @@ struct MenuDiskRowLayoutTests {
         var top = 0
         var height = 0
         for y in 0..<rep.pixelsHigh {
-            let amber = rep.colorAt(x: x0 + 1, y: y).map(isAmber) ?? false
+            let amber = amberAt(x0 + 1, y)
             if amber, start == nil {
                 start = y
             } else if !amber, let s = start {

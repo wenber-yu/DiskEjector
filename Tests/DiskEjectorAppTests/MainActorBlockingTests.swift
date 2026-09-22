@@ -5,7 +5,7 @@ import Testing
 ///
 /// **为什么需要这一条守卫**（§8.97.3 / §8.99）：
 ///
-/// `Tests/` 里 29 个文件带 `@MainActor`（其中 **25 个是文件级**，逐条登记在下面第三条守卫的账本里；
+/// `Tests/` 里 30 个文件带 `@MainActor`（其中 **26 个是文件级**，逐条登记在下面第三条守卫的账本里；
 /// §8.128 摘掉了两个「没理由」的），而主 actor 只有一条。只要有人在它上面**同步阻塞**（`usleep` / `waitUntilExit` …），
 /// **其余所有 `@MainActor` 用例都排不上队** —— 症状是**偶发假红**：
 /// 2026-09-17 CI 上实测过一次（`磁盘列表一变就重测占用` 失败：`arrived` 为 false），
@@ -210,7 +210,7 @@ struct MainActorBlockingTests {
             "只扫到 \(scanned) 个文件 —— 枚举很可能没生效，这次的「0 违规」不可信")
         #expect(
             mainActorFiles > 10,
-            "只认出 \(mainActorFiles) 个主 actor 文件 —— 判据很可能失效了（实测 29 个），结果不可信")
+            "只认出 \(mainActorFiles) 个主 actor 文件 —— 判据很可能失效了（实测 30 个），结果不可信")
 
         #expect(
             violations.isEmpty,
@@ -381,6 +381,8 @@ struct MainActorBlockingTests {
         "OccupancyStoreTests.swift":
             "同步构造 `OccupancyStore(monitoring:)`（主 actor 隔离的 init ⇒ 摘掉立刻 30 条编译错）",
         "OffscreenRender.swift": "出图装置本体：`NSHostingController` + `NSBitmapImageRep` —— AppKit 渲染只能在主 actor",
+        "OffscreenRenderParityTests.swift":
+            "`OffscreenRender` 的等价性守卫：两条路（直读 / `colorAt`）都得先出图，AppKit 渲染只能在主 actor",
         "OnboardingLayoutTests.swift": "`NSHostingController` 装配引导页",
         "OnboardingWindowTests.swift": "建真 `NSWindow` + `AppDelegate` 主 actor",
         "ProcessAppResolverTests.swift": "`enrich` / `icon` 只能主 actor（`NSWorkspace` / `NSRunningApplication`）",
@@ -504,7 +506,7 @@ struct MainActorBlockingTests {
             "只扫到 \(scanned) 个文件 —— 枚举很可能没生效，结果不可信")
         #expect(
             found.count >= 20,
-            "只认出 \(found.count) 个文件级 `@MainActor` —— 判据很可能失效了（实测 25 个），结果不可信")
+            "只认出 \(found.count) 个文件级 `@MainActor` —— 判据很可能失效了（实测 26 个），结果不可信")
 
         // ④ 理由不许敷衍（沿用本仓库「理由短于 12 字算敷衍」的口径）。
         let thin = Self.fileLevelMainActor.filter { $0.value.count < 12 }.keys.sorted()

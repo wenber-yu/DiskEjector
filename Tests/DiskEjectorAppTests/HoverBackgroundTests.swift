@@ -33,7 +33,7 @@ struct HoverBackgroundTests {
         OffscreenRender.boundingBox(
             HoverBackground(color: .black, inset: inset),
             size: CGSize(width: box, height: box)
-        ) { $0.redComponent < 0.5 && $0.greenComponent < 0.5 && $0.blueComponent < 0.5 }?.size
+        ) { r, g, b in r < 0.5 && g < 0.5 && b < 0.5 }?.size
     }
 
     @Test func 底色比盒子小一圈() {

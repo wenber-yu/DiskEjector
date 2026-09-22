@@ -97,11 +97,12 @@ struct MainWindowDiskListTests {
     /// | `#1D1D1F`（`Palette.foreground`，正文） | 29 − 31 = **−2** | ✅ 不算 |
     ///
     /// 取 60：离琥珀文字的 98 有 38 的余量，离徽章底的 13 有 47 的余量。
-    private func isAmber(_ c: NSColor) -> Bool {
-        let r = c.redComponent * 255
-        let g = c.greenComponent * 255
-        let b = c.blueComponent * 255
-        return Int(r - max(g, b)) > 60
+    ///
+    /// ⚠️ 收的是**非预乘** RGB（0…1）而不是 `NSColor` —— 见
+    /// ``OffscreenRender/boundingBox(_:scale:matchingRGB:)``：收 `NSColor` 就得逐像素构造对象，
+    /// 而本判据只看 r/g/b（不看 alpha）。
+    private func isAmber(_ r: Double, _ g: Double, _ b: Double) -> Bool {
+        Int(r * 255 - max(g * 255, b * 255)) > 60
     }
 
     /// 一块忙盘的琥珀条：起止 y（pt，原点左上）与段长。
@@ -126,7 +127,9 @@ struct MainWindowDiskListTests {
         guard let rep = OffscreenRender.bitmap(view, size: size) else { return ([], -1) }
         let scale: CGFloat = 2
 
-        guard let box = OffscreenRender.boundingBox(view, size: size, matching: isAmber) else {
+        // ⚠️ 把**已经画好**的 `rep` 交给 `boundingBox`：它原先自己又渲染一遍，
+        // 同一张 1600×1040 的图白画两次 —— 2026-09-23 顺手省掉。
+        guard let box = OffscreenRender.boundingBox(rep, scale: scale, matchingRGB: isAmber) else {
             return ([], -1)
         }
         let columnX = box.minX + 1
@@ -136,7 +139,7 @@ struct MainWindowDiskListTests {
         var runs: [AmberRun] = []
         var start: Int? = nil
         for y in 0..<rep.pixelsHigh {
-            let amber = rep.colorAt(x: x, y: y).map(isAmber) ?? false
+            let amber = OffscreenRender.rgb(rep, x: x, y: y).map { isAmber($0.0, $0.1, $0.2) } ?? false
             if amber {
                 if start == nil { start = y }
             } else if let s = start {
