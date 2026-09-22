@@ -15753,6 +15753,16 @@ CI 慢一倍 ⇒ 41.8s，**与 CI 报的 41.73 吻合**。
   它俩连跑 3 轮（含门槛 1 轮）都绿。
 - ⚠️ 剩下 **25 个文件仍全部在主 actor 上串行**。本轮只摘掉**完全不需要**的两个；
   其余每一个都有实测理由（第 3 节那张表），要再降只能改产品侧的隔离，不在本轮范围。
+- ⚠️ **两个口径别混**：守卫一 `isMainActorFile`（去整行注释后**任意一行** trim 后等于 `@MainActor`，
+  **不分缩进**）⇒ **29**；守卫三 `hasFileLevelMainActor`（**顶格** + 下一非空/非注释/非属性行
+  也顶格且是类型声明）⇒ **25**。差的 4 个是**只有单测级** `@MainActor` 的：
+  `GlassSurfaceTests` / `UpdateAlertTests` / `UpdateSettingsTests` / `VisualStyleTests`。
+  `scanned` = **59**（**跳过守卫自身**，所以「/59」是**被扫的文件数**，不是「文件级数」）。
+- ⚠️ **这份计数被手写在 4 处**（守卫头 / 守卫的失败消息 / `DesignDraftIntegrityTests` 注释 /
+  `IntegrationEjectTests` 注释），**只有守卫那两处有断言兜住**，而且**不是等值断言** ⇒
+  抄这个数字时**必须带上 §8.128 这个指针**。本轮**当场就撞了**：摘掉两个之后守卫头改 29，
+  而 `DesignDraftIntegrityTests` 注释里那句「另外 **30** 个」是**只摘它一个**时的快照，
+  `IntegrationEjectTests` 里的「**31** 个」更早 ⇒ **三处一度不一致，没有任何守卫会红**。
 
 ## 9. 文件清单
 

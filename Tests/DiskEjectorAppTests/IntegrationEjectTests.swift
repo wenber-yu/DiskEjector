@@ -39,7 +39,7 @@ import Testing
 /// 它**原来**有两处 `task.waitUntilExit()`（`canAttachDiskImage()` 里、`shell(_:)` 里），
 /// 以及它们调起的 `hdiutil create/attach/detach` —— 全是**同步阻塞、不让路**的等待。
 /// 标了 `@MainActor` 就等于把这些等待压在**主 actor** 上，而主 actor 上排着一长串
-/// `@MainActor` 用例（31 个测试文件），任何一个被堵住都会让**别的**用例排不上队（§8.97.3）。
+/// `@MainActor` 用例（**29 个测试文件**带它，计数口径见 §8.128），任何一个被堵住都会让**别的**用例排不上队（§8.97.3）。
 ///
 /// 摘掉标注后这些等待跑在**协作线程池**上，主 actor 不再被占。
 /// 逐处确认过：需要主 actor 的只有 `EjectFlowController`（`@MainActor`），
