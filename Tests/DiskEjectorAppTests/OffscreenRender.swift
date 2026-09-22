@@ -212,6 +212,29 @@ enum OffscreenRender {
     /// 拿到的边界就是 pt 区间端点，必须**照旧逐位**换算，所以它们走这一条。
     ///
     /// 夹取由调用方负责（两条 pt 入口都夹过了）。
+    ///
+    /// ## ⚠️ 构造 `x0..<x1` / `y0..<y1` 时，`..<` 的**右边不许紧跟操作数**（2026-09-23 编译器实测）
+    ///
+    /// `..<` 是**既有二元又有前缀**（`PartialRangeUpTo`）的运算符，Swift 靠**空格**消歧：
+    /// **左侧有空白 + 右侧无空白 ⇒ 前缀**（换行也算左侧空白）。所以把长表达式折行写成
+    /// `let xs = x0` ⏎ `..<x1` 时，`..<x1` 会被解析成**前缀运算符**，`xs` 变成 `Int`。
+    ///
+    /// | 写法 | 编译器判据（`swiftc -typecheck`，2026-09-23 实测） |
+    /// |---|---|
+    /// | `x0..<x1`（两侧都无空格） | ✅ 二元 ⇒ `Range<Int>` |
+    /// | `x0 ..< x1`（两侧都有空格） | ✅ 二元 ⇒ `Range<Int>` |
+    /// | `x0 ..<x1`（左有空格、右无） | ❌ 前缀 ⇒ `consecutive statements on a line must be separated by ';'` |
+    /// | `x0` ⏎ `..<x1`（换行 + 右侧无空格） | ❌ 前缀 ⇒ `xs` 是 `Int` |
+    ///
+    /// ⚠️ 折行那一种最阴：报错是「`cannot convert return expression of type 'Int' to return type 'Range<Int>'`」，
+    /// **指向使用处而不是构造处** ⇒ 第一反应会去改使用处（`TitleBarBaselineTests.inkRowRange`
+    /// 就为此绕过一次，那段注释随该套件一起删了，2026-09-23 迁到这里）。
+    ///
+    /// ⇒ 折行时右侧**必须留空格**（`..< x1`），或者干脆让区间构造待在同一行。
+    ///
+    /// ℹ️ **这条是注释、不是守卫**：它**编译不过**，所以永远到不了 CI ——
+    /// 代价只是「报错指错地方」的调试时间，而「指向哪里」是编译器的事，静态扫描器替不了。
+    /// （对比 ``ImplicitCGFloatConversionTests``：那一条是**编译得过但 CI 拒**，所以才需要守卫。）
     private static func forEachPixel(
         _ rep: NSBitmapImageRep, x xs: Range<Int>, y ys: Range<Int>,
         _ body: (Int, Int, Double, Double, Double) -> Void
