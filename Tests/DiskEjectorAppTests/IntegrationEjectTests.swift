@@ -180,9 +180,20 @@ struct IntegrationEjectTests {
     /// |---|---|---|
     /// | `pollBudget` | **看几次**（默认 300 ≈ 旧 15s 窗口 / 50ms） | **无关** —— 它决定退出 |
     /// | `hardCeilingMS` | **最长挂多久**（安全网，只防挂死） | 有关，但只在病态时才到点 |
+    /// | `pollIntervalNS` | **两拍之间让多久的路**（默认 50ms，与生产一致） | 有关 —— 它决定一拍**多快** |
+    ///
+    /// ⚠️ **安全网的余量必须拿「实测最坏单拍」算，不能拿名义的 50ms 算**（2026-09-23，§8.135）。
+    /// 一次 `Task.sleep(50ms)` 在 CI 上实测能拖到 **~7.2s**（§8.118 记的是 ~6.1s；本仓 run
+    /// `35783127520` 又实测到 ~7.2s）⇒ 名义值下「6s 是 120× 余量」，按实测最坏值算却是 **0×**。
+    /// 本仓就在这上面红过一次：守卫把安全网设成 6s，而 CI 上一拍就吃掉 7.2s ⇒ 「预算说了算」
+    /// 被翻成「没看够」（`polls: 2, stopReason: .ceilingHit`）。
+    /// ⇒ **凡断言 `.budgetExhausted` 的守卫，安全网都由 ``worstObservedPollMS`` 派生**（见该文件里的常量），
+    /// 并且把拍间隔压到 1ms，让「预算的名义时长」远小于安全网 —— 双重保险，且守卫的
+    /// **耗时不再随 runner 抖动**（原来每条守卫在 CI 上都要 7 秒）。
     private static func waitForDisk(
         pollBudget: Int = 300,
         hardCeilingMS: Int = 45_000,
+        pollIntervalNS: UInt64 = 50_000_000,
         probe: @Sendable () async -> DiskInfo?
     ) async -> (outcome: WaitOutcome, disk: DiskInfo?) {
         let started = Date()
@@ -207,7 +218,7 @@ struct IntegrationEjectTests {
             }
             // `Task.sleep` 是**让路**（不是 `usleep` 那种同步阻塞）——
             // 本套件不标 `@MainActor`，但协作线程池上的同步阻塞同样会饿着别的用例（§8.99）。
-            try? await Task.sleep(nanoseconds: 50_000_000)
+            try? await Task.sleep(nanoseconds: pollIntervalNS)
         }
         // 退出循环时可能刚好是最后一拍就绪 —— 再查一次，别把「刚好赶上」误报成超时。
         polls += 1
@@ -219,6 +230,23 @@ struct IntegrationEjectTests {
             found
         )
     }
+
+    /// **实测过的最坏单拍耗时**（毫秒）—— 安全网的余量必须拿**它**算，不能拿名义的 50ms 算。
+    ///
+    /// | 出处 | 实测值 | 场合 |
+    /// |---|---|---|
+    /// | §8.118（2026-09-21） | **~6.1s** | 一次 `Task.sleep(50ms)` 被 CI runner 拖长 |
+    /// | 本仓 run `35783127520`（2026-09-23） | **~7.2s** | 同上，并把「预算说了算」的守卫翻成了「没看够」（§8.135） |
+    ///
+    /// ⚠️ 取 **7.2s**：两次实测里更糟的那个。它**不是**推算出来的，是从 CI 日志里读出来的
+    /// （`放弃时要分清看够了与没看够() failed after 7.579 seconds`，其中约 7.2s 是一拍）。
+    /// ⚠️ 若日后 CI 更慢，这个数要**跟着实测更新** —— 它一过期，由它派生的安全网就退化成
+    /// 又一个「名义值」，本轮那次红会原样重演。
+    ///
+    /// ℹ️ **为什么它进不了断言**：本地一拍就是 50ms，永远撞不到安全网 ⇒ 「安全网够不够大」
+    /// 这件事**在本地无法用测试守住**（改回 6s 本地照样全绿）。能守住它的只有 CI，
+    /// 以及下面这些**由它派生而不是写死**的参数（想改坏得先改这个常量）。
+    private static let worstObservedPollMS = 7_200
 
     /// 生产探针：**在协作线程池之外**枚举。
     ///
@@ -371,7 +399,9 @@ struct IntegrationEjectTests {
         //   慢路：第 1 拍 nil → 睡过头 ⇒ 退出循环 → **补查**（也是第 2 拍）拿到盘。
         // ⇒ `polls == 2` 与调度无关，而「求值了不止一次」仍被钉住（M1 变异仍红）。
         let late = ScriptedProbe([nil, disk])
-        let waited = await Self.waitForDisk { await late.next() }
+        // 拍间隔压到 1ms：这条钉的是「求值了几次」，不是「等多久」 ⇒ 不该随 runner 抖动
+        // （CI 上一拍实测能拖到 ~7.2s，用默认值的话这三条守卫每条都要 7 秒）。
+        let waited = await Self.waitForDisk(pollIntervalNS: 1_000_000) { await late.next() }
         #expect(waited.outcome.ok, "第 2 拍才出现的盘没被等到：\(waited.outcome.diagnostic)")
         #expect(
             waited.disk == disk,
@@ -384,8 +414,14 @@ struct IntegrationEjectTests {
             "等到了 ⇒ 必须是「条件成立」，实得 \(waited.outcome.stopReason)")
 
         // ② 恒不出现：必须**放弃**（不挂住），且拍数 ≥ 2。
+        // ⚠️ 这条断言 `.budgetExhausted` ⇒ 安全网**必须**由实测最坏单拍派生（§8.135）：
+        // 写死成 6s 时，CI 上一拍（~7.2s）就把它吃掉 ⇒ 出口翻成「没看够」。
         let never = ScriptedProbe([])
-        let timedOut = await Self.waitForDisk(pollBudget: 1) { await never.next() }
+        let timedOut = await Self.waitForDisk(
+            pollBudget: 1,
+            hardCeilingMS: Self.worstObservedPollMS * 10,
+            pollIntervalNS: 1_000_000
+        ) { await never.next() }
         #expect(timedOut.disk == nil, "恒不出现却拿到了盘：\(String(describing: timedOut.disk))")
         #expect(!timedOut.outcome.ok, "恒不出现 ⇒ `ok` 必须是 false")
         #expect(
@@ -397,7 +433,7 @@ struct IntegrationEjectTests {
 
         // ③ 第 1 拍就出现 ⇒ 恰好 1 拍。**反向对照**：证明 ① 的 `polls == 2` 不是恒真。
         let immediate = ScriptedProbe([disk])
-        let fast = await Self.waitForDisk { await immediate.next() }
+        let fast = await Self.waitForDisk(pollIntervalNS: 1_000_000) { await immediate.next() }
         #expect(fast.outcome.polls == 1, "第 1 拍就出现 ⇒ 恰好 1 拍，实得 \(fast.outcome.polls)")
         #expect(fast.disk != nil, "第 1 拍就出现的盘必须被带出来")
 
@@ -407,7 +443,9 @@ struct IntegrationEjectTests {
         // 所以**把补查整块删掉不会有任何东西变红**（M4）。这里循环没有机会跑，
         // 拿到盘就只可能是补查干的 ⇒ `polls == 1` 与调度无关（循环跑没跑都是 1）。
         let noLoop = ScriptedProbe([disk])
-        let caughtUp = await Self.waitForDisk(pollBudget: 0) { await noLoop.next() }
+        let caughtUp = await Self.waitForDisk(
+            pollBudget: 0, pollIntervalNS: 1_000_000
+        ) { await noLoop.next() }
         #expect(
             caughtUp.disk != nil,
             "循环没机会跑时，盘必须靠补查拿到（补查被删就退化成 nil）")
@@ -456,7 +494,12 @@ struct IntegrationEjectTests {
 
         // ② 新写法：同一份脚本，预算 40 拍 ⇒ 第 3 拍照常发生 ⇒ 等到。
         let newProbe = ScriptedProbe([nil, nil, disk])
-        let now = await Self.waitForDisk(pollBudget: 40, hardCeilingMS: 30_000) {
+        // ⚠️ 拍间隔**保持默认 50ms**：这条验的正是「每拍被拖长」，压小就把它自己消掉了。
+        // 安全网改成派生：探针第 3 拍才给盘，3 拍 × 最坏 7.2s = 21.6s ⇒ 原来写死的 30s
+        // 只剩 1.4× 余量，runner 再慢一点就会把「等到了」误判成「没看够」。
+        let now = await Self.waitForDisk(
+            pollBudget: 40, hardCeilingMS: Self.worstObservedPollMS * 10
+        ) {
             try? await Task.sleep(nanoseconds: 50_000_000)
             return await newProbe.next()
         }
@@ -472,14 +515,21 @@ struct IntegrationEjectTests {
     /// **两个出口都要有牙**（2026-09-23，§8.132）：预算花完（看够了）与安全网到点（没看够）
     /// 必须**各自可被观测** —— 否则「分清真因」只是文档里的一句话。
     ///
-    /// ⚠️ ① 的前提是「一次 50ms 的 sleep 不会拖到 6s」：安全网 6s 对每拍 50ms 留了 **120×**
-    /// 余量（CI 实测过的最坏值是 ~6.1s，也就是说真撞上时环境已经病态 —— 那时它红是对的）。
+    /// ⚠️ **① 曾经在这里红过一次**（CI run `35783127520`，2026-09-23，§8.135）：安全网当时
+    /// 写死 **6s**，而 CI 上**一拍**就吃掉 ~7.2s ⇒ 出口从「看够了」翻成「没看够」。
+    /// 病根是余量**拿名义的 50ms 算**（120×，看着很宽），而不是拿实测最坏单拍算（**0×**）。
+    /// ⇒ 现在安全网由 ``worstObservedPollMS`` 派生（72s），拍间隔压到 1ms ⇒ 预算名义时长 2ms。
+    /// 两层是**各自独立**的保险：即便有人把拍间隔改回 50ms，最坏单拍 7.2s 也远小于 72s。
     @Test func 放弃时要分清看够了与没看够() async {
         let never = ScriptedProbe([])
 
-        // ① **预算说了算**：预算 2 拍、安全网 6s ⇒ 停下来的原因只可能是预算
-        //    （2 拍 ≈ 100ms，离 6s 差两个数量级）。
-        let exhausted = await Self.waitForDisk(pollBudget: 2, hardCeilingMS: 6_000) {
+        // ① **预算说了算**：预算 2 拍、每拍 1ms ⇒ 预算名义时长 2ms，而安全网 72s
+        //    ⇒ 停下来的原因只可能是预算（差 4 个数量级，与负载无关）。
+        let exhausted = await Self.waitForDisk(
+            pollBudget: 2,
+            hardCeilingMS: Self.worstObservedPollMS * 10,
+            pollIntervalNS: 1_000_000
+        ) {
             await never.next()
         }
         #expect(
@@ -490,6 +540,8 @@ struct IntegrationEjectTests {
             "预算先到 ⇒ 必须报「看够了」，实得 \(exhausted.outcome.stopReason)")
 
         // ② **安全网兜底**：预算 100 拍、安全网 200ms ⇒ 拍数必须**远小于**预算。
+        //    ⚠️ 这条**刻意**保留默认拍间隔（50ms）：它要的就是「一拍比安全网还长」，
+        //    把间隔压到 1ms 会让 100 拍只花 100ms ⇒ 变成预算先到，这条守卫就没了。
         //    这条判据刻意写成「小于」而不是某个具体拍数 —— 撞安全网时拍数**本来就**随负载变
         //    （那正是「没看够」的定义），钉死数字等于把调度延迟写进判据。
         let starved = await Self.waitForDisk(pollBudget: 100, hardCeilingMS: 200) {
