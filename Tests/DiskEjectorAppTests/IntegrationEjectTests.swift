@@ -36,7 +36,7 @@ import Testing
 ///
 /// ⚠️ **本套件故意不标 `@MainActor`**（2026-09-20，§8.99）。
 ///
-/// 它有两处 `task.waitUntilExit()`（`canAttachDiskImage` 的 `s(...)` 里、`shell(_:)` 里），
+/// 它**原来**有两处 `task.waitUntilExit()`（`canAttachDiskImage()` 里、`shell(_:)` 里），
 /// 以及它们调起的 `hdiutil create/attach/detach` —— 全是**同步阻塞、不让路**的等待。
 /// 标了 `@MainActor` 就等于把这些等待压在**主 actor** 上，而主 actor 上排着一长串
 /// `@MainActor` 用例（31 个测试文件），任何一个被堵住都会让**别的**用例排不上队（§8.97.3）。

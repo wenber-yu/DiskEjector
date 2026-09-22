@@ -239,11 +239,13 @@ struct ProcessAppResolverTests {
     /// - `usleep` 是**同步阻塞、不让路**。本套件整体标着 `@MainActor`（因为 `enrich` / `icon`
     ///   走 `NSWorkspace` / `NSRunningApplication`，只能主 actor），所以原先那两段轮询是把
     ///   **主 actor** 占住最多 2 秒。
-    /// - 而 `OccupancyStoreTests.waitUntil` 是 `@MainActor`，靠 `await Task.sleep` 轮询推进；
-    ///   它等的链（`sink → Task { @MainActor } → refresh`）**必须由主 actor 调度**
-    ///   （§8.97.3）。主 actor 被占住时它回不到手里 —— 只能干等到超时。
-    ///   这正是 `OccupancyStoreTests.swift:38-50` 那条注释里「主 actor 被别的用例占着」的来源，
-    ///   也是 2026-09-17 CI 上「`磁盘列表一变就重测占用` 失败（`arrived` 为 false）」的候选根因。
+    /// - 而**当时** `OccupancyStoreTests.waitUntil`（`@MainActor`，靠 `await Task.sleep` 轮询推进）
+    ///   同样会被主 actor 排队拖垮：它等的链（`sink → Task { @MainActor } → refresh`）
+    ///   **必须由主 actor 调度**（§8.97.3），主 actor 被占住时它回不到手里 —— 只能干等到超时。
+    ///   这正是 2026-09-17 CI 上「`磁盘列表一变就重测占用` 失败（`arrived` 为 false）」的候选根因。
+    ///   ⚠️ **2026-09-22 起那条等待已改成「等事件」**（`OccupancyStoreTests.waitForNextRound`，
+    ///   §8.127）⇒ 上面这段是**史实**，那个 helper 已经不存在了。本类型现在只服务
+    ///   **真在等条件成立**的那几条轮询。
     /// - 加 `async` 后，`await` 会把这个函数调度到**协作线程池**上，主 actor 不再被占；
     ///   循环体内换成 `Task.sleep`（**让路**），连线程池的线程都不占住。
     ///
