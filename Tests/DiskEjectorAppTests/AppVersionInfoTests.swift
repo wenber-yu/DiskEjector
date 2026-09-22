@@ -19,7 +19,14 @@ import Testing
 /// ⚠️ **这里造的是「只读」的 bundle，不启动它、也不调 `NSWorkspace`** ——
 /// `ProcessAppResolverTests` 那个夹具因为调了 `icon(forFile:)` 触发 LaunchServices 校验，
 /// 未签名时会让 macOS 弹「已损坏」（2026-09-17 的坑）。本文件只读 `Info.plist`，不会。
-@MainActor
+///
+/// ## ⚠️ 本套件**故意不标** `@MainActor`（2026-09-22，§8.128）
+///
+/// 判据不是「读一遍代码觉得不需要」，是**编译器**：摘掉之后**全量构建绿**（`BUILD_EXIT=0`）。
+/// 它只读 `Info.plist` / 打包产物、解析版本串，不碰任何主 actor 隔离的东西
+/// （既不用 AppKit，也不用 `OffscreenRender` / `ViewFixtures` 那些测试装置）。
+/// ⚠️ **「不用 AppKit」不足以当判据** —— 同批实验里 `EmptyStateTests` / `MainWindowDiskListTests`
+/// 也不用 AppKit，但它们调 `OffscreenRender`（`@MainActor`）⇒ 摘掉立刻红（§8.128）。
 struct AppVersionInfoTests {
 
     /// 造一个带 `Contents/Info.plist` 的临时 bundle，返回它的 URL。

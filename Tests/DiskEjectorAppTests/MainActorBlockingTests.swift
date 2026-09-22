@@ -5,8 +5,8 @@ import Testing
 ///
 /// **为什么需要这一条守卫**（§8.97.3 / §8.99）：
 ///
-/// `Tests/` 里 31 个文件整体标着 `@MainActor`（`enrich` / `icon` / 离屏渲染都只能主 actor），
-/// 而主 actor 只有一条。只要有人在它上面**同步阻塞**（`usleep` / `waitUntilExit` …），
+/// `Tests/` 里 29 个文件带 `@MainActor`（其中 **25 个是文件级**，逐条登记在下面第三条守卫的账本里；
+/// §8.128 摘掉了两个「没理由」的），而主 actor 只有一条。只要有人在它上面**同步阻塞**（`usleep` / `waitUntilExit` …），
 /// **其余所有 `@MainActor` 用例都排不上队** —— 症状是**偶发假红**：
 /// 2026-09-17 CI 上实测过一次（`磁盘列表一变就重测占用` 失败：`arrived` 为 false），
 /// 2026-09-20 / 09-21 又红两次（`polls: 2` / `elapsed: 41.7s`，见 §8.113.9 / §8.113.20）。
@@ -210,7 +210,7 @@ struct MainActorBlockingTests {
             "只扫到 \(scanned) 个文件 —— 枚举很可能没生效，这次的「0 违规」不可信")
         #expect(
             mainActorFiles > 10,
-            "只认出 \(mainActorFiles) 个主 actor 文件 —— 判据很可能失效了（实测 31 个），结果不可信")
+            "只认出 \(mainActorFiles) 个主 actor 文件 —— 判据很可能失效了（实测 29 个），结果不可信")
 
         #expect(
             violations.isEmpty,
@@ -326,6 +326,209 @@ struct MainActorBlockingTests {
             CI 上核数更少，几处并发阻塞就让整个进程停摆（§8.114 第 6 节量到 4.5s 零完成窗口）。
             修法：用 `runAndAwaitExit(_:)` —— 它等的是**回调**（`terminationHandler`），
             一个线程都不占。
+            """)
+    }
+
+    // MARK: - 文件级 `@MainActor` 的账本（§8.128）
+
+    /// 文件级 `@MainActor` 的**账本** —— 每一条都要写**理由**，理由必须落到**具体的名字**上。
+    ///
+    /// ## 为什么要有这一条（2026-09-22，§8.128）
+    ///
+    /// 文件级 `@MainActor` 的代价不是「慢一点」，是**整个文件的测试都在主 actor 上串行**，
+    /// 而主 actor 只有一条（§8.114 第 6 节）。实测：`DesignDraftIntegrityTests` 那 44 条
+    /// 只做「读文件 + 正则解析」，标着 `@MainActor` 时整套 **1.661s**，摘掉后 **0.354s**
+    /// —— 那 1.3s 是**白占**主 actor 的。
+    ///
+    /// ## ⚠️ 判据：「不用 AppKit」**不足以**当理由
+    ///
+    /// 2026-09-22 做过一次批量实验（逐条摘掉、编译，见 §8.128）：5 个「完全不用 AppKit」的
+    /// 候选里 **3 个摘掉立刻红** —— 因为主 actor 隔离也会来自**项目自己的测试装置**
+    /// （`OffscreenRender` / `ViewFixtures`）与 app 自己的 `@MainActor` 类型。
+    /// ⇒ 本表的理由必须写**那个名字**；而「到底要不要标」**只有编译器说了算**
+    /// （判据：摘掉能编过 = 不需要）。
+    ///
+    /// ## 口径（三处都踩过）
+    ///
+    /// 1. **文件级** = **顶格**（无前导空白）的 `@MainActor`，且**跳过**中间的空行 / 注释 /
+    ///    其它属性行之后，下一个**顶格**行是类型声明。
+    ///    ⚠️ `@MainActor` + `@Suite("…")` + `struct` **也算** —— 第一版判据被中间的 `@Suite`
+    ///    挡住而**漏报**了 `AlertLayoutTests`，是**交叉自证**（换一条命令再数一遍）抓出来的。
+    /// 2. ⚠️ **顶格 `@MainActor` + 顶层 `func` 不算**（`GlassSurfaceTests` 就是）：它只标注
+    ///    **一个函数**，不是「整文件串行」，不属于这一类。
+    /// 3. 缩进的 `@MainActor`（单个测试主 actor）**不算** —— 那是刻意的窄标注。
+    ///
+    /// ## 两个方向都查
+    ///
+    /// - ① 有文件级 `@MainActor` 但**不在表里** ⇒ 红：新加的必须先回答「**哪一行**真的需要
+    ///   主 actor」并登记理由；
+    /// - ② 在表里但**已经没有**文件级 `@MainActor` ⇒ 红：回来划掉（防「安静地烂在表里」）。
+    private static let fileLevelMainActor: [String: String] = [
+        "AlertLayoutTests.swift": "弹窗版式的离屏渲染 + `NSHostingController` 装配（`NSApplication.shared` 也要）",
+        "EjectFlowControllerTests.swift":
+            "`EjectFlowController` / `EjectAlertPanel` / `EjectAlertPresenter` 都是主 actor；装配走 `NSHostingController`",
+        "EmptyStateTests.swift": "离屏渲染 `OffscreenRender.bitmap` + `ViewFixtures.mainWindow`（两个都 `@MainActor`）",
+        "HoverBackgroundTests.swift": "`OffscreenRender.boundingBox` —— 量悬停底色要出图",
+        "KeySilentWindowTests.swift": "建真 `NSWindow` + `ViewFixtures`；`AppDelegate` / `EjectAlertPanel` 主 actor",
+        "LanguageLayoutGapTests.swift": "`NSHostingController` 装配（`NSApplication.shared` 也要）",
+        "MainMenuTests.swift": "`MainMenu` / `AppDelegate` 主 actor；合成 `NSEvent`、读 `NSWindow`",
+        "MainWindowDiskListTests.swift": "离屏渲染 `OffscreenRender.bitmap` / `boundingBox` + `ViewFixtures`",
+        "MainWindowTests.swift": "`NSHostingController` 装配主窗口 + `ViewFixtures`",
+        "MarkdownCopyTests.swift":
+            "`NSHostingController` 是 main-actor 隔离的（非隔离上下文传 view 进去会 `SendingRisksDataRace`）",
+        "MenuDiskRowLayoutTests.swift": "离屏渲染 `OffscreenRender` —— 量菜单行的琥珀条",
+        "MenuPopoverLayoutTests.swift": "离屏渲染 `OffscreenRender` + `DiskListStore` / `OccupancyStore` 都是主 actor",
+        "OccupancyStoreTests.swift":
+            "同步构造 `OccupancyStore(monitoring:)`（主 actor 隔离的 init ⇒ 摘掉立刻 30 条编译错）",
+        "OffscreenRender.swift": "出图装置本体：`NSHostingController` + `NSBitmapImageRep` —— AppKit 渲染只能在主 actor",
+        "OnboardingLayoutTests.swift": "`NSHostingController` 装配引导页",
+        "OnboardingWindowTests.swift": "建真 `NSWindow` + `AppDelegate` 主 actor",
+        "ProcessAppResolverTests.swift": "`enrich` / `icon` 只能主 actor（`NSWorkspace` / `NSRunningApplication`）",
+        "ProcessChipLayoutTests.swift": "离屏渲染 `OffscreenRender` —— 量进程芯片",
+        "RefreshButtonTests.swift": "`OffscreenRender` + `ViewFixtures`",
+        "SettingsLayoutTests.swift": "离屏渲染（`NSBitmapImageRep`）+ `UpdateController` 主 actor",
+        "SettingsWindowTests.swift": "建真 `NSWindow` + `AppDelegate` 主 actor",
+        "SnapshotRenderTests.swift": "走查图出图：`ViewFixtures` + AppKit 渲染 + 多个主 actor store",
+        "TitleBarBaselineTests.swift": "离屏渲染 + `ViewFixtures` —— 量标题栏基线",
+        "TrafficLightAlignmentTests.swift": "离屏渲染 + `ViewFixtures` + `AppDelegate` 真窗口",
+        "ViewFixtures.swift": "夹具本体：建真 `NSWindow`、注入 `DiskListStore` / `OccupancyStore`",
+    ]
+
+    /// 文件级 `@MainActor` 的判据（口径见 `fileLevelMainActor` 的说明）。
+    static func hasFileLevelMainActor(_ code: String) -> Bool {
+        let lines = code.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+        for (index, line) in lines.enumerated() where line == "@MainActor" {  // ⚠️ 顶格才算
+            var j = index + 1
+            while j < lines.count {
+                let s = lines[j].trimmingCharacters(in: .whitespaces)
+                if s.isEmpty || s.hasPrefix("//") || s.hasPrefix("@") {
+                    j += 1
+                    continue
+                }
+                break
+            }
+            if j < lines.count, isTypeDeclaration(lines[j]) { return true }
+        }
+        return false
+    }
+
+    /// 这一行（**必须顶格**）是不是类型声明。
+    ///
+    /// 剥掉访问修饰符与 `final` 之后看头一个词 —— 用前缀匹配而不是正则：
+    /// `private final class OnceFlag {` 这种嵌套类型在**缩进**时已被上一步挡掉，
+    /// 顶格的 `private final class` 则要能认出来。
+    static func isTypeDeclaration(_ line: String) -> Bool {
+        guard !line.hasPrefix(" "), !line.hasPrefix("\t") else { return false }
+        var head = line.trimmingCharacters(in: .whitespaces)
+        for prefix in ["public ", "internal ", "private ", "fileprivate ", "final "] {
+            while head.hasPrefix(prefix) { head = String(head.dropFirst(prefix.count)) }
+        }
+        return ["struct", "class", "enum", "extension", "actor"].contains {
+            head == $0 || head.hasPrefix($0 + " ") || head.hasPrefix($0 + "{") || head.hasPrefix($0 + "<")
+        }
+    }
+
+    /// 双向差集（纯函数，便于用合成样本做对照）。
+    static func ledgerDiff(
+        found: [String], ledger: [String: String]
+    ) -> (unregistered: [String], stale: [String]) {
+        let foundSet = Set(found)
+        return (
+            unregistered: foundSet.subtracting(ledger.keys).sorted(),
+            stale: Set(ledger.keys).subtracting(foundSet).sorted()
+        )
+    }
+
+    /// 文件级 `@MainActor` 必须**登记在案**，且理由不许敷衍。
+    ///
+    /// 这条守的是**成本**而不是**错误**：标错的后果是「主 actor 被白占」，
+    /// 而它**不会让任何测试变红** —— 只有 `--xunit-output` 与主 actor 占用率看得出来（§8.114 / §8.127）。
+    @Test("文件级 @MainActor 必须登记在案（双向）")
+    func 文件级MainActor必须登记在案() throws {
+        // ① 装置自证：双向阳性对照（§8.96.4）。只报「没找到」的装置与「瞎了」的装置输出逐字相同。
+        #expect(
+            Self.hasFileLevelMainActor(Self.codeOnly("@MainActor\nstruct X {}")),
+            "阳性对照：最简单的文件级标注必须认出来")
+        #expect(
+            Self.hasFileLevelMainActor(Self.codeOnly("@MainActor\n@Suite(\"s\")\nstruct X {}")),
+            "阳性对照：`@Suite` 夹在中间也必须认出来 —— 第一版判据就是在这里**漏报**的（`AlertLayoutTests`）")
+        #expect(
+            Self.hasFileLevelMainActor(Self.codeOnly("@MainActor\n\n// 注释\nstruct X {}")),
+            "阳性对照：空行与注释夹在中间也必须认出来")
+        #expect(
+            !Self.hasFileLevelMainActor(Self.codeOnly("@MainActor\nprivate func f() {}")),
+            "阴性对照：顶格 `@MainActor` + 顶层 `func` **不算** —— 它只标注一个函数（`GlassSurfaceTests` 就是）")
+        #expect(
+            !Self.hasFileLevelMainActor(Self.codeOnly("    @MainActor\n    func f() {}")),
+            "阴性对照：**缩进**的 `@MainActor` 是「单个测试主 actor」，不是文件级")
+        #expect(
+            !Self.hasFileLevelMainActor(Self.codeOnly("// @MainActor\nstruct X {}")),
+            "阴性对照：注释里的不算")
+
+        let onlyFound = Self.ledgerDiff(found: ["A.swift"], ledger: [:])
+        #expect(
+            onlyFound.unregistered == ["A.swift"] && onlyFound.stale.isEmpty,
+            "阳性对照：**有标注没登记**必须报（新加一个文件级 `@MainActor` 就是这条拦下）")
+        let onlyLedger = Self.ledgerDiff(found: [], ledger: ["A.swift": "理由"])
+        #expect(
+            onlyLedger.stale == ["A.swift"] && onlyLedger.unregistered.isEmpty,
+            "阳性对照：**登记了没标注**也必须报（还了账要回来划掉）")
+        let same = Self.ledgerDiff(found: ["A.swift"], ledger: ["A.swift": "理由"])
+        #expect(
+            same.unregistered.isEmpty && same.stale.isEmpty,
+            "阴性对照：两边一致不许报 —— 报了就把守卫逼成噪音")
+
+        // ② 真扫 `Tests/` 全部 `.swift`。
+        let testsRoot =
+            URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()  // DiskEjectorAppTests/
+            .deletingLastPathComponent()  // Tests/
+        guard let walker = FileManager.default.enumerator(at: testsRoot, includingPropertiesForKeys: nil)
+        else {
+            Issue.record("枚举不到 \(testsRoot.path)")
+            return
+        }
+
+        var scanned = 0
+        var found: [String] = []
+        for case let url as URL in walker where url.pathExtension == "swift" {
+            scanned += 1
+            let code = Self.codeOnly(try String(contentsOf: url, encoding: .utf8))
+            if Self.hasFileLevelMainActor(code) { found.append(url.lastPathComponent) }
+        }
+
+        // ③ 装置自证：真的扫到了足够多的文件、也真的认出了足够多的文件级标注。
+        //    否则「差集为空」可能只是「一个都没扫」或「一个都没认出来」—— 三者断言层面完全一样。
+        #expect(
+            scanned > 40,
+            "只扫到 \(scanned) 个文件 —— 枚举很可能没生效，结果不可信")
+        #expect(
+            found.count >= 20,
+            "只认出 \(found.count) 个文件级 `@MainActor` —— 判据很可能失效了（实测 25 个），结果不可信")
+
+        // ④ 理由不许敷衍（沿用本仓库「理由短于 12 字算敷衍」的口径）。
+        let thin = Self.fileLevelMainActor.filter { $0.value.count < 12 }.keys.sorted()
+        #expect(thin.isEmpty, "这些条目的理由太短，等于没写：\(thin.joined(separator: "、"))")
+
+        // ⑤ 双向差集。
+        let diff = Self.ledgerDiff(found: found, ledger: Self.fileLevelMainActor)
+        #expect(
+            diff.unregistered.isEmpty,
+            """
+            这些文件有**文件级 `@MainActor`** 但没登记：\(diff.unregistered.joined(separator: "、"))。
+            文件级 `@MainActor` = **整个文件**的测试都在主 actor 上串行（主 actor 只有一条，§8.114 第 6 节）。
+            加之前先回答：**这个文件里哪一行真的需要主 actor？**
+            ⚠️ 「不用 AppKit」**不是**理由 —— 主 actor 隔离也可能来自 `OffscreenRender` / `ViewFixtures`
+            或 app 自己的 `@MainActor` 类型（§8.128 的批量实验里，5 个候选有 3 个摘掉立刻红）。
+            判据只有编译器：**摘掉能编过 = 不需要**。确认需要后，把文件名与**具体依赖的那个名字**加进
+            `fileLevelMainActor`。
+            """)
+        #expect(
+            diff.stale.isEmpty,
+            """
+            这些文件登记在 `fileLevelMainActor` 里，但**已经没有**文件级 `@MainActor` 了：
+            \(diff.stale.joined(separator: "、"))。
+            说明有人摘掉了它（好事）⇒ 回来把这一条**划掉**，别让它安静地烂在表里（§8.33 的教训）。
             """)
     }
 }

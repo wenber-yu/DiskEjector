@@ -31,7 +31,16 @@ import Testing
 ///
 /// **定义源有两个，别漏**（§8.52.1）：主 CSS `assets/ds.css` **加上每个 HTML 的 `<style>` 块**
 /// —— 实测 9 个页面共 225 行 `<style>`，`.aboutrow` 的样式就在那里，只扫主 CSS 会误报。
-@MainActor
+///
+/// ## ⚠️ 本套件**故意不标** `@MainActor`（2026-09-22，§8.128）
+///
+/// 它只做「读文件 + 正则解析」，**没有任何**主 actor 隔离的 API（44 条测试、0 条 `async`）。
+/// 而标上 `@MainActor` 的后果是：这 **1.66s** 的 CPU 活全部压在**主 actor** 上 ——
+/// 同一时刻还有另外 **30** 个 `@MainActor` 测试文件在排队（§8.114 第 6 节）。
+/// 摘掉之后这 44 条在**协作池**上跑，主 actor 一秒都不占。
+/// ⚠️ **别「顺手」加回来**：加之前先回答「这个文件里**哪一行**真的需要主 actor」——
+/// 答不出来就是不需要（`MarkdownCopyTests` 标它是因为 `NSHostingController`，
+/// `ProcessAppResolverTests` 标它是因为 `enrich` / `icon`，那才叫理由）。
 struct DesignDraftIntegrityTests {
 
     // MARK: 路径
