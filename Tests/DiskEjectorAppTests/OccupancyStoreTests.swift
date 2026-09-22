@@ -1,3 +1,4 @@
+import Combine
 import Foundation
 import Testing
 
@@ -35,43 +36,75 @@ private func makeDisk(_ path: String) -> DiskInfo {
     )
 }
 
-/// 轮询等待条件成立。**不用固定 `sleep`**：那要么白等、要么在慢机器上假红。
+/// 「只许触发一次」的旗标：事件与兜底**谁先到谁说了算**，后到的必须无声退出
+/// （`CheckedContinuation` 二次 resume 会直接崩）。
 ///
-/// 超时给到 30s：单独跑时通常 10ms 内就成立，但全量测试里主 actor 被别的用例占着，
-/// 3s 会偶发假红（实测过一次）→ 提到 10s；2026-09-17 CI 上 10s **仍然没等到**
-/// （`磁盘列表一变就重测占用` 失败：`arrived` 为 false）→ 再放宽到 30s。
-///
-/// ⚠️ **放宽超时是在买时间，不是在修根因**：这条等待依赖「Combine sink →
-/// `Task { @MainActor … }` → `refresh`」这条链路被主 actor 调度。
-/// CI runner 比开发机慢约一倍（同批用例 25–34s vs 本地 10–18s），
-/// 且 swift-testing 并行跑用例时主 actor 会被别的 `@MainActor` 用例争抢。
-/// 真根因是「这条链路没有可等待的信号」，只能轮询；
-/// 若哪天它开始常态化超时，该做的是给 `OccupancyStore` 加一个可 await 的刷新句柄，
-/// 而不是继续加超时。
-///
-/// ⚠️ **返回值从 `Bool` 改成 ``WaitOutcome``**（2026-09-21）：上面那句
-/// 「失败：`arrived` 为 false」正是**报错不指名真因** —— 它分不清「主 actor 被占住、
-/// 条件没被轮到」与「条件确实很久不成立」，而两者修法完全不同（见 ``WaitOutcome`` 文件头）。
-/// 现在失败信息里带上「等了多久、求值几次」，下次红了一眼能定位。
+/// ⚠️ **必须是引用类型**：`Task { }` 的闭包是 `@Sendable`，捕获一个 `var` 会被编译器拒
+/// （`reference to captured var in concurrently-executing code`）—— 同 ``SignalBox`` 的说明。
 @MainActor
-private func waitUntil(
-    timeout: TimeInterval = 30,
-    _ condition: () async -> Bool
-) async -> WaitOutcome {
-    let started = Date()
-    var polls = 0
-    let deadline = started.addingTimeInterval(timeout)
-    while Date() < deadline {
-        polls += 1
-        if await condition() {
-            return WaitOutcome(ok: true, polls: polls, elapsed: Date().timeIntervalSince(started))
-        }
-        try? await Task.sleep(nanoseconds: 10_000_000)
+private final class OnceFlag {
+    private var fired = false
+    /// 第一次调用返回 `true`，之后一律 `false`。
+    func tryFire() -> Bool {
+        guard !fired else { return false }
+        fired = true
+        return true
     }
-    // 退出循环时可能刚好是最后一拍就绪 —— 再查一次，别把「刚好赶上」误报成超时。
-    polls += 1
-    let ok = await condition()
-    return WaitOutcome(ok: ok, polls: polls, elapsed: Date().timeIntervalSince(started))
+}
+
+/// 等 `store` **下一次跑完一轮并写回 `results`** —— 事件驱动，**不轮询**。
+///
+/// ## 为什么把轮询换掉（2026-09-22，账本第 35 行）
+///
+/// 这里原来是一个 `while Date() < deadline { 求值; Task.sleep(10ms) }` 的轮询，
+/// 超时从 3s 一路放宽到 30s。两次 CI 红都长这样：
+///
+/// ```text
+/// WaitOutcome(ok: false, polls: 2, elapsed: 41.73)
+/// ```
+///
+/// ⇒ 那 10ms 的 `sleep` 睡了 41.7 秒才被唤醒，**循环根本没被调度**；
+/// 而 `deadline` 是**墙钟** ⇒ 排一次队就把整个窗口吃掉，于是「排不上队」
+/// 被报成了「条件始终不成立」。⇒ **延长超时只是抬门槛**（§8.113.20 的读数已证否这条路）。
+///
+/// 现在改成**等事件**：`results` 是 `@Published`，每跑完一轮都会发一次 `objectWillChange`。
+/// 事件一到就返回，**与「等了多久」无关** ⇒ 「排不上队」在结构上不再可能造成误报。
+///
+/// ⚠️ 这与 `OccupancyStore` 里那条「加一个可 await 的刷新句柄」是同一个思路，
+/// 但**不用改生产代码**：`objectWillChange` 本来就有，而且它**每跑完一轮必发一次**
+/// （`performDetect` 结尾那次 `results = next`，哪怕值相等）。
+///
+/// ## 兜底**不在正常路径上**
+///
+/// `backstop` 只在「事件**从未**发生」时才会命中 —— 那意味着**接线断了**
+/// （`$disks` 的 sink 没接到 `refresh`），而**不是**「排不上队」。
+/// 两者修法完全不同，所以返回值（``EventWait``）把这两条路分开报。
+///
+/// ## ⚠️ 调用约定：触发与订阅之间**不许有 `await`**
+///
+/// `objectWillChange` **不重放**（它不是 `@Published` 那个会补发当前值的 publisher）：
+/// 订阅之前发生的那次变更不会被补发。而「触发」在主 actor 上是**同步**的
+/// （`replaceDisksForTesting` → sink → `Task { @MainActor in refresh }`，那个 Task 还排不上队）
+/// ⇒ 只要中间不让出主 actor，就不存在「订阅前事件已经发生」的窗口。
+@MainActor
+private func waitForNextRound(
+    _ store: OccupancyStore, backstop: TimeInterval = 120
+) async -> EventWait {
+    let started = Date()
+    let flag = OnceFlag()
+    var cancellable: AnyCancellable?
+    let arrived = await withCheckedContinuation {
+        (continuation: CheckedContinuation<Bool, Never>) in
+        cancellable = store.objectWillChange.sink { _ in
+            if flag.tryFire() { continuation.resume(returning: true) }
+        }
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: UInt64(backstop * 1_000_000_000))
+            if flag.tryFire() { continuation.resume(returning: false) }
+        }
+    }
+    cancellable?.cancel()
+    return EventWait(arrivedByEvent: arrived, elapsed: Date().timeIntervalSince(started))
 }
 
 /// 造一个不跑真实 lsof 的 store。`pollInterval` 默认给足，避免轮询干扰断言。
@@ -226,13 +259,17 @@ struct OccupancyStoreTests {
         #expect(store.results.isEmpty)
 
         diskStore.replaceDisksForTesting([disk])
-        let arrived = await waitUntil { store.result(for: disk) == .none }
-        // ⚠️ 走 ``expectArrived`` 而不是手写 `#expect(arrived.ok, "…")`：
-        // 消息里那句「等了多久、求值几次」由 ``WaitOutcome`` 唯一决定，调用处漏不掉。
-        expectArrived(
+        // ⚠️ 触发与订阅之间**不许有 `await`**（见 ``waitForNextRound`` 的调用约定）。
+        let arrived = await waitForNextRound(store)
+        // ⚠️ 走 ``expectEvent`` 而不是手写 `#expect(arrived.arrivedByEvent, "…")`：
+        // 消息里那句「等了多久、是事件到了还是接线断了」由 ``EventWait`` 唯一决定，调用处漏不掉。
+        expectEvent(
             arrived,
             "DiskListStore.disks 一变，占用结论必须重测；"
                 + "否则「刷新磁盘列表」只刷新容量数字、刷不动占用结论。")
+        #expect(
+            store.result(for: disk) == .none,
+            "重测之后结论必须是 .none，实际 \(store.result(for: disk))")
 
         // 同一份列表再发一次（内容完全相同）：`.onChange` 会漏掉，`sink` 不会。
         let counter = CallCounter()
@@ -241,13 +278,18 @@ struct OccupancyStoreTests {
             return .none
         }
         defer { store2.stop() }
-        _ = await waitUntil { await counter.count >= 1 }
+        // 首轮：`@Published` 的订阅会**立即投递当前值**，那一次投递就是首帧刷新。
+        expectEvent(await waitForNextRound(store2), "store2 建好后必须跑完首轮")
         let afterFirst = await counter.count
 
         diskStore.replaceDisksForTesting([disk])  // 内容一模一样
 
-        let retested = await waitUntil { await counter.count > afterFirst }
-        expectArrived(retested, "内容相同的一次重新枚举也必须重测——这正是 `.onChange` 漏掉的那种情况。")
+        let retested = await waitForNextRound(store2)
+        expectEvent(retested, "内容相同的一次重新枚举也必须重测——这正是 `.onChange` 漏掉的那种情况。")
+        let afterRetest = await counter.count
+        #expect(
+            afterRetest > afterFirst,
+            "内容相同也必须重测：内容一样时 `.onChange` 会静默什么都不做（实际 \(afterFirst) → \(afterRetest)）")
     }
 
     @Test("stop 之后不再响应磁盘列表变化")
@@ -276,49 +318,52 @@ struct OccupancyStoreTests {
             "stop() 之后订阅已解除，不该再有检测（实际多了 \(afterStop - baseline) 次）")
     }
 
-    // MARK: - 等待 helper 自己的守卫
+    // MARK: - 等待装置自己的守卫
 
-    /// `waitUntil` 的返回值必须**带得出数字**。
+    /// 等事件的装置必须能把「**事件到了**」与「**接线断了**」分开报 —— **双向对照**。
     ///
     /// **为什么这条值得单独写**：它是本文件里唯一「守装置而不是守产品」的测试。
-    /// 少了它，「失败信息里到底有没有数字」这件事只能靠**下次 CI 真红**才发现 ——
+    /// 少了它，「失败信息里到底说的是哪条路」只能靠**下次 CI 真红**才发现 ——
     /// 而那正是 2026-09-17 发生过的（报出「`arrived` 为 false」，什么都没说明）。
     /// ⇒ 与 §8.113.12「门槛红了却拿到一个假名字」同一条轴。
     ///
-    /// ⚠️ 样本是**确定性**的：极短超时（50ms）+ 恒不成立的条件，不依赖机器快慢、
-    /// 也不依赖任何被测逻辑 ⇒ 它自己不会变成一条新的 flaky。
-    @Test("等待超时时必须报出轮询次数与耗时")
-    func 等待超时时必须报出轮询次数与耗时() async {
-        let timedOut = await waitUntil(timeout: 0.05) { false }
+    /// ⚠️ **两个方向都必须是确定性的**，不许依赖机器快慢：
+    /// - **阴性**：`autoStart: false` ⇒ 没有任何东西会触发一轮 ⇒ 事件**永不发生**，
+    ///   只能由兜底结束。这条同时证明 `arrivedByEvent` **不是恒真**。
+    /// - **阳性**：`autoStart: true` + 一次**同步**的列表变更 ⇒ 走事件路。
+    ///
+    /// ⚠️ 断言的是 `arrivedByEvent`（一个**位**），**不是** `elapsed` ——
+    /// 拿墙钟当门槛就是把调度延迟写进判据（§8.118 踩过，同一把尺子）。
+    @Test("等事件的装置必须分开报「事件到了」与「接线断了」")
+    func 等事件的装置必须分开报事件到了与接线断了() async {
+        let diskStore = DiskListStore(monitoring: false)
 
-        #expect(!timedOut.ok, "条件恒不成立，`ok` 必须是 false")
+        // ── 阴性对照：没有任何轮次 ⇒ 事件不可能到达，只能靠兜底结束。
+        let idle = makeStore(diskStore: diskStore, autoStart: false) { _ in .none }
+        defer { idle.stop() }
+        let timedOut = await waitForNextRound(idle, backstop: 0.05)
+        #expect(!timedOut.arrivedByEvent, "没有任何轮次，事件不可能到达：\(timedOut.diagnostic)")
+        #expect(timedOut.elapsed >= 0.05, "墙钟不小于兜底值，实得 \(timedOut.elapsed)")
+        // ⚠️ 只断言 `arrivedByEvent == false` **还不够**：`diagnostic` 才是给下一个排查的人
+        // 看的那句话，而它完全可能被写成一句不带方向的话（那样等于没改）。
         #expect(
-            timedOut.polls >= 2,
-            "至少要有「循环里那次」与「超时后那次补查」两次求值，实得 \(timedOut.polls)")
-        #expect(timedOut.elapsed >= 0.05, "墙钟不小于超时值，实得 \(timedOut.elapsed)")
-
-        // ⚠️ 只断言 ok/polls/elapsed **还不够**：`diagnostic` 才是给下一个排查的人看的
-        // 那句话，而它完全可能被写成一句不带数字的空话（那样等于没改）。
+            timedOut.diagnostic.contains("接线"),
+            "兜底失败必须指出「这是接线断了，不是排不上队」：\(timedOut.diagnostic)")
+        // 真正给排查的人看的是 ``expectEvent`` 拼出来的那句话，它完全可能把 `diagnostic` 丢掉。
+        // （断言只挑**与 locale 无关**的部分：`%.2f` 的小数点在某些 locale 下会变逗号。）
         #expect(
-            timedOut.diagnostic.contains("\(timedOut.polls)") && timedOut.diagnostic.contains("s、"),
+            timedOut.diagnostic.contains("s，"),
             "诊断串里没带出实际数字：\(timedOut.diagnostic)")
 
-        // ⚠️ `diagnostic` 有数字**还不够**：真正给排查的人看的是 `failureNote` 拼出来的
-        // 那句话（``expectArrived`` 用它当 `#expect` 的消息），它完全可能把 `diagnostic`
-        // 整个丢掉 —— 那样等于没改，而且不会有任何东西变红。所以这里直接断言拼出来的结果。
-        // （断言只挑**与 locale 无关**的部分：`%.2f` 的小数点在某些 locale 下会变逗号。）
-        let note = WaitOutcome(ok: false, polls: 7, elapsed: 1.25).failureNote("在等 X")
-        #expect(
-            note.contains("在等 X") && note.contains("7") && note.contains("s、"),
-            "失败信息没把「在等什么」与数字拼在一起：\(note)")
+        // ── 阳性对照：真的触发一轮 ⇒ 走事件路。
+        // ⚠️ **先放一块盘**：空列表那一轮**不发事件** —— `performDetect` 对空列表直接 `return`，
+        // 连 `results` 都不赋值。这不是 bug（没结论要写回），但写阳性对照时必须知道。
+        diskStore.replaceDisksForTesting([makeDisk("/Volumes/PROBE")])
+        let live = makeStore(diskStore: diskStore, autoStart: true) { _ in .none }
+        defer { live.stop() }
+        expectEvent(await waitForNextRound(live), "首轮必须走事件路")
 
-        // 阴性对照（反向）：条件立刻成立时，拍数应当很小、也不该报「始终不成立」——
-        // 否则上面那条 `polls >= 2` 可能只是恒真。
-        let immediate = await waitUntil(timeout: 0.05) { true }
-        #expect(immediate.ok, "条件立刻成立，`ok` 必须是 true")
-        #expect(immediate.polls == 1, "第一次求值就成立 ⇒ 恰好 1 拍，实得 \(immediate.polls)")
-        #expect(
-            !immediate.diagnostic.contains("始终不成立"),
-            "成立的等待不该报「始终不成立」：\(immediate.diagnostic)")
+        diskStore.replaceDisksForTesting([makeDisk("/Volumes/PROBE-2")])
+        expectEvent(await waitForNextRound(live), "列表一变必须走事件路")
     }
 }

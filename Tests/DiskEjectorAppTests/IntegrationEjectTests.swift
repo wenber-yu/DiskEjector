@@ -38,20 +38,24 @@ import Testing
 ///
 /// 它有两处 `task.waitUntilExit()`（`canAttachDiskImage` 的 `s(...)` 里、`shell(_:)` 里），
 /// 以及它们调起的 `hdiutil create/attach/detach` —— 全是**同步阻塞、不让路**的等待。
-/// 标了 `@MainActor` 就等于把这些等待压在**主 actor** 上，而
-/// `OccupancyStoreTests.waitUntil`（`@MainActor`，靠 `await Task.sleep` 轮询）恰恰要
-/// 主 actor 空闲才能推进（§8.97.3）—— 那正是 2026-09-17 CI 上
-/// 「`磁盘列表一变就重测占用` 失败（`arrived` 为 false）」的候选根因。
+/// 标了 `@MainActor` 就等于把这些等待压在**主 actor** 上，而主 actor 上排着一长串
+/// `@MainActor` 用例（31 个测试文件），任何一个被堵住都会让**别的**用例排不上队（§8.97.3）。
 ///
 /// 摘掉标注后这些等待跑在**协作线程池**上，主 actor 不再被占。
 /// 逐处确认过：需要主 actor 的只有 `EjectFlowController`（`@MainActor`），
 /// 而它两处都是 `await` 调用（跨 actor 边界本来就没问题）；
 /// `DiskService` 是 `@unchecked Sendable`、非隔离 ⇒ **摘掉后没有一处需要补 `@MainActor`**。
+///
+/// ⚠️ **但「搬出主 actor」不是终点**（2026-09-22，§8.114 第 6 节）：`waitUntilExit()`
+/// 占住的是**协作线程池**里的一根线程（池大小 ≈ 核数），CI 上核数更少 ⇒
+/// 几处并发阻塞就能让整个进程停摆。⇒ 两处都改成 ``runAndAwaitExit``
+/// （等 `terminationHandler` **回调**，一个线程都不占），`shell` 与 `canAttachDiskImage`
+/// 随之变成 `async`。守卫：`MainActorBlockingTests.测试代码里不许同步等子进程`。
 struct IntegrationEjectTests {
 
     @Test func 真实占用时关闭进程并推出() async throws {
         // 环境不支持挂载磁盘映像时优雅跳过（CI 沙盒等），不判失败。
-        guard Self.canAttachDiskImage() else { return }
+        guard await Self.canAttachDiskImage() else { return }
 
         let dmg = "/tmp/DiskEjectorEjectTest.dmg"
         let vol = "/Volumes/DiskEjectorEjectTest"
@@ -62,65 +66,84 @@ struct IntegrationEjectTests {
         // 一旦写入抛错，defer 还没注册，挂载点与临时 dmg 就一起泄漏了。
         // 2026-09-15 实际踩过：写入被沙箱拦截 → `/Volumes/DiskEjectorEjectTest`
         // 一直挂着、`/tmp` 里留了 5 MB 映像，只能手工 hdiutil detach。
+        //
+        // ⚠️ **2026-09-22 起 `defer` 只做同步那两件**：`hdiutil detach` 现在走 ``shell``，
+        // 而 `shell` 是 `await` 的（它不再用 `waitUntilExit()`，见那里的说明），
+        // 而 **`defer` 里不许出现 `await`**。⇒ 正文包进局部函数 `body()`，
+        // `detach` 写在**它之后** —— `body()` 里所有提前退出都只是 `return` 出 `body()`，
+        // 收尾一定跑得到（原先靠 `defer` 保证的那件事没有被削弱）。
         defer {
             tail?.terminate()
-            try? shell("hdiutil detach \(vol) 2>/dev/null")
             try? FileManager.default.removeItem(atPath: dmg)
         }
 
-        try? shell("hdiutil detach \(vol) 2>/dev/null")
+        /// 正文。⚠️ 用局部函数而**不是** `defer` —— 理由见上面那段。
+        func body() async throws {
+            try? await shell("hdiutil detach \(vol) 2>/dev/null")
+            try? FileManager.default.removeItem(atPath: dmg)
+            try await shell("hdiutil create -size 5m -fs HFS+ -volname DiskEjectorEjectTest \(dmg)")
+            try await shell("hdiutil attach \(dmg) -nobrowse")
+            try "hi".write(toFile: "\(vol)/x.txt", atomically: true, encoding: .utf8)
+
+            // 制造一个真实占用进程（tail -f 持续打开文件）。
+            let tailProcess = Process()
+            tailProcess.executableURL = URL(fileURLWithPath: "/usr/bin/tail")
+            tailProcess.arguments = ["-f", "\(vol)/x.txt"]
+            tailProcess.standardOutput = FileHandle.nullDevice
+            try tailProcess.run()
+            // ⚠️ **登记必须在 `run()` 之后、且在任何可能失败的步骤之前**（上面那段说的事）。
+            tail = tailProcess
+
+            // ⚠️ **等到它出现在 `fetchExternalDisks()` 里**，而不是 `hdiutil attach` 一返回就查 ——
+            // 两者的差别见文件头「为什么必须等」。超时 15s：实测传播延迟在亚秒级，
+            // 15s 足够；真的 15s 都不出现，那是**环境或产品**的问题，必须硬失败。
+            let waited = await Self.waitForDisk(timeout: 15) { await Self.liveTestDisk(at: vol) }
+            guard let disk = waited.disk else {
+                // ⚠️ 2026-09-21 真红过一次（全量日志 `.build/preflight/门槛8.log`）。
+                // 只写「未找到测试盘」等于没说：至少三种可能，而它们的修法完全不同 ——
+                //   ① `hdiutil attach` 其实没挂上（沙箱 / 权限）；
+                //   ② 挂成了 `DiskEjectorEjectTest 1`（上一轮的挂载点还占着名字）；
+                //   ③ 挂上了，但那一刻 `fetchExternalDisks()` 还没把它算成外置卷。
+                // 原诊断只打「本次看到的外部盘」，而那是一次**重新查询** —— 它拿到的是
+                // 「现在的状态」，说明不了「失败那一刻为什么没看到」。
+                // ⇒ 这里把能分开这三件事的证据**逐条**打出来（② 用的是既有的注入点，
+                //    不需要为诊断在生产代码里加任何东西）。
+                // ⚠️ 走 `"\(…)"` 而不是直接传 `String`：`Issue.record` 的重载里有 `Error` 那一支，
+                // 直接传 `String` 会被解析成 `Error`（编译错）。插值造出的是 `Comment`。
+                let message = Self.notFoundDiagnostic(vol: vol, outcome: waited.outcome)
+                Issue.record("\(message)")
+                return
+            }
+
+            // 1) 直接推出：应失败并返回 busy，且携带占用进程。
+            let first = await EjectFlowController.shared.eject(disk: disk)
+            guard case .busy(let occupying) = first else {
+                Issue.record("期望 busy，实际 \(first)")
+                return
+            }
+            #expect(!occupying.isEmpty, "busy 应携带占用进程（列出是谁）")
+
+            // 2) 关闭并推出：终止占用进程后应成功。
+            let second = await EjectFlowController.shared.terminateAndEject(
+                disk: disk, processes: occupying)
+            guard case .ejected = second else {
+                Issue.record("期望 ejected，实际 \(second)")
+                return
+            }
+
+            // 3) 验证卷确实已被推出（不再出现在外置卷列表中）。
+            let stillThere = DiskService.shared.fetchExternalDisks().contains { $0.mountPath == vol }
+            #expect(!stillThere, "推出后卷应已消失")
+        }
+
+        // ⚠️ `body()` 抛错时**也要收尾**（否则卷与临时 dmg 一起泄漏）⇒ 先把错误记下来，
+        // 收尾之后再抛回去 —— 原先是 `defer` 顺带保证的，改成显式收尾后必须自己保证。
+        var thrown: Error?
+        do { try await body() } catch { thrown = error }
+        tail?.terminate()
+        try? await shell("hdiutil detach \(vol) 2>/dev/null")
         try? FileManager.default.removeItem(atPath: dmg)
-        try shell("hdiutil create -size 5m -fs HFS+ -volname DiskEjectorEjectTest \(dmg)")
-        try shell("hdiutil attach \(dmg) -nobrowse")
-        try "hi".write(toFile: "\(vol)/x.txt", atomically: true, encoding: .utf8)
-
-        // 制造一个真实占用进程（tail -f 持续打开文件）。
-        let tailProcess = Process()
-        tailProcess.executableURL = URL(fileURLWithPath: "/usr/bin/tail")
-        tailProcess.arguments = ["-f", "\(vol)/x.txt"]
-        tailProcess.standardOutput = FileHandle.nullDevice
-        try tailProcess.run()
-        tail = tailProcess
-
-        // ⚠️ **等到它出现在 `fetchExternalDisks()` 里**，而不是 `hdiutil attach` 一返回就查 ——
-        // 两者的差别见文件头「为什么必须等」。超时 15s：实测传播延迟在亚秒级，
-        // 15s 足够；真的 15s 都不出现，那是**环境或产品**的问题，必须硬失败。
-        let waited = await Self.waitForDisk(timeout: 15) { await Self.liveTestDisk(at: vol) }
-        guard let disk = waited.disk else {
-            // ⚠️ 2026-09-21 真红过一次（全量日志 `.build/preflight/门槛8.log`）。
-            // 只写「未找到测试盘」等于没说：至少三种可能，而它们的修法完全不同 ——
-            //   ① `hdiutil attach` 其实没挂上（沙箱 / 权限）；
-            //   ② 挂成了 `DiskEjectorEjectTest 1`（上一轮的挂载点还占着名字）；
-            //   ③ 挂上了，但那一刻 `fetchExternalDisks()` 还没把它算成外置卷。
-            // 原诊断只打「本次看到的外部盘」，而那是一次**重新查询** —— 它拿到的是
-            // 「现在的状态」，说明不了「失败那一刻为什么没看到」。
-            // ⇒ 这里把能分开这三件事的证据**逐条**打出来（② 用的是既有的注入点，
-            //    不需要为诊断在生产代码里加任何东西）。
-            // ⚠️ 走 `"\(…)"` 而不是直接传 `String`：`Issue.record` 的重载里有 `Error` 那一支，
-            // 直接传 `String` 会被解析成 `Error`（编译错）。插值造出的是 `Comment`。
-            let message = Self.notFoundDiagnostic(vol: vol, outcome: waited.outcome)
-            Issue.record("\(message)")
-            return
-        }
-
-        // 1) 直接推出：应失败并返回 busy，且携带占用进程。
-        let first = await EjectFlowController.shared.eject(disk: disk)
-        guard case .busy(let occupying) = first else {
-            Issue.record("期望 busy，实际 \(first)")
-            return
-        }
-        #expect(!occupying.isEmpty, "busy 应携带占用进程（列出是谁）")
-
-        // 2) 关闭并推出：终止占用进程后应成功。
-        let second = await EjectFlowController.shared.terminateAndEject(disk: disk, processes: occupying)
-        guard case .ejected = second else {
-            Issue.record("期望 ejected，实际 \(second)")
-            return
-        }
-
-        // 3) 验证卷确实已被推出（不再出现在外置卷列表中）。
-        let stillThere = DiskService.shared.fetchExternalDisks().contains { $0.mountPath == vol }
-        #expect(!stillThere, "推出后卷应已消失")
+        if let thrown { throw thrown }
     }
 
     // MARK: - 等测试盘出现（以及它为什么必须等）
@@ -141,9 +164,12 @@ struct IntegrationEjectTests {
     /// （CI 上实测 `Task.sleep(50ms)` 拖到 ~6.1s）⇒ 守卫里不许出现「第 N 拍才成立」
     /// （N ≥ 3）。这条踩坑记录见 §8.118。
     ///
-    /// 判超时用 `Date()`、报数用 ``WaitOutcome`` —— 与既有两个等待 helper
-    /// （`OccupancyStoreTests.waitUntil` / `ProcessAppResolverTests.waitForExecutablePath`）
+    /// 判超时用 `Date()`、报数用 ``WaitOutcome`` —— 与 `ProcessAppResolverTests.waitForExecutablePath`
     /// 同一口径，别再造第三套。
+    ///
+    /// ⚠️ **2026-09-22 起用 ``WaitOutcome`` 的只剩这两处**：`OccupancyStoreTests` 那条等待
+    /// 换成了**等事件**（``EventWait``）—— 它等的不是「条件成立」，而是「某一轮跑完了」，
+    /// 两者的判据完全不同（见 `WaitOutcome.swift` 抬头）。这里仍然是**真在等条件**，留在这一族。
     private static func waitForDisk(
         timeout: TimeInterval = 15,
         probe: @Sendable () async -> DiskInfo?
@@ -239,51 +265,65 @@ struct IntegrationEjectTests {
     /// 对挂载点的写入**（`atomically: true` 要在同卷建临时目录，那一步被拒）。只探「能挂载」
     /// 会把这类环境误判成可用，随后在真正写文件时抛错 —— 既误报成产品缺陷，又因为当时
     /// `defer` 尚未注册而留下挂载残留。所以这里用与测试**完全相同**的写法探一次可写性。
-    private static func canAttachDiskImage() -> Bool {
+    /// ⚠️ **本函数是 `async`，不是为了并发**（2026-09-22）：里面的 `hdiutil` 一律走
+    /// ``runAndAwaitExit``（等 `terminationHandler` **回调**），**不用 `waitUntilExit()`** ——
+    /// 后者同步阻塞、不让路，占住的是**协作线程池**里的一根线程（池大小 ≈ 核数），
+    /// CI 上核数更少 ⇒ 几处并发阻塞就让整个进程停摆（§8.114 第 6 节）。
+    private static func canAttachDiskImage() async -> Bool {
         let dmg = "/tmp/DiskEjectorCanary.dmg"
         let vol = "/Volumes/DiskEjectorCanary"
-        let s = { (cmd: String) -> Bool in
+        let s = { (cmd: String) async -> Bool in
             let task = Process()
             task.executableURL = URL(fileURLWithPath: "/bin/sh")
             task.arguments = ["-c", cmd]
             task.standardOutput = FileHandle.nullDevice
             task.standardError = FileHandle.nullDevice
-            do { try task.run() } catch { return false }
-            task.waitUntilExit()
-            return task.terminationStatus == 0
+            // `nil`（没跑起来）与「跑起来但退出码非 0」都算失败 —— 这里只关心「成没成」。
+            return await runAndAwaitExit(task) == 0
         }
 
-        guard s("hdiutil create -size 1m -fs HFS+ -volname DiskEjectorCanary \(dmg)") else { return false }
-        guard s("hdiutil attach \(dmg) -nobrowse") else {
-            _ = s("rm -f \(dmg)")
+        guard await s("hdiutil create -size 1m -fs HFS+ -volname DiskEjectorCanary \(dmg)") else {
+            return false
+        }
+        guard await s("hdiutil attach \(dmg) -nobrowse") else {
+            _ = await s("rm -f \(dmg)")
             return false
         }
 
-        let writable = (try? "probe".write(toFile: "\(vol)/.write-probe", atomically: true, encoding: .utf8)) != nil
+        let writable =
+            (try? "probe".write(toFile: "\(vol)/.write-probe", atomically: true, encoding: .utf8)) != nil
 
-        _ = s("hdiutil detach \(vol)")
-        _ = s("rm -f \(dmg)")
+        _ = await s("hdiutil detach \(vol)")
+        _ = await s("rm -f \(dmg)")
         return writable
     }
 
-    private func shell(_ command: String) throws {
+    /// ⚠️ **本函数是 `async`**（2026-09-22）：理由同 ``canAttachDiskImage()`` ——
+    /// `waitUntilExit()` 占住的是协作池的一根线程，**「搬出主 actor」并不等于「不阻塞」**。
+    ///
+    /// ⚠️ 因为它变成了 `await`，**调用处不能再放进 `defer`**（`defer` 里不许出现 `await`）——
+    /// 见 `真实占用时关闭进程并推出` 里那段「正文包进局部函数」的说明。
+    private func shell(_ command: String) async throws {
         let task = Process()
         task.executableURL = URL(fileURLWithPath: "/bin/sh")
         task.arguments = ["-c", command]
         task.standardOutput = FileHandle.nullDevice
         task.standardError = FileHandle.nullDevice
-        try task.run()
-        task.waitUntilExit()
-        if task.terminationStatus != 0 {
+        guard let status = await runAndAwaitExit(task) else {
             throw NSError(
-                domain: "shell", code: Int(task.terminationStatus),
+                domain: "shell", code: -1,
+                userInfo: [NSLocalizedDescriptionKey: "无法启动：\(command)"])
+        }
+        if status != 0 {
+            throw NSError(
+                domain: "shell", code: Int(status),
                 userInfo: [NSLocalizedDescriptionKey: command])
         }
     }
 
     // MARK: - 装置自己的守卫
 
-    /// **等待装置自己的守卫**（与 `OccupancyStoreTests.等待超时时必须报出轮询次数与耗时`
+    /// **等待装置自己的守卫**（与 `ProcessAppResolverTests.等待可执行路径超时时必须报出轮询次数与耗时`
     /// 同一口径、同一个 ``WaitOutcome``）。
     ///
     /// 没有它，「`waitForDisk` 等到了」与「`waitForDisk` 只查了一次」在输出上**逐字相同** ——

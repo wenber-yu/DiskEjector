@@ -1,9 +1,47 @@
 import AppKit
+import CoreServices
 import Darwin
 import Foundation
 import Testing
 
 @testable import DiskEjectorApp
+
+/// 把 `NSImage` 的**光栅化**搬到独立执行体上。
+///
+/// ## 为什么（2026-09-22 实测，账本第 35 行剩下的那一段）
+///
+/// `NSImage.tiffRepresentation` 会**强制光栅化**。对一张刚从 `iconservicesagent`
+/// 取来的**新 bundle** 图标，这一步实测 **3.93s**（同一张图标的通用版只要 0.39s）——
+/// 而且它是**同步阻塞**的。留在主 actor 上（本套件整体 `@MainActor`）就会把这 3.9 秒
+/// 转嫁给**所有** `@MainActor` 用例。判别实验：
+///
+/// - `--skip` 掉那条取图标的测试后，本文件 + `OccupancyStoreTests` 的其余 **27** 条
+///   耗时从 ~4.8s 全部掉到 **≤0.71s**；
+/// - 临时挂一个「主 actor 心跳」用例（`Task.yield()` × 80 拍、每拍 50ms）量到：
+///   主 actor 被占住时它实际跑了 **8.7s**（自身只要 4.0s），多出的 ~4.7s 正落在这里；
+///   把光栅化搬走之后回到 **4.38s**（只剩 0.38s 调度噪声）。
+///
+/// ⇒ 搬到独立执行体（`DispatchQueue.global`）——**不是**协作线程池：池大小 ≈ 核数，
+/// 占一根就少一根（§8.114 第 6 节）。与 ``Fixture/warmUpLaunchServices`` 同一条理由。
+///
+/// ⚠️ `NSImage` 不是 `Sendable` ⇒ 用 `@unchecked Sendable` 的盒子**显式**承担这个判断：
+/// 这里只在一个执行体上**读**它，且传进去之前已完全构造好、之后不再改。
+private struct ImageBox: @unchecked Sendable { let image: NSImage }
+
+/// 见 ``ImageBox`` 的说明。
+///
+/// ⚠️ `nonisolated` 在这里**不是**装饰：`MainActorBlockingTests` 的口径第 2 条要求
+/// 「阻塞调用所在的最近一个声明同时含 `nonisolated` 与 `async`」才算离开主 actor ——
+/// 本文件整体算 `@MainActor`（套件那个 `@MainActor`），所以少了这个词，
+/// 守卫会把这一处判成违规。语义上也对：这是个**文件级函数**，本来就不在主 actor 上。
+private nonisolated func tiffDataOffMainActor(_ image: NSImage) async -> Data? {
+    let box = ImageBox(image: image)
+    return await withCheckedContinuation { continuation in
+        DispatchQueue.global(qos: .userInitiated).async {
+            continuation.resume(returning: box.image.tiffRepresentation)
+        }
+    }
+}
 
 /// 「进程 → 应用身份」解析的测试（``ProcessAppResolver``）。
 ///
@@ -92,29 +130,70 @@ struct ProcessAppResolverTests {
         /// 我们测的是「可执行路径 → bundle → 本地化显示名 → 图标」，与签名身份无关。
         ///
         /// ⚠️ **签名失败不要因此让测试红**：签名只是消除系统弹窗的副作用，
-        /// 不是被测行为。用 `try?` + 打印，别把它变成一条会误报的断言。
+        /// 不是被测行为。用 `guard` + 打印，别把它变成一条会误报的断言。
         ///
         /// ⚠️ **`nonisolated` + `async` 是必需的，不是风格问题**（2026-09-20，§8.99）：
-        /// 下面的 `waitUntilExit()` 是**同步阻塞、不让路**的。本套件整体标着 `@MainActor`
-        /// （`enrich` / `icon` 必须主 actor），所以只要它是同步的，这段等待就压在**主 actor** 上
-        /// —— 而 `OccupancyStoreTests.waitUntil` 恰恰靠主 actor 调度才能推进（§8.97.3）。
-        /// 加 `async` 后 `await` 会把它调度到**协作线程池**，主 actor 不再被占。
+        /// 本套件整体标着 `@MainActor`（`enrich` / `icon` 必须主 actor），
+        /// 所以这段等待只要留在主 actor 上，就会把**别的 `@MainActor` 用例**全堵住（§8.97.3）。
+        ///
+        /// ⚠️ **但「搬进 `nonisolated async`」不是终点**（2026-09-22，§8.114 第 6 节）：
+        /// 原来这里写的是 `try task.run()` + `task.waitUntilExit()` —— 后者**同步阻塞、不让路**，
+        /// 搬走之后它占的是**协作线程池**里的一根线程（池大小 ≈ 核数）。
+        /// CI 上核数更少 ⇒ 几处并发阻塞就让整个进程停摆：本文件那条 `waitForExecutablePath`
+        /// （`nonisolated async`，跑在同一个池上）因此等 2 秒等不到 `proc_pidpath`，
+        /// 被报成「进程还没就绪」。
+        /// ⇒ 现在走 ``runAndAwaitExit``：等的是**回调**（`terminationHandler`），一个线程都不占。
         nonisolated static func adhocSign(_ path: String) async {
             let task = Process()
             task.executableURL = URL(fileURLWithPath: "/usr/bin/codesign")
             task.arguments = ["--force", "--deep", "-s", "-", path]
             task.standardOutput = nil
             task.standardError = nil
-            do {
-                try task.run()
-                task.waitUntilExit()
-                if task.terminationStatus != 0 {
-                    print(
-                        "  [夹具] ad-hoc 签名失败（\(task.terminationStatus)）——"
-                            + "不影响被测逻辑，但 macOS 可能仍会弹「已损坏」")
+            guard let status = await runAndAwaitExit(task) else {
+                print("  [夹具] 无法调用 codesign —— 不影响被测逻辑")
+                return
+            }
+            if status != 0 {
+                print(
+                    "  [夹具] ad-hoc 签名失败（\(status)）——"
+                        + "不影响被测逻辑，但 macOS 可能仍会弹「已损坏」")
+            }
+            // 签名之后再登记一次（见 ``warmUpLaunchServices``）。
+            await warmUpLaunchServices(path)
+        }
+
+        /// 让 LaunchServices **先登记**这个新造的 bundle —— 这是**预热**，不是被测行为。
+        ///
+        /// ## 为什么预热（2026-09-22 实测）
+        ///
+        /// 不预热的话，**第一处** `NSWorkspace.shared.icon(forFile:)`
+        /// （`ProcessAppResolver.icon(for:)`，`@MainActor`）要**自己**触发 LaunchServices 登记，
+        /// 实测 **0.88s**；预热之后同一处只要 **0.088s**（10×）。
+        ///
+        /// ⚠️ 这 0.88s 是**在主 actor 上**花的（那个调用是 `@MainActor`）⇒ 期间所有
+        /// `@MainActor` 用例排队。搬到 `nonisolated` 的 `adhocSign` 里预热，
+        /// 就把它挪出了主 actor。
+        ///
+        /// ⚠️ **别把本文件的 5 秒记到这一步头上** —— 真凶是
+        /// ``tiffDataOffMainActor`` 里那段**光栅化**（3.93s），不是登记。
+        /// 这条预热只是把 0.88s 的登记也挪出主 actor（订正记录见 `DESIGN-SPEC` §8.127）。
+        ///
+        /// ⚠️ 这**不是**在改被测行为：登记是 `NSWorkspace` 自己也会做的事，
+        /// 这里只是把它提前到主 actor 之外。失败也不让测试红（与 `adhocSign` 同一条理由）。
+        ///
+        /// ⚠️ **跑在独立执行体上，不是协作线程池**：`LSRegisterURL` 是**同步阻塞**的，
+        /// 而协作池大小 ≈ **核数** —— 占住一根就少一根，正是 §8.114 第 6 节
+        /// 「搬出主 actor 不等于搬出瓶颈」那条教训。`DispatchQueue.global` 是
+        /// libdispatch 自己的池（会按需长），与 ``SubprocessOutput`` 选独立执行体同一条理由。
+        nonisolated static func warmUpLaunchServices(_ path: String) async {
+            let status: OSStatus = await withCheckedContinuation { continuation in
+                DispatchQueue.global(qos: .userInitiated).async {
+                    continuation.resume(
+                        returning: LSRegisterURL(URL(fileURLWithPath: path) as CFURL, true))
                 }
-            } catch {
-                print("  [夹具] 无法调用 codesign：\(error) —— 不影响被测逻辑")
+            }
+            if status != noErr {
+                print("  [夹具] LaunchServices 预热返回 \(status) —— 不影响被测逻辑")
             }
         }
 
@@ -127,8 +206,27 @@ struct ProcessAppResolverTests {
             return process
         }
 
-        func cleanUp() {
-            try? FileManager.default.removeItem(at: root)
+        // MARK: - 共用夹具（只建一次）
+
+        /// 整个测试进程共用一份夹具。
+        ///
+        /// **为什么共享**（2026-09-22，§8.114 第 5 节）：`Fixture.init()` 里那次 `codesign`
+        /// 是本套件最贵的一步（首个冷启动实测 ~4.8s，其余各 ~0.3s；CI 上更慢），
+        /// 而原来 **4 条测试各建一份** ⇒ 4 次签名 + 4 次 LaunchServices 登记。
+        /// §8.114 量到那 4 条**恰好**落在整轮最长的零完成窗口里（4.805s），
+        /// 而窗口里**别的所有用例**都排在这串重活后面 —— 那正是账本第 35 行那条 flaky 的土壤。
+        ///
+        /// ⚠️ **`static let` 的 `Task` 保证「只建一次」**：`static let` 本身惰性且线程安全，
+        /// 而缓存一个 `Task` 还顺带保证**并发进入时也只建一份** —— 缓存 `Fixture?` 做不到：
+        /// `init` 里有 `await`，两条测试会在那里交错、各建一份。
+        static let sharedTask = Task { try await Fixture() }
+
+        /// 取共用夹具。
+        ///
+        /// ⚠️ **用完不许删** —— 多条测试同时在用同一份，谁先跑完就删会让别的用例读到
+        /// 不存在的路径。临时目录交给系统回收（一个几 KB 的夹具目录，不值得为它做引用计数）。
+        static func shared() async throws -> Fixture {
+            try await sharedTask.value
         }
     }
 
@@ -267,8 +365,8 @@ struct ProcessAppResolverTests {
     /// 变异测试（改 `localizedInfoDictionary` → `infoDictionary`）会让本断言变红：
     /// 那时拿到的是 `RAW-NAME-NOT-WANTED`。
     @Test func 显示名取本地化值而不是原始名() async throws {
-        let fixture = try await Fixture()
-        defer { fixture.cleanUp() }
+        // 共用夹具（只建一次，见 ``Fixture/shared()``）——**不删**：别的用例还在用它。
+        let fixture = try await Fixture.shared()
 
         let name = try #require(ProcessAppResolver.appDisplayName(bundlePath: fixture.bundlePath))
         #expect(name == Fixture.localizedDisplayName, "实际取到：\(name)")
@@ -314,13 +412,26 @@ struct ProcessAppResolverTests {
     /// （`FileManager.displayName` = 目录名）**总会返回非空**，于是选错样本时
     /// 「名字不为空」会被自动满足，回落分支等于没测。
     /// （变异：把 `?? process.processName` 改成 `?? ""`，本断言立刻变红。）
+    ///
+    /// ⚠️ **这一处曾经把 `waitForExecutablePath` 的返回值丢掉**（2026-09-22 修）：
+    /// `@discardableResult` 让它编得过，于是超时**一声不吭**，失败落到下面那句
+    /// 「`executablePath` 不是 `/bin/sleep`」上 —— 报错指向「回落分支坏了」，
+    /// 而真因是**进程还没就绪**。2026-09-22 CI 就是这么红的（报在 `:331`）。
+    /// ⇒ §8.113.9 的口径（「等不到必须让调用方知道」）当时**漏了这个调用点**，
+    /// 现在与 `端到端把可执行名解析成应用名` 那条统一走 ``expectArrived``。
     @Test func 非应用内进程回落为进程名() async throws {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/bin/sleep")
         process.arguments = ["30"]
         try process.run()
         defer { process.terminate() }
-        await Self.waitForExecutablePath(pid: process.processIdentifier)
+        let ready = await Self.waitForExecutablePath(pid: process.processIdentifier)
+        expectArrived(
+            ready,
+            """
+            `proc_pidpath` 在超时前没取到可执行路径 —— 这是**「进程还没就绪」**，
+            不是「回落分支坏了」（§8.113.9）。分开报，是为了下次红的时候一眼看出是哪一半。
+            """)
 
         let resolved = ProcessAppResolver.enrich(
             OccupyingProcess(pid: process.processIdentifier, processName: "sleep", path: ""))
@@ -358,8 +469,8 @@ struct ProcessAppResolverTests {
     /// 复刻用户报的现象：进程可执行名是 `IMVIDEO-LIKE-EXEC`，而它所属应用叫 `Localized Bunny`。
     /// 解析结果必须是 **应用名**，并且带上可定位图标的 bundle 路径。
     @Test func 端到端把可执行名解析成应用名() async throws {
-        let fixture = try await Fixture()
-        defer { fixture.cleanUp() }
+        // 共用夹具（只建一次，见 ``Fixture/shared()``）——**不删**：别的用例还在用它。
+        let fixture = try await Fixture.shared()
         let process = try fixture.launch()
         defer { process.terminate() }
         let ready = await Self.waitForExecutablePath(pid: process.processIdentifier)
@@ -399,8 +510,8 @@ struct ProcessAppResolverTests {
 
     /// 批量解析与单个解析必须一致（``OccupancyDetector`` 走的是批量那条）。
     @Test func 批量解析与单个解析结果一致() async throws {
-        let fixture = try await Fixture()
-        defer { fixture.cleanUp() }
+        // 共用夹具（只建一次，见 ``Fixture/shared()``）——**不删**：别的用例还在用它。
+        let fixture = try await Fixture.shared()
         let process = try fixture.launch()
         defer { process.terminate() }
         let one = OccupyingProcess(
@@ -421,17 +532,19 @@ struct ProcessAppResolverTests {
 
     /// 有应用 bundle 时取到**真图标**：与「通用应用图标」不是同一张。
     @Test func 应用bundle取到真图标() async throws {
-        let fixture = try await Fixture()
-        defer { fixture.cleanUp() }
+        // 共用夹具（只建一次，见 ``Fixture/shared()``）——**不删**：别的用例还在用它。
+        let fixture = try await Fixture.shared()
         let process = OccupyingProcess(
             pid: 1, processName: Fixture.executableFileName, appBundlePath: fixture.bundlePath, path: "")
         let icon = try #require(ProcessAppResolver.icon(for: process))
         let generic = NSWorkspace.shared.icon(for: .application)
-        #expect(icon.tiffRepresentation != generic.tiffRepresentation)
+        // ⚠️ **光栅化必须离开主 actor**（见 ``tiffDataOffMainActor`` 的说明）：冷启动实测 3.93s。
+        let realTiff = await tiffDataOffMainActor(icon)
+        let genericTiff = await tiffDataOffMainActor(generic)
+        #expect(realTiff != genericTiff)
     }
 
     // MARK: - 文案格式
-
     /// `String(format:)` 的占位符数量必须与传参一致，否则会渲染出乱码或崩在格式化上。
     @Test func 进程名提示格式串含两个占位符() {
         let format = L10n.tr(.processExecutableNameFormat)
@@ -442,12 +555,16 @@ struct ProcessAppResolverTests {
 
     // MARK: - 等待 helper 自己的守卫
 
-    /// `waitForExecutablePath` 的返回值必须**带得出数字**（与
-    /// `OccupancyStoreTests.等待超时时必须报出轮询次数与耗时` 成对，两边同一个 ``WaitOutcome``）。
+    /// `waitForExecutablePath` 的返回值必须**带得出数字**。
     ///
-    /// ⚠️ 「`failureNote` 拼出来的那句话里有没有数字」的断言**只写在
-    /// `OccupancyStoreTests` 那一条里**（一处真相 + 一处指针）：两边断的是同一个纯函数，
-    /// 抄两遍只会漂，而不会多守住任何东西。
+    /// ⚠️ **2026-09-22 起本文件是「轮询」这一族的唯一守卫**：`OccupancyStoreTests` 那条
+    /// 等待换成了**等事件**（它的守卫也随之换成 `等事件的装置必须分开报事件到了与接线断了`）。
+    /// 现在用 ``WaitOutcome`` 的只剩这里与 `IntegrationEjectTests.waitForDisk`。
+    ///
+    /// ⚠️ 「`failureNote` 拼出来的那句话里有没有数字」的断言**也搬到了这里**
+    /// （原先写在 `OccupancyStoreTests` 那条里）—— 它断的是 ``WaitOutcome/failureNote``
+    /// 这个**纯函数**，而该函数现在只被 ``expectArrived`` 用，也就是只被本文件与
+    /// `IntegrationEjectTests` 用 ⇒ 断言跟着它的主体走，**一处真相 + 一处指针**。
     ///
     /// **为什么这条值得单独写**：本文件里唯一「守装置而不是守产品」的测试。少了它，
     /// 「失败信息里到底有没有数字」只能靠**下次 CI 真红**才发现 —— 而 2026-09-20 CI
@@ -471,6 +588,15 @@ struct ProcessAppResolverTests {
         #expect(
             timedOut.diagnostic.contains("\(timedOut.polls)") && timedOut.diagnostic.contains("s、"),
             "诊断串里没带出实际数字：\(timedOut.diagnostic)")
+
+        // ⚠️ `diagnostic` 有数字**还不够**：真正给排查的人看的是 `failureNote` 拼出来的
+        // 那句话（``expectArrived`` 用它当 `#expect` 的消息），它完全可能把 `diagnostic`
+        // 整个丢掉 —— 那样等于没改，而且不会有任何东西变红。所以这里直接断言拼出来的结果。
+        // （断言只挑**与 locale 无关**的部分：`%.2f` 的小数点在某些 locale 下会变逗号。）
+        let note = WaitOutcome(ok: false, polls: 7, elapsed: 1.25).failureNote("在等 X")
+        #expect(
+            note.contains("在等 X") && note.contains("7") && note.contains("s、"),
+            "失败信息没把「在等什么」与数字拼在一起：\(note)")
 
         // 阴性对照（反向）：上面那条 `polls >= 2` 必须能区分「等到了」与「没等到」，
         // 否则它可能只是恒真。

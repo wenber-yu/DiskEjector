@@ -16,6 +16,11 @@
 没有这一步，它们与「没写」逐字相同 —— 因为「装置报绿」有三种可能：
 装置宽容 / 装置死了 / **变异自己没变成旧行为**。
 
+⚠️ **2026-09-22 追加第 4 条**：``EventWait``（等事件那条路的诊断串）+ `waitForNextRound`
+的**订阅源**。后者是本轮最有意义的一条变异 —— 把 `objectWillChange`（**不重放**）
+换成 `$results`（**会重放当前值**），阴性对照（没有任何轮次）就会立刻「等到」，
+于是「事件永不发生」这条判据**失去分辨力**。见 §8.127。
+
 ## 用法
 
 ```bash
@@ -47,7 +52,12 @@ OCCUPANCY = REPO / "Tests/DiskEjectorAppTests/OccupancyStoreTests.swift"
 RESOLVER = REPO / "Sources/Services/ProcessAppResolver.swift"
 
 # 两个「等待 helper 自己的守卫」的过滤器（swift-testing 的 --filter 认名字正则）。
-FILTER_WAIT = "等待超时时必须报出轮询次数与耗时|等待可执行路径超时时必须报出轮询次数与耗时"
+# ⚠️ 2026-09-22 更新：`OccupancyStoreTests` 那条**轮询**守卫已换成**等事件**守卫
+# （`等事件的装置必须分开报事件到了与接线断了`）—— 名字变了，过滤器必须跟着变，
+# 否则「跑到了 0 条测试」与「守卫没牙」在退出码上**逐字相同**。
+FILTER_WAIT = (
+    "等事件的装置必须分开报事件到了与接线断了|等待可执行路径超时时必须报出轮询次数与耗时"
+)
 FILTER_BUNDLE = "非app的运行中应用路径不被当成bundle"
 
 # (编号, 说明, 文件, 旧片段, 新片段, 过滤器)
@@ -70,22 +80,31 @@ MUTATIONS = [
     ),
     (
         "M3",
-        "`waitUntil` 不再累计轮询次数（`polls` 恒为 1）",
-        OCCUPANCY,
-        "    while Date() < deadline {\n        polls += 1\n        if await condition() {",
-        "    while Date() < deadline {\n        if await condition() {",
+        "`EventWait.diagnostic` 不再指出「接线断了」—— 兜底那条路又变成一句不指方向的话",
+        WAIT_OUTCOME,
+        '                : "事件始终没发生 —— 这是**接线断了**（不是排不上队）："',
+        '                : "事件始终没发生："',
         FILTER_WAIT,
     ),
     (
         "M4",
-        "`waitUntil` 把墙钟报成 0（`elapsed` 不再反映真实等待）",
-        OCCUPANCY,
-        "    let ok = await condition()\n    return WaitOutcome(ok: ok, polls: polls, elapsed: Date().timeIntervalSince(started))",
-        "    let ok = await condition()\n    return WaitOutcome(ok: ok, polls: polls, elapsed: 0)",
+        "`EventWait.diagnostic` 把墙钟那段格式改掉（诊断串里不再带出数字）",
+        WAIT_OUTCOME,
+        'format: "等了 %.2fs，%@", elapsed,',
+        'format: "等了 %.2f 秒，%@", elapsed,',
         FILTER_WAIT,
     ),
     (
         "M5",
+        "订阅 `$results`（**会重放当前值**）而不是 `objectWillChange`（不重放）"
+        " ⇒ 没有轮次也会立刻「等到」—— 阴性对照必须抓住它",
+        OCCUPANCY,
+        "        cancellable = store.objectWillChange.sink { _ in",
+        "        cancellable = store.$results.sink { _ in",
+        FILTER_WAIT,
+    ),
+    (
+        "M6",
         "`appBundlePath` 不再要求 `.app` 后缀（回到旧行为：直接采信 `bundleURL`）",
         RESOLVER,
         'guard let path, path.hasSuffix(".app") else { return nil }\n        return path',

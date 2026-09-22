@@ -5,9 +5,13 @@ import Testing
 ///
 /// ## 为什么不是 `Bool`（2026-09-21）
 ///
-/// 两个测试 helper（`OccupancyStoreTests.waitUntil`、
-/// `ProcessAppResolverTests.waitForExecutablePath`）原来只返回 `Bool`，
+/// 三个等待 helper 原来只返回 `Bool`（`OccupancyStoreTests.waitUntil`、
+/// `ProcessAppResolverTests.waitForExecutablePath`、`IntegrationEjectTests.waitForDisk`），
 /// 失败信息分别是「`arrived` 为 false」「`ready` 为 false」。
+///
+/// ⚠️ **2026-09-22 起 `OccupancyStoreTests` 不再用本类型** —— 它那条等待换成了
+/// **等事件**（见 ``EventWait``）：轮询在 CI 上会被主 actor 排队误报成「条件不成立」，
+/// 而事件等待在结构上没有这个失败形态。本类型现在服务的是**剩下两条真在等条件成立**的轮询。
 ///
 /// 2026-09-17 CI 上真红过一次，而那句话**什么都没说明** —— 它把两件修法完全不同的事
 /// **渲染成同一句话**：
@@ -83,4 +87,58 @@ func expectArrived(
     sourceLocation: SourceLocation = #_sourceLocation
 ) {
     #expect(outcome.ok, "\(outcome.failureNote(what))", sourceLocation: sourceLocation)
+}
+
+/// 一次「等**事件**」的结果（与 ``WaitOutcome`` 的「等**条件成立**」相对）。
+///
+/// ## 为什么不是 ``WaitOutcome``（2026-09-22，账本第 35 行）
+///
+/// `WaitOutcome` 描述的是**轮询**：`polls`（求值几次）+ `elapsed`（墙钟）。
+/// 而这里等的是一个**事件** —— 「求值几次」这个概念根本不存在：不是求值等到的，
+/// 是事件把它叫醒的。
+///
+/// ⚠️ **不把两者混成一个类型**：混了之后「`polls` 小」到底是「事件来得快」
+/// 还是「排不上队」又要靠猜 —— 那正是 §8.118 踩过的坑（`polls` 只在
+/// 「迭代次数由**条件**决定」时才与负载无关）。
+///
+/// ## 唯一的判据是 ``arrivedByEvent``
+///
+/// 它把两条**修法完全不同**的路分开：
+///
+/// | 值 | 含义 | 该修哪儿 |
+/// |---|---|---|
+/// | `true` | 事件到了 | 不用修 —— 这正是期望的那条路 |
+/// | `false` | 事件**从未发生**（兜底掐断的） | **接线断了**（`sink` 没接到 `refresh`），**不是**「排不上队」 |
+///
+/// ⚠️ ``elapsed`` 只用来**报告**：它同样包含排队时间，口径与 ``WaitOutcome/elapsed`` 一致，
+/// **不能**当门槛（否则就是把机器的调度延迟写进判据，§8.118）。
+struct EventWait: Sendable {
+
+    /// 是**事件**结束的等待，还是**兜底**掐断的。
+    let arrivedByEvent: Bool
+
+    /// 墙钟耗时（含排队时间）。只报告，不下结论。
+    let elapsed: TimeInterval
+
+    var diagnostic: String {
+        String(
+            format: "等了 %.2fs，%@", elapsed,
+            arrivedByEvent
+                ? "事件到了"
+                : "事件始终没发生 —— 这是**接线断了**（不是排不上队）："
+                    + "查 `DiskListStore.$disks` 的 sink 有没有接到 `refresh`")
+    }
+}
+
+/// 断言「事件到了」，失败信息里**一定**带 ``EventWait/diagnostic``。
+///
+/// 与 ``expectArrived`` 同一个理由：手写 `#expect(x.arrivedByEvent, "…\(x.diagnostic)")`
+/// 时，「把 `diagnostic` 写进消息」只是**约定** —— 谁少写一次都不会有东西变红，
+/// 而失败信息退化成「没等到」正是这次要修的病。
+func expectEvent(
+    _ outcome: EventWait,
+    _ what: String,
+    sourceLocation: SourceLocation = #_sourceLocation
+) {
+    #expect(outcome.arrivedByEvent, "\(what)\n\(outcome.diagnostic)", sourceLocation: sourceLocation)
 }
