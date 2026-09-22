@@ -25,23 +25,17 @@ private func rgba(_ color: Color, dark: Bool) -> (r: CGFloat, g: CGFloat, b: CGF
 private func hex255(_ value: CGFloat) -> Int { Int((value * 255).rounded()) }
 
 /// 离屏渲染一个视图，返回 2x 位图。
+///
+/// ⚠️ **必须走 `OffscreenRender`、且必须 `background: .clear`**（2026-09-23 收敛）：
+/// 本文件原先自带第三份 `NSHostingController` + `NSBitmapImageRep(bitmapDataPlanes:)` 出图块。
+/// 它要量的是「这块玻璃**自己**画没画底」，所以宿主**不能**垫背景 ——
+/// `OffscreenRender.bitmap` 的 `background` 默认 `.white`，这里显式传 `.clear`
+/// （`.background(.clear)` 不画任何东西，与原先「完全不叠背景」等价，见 `GlassSurfaceTests`
+/// 的 alpha 断言）。
 @MainActor
 private func render(_ view: some View, size: CGSize, dark: Bool = false) -> NSBitmapImageRep? {
-    _ = NSApplication.shared
-    let hosting = NSHostingController(rootView: view)
-    hosting.view.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
-    hosting.view.setFrameSize(size)
-    hosting.view.layoutSubtreeIfNeeded()
-    guard
-        let rep = NSBitmapImageRep(
-            bitmapDataPlanes: nil,
-            pixelsWide: Int(size.width * 2), pixelsHigh: Int(size.height * 2),
-            bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
-            colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0)
-    else { return nil }
-    rep.size = size
-    hosting.view.cacheDisplay(in: NSRect(origin: .zero, size: size), to: rep)
-    return rep
+    OffscreenRender.bitmap(
+        view, size: size, appearance: dark ? .darkAqua : .aqua, background: .clear)
 }
 
 /// 读 2x 位图上的一个点（传入的是 **pt** 坐标）。

@@ -153,66 +153,6 @@ struct SettingsLayoutTests {
         return count
     }
 
-    /// 离屏渲染，返回**首列有墨迹的 x（pt）**与**末列有墨迹的 x（pt）**。
-    ///
-    /// **为什么非要量像素**：SwiftUI 的 `Text` 在 AppKit 视图树里**没有任何对应视图** ——
-    /// 实测 `NSHostingView` 的 `subviews` 是空的、整棵树里找不到 `NSTextField`，
-    /// 无障碍子树也是懒建的（`accessibilityChildren` 返回 nil）。
-    /// 所以「标题从第几列开始」问不到 AppKit，只能看**渲染结果**。
-    ///
-    /// **判据是「相对白底变暗」而不是看 alpha**：先给视图垫一层 `Color.white`，
-    /// 每个像素都是不透明的，`colorAt` 拿到的就是真实渲染色。
-    /// （`bitmapImageRepForCachingDisplay` 的缓冲区**不保证清零**，所以这里显式
-    /// `NSBitmapImageRep(bitmapDataPlanes: nil, …)` 让系统分配一块干净的，
-    /// 并用 `colorAt` 而不是直接读 `bitmapData` —— 后者会扫到未初始化内存。）
-    ///
-    /// **扫描带取 y ∈ [8, 44]**（52pt 头部的中段）：**必须避开底部那条 `Hairline`** ——
-    /// 它横跨整宽，会把 x=0 也算成墨迹。
-    ///
-    /// - Returns: `(first, last)`；没扫到任何墨迹时返回 `nil`。
-    private func inkColumnRange(
-        _ view: some View, width: CGFloat, height: CGFloat
-    ) -> (first: CGFloat, last: CGFloat)? {
-        _ = NSApplication.shared
-        let scale: CGFloat = 2
-        let hosting = NSHostingView(rootView: view.background(Color.white))
-        hosting.appearance = NSAppearance(named: .aqua)
-        hosting.frame = CGRect(x: 0, y: 0, width: width, height: height)
-        hosting.layoutSubtreeIfNeeded()
-
-        guard
-            let rep = NSBitmapImageRep(
-                bitmapDataPlanes: nil,
-                pixelsWide: Int(width * scale),
-                pixelsHigh: Int(height * scale),
-                bitsPerSample: 8,
-                samplesPerPixel: 4,
-                hasAlpha: true,
-                isPlanar: false,
-                colorSpaceName: .deviceRGB,
-                bytesPerRow: 0,
-                bitsPerPixel: 0)
-        else { return nil }
-        rep.size = CGSize(width: width, height: height)
-        hosting.cacheDisplay(in: hosting.bounds, to: rep)
-
-        let rows = Int(8 * scale)..<Int(44 * scale)
-        var first: Int?
-        var last: Int?
-        for x in 0..<rep.pixelsWide {
-            let hasInk = rows.contains { y in
-                guard let c = rep.colorAt(x: x, y: y) else { return false }
-                return c.redComponent < 0.75 || c.greenComponent < 0.75 || c.blueComponent < 0.75
-            }
-            if hasInk {
-                if first == nil { first = x }
-                last = x
-            }
-        }
-        guard let first, let last else { return nil }
-        return (CGFloat(first) / scale, CGFloat(last) / scale)
-    }
-
     @Test func 面板高度放得下头部与全部四组() {
         let header = renderedSize(SettingsHeaderBar(onDone: {}), width: panelWidth)
         let sections = renderedSize(SettingsSectionsColumn { _ in }, width: panelWidth)
@@ -467,12 +407,27 @@ struct SettingsLayoutTests {
     /// 让位还在时（前导 20 + 让位 52 + 间距 8）→ **80.0pt**。
     /// 上界 +6 是给字形侧边距留的：中文「设」几乎贴边，英文 "Settings" 的 `S` 会再右偏一点。
     /// 下界 −1 是抗锯齿。
+    /// **为什么非要量像素**：SwiftUI 的 `Text` 在 AppKit 视图树里**没有任何对应视图** ——
+    /// 实测 `NSHostingView` 的 `subviews` 是空的、整棵树里找不到 `NSTextField`，
+    /// 无障碍子树也是懒建的（`accessibilityChildren` 返回 nil）。
+    /// 所以「标题从第几列开始」问不到 AppKit，只能看**渲染结果**。
+    ///
+    /// **判据是「相对白底变暗」而不是看 alpha**：``OffscreenRender/bitmap(_:size:appearance:background:)``
+    /// 默认垫一层白底，于是每个像素都是不透明的，读到的就是真实渲染色。
+    /// （`bitmapImageRepForCachingDisplay` 的缓冲区**不保证清零**，所以那边显式
+    /// `NSBitmapImageRep(bitmapDataPlanes: nil, …)` 让系统分配一块干净的；
+    /// 本文件原先也自己抄了这么一段出图 + 逐像素 `colorAt`，2026-09-23 收敛进
+    /// ``OffscreenRender``，见 `DESIGN-SPEC.md` §8.131。）
+    ///
+    /// **扫描带取 y ∈ [8, 44]**（52pt 头部的中段）：**必须避开底部那条 `Hairline`** ——
+    /// 它横跨整宽，会把 x=0 也算成墨迹。
     @Test func 头部标题渲染起点等于设计稿内边距() {
-        let range = inkColumnRange(
-            SettingsHeaderBar(onDone: {}),
-            width: panelWidth,
-            height: SettingsMetrics.headerHeight)
-        guard let range else {
+        guard
+            let rep = OffscreenRender.bitmap(
+                SettingsHeaderBar(onDone: {}),
+                size: CGSize(width: panelWidth, height: SettingsMetrics.headerHeight)),
+            let range = OffscreenRender.inkColumnRange(rep, rows: 8...44, maxX: panelWidth)
+        else {
             Issue.record("头部离屏渲染后没扫到任何墨迹 —— 渲染本身没成功，这条断言不能算通过")
             return
         }

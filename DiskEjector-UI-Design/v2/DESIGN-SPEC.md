@@ -5278,7 +5278,7 @@ Sparkle 会不会装上这次更新 —— 依据是 `showUpdateFound` 的文档
 | 45 | ✅ **成功路径端到端已验成（2026-09-22，§8.125）**：`2026.09.21.1 → 2026.09.22.1 → 2026.09.22.2` 两次完整走通（下载 dmg → `Autoupdate` 解压校验 → `Updater` 进度 → 退出时安装 → app 被替换）⇒ **本环境安装器完全能跑** | — | §8.125 | ✅ **已关闭（2026-09-22）** |
 | 46 | ⚠️ **订正**：「本环境 ad-hoc/自签 ⇒ Sparkle 安装器起不来 ⇒ 需 Apple Developer ID」这个前提**已被实测推翻**（§8.125）。自签身份下 `TeamIdentifier=not set` ⇒ `SUCodeSigningVerifier.m:448-451` **不设** XPC 校验要求 ⇒ 安装器正常。⚠️ 反直觉的一面：真用 Apple 证书签反而会设 `(anchor apple generic …)`，那时 helper 必须同为 Apple 签 | 若将来换成 Apple 签名，**安装器那条路要重验一遍**（校验要求变了，不是同一条路） | §8.125 | ✅ **已订正（2026-09-22）** |
 | 47 | ⚠️ **文件级 `@MainActor` 从来没被记账** —— `DesignDraftIntegrityTests`（44 条测试、0 条 `async`、零主 actor API）整体标着它 ⇒ 44 条全在主 actor 上**串行**；实扫发现 **25 个文件**是文件级，其中 2 个（含 `AppVersionInfoTests`）**根本不需要**（判据：摘掉后编译绿） | 已关闭 | §8.128 | ✅ **已关闭（2026-09-22，§8.128）**：两个「没理由」的已摘（`DesignDraftIntegrityTests` 套件 **1.661s → 0.354s**），并加守卫 **`文件级 @MainActor 必须登记在案（双向）`**（账本 25 条 + 每条理由，变异 4 红 1 绿）。⚠️ 本行是**出生即关闭**（同第 41 行那种）：登记它是因为要记住**「没被记账的成本」这件事本身** —— 它**不会让任何测试变红**，只有主 actor 占用率看得出来。ℹ️ **补验（同日稍后）**：剩下 25 个**全部**经编译器证实「确实需要」（4 个逐条 + 21 个「摘到绿」，**10 轮**收敛，0 个可摘）；⚠️ 判据必须用**门槛 1 同款旗标** —— 弱旗标下主 actor 违规只是警告，会把「需要」读成「不需要」（实测 `OnboardingLayoutTests`：弱旗标绿 + 17 条警告 / 同款旗标 2 条 error）。 ℹ️ **09-23 增量**：新增 `OffscreenRenderParityTests`（文件级 `@MainActor`，经编译器证实必要）⇒ 三个数各 +1：**26 / 30 / 60**（§8.128.10 / §8.129） |
-| 48 | ⚠️ **离屏渲染里仍有 7 个文件逐像素 `colorAt`**（`TitleBarBaselineTests` / `EmptyStateTests` / `GlassSurfaceTests` / `TrafficLightAlignmentTests` / `ProcessChipLayoutTests` / `SettingsLayoutTests` / `VisualStyleTests`）。§8.129 只换了最重的那条（`MainWindowDiskListTests` **8.792s → 1.965s**）；这 7 个的扫描区域小（毫秒级），所以**没动** | 我（想做统一时） | §8.129 | ⬜ **仍开着**（2026-09-23 立；**刻意不关** —— 它是「已知但暂不做」的显式记账，不是漏项） |
+| 48 | ~~⚠️ **离屏渲染里仍有 7 个文件逐像素 `colorAt`**（`TitleBarBaselineTests` / `EmptyStateTests` / `GlassSurfaceTests` / `TrafficLightAlignmentTests` / `ProcessChipLayoutTests` / `SettingsLayoutTests` / `VisualStyleTests`）。§8.129 只换了最重的那条（`MainWindowDiskListTests` **8.792s → 1.965s**）；这 7 个的扫描区域小（毫秒级），所以**没动**~~ ⚠️ **「毫秒级」这句原话是错的**（§8.131.1）：原语探针实测单次 `colorAt` **0.773 µs**，按 6 处循环的矩形面积算合计约 **186 万次** ⇒ **约 1.4 秒**，与「毫秒级」差**三个数量级**。成因是**推出来的、不是量出来的** | ✅ **已关闭**（§8.131） | §8.129 / **§8.131** | ✅ **已关闭（2026-09-23，§8.131）**：6 个调用方收敛进 `OffscreenRender`（`TitleBarBaselineTests` 顺手删掉**两份自带出图块**、`GlassSurfaceTests` 删掉**第三份**）；**同一会话内 A/B**（各三次取均值）整轮 **9.156s → 7.590s**（净省 **1.566s / 约 17%**），两组区间不重叠。新增守卫 `PixelReadPathTests`（两条规则 + 双向棘轮 + 装置自证，变异 **6 红**）。⚠️ 过程中抓到一个**真 bug**：公共遍历是 **x 外层**，「扫到的第一个」的含义从「最小 y」变成「最左那一列自己的最小 y」—— `first` 从 `19.5` 悄悄变成 `51.0`，**照样是个合理的数**、没有任何东西会红（修法：一律 `min`/`max` 累积）。ℹ️ 顺带登记两处**产品代码**漏项（`WindowSelfCheck.swift:191` / `:297`）—— 决定**登记不收敛**（读的是 `CGWindowListCreateImage` 的真机截图、不在测试 target） |
 | 49 | ⚠️ **「本地门槛全绿」≠「CI 绿」的第三类成因：本地编译器比 CI 新** —— 2026-09-22 CI run `35761198327` 红在 `OffscreenRender.swift` 的一行**元组返回**上（`return (c.redComponent, …)`，目的地 `(Double, Double, Double)?`）。「元组字面量内部的 `CGFloat` → `Double` 隐式转换」是 **Swift 6.4 才放宽**的：本地 Xcode 27 / **6.4 接受**，CI 的 Xcode 26.6 / **6.3.3 拒绝**；同一个包、同一 `swiftLanguageModes: [.v6]`、同一 arm64 ⇒ 不是语言模式、不是架构、不是 SDK | 以后写这类代码的人：**CGFloat 进 Double 一律显式 `Double(...)`**，别指望本地门槛能发现（本地**没有任何旗标**能关掉该转换，实测 `-disable-implicit-cgfloat-conversion` / `-disable-implicit-conversions` 都是 `unknown argument`） | §8.130 | ⬜ **仍开着**（2026-09-23 立；**刻意不关**）：新守卫 `ImplicitCGFloatConversionTests` 只钉住「**字面量内部**」这一半，别的「新编译器才接受」的写法仍只能靠 CI 兜 —— 这一行本身就是「推后必须看 CI」的记账，不是待办 |
 > **判据：这张「仍开着」的表本身也是承诺型的话。** 17:55 回头核对时，第 4、5 行**早已关掉
 > 而表还写着「仍开着」** —— 和 §8.33 清掉的那 6 条是同一个病：**还了账没人回来划掉**。
@@ -15847,6 +15847,10 @@ L132 才标在 `struct OccupancyStoreTests` 上。摘了前者 ⇒ **编译绿**
 它**没有** `@MainActor`（只读源码、不碰 AppKit）⇒ **只有 `scanned` 60 → 61**；
 `any` / `fileLevel` 仍是 **30 / 26**，账本仍是 **26** 条（重算见 §8.130.7）。
 
+ℹ️ **§8.131 再 +1（2026-09-23）**：新增 `PixelReadPathTests.swift`。同样**没有** `@MainActor`
+（它只读源码，不碰 AppKit）⇒ **只有 `scanned` 61 → 62**；`any` / `fileLevel` 仍是 **30 / 26**，
+账本仍是 **26** 条（重算见 §8.131.10）。
+
 ### 8.129 离屏渲染的逐像素读法：`colorAt` → **缓冲区直读**（2026-09-23）
 
 #### 8.129.1 起因：§8.114 的重活清单里，最重的一条是**纯读像素**
@@ -15967,6 +15971,11 @@ L132 才标在 `struct OccupancyStoreTests` 上。摘了前者 ⇒ **编译绿**
   `GlassSurfaceTests` / `TrafficLightAlignmentTests` / `ProcessChipLayoutTests` /
   `SettingsLayoutTests` / `VisualStyleTests`）—— **本轮没动**：它们的扫描区域小（毫秒级），
   本轮只处理 §8.114 清单里最重的那一条。要统一，另开一轮。
+  ⚠️ **订正（2026-09-23，§8.131）：上面那句「扫描区域小（毫秒级）」是错的** ——
+  原语探针实测单次 `colorAt` **0.773 µs**，合计约 **186 万次** ⇒ **约 1.4 秒**。
+  这 7 个文件已于 §8.131 **全部收敛**（`GlassSurfaceTests` 的**第三份**出图块也一并删掉），
+  同会话 A/B 实测整轮 **10.707s → 7.571s**。**此处保留原句不删**，因为它正是
+  「没量就下结论」的样本。
 - ⚠️ **整轮墙钟的降幅没量**（门槛只在**红时**留全量日志）。收益数字来自**单套件同命令前后**。
 
 ### 8.130 「本地全绿、CI 红」的第三类成因：**本地编译器比 CI 新**（2026-09-23）
@@ -16107,6 +16116,185 @@ return (c.redComponent, c.greenComponent, c.blueComponent)   // NSColor 的通�
   只有「口径上不再依赖该转换」这个更强的不变量。
 - ⚠️ **本地无法复现严格行为**（没有旗标）⇒ 这条守卫**替代不了**「推后必须看 CI」。
 - ⚠️ **CI 那次红的成本没量**（一次往返 + 一次推送），只有「红/绿」这个事实。
+
+### 8.131 剩下的 7 个逐像素读法：账本第 48 行关闭（2026-09-23）
+
+#### 8.131.1 起因：账本第 48 行，以及那句**错的原话**
+
+第 48 行（§8.129.9 也写着同一句）说这 7 个文件「扫描区域小（**毫秒级**），所以没动」。
+**这句是错的**，而且错得可测 —— 原语探针（§8.131.2）实测单次 `colorAt` 是
+**0.773 µs**，按代码里 6 处循环的矩形面积（scale 2）算，合计约 **186 万次**调用
+⇒ 约 **1.4 秒**。与「毫秒级」差**三个数量级**。
+
+⚠️ 这条错误的成因值得记：它是**从「这些文件的扫描区域看起来不大」推出来的**，
+而不是量出来的。而「看起来不大」在这里恰恰是错的 —— 那些循环扫的是**整条标题栏**、
+**整个设置面板头部**这类区域，2x 下每个都是几十万像素。
+
+#### 8.131.2 原语探针：0.773 µs/次 vs 0.002 µs/次
+
+| 原语 | 单次成本 | 说明 |
+|---|---|---|
+| `NSBitmapImageRep.colorAt(x:y:)` | **0.773 µs** | 每次要构造一个 `NSColor` |
+| 缓冲区直读（读 4 字节 + `÷alpha`） | **0.002 µs** | 差 **约 400 倍** |
+
+探针 `.build/probe/ledger48/read_cost.swift`（一次性，gitignore 内，不进库）。
+它自己带布局自证（`bitsPerSample` / `samplesPerPixel` / `bytesPerRow` / `format.rawValue == 0`），
+不满足就 `exit(1)` —— 否则量的是「另一块内存」。
+
+#### 8.131.3 量测口径：能用的是**汇总行**，不是逐条 `passed after`
+
+⚠️ `swift test` 的逐条 `✔ Test … passed after N seconds` 是**并发 run 的相对时刻**，
+**不能当单条成本**：实测最大的那条是 `10.991s`，而整个 run 才 `10.997s`。
+
+唯一可用的是汇总行 `✔ Test run with N tests in M suites passed after N seconds`
+（**纯测试执行时长**，不含构建）。改前基线（471 条）**10.883 / 10.486 / 10.753 s**。
+
+#### 8.131.4 改法：`OffscreenRender` 补 5 个 API，6 个调用方收敛
+
+| API | 作用 |
+|---|---|
+| `isInk(_:_:_:)` | **0.75 判据的唯一来源**（原先在 `Tests/` 里逐字抄了 6 遍） |
+| `forEachPixel(_:in:scale:)` | 转 `public`；本仓**唯一**的读像素入口 |
+| `inkCount(_:in:scale:)` | 区域墨迹计数，**区域为空返回 `-1`**（`0` 与 `-1` 在断言层面长得一样） |
+| `inkColumnRange(_:rows:maxX:scale:)` | 列区间 |
+| `inkRowRange(_:columns:rows:scale:)` | 行区间 |
+
+两个**设计决定**，都不是风格问题：
+
+1. **区间 API 收 pt 区间、不收 `CGRect`**：`CGRect.maxY` 是 `y + height` **算出来的**，
+   而 `a + (b - a) == b` 在浮点上**不保证** —— 差一个 ulp 就让扫描带窄一格，
+   而那种失败与「墨迹真的不在那」**逐字相同**。
+2. **夹取是必须的，不是保险**：旧写法（逐像素 `colorAt`）越界返回 `nil`、被 `continue` 跳过；
+   换成直读，越界就是**真的读缓冲区外的内存** ⇒ 新入口一律 `max(0, …)` / `min(pixels…, …)`。
+
+收敛的调用方（6 个）：`TitleBarBaselineTests`（删掉**两份自带出图块 + 两个循环**，
+改成出图一次复用同一 `rep`）、`SettingsLayoutTests`、`TrafficLightAlignmentTests`
+（删掉「从右往左扫 + `break`」）、`EmptyStateTests`、`ProcessChipLayoutTests`
+（自证改成「槽位必须落在位图里」）、`GlassSurfaceTests`（**第三份**自带出图块）。
+
+#### 8.131.5 ⚠️ 本轮抓到的真 bug：**遍历顺序改了「首/末」的含义**
+
+这是本轮最重要的发现，也是最难发现的一种失效。
+
+新写的公共遍历 `forEachPixel` 是 **x 外层、y 内层**；而 `TitleBarBaselineTests` 里那份
+**更早的** `inkRowRange` 是 **y 外层**。两者都能跑、都返回一个数，但：
+
+> 「扫到的第一个墨迹」在 x 外层下的实际含义是「**最左那一列**自己的最小 y」——
+> 只有当「最左列的墨迹恰好也带着最小 y」时，它才等于「真正的最小 y」。
+
+改完当天 `TitleBarBaselineTests` 两条断言变红：量出 `行 25.5…32.5`（期望 ≈`9.5…23.5`）。
+排查用了**六轮探针**，每轮只取数据不猜：① 旧/新/旧2 三份出图**逐行完全一致**（墨迹在 y 19…33pt）
+⇒ 出图没问题；② `colorAt` 与直读**逐行完全相同** ⇒ 读像素路径没问题；
+③ 在函数里加临时打印 ⇒ `x0=168 x1=248 y0=0 y1=88 visited=7040 first=51`
+（**扫全了 7040 个像素却报 51**，而同一窗口取 `y 0..<40` 却能找到第 39 行 ⇒ **窗口自相矛盾**）；
+④ 顺序依赖实验 ⇒ 内联复算稳定在 `51..65`、`row39=6`。
+
+**根因**：`first` 从 `19.5` 悄悄变成 `51.0` —— **照样是个合理的数**，没有任何东西会红。
+
+**修法**：两条区间函数一律用 `min` / `max` **累积**，不依赖遍历顺序：
+
+```swift
+lo = lo.map { Swift.min($0, x) } ?? x
+hi = hi.map { Swift.max($0, x) } ?? x
+```
+
+⚠️ **样本必须挑到「变异轴」上**：等价性守卫原先用的样本（四条横带 + 居中圆）里，
+横带**横跨整宽** ⇒ 最左列就是最小 y 那一列 ⇒ 两种写法给出同一个数，
+**这条轴一个字都没验到**。要分辨必须用**阶梯样本**（左下角一块 + 右上角一块）——
+新增 `OffscreenRenderParityTests.首末是极值不是扫到的第一个` 就是它，且**先验证它能红**
+（3 条断言失败）再验证修完全绿。
+
+#### 8.131.6 产品代码里的两处：**登记，不收敛**
+
+`Sources/DiskEjectorApp/WindowSelfCheck.swift:191` 与 `:297` 各有一处逐像素循环
+（账本原先**没登记**，是本轮实扫发现的）。**决定：登记，不收敛**，理由是两条都成立：
+
+1. 它读的是 `CGWindowListCreateImage` 的**真机截图**，**不在测试 target 里**
+   ⇒ 用不到 `OffscreenRender`（那是测试装置）；
+2. 它读的**不是离屏位图**，`OffscreenRender` 的整套前提（`bitmap()` 造出来的那份布局）
+   对它不适用。
+
+⇒ 把它加进 `PixelReadPathTests` 的清单（次数 **2**）—— 这样它**不再是无主之地**，
+而守卫也不去假装能收敛它。
+
+#### 8.131.7 新守卫：`PixelReadPathTests`（两条规则 + 双向棘轮）
+
+| 规则 | 判据 | 清单 |
+|---|---|---|
+| 读像素只走一条路 | `Tests/` + `Sources/` 里 `colorAt(x:` 的出现 | 6 个文件 / 合计 **15** 处 |
+| 出图只走一条路 | `Tests/` + `Sources/` 里 `bitmapDataPlanes` 的出现 | 2 个文件 / 合计 **2** 处 |
+
+清单是**双向棘轮**：清单外出现 ⇒ 红；登记了却没出现 ⇒ 红；**次数与登记不符** ⇒ 红
+（变多是「又加了一个读像素点」，变少是「还了账要回来划掉」）。
+每条理由短于 12 字算敷衍，直接判红（沿用本仓库既有口径）。
+
+⚠️ **口径的一处关键选择**：读像素那一半用 **`colorAt(x:`** 而不是裸词 `colorAt`。
+裸词会把**函数名**（`透明底样本直读与colorAt逐像素相等`）与**失败信息里的字符串**
+一起数进去 ⇒「改个测试名」也会让计数变 —— 守卫立刻变成噪音，而噪音会被关掉。
+M5 就是为这条口径配的变异。
+
+#### 8.131.8 变异：6 条，**全红**
+
+装置 `scripts/test/pixel_read_path_mutation.py`（手动跑，不进 CI）。
+
+| # | 变异 | 期望 | 实际 |
+|---|---|---|---|
+| M1 | 在**清单外**的文件里手写一处读像素 | 红（`diff.unregistered`） | ✅ 红 |
+| M2 | 在**清单外**的文件里自建一份位图 | 红（`diff.unregistered`） | ✅ 红 |
+| M3 | 在**已允许**的文件里再抄一处（次数 1→2） | 红（`diff.countMismatch`） | ✅ 红 |
+| M4 | 把登记次数 8 改成 7（模拟「收敛了却忘了改小」） | 红（`diff.countMismatch`） | ✅ 红 |
+| M5 | 口径退化成**裸词** `colorAt` | 红（**装置自证**：函数名不许被数到） | ✅ 红（3 issues） |
+| M6 | 模式串改成匹配不到任何东西（**装置死了**的控制组） | 红（「只数到 N 处」） | ✅ 红（4 issues） |
+
+装置纪律（沿用 `wait_outcome_mutation.py`）：每条变异**先回读证明落地**、
+打印被测命令的**原始尾部**、`finally` 还原后**逐字节比对**；并且**判红之前先排掉
+「变异体编译不过」与「过滤器一条都没跑到」**—— 这两种情况下退出码同样非 0，
+与「被守卫抓住」**逐字相同**。
+
+#### 8.131.9 收益
+
+⚠️ **必须先说一件事：跨批次的「三连跑」不足以下结论。** 我先量了改后一批
+（473 条，`8.841 / 8.995 / 8.733`，均值 8.856），又量了加守卫后一批
+（475 条，`7.239 / 7.966 / 7.507`，均值 7.571）—— **两批代码几乎相同，却差了 1.29s**。
+⇒ 批次之间**有漂移**（同一份代码不同批次的均值可以差 1s 以上），
+所以收益只能用**同一会话内的 A/B** 说（回到 HEAD 跑三次 → 还原 → 再跑三次）。
+
+| 项 | A：HEAD（改前） | B：本轮改动（改后） |
+|---|---|---|
+| 全量测试（汇总行口径，**同会话各三次**） | 9.108 / 9.302 / 9.058，均值 **9.156s** | 7.650 / 7.666 / 7.455，均值 **7.590s** |
+| 测试条数 | 471 条 / 60 套件 | 475 条 / 61 套件 |
+| 两组区间是否重叠 | — | **完全不重叠**（B 最大值 7.666 < A 最小值 9.058） |
+| **净省** | — | **1.566s（约 17%）** —— 与探针预估的 ~1.4s 同量级 |
+| 调用点数量 | 约 **186 万次** `colorAt` | **0**（全走直读；`colorAt` 只剩兜底分支） |
+
+A/B 脚本 `.build/probe/ledger48/ab_timing.sh`（一次性，gitignore 内）：备份 9 个文件 →
+`git show HEAD:<path>` 回退 → 跑 A → `cp` 还原（逐文件 `cmp` 确认）→ 跑 B；
+还原用 `trap EXIT` 兜底，**不用 `git checkout`**（它会连未提交改动一起清掉）。
+B 比 A 多 4 条测试（等价性 2 条 + 守卫 2 条），本身耗时 ~0.2s —— 已包含在内。
+
+#### 8.131.10 变更与验证
+
+| 项 | 结果 |
+|---|---|
+| 门槛（11 道，`--with-tests`） | ✅ **11 道全过**（覆盖率 **65.90%**，**475 条测试**） |
+| 变异（`pixel_read_path_mutation.py`，6 条） | ✅ **6 红**，0 条未通过；每条落地自证 + 还原逐字节一致 |
+| 改动的文件 | `OffscreenRender.swift`（+5 API + 1 个真 bug 修复）、`OffscreenRenderParityTests.swift`（+2 测试 + 3 份参考实现）、`TitleBarBaselineTests` / `SettingsLayoutTests` / `TrafficLightAlignmentTests` / `EmptyStateTests` / `ProcessChipLayoutTests` / `GlassSurfaceTests`（收敛）、**新增** `PixelReadPathTests.swift`、**新增** `scripts/test/pixel_read_path_mutation.py` |
+| 计数 | `MainActorBlockingTests` 的 `scanned` **61 → 62**（新增 1 个文件）；`any` / `fileLevel` **不动**（新文件没有 `@MainActor`，只读源码） |
+
+#### 8.131.11 限定（如实写）
+
+- ⚠️ **`GlassSurfaceTests.pixel` / `VisualStyleTests.centerPixel` 仍是单像素 `colorAt`**（各 1 处）——
+  **登记，不收敛**：前者要 `usingColorSpace(.sRGB)` 换算（直读给的是 deviceRGB 原始字节），
+  后者要**整颗 `NSColor`（含 alpha）** 的 `isEqual`。三通道 API 给不出这两样；
+  而它们各只有 2~6 次调用，性能上无意义。**这是「不收敛」而不是「漏了」** —— 守卫清单里有它们的理由。
+- ⚠️ **`SnapshotRenderTests` 仍自建位图**（1 处）：它的入口收的是**已经布局好的 `NSView`**
+  而不是 SwiftUI `View`，而且要把结果写成 PNG ⇒ `OffscreenRender.bitmap` 的形状对不上。
+- ⚠️ **收益是「同一台机器、三次取均值」，不是 CI 上的数**。改后 475 条的复跑见 §8.131.9 口径；
+  两次量测之间**没有**改过 `.swift`。
+- ⚠️ **逐条 `passed after` 仍不可用**（§8.131.3）⇒ 以后要看单套件成本，
+  得用 `tools/probe/stamp_lines.py` 那套时间线装置，不能读这一列。
+- ⚠️ **守卫是子串计数**：一次调用跨两行写成 `rep.colorAt(\n  x: …)` 会漏（实测 0 例）；
+  用 `NSBitmapImageRep(cgImage:)` 绕开 `bitmapDataPlanes` 的写法也看不见（实测 0 例）。
 
 ## 9. 文件清单
 

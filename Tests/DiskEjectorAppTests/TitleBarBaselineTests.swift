@@ -55,132 +55,39 @@ struct TitleBarBaselineTests {
 
     // MARK: - 量墨迹
 
-    /// 离屏渲染，返回指定行范围内的**首列 / 末列**墨迹 x（pt）。
-    ///
-    /// - Parameters:
-    ///   - rows: 纵向扫描范围（pt，从视图顶往下）。**必须避开标题栏底部那条 `Hairline`** ——
-    ///     它横跨整宽，会把 x=0 也算成墨迹。
-    ///   - maxX: 横向扫描上界。用于「只看左半侧」——标题栏右侧的图标按钮比标题更靠右，
-    ///     不限制的话首列墨迹仍是标题（没问题），但末列会变成按钮。
-    private func inkColumnRange(
-        _ view: some View, width: CGFloat, height: CGFloat,
-        rows: ClosedRange<CGFloat>, maxX: CGFloat
-    ) -> (first: CGFloat, last: CGFloat)? {
-        _ = NSApplication.shared
-        let scale: CGFloat = 2
-        let hosting = NSHostingView(rootView: view.background(Color.white))
-        hosting.appearance = NSAppearance(named: .aqua)
-        hosting.frame = CGRect(x: 0, y: 0, width: width, height: height)
-        hosting.layoutSubtreeIfNeeded()
-
-        guard
-            let rep = NSBitmapImageRep(
-                bitmapDataPlanes: nil,
-                pixelsWide: Int(width * scale),
-                pixelsHigh: Int(height * scale),
-                bitsPerSample: 8,
-                samplesPerPixel: 4,
-                hasAlpha: true,
-                isPlanar: false,
-                colorSpaceName: .deviceRGB,
-                bytesPerRow: 0,
-                bitsPerPixel: 0)
-        else { return nil }
-        rep.size = CGSize(width: width, height: height)
-        hosting.cacheDisplay(in: hosting.bounds, to: rep)
-
-        let scanRows = Int(rows.lowerBound * scale)..<Int(rows.upperBound * scale)
-        let scanCols = 0..<min(rep.pixelsWide, Int(maxX * scale))
-        var first: Int?
-        var last: Int?
-        for x in scanCols {
-            let hasInk = scanRows.contains { y in
-                guard let c = rep.colorAt(x: x, y: y) else { return false }
-                return c.redComponent < 0.75 || c.greenComponent < 0.75 || c.blueComponent < 0.75
-            }
-            if hasInk {
-                if first == nil { first = x }
-                last = x
-            }
-        }
-        guard let first, let last else { return nil }
-        return (CGFloat(first) / scale, CGFloat(last) / scale)
-    }
-
-    /// 离屏渲染，返回指定列范围内的**首行 / 末行**墨迹 y（pt，从视图顶往下数）。
-    ///
-    /// **坐标系**：`NSBitmapImageRep.colorAt(x:y:)` 的原点在**左上角**（与 `NSView` 相反），
-    /// 而 `cacheDisplay` 会把 flipped 的 `NSHostingView` 按视觉方向画进位图 ——
-    /// 所以 y 直接就是「距顶」，不需要再翻。
-    /// 这一点由本文件的断言**自证**：算错方向时中心会落在 `height − 16`（≈36），测试立刻红。
-    private func inkRowRange(
-        _ view: some View, width: CGFloat, height: CGFloat,
-        columns: ClosedRange<CGFloat>, rows: ClosedRange<CGFloat>
-    ) -> (first: CGFloat, last: CGFloat)? {
-        _ = NSApplication.shared
-        let scale: CGFloat = 2
-        let hosting = NSHostingView(rootView: view.background(Color.white))
-        hosting.appearance = NSAppearance(named: .aqua)
-        hosting.frame = CGRect(x: 0, y: 0, width: width, height: height)
-        hosting.layoutSubtreeIfNeeded()
-
-        guard
-            let rep = NSBitmapImageRep(
-                bitmapDataPlanes: nil,
-                pixelsWide: Int(width * scale),
-                pixelsHigh: Int(height * scale),
-                bitsPerSample: 8,
-                samplesPerPixel: 4,
-                hasAlpha: true,
-                isPlanar: false,
-                colorSpaceName: .deviceRGB,
-                bytesPerRow: 0,
-                bitsPerPixel: 0)
-        else { return nil }
-        rep.size = CGSize(width: width, height: height)
-        hosting.cacheDisplay(in: hosting.bounds, to: rep)
-
-        // ⚠️ **`..<` 必须与左操作数写在同一行**：Swift 里 `..<` 还有**前缀**形式
-        // （`PartialRangeUpTo`），换行后它会被解析成一条独立语句的前缀运算符，
-        // 于是 `scanCols` 退化成 `Int` —— 报错是「value of type 'Int' has no member 'contains'」，
-        // 从字面完全看不出跟换行有关（实测踩到）。下面拆成局部变量，顺便避开 100 列行长。
-        let x0 = Int(columns.lowerBound * scale)
-        let x1 = min(rep.pixelsWide, Int(columns.upperBound * scale))
-        let scanCols = x0..<x1
-        let y0 = Int(rows.lowerBound * scale)
-        let y1 = min(rep.pixelsHigh, Int(rows.upperBound * scale))
-        let scanRows = y0..<y1
-        var first: Int?
-        var last: Int?
-        for y in scanRows {
-            let hasInk = scanCols.contains { x in
-                guard let c = rep.colorAt(x: x, y: y) else { return false }
-                return c.redComponent < 0.75 || c.greenComponent < 0.75 || c.blueComponent < 0.75
-            }
-            if hasInk {
-                if first == nil { first = y }
-                last = y
-            }
-        }
-        guard let first, let last else { return nil }
-        return (CGFloat(first) / scale, CGFloat(last) / scale)
-    }
-
     /// 量出**标题文字**的墨迹范围（列 + 行），两步走，避免把图标 / 按钮算进来。
     ///
     /// 1. 在标题栏那几行里扫**左半侧**的首列墨迹 —— 它一定是标题的第一个字；
     /// 2. 从首列往右取 `titleWidth` pt，在这几列里扫首 / 末行墨迹 —— 就是标题的上下界。
     ///
     /// 用「首列墨迹」而不是写死的 x，是为了不依赖标题文案与字体的具体宽度。
+    ///
+    /// ## 出图与读像素都走 `OffscreenRender`（2026-09-23 收敛，§8.131）
+    ///
+    /// 本函数原先自带一套 `NSHostingView` + `NSBitmapImageRep(bitmapDataPlanes:)` + 逐像素
+    /// `colorAt`，与 ``OffscreenRender/bitmap(_:size:appearance:background:)`` **逐字相同**。
+    /// 现在只出图**一次**（原先两步各出一遍）并复用同一张位图 —— 这也是
+    /// ``OffscreenRender/inkColumnRange(_:rows:maxX:scale:)`` 那两条要接 `rep` 的原因。
+    ///
+    /// ## 两处「必须避开」的边界
+    ///
+    /// - **纵向必须避开标题栏底部那条 `Hairline`**：它横跨整宽，会把 x=0 也算成墨迹
+    ///   ⇒ 调用方传的 `rows` 上界是 `容器高 − 8`。
+    /// - **横向只看左半侧**（`maxX: 300`）：标题栏右侧的图标按钮比标题更靠右，
+    ///   不限制的话首列墨迹仍是标题（没问题），但**末列会变成按钮**。
+    ///
+    /// **坐标系**：位图原点在**左上角**（与 `NSView` 相反），而 `cacheDisplay` 会把
+    /// flipped 的 `NSHostingView` 按视觉方向画进位图 —— 所以 y 直接就是「距顶」，不需要再翻。
+    /// 这一点由本文件的断言**自证**：算错方向时中心会落在 `height − 16`（≈36），测试立刻红。
     private func titleInk(
         _ view: some View, width: CGFloat, height: CGFloat,
         rows: ClosedRange<CGFloat>, who: String, titleWidth: CGFloat = 40
     ) -> (columns: (first: CGFloat, last: CGFloat), rows: (first: CGFloat, last: CGFloat))? {
         guard
-            let cols = inkColumnRange(view, width: width, height: height, rows: rows, maxX: 300),
-            let inkRows = inkRowRange(
-                view, width: width, height: height,
-                columns: cols.first...(cols.first + titleWidth), rows: rows)
+            let rep = OffscreenRender.bitmap(view, size: CGSize(width: width, height: height)),
+            let cols = OffscreenRender.inkColumnRange(rep, rows: rows, maxX: 300),
+            let inkRows = OffscreenRender.inkRowRange(
+                rep, columns: cols.first...(cols.first + titleWidth), rows: rows)
         else { return nil }
         // **自证字段**：把量到的四个数打出来。像素量测最容易的失败方式是「量错了东西」
         // （列窗口落在空白上、纵向范围把 Hairline 包进来），那种失败与「对齐坏了」

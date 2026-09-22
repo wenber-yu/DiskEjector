@@ -130,53 +130,23 @@ struct TrafficLightAlignmentTests {
         // （实测：给 52 时右侧扫不到任何墨迹）。这与 `TitleBarBaselineTests` 的做法一致。
         let width = DesignTokens.Size.mainWindow.width
         let height = DesignTokens.Size.mainWindow.height
-        let scale: CGFloat = 2
 
-        _ = NSApplication.shared
-        let hosting = NSHostingView(
-            rootView: ViewFixtures.mainWindow().background(Color.white))
-        hosting.appearance = NSAppearance(named: .aqua)
-        hosting.frame = CGRect(x: 0, y: 0, width: width, height: height)
-        hosting.layoutSubtreeIfNeeded()
-
+        // 出图与读像素都走 `OffscreenRender`（2026-09-23 收敛，§8.131）——
+        // 本文件原先自己抄了一份出图块 + 一份「从右往左扫、遇到墨迹就停」的逐像素 `colorAt`。
+        // 那条 `break` 是**可读性优化不是正确性要求**：要的就是「最右一列墨迹」，
+        // 取 ``OffscreenRender/inkColumnRange(_:rows:maxX:scale:)`` 的 `last` 同义。
+        //
+        // 只扫标题栏中段（y 12…40），避开顶部留白与底部 Hairline
+        // （Hairline 横跨整宽，会把右边缘算成墨迹）。
         guard
-            let rep = NSBitmapImageRep(
-                bitmapDataPlanes: nil,
-                pixelsWide: Int(width * scale),
-                pixelsHigh: Int(height * scale),
-                bitsPerSample: 8,
-                samplesPerPixel: 4,
-                hasAlpha: true,
-                isPlanar: false,
-                colorSpaceName: .deviceRGB,
-                bytesPerRow: 0,
-                bitsPerPixel: 0)
+            let rep = OffscreenRender.bitmap(
+                ViewFixtures.mainWindow(), size: CGSize(width: width, height: height)),
+            let ink = OffscreenRender.inkColumnRange(rep, rows: 12...40, maxX: width)
         else {
-            Issue.record("离屏位图分配失败")
-            return
-        }
-        rep.size = CGSize(width: width, height: height)
-        hosting.cacheDisplay(in: hosting.bounds, to: rep)
-
-        // 只扫标题栏中段，避开顶部留白与底部 Hairline（Hairline 横跨整宽，会把右边缘算成墨迹）。
-        let y0 = Int(12 * scale)
-        let y1 = Int(40 * scale)
-        var lastCol: Int?
-        for x in stride(from: rep.pixelsWide - 1, through: 0, by: -1) {
-            let hasInk = (y0..<y1).contains { y in
-                guard let c = rep.colorAt(x: x, y: y) else { return false }
-                return c.redComponent < 0.75 || c.greenComponent < 0.75 || c.blueComponent < 0.75
-            }
-            if hasInk {
-                lastCol = x
-                break
-            }
-        }
-        guard let lastCol else {
             Issue.record("标题栏右侧没扫到任何墨迹 —— 渲染没成功，这条断言不能算通过")
             return
         }
-        let inkRight = CGFloat(lastCol) / scale
+        let inkRight = ink.last
         let gapFromRight = width - inkRight
         // 图标 14pt 居中于 28pt 盒子 → 墨迹右边缘比盒子右边缘再往里 7pt。
         let expectedGap =

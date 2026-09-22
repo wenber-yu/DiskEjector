@@ -73,31 +73,6 @@ struct EmptyStateTests {
 
     // MARK: - ② 离屏渲染：判定有没有真的接到分支上
 
-    /// 数 `rect`（pt，原点**左上**）内的深色像素（任一通道 < 0.75）。
-    ///
-    /// ⚠️ **底必须是白的**。`background: .clear` 时透明像素的 `colorAt` 返回全 0
-    /// （r=g=b=0），「深色」判据会把**整块**算成墨迹 —— 实测整条带 166400 全中。
-    /// `.clear` 是给 ``OffscreenRender/brightPixels`` 那种「量亮像素」的判据用的，不是给这里。
-    private func darkInk(_ view: some View, size: CGSize, in rect: CGRect) -> Int {
-        guard let rep = OffscreenRender.bitmap(view, size: size) else { return -1 }
-        let scale: CGFloat = 2
-        let x0 = max(0, Int(rect.minX * scale))
-        let x1 = min(rep.pixelsWide, Int(rect.maxX * scale))
-        let y0 = max(0, Int(rect.minY * scale))
-        let y1 = min(rep.pixelsHigh, Int(rect.maxY * scale))
-        guard x0 < x1, y0 < y1 else { return -1 }
-        var n = 0
-        for x in x0..<x1 {
-            for y in y0..<y1 {
-                guard let c = rep.colorAt(x: x, y: y) else { continue }
-                if c.redComponent < 0.75 || c.greenComponent < 0.75 || c.blueComponent < 0.75 {
-                    n += 1
-                }
-            }
-        }
-        return n
-    }
-
     /// **离屏守卫**：列表为空时，列表区画的必须是空状态 —— 不是骨架层，也不是空白。
     ///
     /// ## 为什么这条能取代「等本机没插盘」那种跑法
@@ -143,16 +118,30 @@ struct EmptyStateTests {
         // 取证见 `ViewFixtures` 文件头与 `DESIGN-SPEC.md` §8.28.6。
         let view = ViewFixtures.mainWindow(disks: [])
 
+        // 出图与读像素都走 `OffscreenRender`（2026-09-23 收敛，§8.131）。
+        //
+        // ⚠️ **底必须是白的**（`OffscreenRender.bitmap` 的默认值）。`background: .clear` 时
+        // 透明像素读出来是 `(0, 0, 0)`，「深色」判据会把**整块**算成墨迹 ——
+        // 实测整条带 166400 全中。`.clear` 是给 ``OffscreenRender/brightPixels``
+        // 那种「量亮像素」的判据用的，不是给这里。
+        //
+        // ⚠️ **只出图一次**：两块区域量的是同一张图，原先那个 helper 每调一次就重画一遍
+        // （800×520、scale 2 = 166 万像素，出图本身不便宜）。
+        guard let rep = OffscreenRender.bitmap(view, size: size) else {
+            Issue.record("离屏出图失败 —— 下面两个数都不能当数")
+            return
+        }
+
         // **自证**：标题栏必须先有墨迹（标题「外置磁盘」+ 两个图标按钮）。
         // 没有这条，一次「玻璃/文字根本没渲染出来」的失败会被读成「列表区画了骨架」——
         // 两者在列表带的数字上长得一模一样（都是 0）。
-        let titleInk = darkInk(view, size: size, in: titleRect)
+        let titleInk = OffscreenRender.inkCount(rep, in: titleRect)
         #expect(
             titleInk > 500,
             "标题栏只数到 \(titleInk) 个深色像素 —— 这次渲染整个不可信，列表带的结果不能当数"
         )
 
-        let listInk = darkInk(view, size: size, in: listRect)
+        let listInk = OffscreenRender.inkCount(rep, in: listRect)
         #expect(
             listInk > 3000,
             """

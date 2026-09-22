@@ -157,8 +157,29 @@ enum OffscreenRender {
     ///
     /// 返回 `false` 表示**区域为空** —— 调用方沿用本文件「量不出来就返回 `-1` / `nil`」的约定。
     /// 走 ``PixelBuffer`` 快路径；布局不认识时退回 `colorAt`（慢，语义一致）。
+    ///
+    /// ## ⚠️ 这是本仓**唯一**的读像素入口（2026-09-23 起）
+    ///
+    /// 在它之前，`Tests/` 里有 5 个文件各自手写「逐像素 `colorAt` 循环」，另有 3 份
+    /// 各写一遍的 `NSBitmapImageRep(bitmapDataPlanes: nil, …)` 出图块。那些副本不是
+    /// 「风格不统一」这种审美问题 —— §8.130 那次 **CI 红**就长在一份这样的副本里
+    /// （`c.redComponent` 隐式转 `Double`，本地 6.4 接受、CI 6.3.3 拒绝）。
+    /// 而且 `colorAt` 每次要构造一个 `NSColor`：实测 **0.773 µs/次**，直读是 **0.002 µs/次**，
+    /// 差 **约 400 倍**（探针见 `DESIGN-SPEC.md` §8.131）。
+    ///
+    /// ⇒ **新写的量测一律走本文件**：计数用 ``inkCount(_:in:scale:)``、
+    /// 区间用 ``inkColumnRange(_:rows:maxX:scale:)`` / ``inkRowRange(_:columns:rows:scale:)``、
+    /// 自定义谓词用本函数。**不要再手写循环**（回退由 `PixelReadPathTests` 拦）。
+    ///
+    /// ⚠️ **越界是「夹住」不是「报错」**：`rect` 超出位图会被 `max` / `min` 裁到边界，
+    /// 于是「槽位算歪了」与「量到了空的地方」都会得到一个**看着合理的数字**。
+    /// 调用方要自己先证明 `rect` 落在位图里（`ProcessChipLayoutTests` 就是这么做的）。
+    ///
+    /// ⚠️ **夹取是必须的，不是保险**：旧写法（逐像素 `colorAt`）越界会返回 `nil`、
+    /// 被 `continue` 跳过；换成直读之后越界就是**真的读缓冲区外的内存**。
+    /// 所以本文件所有入口一律 `max(0, …)` / `min(pixels…, …)`。
     @discardableResult
-    private static func forEachPixel(
+    static func forEachPixel(
         _ rep: NSBitmapImageRep, in rect: CGRect?, scale: CGFloat,
         _ body: (Int, Int, Double, Double, Double) -> Void
     ) -> Bool {
@@ -178,16 +199,33 @@ enum OffscreenRender {
             y1 = rep.pixelsHigh
         }
         guard x0 < x1, y0 < y1 else { return false }
+        forEachPixel(rep, x: x0..<x1, y: y0..<y1, body)
+        return true
+    }
+
+    /// **像素空间**的遍历 —— 本文件里**唯一**真正读像素的地方。
+    ///
+    /// ⚠️ 为什么不把上面那条 pt 版当唯一入口：`CGRect.maxY` 是 `y + height` **算出来的**，
+    /// 而 `a + (b - a) == b` 在浮点上**不保证**（差一个 ulp 就让 `Int(x * scale)` 少 1，
+    /// 扫描带悄悄窄一格 —— 那种失败与「墨迹真的不在那」在断言层面**逐字相同**）。
+    /// ``inkColumnRange(_:rows:maxX:scale:)`` / ``inkRowRange(_:columns:rows:scale:)``
+    /// 拿到的边界就是 pt 区间端点，必须**照旧逐位**换算，所以它们走这一条。
+    ///
+    /// 夹取由调用方负责（两条 pt 入口都夹过了）。
+    private static func forEachPixel(
+        _ rep: NSBitmapImageRep, x xs: Range<Int>, y ys: Range<Int>,
+        _ body: (Int, Int, Double, Double, Double) -> Void
+    ) {
         if let buf = PixelBuffer(rep) {
-            for x in x0..<x1 {
-                for y in y0..<y1 {
+            for x in xs {
+                for y in ys {
                     let (r, g, b) = buf.rgb(x: x, y: y)
                     body(x, y, r, g, b)
                 }
             }
         } else {
-            for x in x0..<x1 {
-                for y in y0..<y1 {
+            for x in xs {
+                for y in ys {
                     guard let c = rep.colorAt(x: x, y: y) else { continue }
                     // 同 ``rgb(_:x:y:)``：显式 `Double(...)`，别依赖隐式转换（§8.130）。
                     body(
@@ -196,19 +234,118 @@ enum OffscreenRender {
                 }
             }
         }
-        return true
+    }
+
+    // MARK: - 墨迹判据
+
+    /// **深色墨迹**的判据：任一通道 < `0.75`。
+    ///
+    /// ## 为什么把它抽成一个函数（2026-09-23）
+    ///
+    /// 这条判据原先在 `Tests/` 里**逐字抄了 6 遍**（本文件 1 处 + `TitleBarBaselineTests` 2 处 +
+    /// `EmptyStateTests` / `SettingsLayoutTests` / `TrafficLightAlignmentTests` 各 1 处）。
+    /// 抄着的坏处不是啰嗦：**改阈值要改 6 处，漏掉一处就会有一条测试在守另一个判据 ——
+    /// 而没有任何东西会红**（「同一事实写两处会漂」的经典形状）。
+    ///
+    /// ⚠️ 产品代码里还有一份**独立的**同款判据（`WindowSelfCheck.swift`，两处）。
+    /// 它读的是 `CGWindowListCreateImage` 的真机截图、不在本 target 里，**用不到本函数** ——
+    /// 那一半的收敛记在 `DESIGN-SPEC.md` 的账本里，别以为这里抽完就全仓只剩一处了。
+    static func isInk(_ r: Double, _ g: Double, _ b: Double) -> Bool {
+        r < 0.75 || g < 0.75 || b < 0.75
+    }
+
+    // MARK: - 三种形状（计数 / 列区间 / 行区间）
+
+    /// `rect`（pt，原点左上）内的**深色墨迹像素个数**；区域为空返回 `-1`。
+    ///
+    /// `-1` 而不是 `0`：`0` 是「区域里确实没有墨迹」，`-1` 是「这次没量到」——
+    /// 两者在断言层面长得一样，而本仓库已经栽过两次「0 命中 = 真的没有 vs 判据坏了」。
+    static func inkCount(_ rep: NSBitmapImageRep, in rect: CGRect, scale: CGFloat = 2) -> Int {
+        var n = 0
+        let ok = forEachPixel(rep, in: rect, scale: scale) { _, _, r, g, b in
+            if isInk(r, g, b) { n += 1 }
+        }
+        return ok ? n : -1
+    }
+
+    /// 出图 + ``inkCount(_:in:scale:)``。一个用例要量同一张图的**好几块区域**时，
+    /// 先自己 `bitmap()` 一次、再用上面那条 —— 否则每块区域都会重画一遍。
+    static func inkCount(_ view: some View, size: CGSize, in rect: CGRect) -> Int {
+        guard let rep = bitmap(view, size: size) else { return -1 }
+        return inkCount(rep, in: rect)
+    }
+
+    /// 深色墨迹在「**行 `rows`** × **列 `0…maxX`**」这块里占据的**首列 / 末列**。
+    ///
+    /// ⚠️ **返回的是「有墨迹的那一列像素的左边缘」，不是「墨迹的左右边界」**：
+    /// 末列 `last` 对应像素 `x = Int(last * scale)`，墨迹实际一直画到它**右**边缘
+    /// （即 `(last * scale + 1) / scale`）。这与 `TitleBarBaselineTests` 里那份更早的
+    /// 实现**逐字同义** —— 那些断言的容差是照着这个口径定的，改口径会让它们全变。
+    ///
+    /// ⚠️ **参数是 pt 区间而不是 `CGRect`**：区间端点直接换算成像素下标（`Int(bound * scale)`），
+    /// 而 `CGRect` 的 `maxY` 是 `y + height` 算出来的 —— 差一个 ulp 就会让扫描带窄一格。
+    /// 见 ``forEachPixel(_:x:y:_:)`` 的说明。
+    ///
+    /// ## ⚠️ 首 / 末是**极值**，不是「扫到的第一个 / 最后一个」（2026-09-23）
+    ///
+    /// ``forEachPixel(_:x:y:_:)`` 是 **x 外层、y 内层**。所以「扫到的第一个墨迹」
+    /// 的实际含义是「**最左那一列**自己的最小 y」—— 只有当「最左列的墨迹恰好也带着最小 y」时，
+    /// 它才等于「真正的最小 y」。**两种写法都会给出一个看着合理的数**。
+    ///
+    /// 这不是假想：把 `TitleBarBaselineTests.inkRowRange`（原 **y 外层**）改成走这条公共遍历时
+    /// 就是这么错的 —— `first` 从 `19.5` 悄悄变成 `51.0`，没有任何东西会红。
+    /// ⇒ 这里一律用 `min` / `max` 累积，**不依赖遍历顺序**。
+    /// 分辨这条轴的样本见 `OffscreenRenderParityTests.首末是极值不是扫到的第一个`。
+    ///
+    /// 没扫到任何墨迹返回 `nil`（与「扫到了、但那一列都没有」是同一件事）。
+    static func inkColumnRange(
+        _ rep: NSBitmapImageRep, rows: ClosedRange<CGFloat>, maxX: CGFloat, scale: CGFloat = 2
+    ) -> (first: CGFloat, last: CGFloat)? {
+        let x0 = 0
+        let x1 = min(rep.pixelsWide, Int(maxX * scale))
+        let y0 = max(0, Int(rows.lowerBound * scale))
+        let y1 = min(rep.pixelsHigh, Int(rows.upperBound * scale))
+        guard x0 < x1, y0 < y1 else { return nil }
+        var lo: Int?
+        var hi: Int?
+        forEachPixel(rep, x: x0..<x1, y: y0..<y1) { x, _, r, g, b in
+            guard isInk(r, g, b) else { return }
+            lo = lo.map { Swift.min($0, x) } ?? x
+            hi = hi.map { Swift.max($0, x) } ?? x
+        }
+        guard let lo, let hi else { return nil }
+        return (CGFloat(lo) / scale, CGFloat(hi) / scale)
+    }
+
+    /// 深色墨迹在「**列 `columns`** × **行 `rows`**」这块里占据的**首行 / 末行**。
+    /// 口径与 ``inkColumnRange(_:rows:maxX:scale:)`` 同（取像素**上**边缘、参数是 pt 区间、
+    /// **首末是极值不是扫到的第一个**）。
+    static func inkRowRange(
+        _ rep: NSBitmapImageRep, columns: ClosedRange<CGFloat>, rows: ClosedRange<CGFloat>,
+        scale: CGFloat = 2
+    ) -> (first: CGFloat, last: CGFloat)? {
+        let x0 = max(0, Int(columns.lowerBound * scale))
+        let x1 = min(rep.pixelsWide, Int(columns.upperBound * scale))
+        let y0 = max(0, Int(rows.lowerBound * scale))
+        let y1 = min(rep.pixelsHigh, Int(rows.upperBound * scale))
+        guard x0 < x1, y0 < y1 else { return nil }
+        var lo: Int?
+        var hi: Int?
+        forEachPixel(rep, x: x0..<x1, y: y0..<y1) { _, y, r, g, b in
+            guard isInk(r, g, b) else { return }
+            lo = lo.map { Swift.min($0, y) } ?? y
+            hi = hi.map { Swift.max($0, y) } ?? y
+        }
+        guard let lo, let hi else { return nil }
+        return (CGFloat(lo) / scale, CGFloat(hi) / scale)
     }
 
     // MARK: - 四个量
 
-    /// 深色像素个数（任一通道 < 0.75）。判据与 `TitleBarBaselineTests` 一致。
+    /// 整幅图里的深色像素个数。判据见 ``isInk(_:_:_:)``。
     static func inkCount(_ view: some View, size: CGSize) -> Int {
         guard let rep = bitmap(view, size: size) else { return -1 }
-        var n = 0
-        forEachPixel(rep, in: nil, scale: 2) { _, _, r, g, b in
-            if r < 0.75 || g < 0.75 || b < 0.75 { n += 1 }
-        }
-        return n
+        return inkCount(rep, in: CGRect(origin: .zero, size: size))
     }
 
     /// 符合 `matchingRGB` 的像素的**包围盒**（pt，原点左上）。用来量「某块底色到底画了多大」。

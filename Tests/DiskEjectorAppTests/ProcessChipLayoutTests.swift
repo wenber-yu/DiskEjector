@@ -139,21 +139,16 @@ struct ProcessChipLayoutTests {
             let rep = OffscreenRender.bitmap(chip, size: size)
         else { return -1 }
 
-        let scale: CGFloat = 2
-        let x0 = Int(iconSlot.minX * scale)
-        let x1 = Int(iconSlot.maxX * scale)
-        let y0 = Int(iconSlot.minY * scale)
-        let y1 = Int(iconSlot.maxY * scale)
-        guard x0 < x1, y0 < y1, x1 <= rep.pixelsWide, y1 <= rep.pixelsHigh else { return -1 }
+        // ⚠️ **自证**：槽位必须真的落在位图里。`forEachPixel` 会把越界**夹住**（那是为了
+        // 直读时不去读缓冲区外的内存），夹住之后的数字看着照样合理，只是量的不是那块地方 ——
+        // 与「判据本身坏了」逐字相同。所以这一步必须自己判。
+        guard CGRect(origin: .zero, size: size).contains(iconSlot) else { return -1 }
 
         var n = 0
-        for x in x0..<x1 {
-            for y in y0..<y1 {
-                guard let c = rep.colorAt(x: x, y: y) else { continue }
-                let channels = [c.redComponent, c.greenComponent, c.blueComponent]
-                let spread = (channels.max() ?? 0) - (channels.min() ?? 0)
-                if spread * 255 > 40 { n += 1 }
-            }
+        OffscreenRender.forEachPixel(rep, in: iconSlot, scale: 2) { _, _, r, g, b in
+            // `max − min > 40/255`：有饱和色相就算彩色，灰色描边不算（阈值依据见上面的表）。
+            let spread = max(r, max(g, b)) - min(r, min(g, b))
+            if spread * 255 > 40 { n += 1 }
         }
         return n
     }
