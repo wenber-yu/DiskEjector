@@ -5078,7 +5078,15 @@ Sparkle 会不会装上这次更新 —— 依据是 `showUpdateFound` 的文档
 
 ### §8.42.2 仍开着的（按「谁能关掉它」分类）
 
-> ⚠️ **本表的最后核对时刻：2026-09-23 01:30**（本轮改动见 **§8.129** ——
+> ⚠️ **本表的最后核对时刻：2026-09-23 02:40**（本轮改动见 **§8.130** ——
+> **本地绿、CI 红：一条只有 Swift 6.4 才接受的隐式转换**。`OffscreenRender.swift` 里一行元组返回
+> 把 `NSColor` 的 `CGFloat` 通道靠**隐式转换**塞进 `Double` 元组，本地门槛 **11/11 全绿**、
+> CI（**Swift 6.3.3**）**编译红** ⇒ 已改显式 `Double(...)`，并新增源码守卫
+> `ImplicitCGFloatConversionTests`（口径 4 条 + 双向对照 + 变异 2 条）。又新增一个测试文件
+> ⇒ `scanned` **60 → 61**（`any` / `fileLevel` **不变**，仍是 **30 / 26**）；**新增第 49 行**。
+> ⚠️ 本轮**没有**回头核对全表其余行，下面几段仍是**上一次**的读数，保留不改。）
+>
+> ⚠️ **2026-09-23 01:30**（本轮改动见 **§8.129** ——
 > **离屏渲染的逐像素读法换成缓冲区直读**：`MainWindowDiskListTests` **8.792s → 1.965s**；
 > 顺带新增一个测试文件 ⇒ §8.128 的三个数各 +1（**26 / 30 / 60**）；**新增第 48 行**
 > （另外 7 个文件仍逐像素 `colorAt`，**刻意暂不做**）。⚠️ 本轮**没有**回头核对全表其余行，
@@ -5271,6 +5279,7 @@ Sparkle 会不会装上这次更新 —— 依据是 `showUpdateFound` 的文档
 | 46 | ⚠️ **订正**：「本环境 ad-hoc/自签 ⇒ Sparkle 安装器起不来 ⇒ 需 Apple Developer ID」这个前提**已被实测推翻**（§8.125）。自签身份下 `TeamIdentifier=not set` ⇒ `SUCodeSigningVerifier.m:448-451` **不设** XPC 校验要求 ⇒ 安装器正常。⚠️ 反直觉的一面：真用 Apple 证书签反而会设 `(anchor apple generic …)`，那时 helper 必须同为 Apple 签 | 若将来换成 Apple 签名，**安装器那条路要重验一遍**（校验要求变了，不是同一条路） | §8.125 | ✅ **已订正（2026-09-22）** |
 | 47 | ⚠️ **文件级 `@MainActor` 从来没被记账** —— `DesignDraftIntegrityTests`（44 条测试、0 条 `async`、零主 actor API）整体标着它 ⇒ 44 条全在主 actor 上**串行**；实扫发现 **25 个文件**是文件级，其中 2 个（含 `AppVersionInfoTests`）**根本不需要**（判据：摘掉后编译绿） | 已关闭 | §8.128 | ✅ **已关闭（2026-09-22，§8.128）**：两个「没理由」的已摘（`DesignDraftIntegrityTests` 套件 **1.661s → 0.354s**），并加守卫 **`文件级 @MainActor 必须登记在案（双向）`**（账本 25 条 + 每条理由，变异 4 红 1 绿）。⚠️ 本行是**出生即关闭**（同第 41 行那种）：登记它是因为要记住**「没被记账的成本」这件事本身** —— 它**不会让任何测试变红**，只有主 actor 占用率看得出来。ℹ️ **补验（同日稍后）**：剩下 25 个**全部**经编译器证实「确实需要」（4 个逐条 + 21 个「摘到绿」，**10 轮**收敛，0 个可摘）；⚠️ 判据必须用**门槛 1 同款旗标** —— 弱旗标下主 actor 违规只是警告，会把「需要」读成「不需要」（实测 `OnboardingLayoutTests`：弱旗标绿 + 17 条警告 / 同款旗标 2 条 error）。 ℹ️ **09-23 增量**：新增 `OffscreenRenderParityTests`（文件级 `@MainActor`，经编译器证实必要）⇒ 三个数各 +1：**26 / 30 / 60**（§8.128.10 / §8.129） |
 | 48 | ⚠️ **离屏渲染里仍有 7 个文件逐像素 `colorAt`**（`TitleBarBaselineTests` / `EmptyStateTests` / `GlassSurfaceTests` / `TrafficLightAlignmentTests` / `ProcessChipLayoutTests` / `SettingsLayoutTests` / `VisualStyleTests`）。§8.129 只换了最重的那条（`MainWindowDiskListTests` **8.792s → 1.965s**）；这 7 个的扫描区域小（毫秒级），所以**没动** | 我（想做统一时） | §8.129 | ⬜ **仍开着**（2026-09-23 立；**刻意不关** —— 它是「已知但暂不做」的显式记账，不是漏项） |
+| 49 | ⚠️ **「本地门槛全绿」≠「CI 绿」的第三类成因：本地编译器比 CI 新** —— 2026-09-22 CI run `35761198327` 红在 `OffscreenRender.swift` 的一行**元组返回**上（`return (c.redComponent, …)`，目的地 `(Double, Double, Double)?`）。「元组字面量内部的 `CGFloat` → `Double` 隐式转换」是 **Swift 6.4 才放宽**的：本地 Xcode 27 / **6.4 接受**，CI 的 Xcode 26.6 / **6.3.3 拒绝**；同一个包、同一 `swiftLanguageModes: [.v6]`、同一 arm64 ⇒ 不是语言模式、不是架构、不是 SDK | 以后写这类代码的人：**CGFloat 进 Double 一律显式 `Double(...)`**，别指望本地门槛能发现（本地**没有任何旗标**能关掉该转换，实测 `-disable-implicit-cgfloat-conversion` / `-disable-implicit-conversions` 都是 `unknown argument`） | §8.130 | ⬜ **仍开着**（2026-09-23 立；**刻意不关**）：新守卫 `ImplicitCGFloatConversionTests` 只钉住「**字面量内部**」这一半，别的「新编译器才接受」的写法仍只能靠 CI 兜 —— 这一行本身就是「推后必须看 CI」的记账，不是待办 |
 > **判据：这张「仍开着」的表本身也是承诺型的话。** 17:55 回头核对时，第 4、5 行**早已关掉
 > 而表还写着「仍开着」** —— 和 §8.33 清掉的那 6 条是同一个病：**还了账没人回来划掉**。
 > 所以它现在多了一列「现状」和一个**核对时刻**：下次谁来读，先看时刻再看结论。
@@ -15799,9 +15808,11 @@ L132 才标在 `struct OccupancyStoreTests` 上。摘了前者 ⇒ **编译绿**
   **不分缩进**）⇒ **30**；守卫三 `hasFileLevelMainActor`（**顶格** + 下一非空/非注释/非属性行
   也顶格且是类型声明）⇒ **26**。差的 4 个是**只有单测级** `@MainActor` 的：
   `GlassSurfaceTests` / `UpdateAlertTests` / `UpdateSettingsTests` / `VisualStyleTests`。
-  `scanned` = **60**（**跳过守卫自身**，所以「/60」是**被扫的文件数**，不是「文件级数」）。
+  `scanned` = **61**（**跳过守卫自身**，所以「/61」是**被扫的文件数**，不是「文件级数」）。
   ⚠️ 这三个数是 **2026-09-23 用守卫自己的判据独立重算**的（换一条命令、另写一份实现；
-  同源对拍会共享盲点）：`60 / 30 / 26`，账本 **26** 条，双向差集**为空**。
+  同源对拍会共享盲点）：`61 / 30 / 26`，账本 **26** 条，双向差集**为空**。
+  ⚠️ **§8.130 又 +1**：新增的 `ImplicitCGFloatConversionTests.swift` **没有** `@MainActor`
+  ⇒ **只有** `scanned` 变（60 → 61），`any` / `fileLevel` **不动**（见 §8.130.7）。
 - ⚠️ **这份计数被手写在 4 处**（守卫头 / 守卫的失败消息 / `DesignDraftIntegrityTests` 注释 /
   `IntegrationEjectTests` 注释），**只有守卫那两处有断言兜住**，而且**不是等值断言** ⇒
   抄这个数字时**必须带上 §8.128 这个指针**。本轮**当场就撞了**：摘掉两个之后守卫头改 29，
@@ -15831,6 +15842,10 @@ L132 才标在 `struct OccupancyStoreTests` 上。摘了前者 ⇒ **编译绿**
 ⇒ 最终用的判据是**编译器自己给的那条提示**：它的文案里**带着方法名**
 （`四个量与参考实现一致()`），而那个方法名**只有本文件有** ⇒ 归属天然可靠，
 不必去猜日志格式。（同 §8.96：判据得**自己有牙**，而不是「看着对」。）
+
+ℹ️ **§8.130 再 +1（2026-09-23）**：新增 `ImplicitCGFloatConversionTests.swift`。
+它**没有** `@MainActor`（只读源码、不碰 AppKit）⇒ **只有 `scanned` 60 → 61**；
+`any` / `fileLevel` 仍是 **30 / 26**，账本仍是 **26** 条（重算见 §8.130.7）。
 
 ### 8.129 离屏渲染的逐像素读法：`colorAt` → **缓冲区直读**（2026-09-23）
 
@@ -15953,6 +15968,145 @@ L132 才标在 `struct OccupancyStoreTests` 上。摘了前者 ⇒ **编译绿**
   `SettingsLayoutTests` / `VisualStyleTests`）—— **本轮没动**：它们的扫描区域小（毫秒级），
   本轮只处理 §8.114 清单里最重的那一条。要统一，另开一轮。
 - ⚠️ **整轮墙钟的降幅没量**（门槛只在**红时**留全量日志）。收益数字来自**单套件同命令前后**。
+
+### 8.130 「本地全绿、CI 红」的第三类成因：**本地编译器比 CI 新**（2026-09-23）
+
+#### 8.130.1 起因：CI 红在一行**看起来毫无问题**的返回上
+
+提交 `dae5b1a`（§8.129 的收益）推上去后，CI run **`35761198327`** 结论 `failure`：
+门槛 1（构建，`-Xswiftc -warnings-as-errors`）红，**全量日志里只有一处** error：
+
+```
+Tests/DiskEjectorAppTests/OffscreenRender.swift:149:16: error: cannot convert return
+expression of type '(CGFloat, CGFloat, CGFloat)' to return type '(Double, Double, Double)'
+```
+
+那一行是 §8.129 新写的 `colorAt` 兜底路径：
+
+```swift
+return (c.redComponent, c.greenComponent, c.blueComponent)   // NSColor 的通道属性是 CGFloat
+```
+
+而**同一份源码，本地门槛 11/11 全绿** —— 本轮当场用门槛 1 的同款旗标复跑：
+`swift build --build-tests -Xswiftc -warnings-as-errors` ⇒ `LOCAL_BUILD_EXIT=0`。
+
+#### 8.130.2 差异**只在编译器版本**（其余全部相同）
+
+| 项 | 本地 | CI |
+|---|---|---|
+| Xcode | 27.0 | **26.6.0**（workflow 里按 `ls -d /Applications/Xcode*.app \| sort -V \| tail -1` 选出来的） |
+| Swift | **6.4**（`swiftlang-6.4.0.34.1`） | **6.3.3**（`swiftlang-6.3.3.1.3`） |
+| 包 | 同一个 `swift-tools-version: 6.3`、`swiftLanguageModes: [.v6]` | 同左 |
+| 架构 | arm64 | arm64 |
+
+⇒ 不是语言模式、不是架构、不是 SDK。**「元组字面量内部的 `CGFloat` → `Double` 隐式转换」
+是 Swift 6.4 才放宽的。**
+
+⚠️ **本地复现不出来**：翻遍 `swiftc -help-hidden` 与 `swiftc -frontend -help-hidden`，
+**没有任何旗标**能关掉这个隐式转换（试过 `-disable-implicit-cgfloat-conversion` /
+`-disable-implicit-conversions`：两个都是 `unknown argument`）。
+⇒ 这类改动**「先跑一遍本地门槛看看」这条路根本不成立**。
+
+判据是**编译器**，不是文档：拿 4 个最小样本（元组返回 / 单值返回 / 函数实参 / 数组字面量）
+分别 `swiftc -typecheck`，本地 6.4 **四个全过**（`exit=0`）。
+⚠️ 但「本地过」推不出「CI 过」—— 这一步只证明**差异存在**，证明不了**CI 的边界在哪**。
+
+#### 8.130.3 修法：显式 `Double(...)`（3 处）
+
+| 文件 | 位置 | 改法 |
+|---|---|---|
+| `OffscreenRender.swift` | `rgb(_:x:y:)` 的 `colorAt` 兜底 | 三个通道各包 `Double(...)`（**CI 红掉的就是这一行**） |
+| `OffscreenRender.swift` | `forEachPixel` 的兜底分支 | `body(x, y, Double(c.redComponent), …)` |
+| `OffscreenRenderParityTests.swift` | `refBoundingBox` 的 `matching(...)` 实参 + `assertPixelParity` 的差值计算 | 抽出 `wantRGB` 并逐项 `Double(...)` |
+
+⚠️ **为什么连参考实现也动了**（它本来是「改动前写法**逐字照抄**」）：改动前的 `boundingBox`
+签名是 `matching: (NSColor) -> Bool`（`git show 275267d:…` 可查）—— 也就是说
+**「把 `c.redComponent` 传给收 `Double` 的闭包」这个形状从来没被 CI 编译过**。
+关于它我**没有证据**，而 `OffscreenRenderParityTests.swift` 更是**一次都没被 6.3.3 编译过**
+（上次 CI 死在门槛 1 的批编译里）⇒ 一并显式化。
+`Double(x)` 与隐式转换**语义完全一致** ⇒ 不改变任何一条断言的含义，等价性守卫的结论不受影响。
+
+⚠️ **为什么不「只修 CI 报的那一处、剩下的靠 CI 兜」**：CI 那次的输出里**只有一处** error，
+但**批编译失败会截断后续检查** ⇒「只有一处」是**弱证据**。所以本轮的口径是
+**「`CGFloat` 进 `Double` 一律显式写」** —— 不为分辨「哪个位置哪版允许」，而是让这个问题不存在。
+
+#### 8.130.4 先扫再补：两遍审计，真实例**只有 1 处**
+
+两遍用的是**不同的关键词**（同源对拍会共享盲点）：
+
+| 遍 | 判据 | 命中 | 结论 |
+|---|---|---|---|
+| ① | 字面量聚合（`return (` / `return [` / `= [`）+ 颜色分量访问器 `*Component` | 104 个文件 → **3 条候选** | 1 条真违规；2 条**不需要**转换 |
+| ② | **枚举所有「含 `Double` 的元组/数组目的地」**（`-> (Double` / `: [Double]` …），逐条读源 | **12 处** | 全是显式 `Double(...)`、`Double` 算术、闭包类型标注或 `Decodable` 字段 ⇒ **0 条新违规** |
+
+两处**看着像、其实不需要转换**的（口径第 4 条的存在理由）：
+
+- `GlassSurfaceTests.swift:22` —— `return (c.redComponent, …)`，但目的地是 `(r: CGFloat, …)`；
+- `ProcessChipLayoutTests.swift:153` —— `let channels = [c.redComponent, …]` **无标注**，
+  推断成 `[CGFloat]`，压根没有 `Double` 目的地。
+
+装置自证：审计脚本自带**正/负样本对照**（`return (c.redComponent…)` 该命中、
+`Double(c.redComponent)` 该命中且标「已转换」、比较语句该不命中），三条都对。
+枚举范围用 `git ls-files --cached --others --exclude-standard`（**含未入库**，理由见 §8.115）。
+
+#### 8.130.5 新守卫：`ImplicitCGFloatConversionTests`
+
+**口径**（违规 = 同一行同时满足四条）：① 是字面量聚合；② 含颜色分量访问器；
+③ **没有**显式转换（`Double(` / `CGFloat(` / `Float(`）；④ **目的地含 `Double`**
+（本行的类型标注，或往上找最近一条带 `->` 的声明行）。
+
+第 ④ 条**必须有**，不是保险：没有它，`GlassSurfaceTests` 与 `ProcessChipLayoutTests`
+会被报成违规 ⇒ 噪音 ⇒ 守卫迟早被人关掉（那才是真损失）。
+
+**已知局限（故意不修，当前实测 0 例）**：只认**单行**字面量（跨行的看不见）；
+只认颜色分量这一个 `CGFloat` 来源（`rect.minX` / `.width` 这类判不出类型）；
+**实参位置不在口径内**（那是 SE-0307 自 Swift 5.5 起就支持的位置，6.4 放宽的是「字面量内部」）。
+
+⚠️ **它钉住的只是「字面量内部」这一半**。别的「新编译器才接受」的写法（新语法、新的隐式转换、
+新的类型推断）仍然只能靠 **CI** 兜 ⇒ 本守卫**不改变**「推后必须看 CI」这条规则的地位，
+也不该被当成它的替代品（已写进守卫的文档注释与账本第 49 行）。
+
+#### 8.130.6 变异：2 条全红 + 基线自证
+
+| # | 变异 | 期望 | 实得 |
+|---|---|---|---|
+| 基线 | 什么都不改 | 绿 | ✅ 绿 |
+| A | 把**真语料**里那一行改回裸元组 | 红，且点名 `OffscreenRender.swift` | ✅ 红 + 点名 |
+| B | 让守卫**忽略目的地判据**（`\|\| true`） | 红，且点名被误报的两个文件 | ✅ 红 + 点名 `GlassSurfaceTests.swift` / `ProcessChipLayoutTests.swift` |
+
+变异 A 证明它**能抓住本次事故**；变异 B 证明**口径第 4 条在真实语料上真的在干活**
+（不是只在合成样本里好看）。每次变异前**先写回原文**，`finally` 还原后 `cmp -s` **逐字节一致**。
+
+⚠️ **自证断言自己也有牙**：把 `scanned > 80` / `componentLines > 20` 临时改成 `> 99999`
+⇒ 两条都红（顺便逼出了真实数字，见下一节）。
+
+#### 8.130.7 计数：`scanned` **60 → 61**，`any` / `fileLevel` **不动**
+
+新增的 `ImplicitCGFloatConversionTests.swift` **没有** `@MainActor`（只读源码、不碰 AppKit）
+⇒ 用 `MainActorBlockingTests` 自己的判据独立重算：`scanned = 61`、`any = 30`、
+`fileLevel = 26`、账本 **26** 条、**双向差集为空**。
+
+⚠️ **本轮在这里栽了一次**：我先在守卫的消息里**猜**了「实测 104 个文件 / 16 行含分量」，
+量出来是 **97 / 33** —— **两个都错**。⇒ 数字必须**量**，别猜（同 §8.96：静态扫描器的错
+多半是**口径**错，而且表面上都能跑出结果）。
+
+#### 8.130.8 变更与验证
+
+| 项 | 结果 |
+|---|---|
+| 门槛（11 道，`--with-tests`） | ✅ **11 道全过**（覆盖率 **65.90%**，**471 条测试 / 60 套件**） |
+| 变异（新守卫 2 条 + 基线 + 自证断言 2 条） | ✅ 全按预期 |
+| 改动的文件 | `OffscreenRender.swift`、`OffscreenRenderParityTests.swift`、**新增** `ImplicitCGFloatConversionTests.swift` |
+| 审计脚本 | `.build/probe/cgfloat/`（gitignore 内的一次性脚本，不进库） |
+
+#### 8.130.9 限定（如实写）
+
+- ⚠️ **守卫不是「本地 = CI」的保证**：它只覆盖「元组/数组字面量内部」这一种形状。
+- ⚠️ **「CI 只报了一处」是弱证据**（批编译会截断后续检查）—— 所以修法是**一律显式**，
+  而不是「只修那一处」。反过来说，**别的文件是否也踩了同一个点，本轮没有直接证据**，
+  只有「口径上不再依赖该转换」这个更强的不变量。
+- ⚠️ **本地无法复现严格行为**（没有旗标）⇒ 这条守卫**替代不了**「推后必须看 CI」。
+- ⚠️ **CI 那次红的成本没量**（一次往返 + 一次推送），只有「红/绿」这个事实。
 
 ## 9. 文件清单
 

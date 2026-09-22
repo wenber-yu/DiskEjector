@@ -146,7 +146,11 @@ enum OffscreenRender {
         guard x >= 0, x < rep.pixelsWide, y >= 0, y < rep.pixelsHigh else { return nil }
         if let buf = PixelBuffer(rep) { return buf.rgb(x: x, y: y) }
         guard let c = rep.colorAt(x: x, y: y) else { return nil }
-        return (c.redComponent, c.greenComponent, c.blueComponent)
+        // ⚠️ 这三个 `Double(...)` **不是冗余**，删了本地照样绿、CI 会红（§8.130）：
+        // `NSColor.redComponent` 是 `CGFloat`，而「元组字面量内部的 CGFloat → Double 隐式转换」
+        // 是 **Swift 6.4 才放宽**的（本地 Xcode 27 / Swift 6.4 接受，CI 的 Xcode 26.6 / Swift 6.3.3 拒绝）。
+        // 2026-09-22 CI run 35761198327 就红在这一行。
+        return (Double(c.redComponent), Double(c.greenComponent), Double(c.blueComponent))
     }
 
     /// 逐像素遍历 `rect`（pt，原点左上；`nil` = 全图），把**非预乘** RGB（0…1）与像素坐标交给 `body`。
@@ -185,7 +189,10 @@ enum OffscreenRender {
             for x in x0..<x1 {
                 for y in y0..<y1 {
                     guard let c = rep.colorAt(x: x, y: y) else { continue }
-                    body(x, y, c.redComponent, c.greenComponent, c.blueComponent)
+                    // 同 ``rgb(_:x:y:)``：显式 `Double(...)`，别依赖隐式转换（§8.130）。
+                    body(
+                        x, y, Double(c.redComponent), Double(c.greenComponent),
+                        Double(c.blueComponent))
                 }
             }
         }

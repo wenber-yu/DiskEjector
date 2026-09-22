@@ -85,6 +85,11 @@ struct OffscreenRenderParityTests {
 
     // MARK: - 参考实现（改动**之前**的写法，逐字照抄）
 
+    // ⚠️ 只有一处**非**逐字：旧写法里 `c.redComponent` 是 `CGFloat`，靠**隐式转换**进 `Double`。
+    // 这里一律补成显式 `Double(...)`（§8.130：那个隐式转换在 Swift 6.3.3 上的行为我**没有证据**，
+    // 而 `Double(x)` 与隐式转换语义完全一致 —— 补上它不改变任何一条断言的含义）。
+    // 对照见 §8.130 的「为什么参考实现也要动」。
+
     private func refInkCount(_ rep: NSBitmapImageRep) -> Int {
         var n = 0
         for x in 0..<rep.pixelsWide {
@@ -106,7 +111,10 @@ struct OffscreenRenderParityTests {
         for x in 0..<rep.pixelsWide {
             for y in 0..<rep.pixelsHigh {
                 guard let c = rep.colorAt(x: x, y: y) else { continue }
-                guard matching(c.redComponent, c.greenComponent, c.blueComponent) else { continue }
+                guard
+                    matching(
+                        Double(c.redComponent), Double(c.greenComponent), Double(c.blueComponent))
+                else { continue }
                 minX = min(minX, x)
                 maxX = max(maxX, x)
                 minY = min(minY, y)
@@ -191,9 +199,13 @@ struct OffscreenRenderParityTests {
             for y in 0..<rep.pixelsHigh {
                 let got = try #require(OffscreenRender.rgb(rep, x: x, y: y), "\(tag)：读不出 (\(x), \(y))")
                 let want = try #require(rep.colorAt(x: x, y: y), "\(tag)：`colorAt` 读不出 (\(x), \(y))")
+                let wantRGB = (
+                    Double(want.redComponent), Double(want.greenComponent),
+                    Double(want.blueComponent)
+                )
                 let d = max(
-                    abs(got.0 - want.redComponent),
-                    max(abs(got.1 - want.greenComponent), abs(got.2 - want.blueComponent)))
+                    abs(got.0 - wantRGB.0),
+                    max(abs(got.1 - wantRGB.1), abs(got.2 - wantRGB.2)))
                 worst = max(worst, d)
                 checked += 1
             }
