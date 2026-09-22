@@ -17,7 +17,11 @@ enum DistributionChannel: String, Sendable, CustomStringConvertible {
     /// Developer ID 签名、官网或 GitHub 直发：可自行实现更新检查（Sparkle 等）。
     case direct
 
-    /// 本地开发或 ad-hoc 签名：无更新渠道。
+    /// 本地开发或 ad-hoc 签名：**非分发渠道**（未公证、不能正式分发）。
+    ///
+    /// ⚠️ **不等于「不能自更新」**（2026-09-22，§8.125 实测）：自签 / ad-hoc 产物上
+    /// Sparkle 的 Autoupdate 安装器**在本机能跑**，不需要 Developer ID。
+    /// 「无更新渠道」说的是**分发**（能不能公证、能不能给用户），不是说自更新跑不起来。
     case development
 
     var description: String { rawValue }

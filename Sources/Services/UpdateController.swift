@@ -625,14 +625,18 @@ final class UpdateController: NSObject, ObservableObject {
     ///
     /// **为什么抽成纯函数**：与 ``isDownloadFailure(phase:error:)`` /
     /// ``isUpdateLocationBlocked(_:)`` 同一个理由 —— 「真的下载成功、真的安装失败」
-    /// 在测试进程里**构造不出来**（QA 是靠真签名 dmg + 本环境安装器起不来才撞到的）。
+    /// 在测试进程里**构造不出来**（QA 是在**用户触发**那条路上撞到安装阶段失败的：
+    /// 真签名 dmg + 码 `4005`，2026-09-22。⚠️ 别把它归给「本环境安装器起不来」——
+    /// §8.125 实测已推翻那个归因：安装器在本机能跑，不需要 Developer ID）。
     /// ⚠️ 单测一律用**字面量**（`3000` / `4005` + 域字符串），别引这里的符号 ——
     /// 同 ``isUpdateLocationBlocked(_:)`` 那条规矩：两边同源就成了「拿常量跟自己比」。
     ///
     /// ## 2026-09-22 追查：3000 段里**哪些码真能到达这里**（源码级，逐行对过）
     ///
     /// QA 造「只翻一个字节、长度不变」的 dmg 去撞验签失败，拿到的码**仍是 4005**。
-    /// 当时只记为「本环境撞不到」。追下去之后结论比那句更强 —— **是结构性到不了**：
+    /// 当时只记为「本环境撞不到」。追下去之后结论比那句更强 ——
+    /// **是结构性到不了（指 3000 段只能由安装器产出；但 §8.125 证明安装器在本机能跑，
+    /// 所以这不是撞不到）**：
     ///
     /// 1. **传递链中途不换码**：`_reportInstallerError`（`SPUInstallerDriver.m:148`）→
     ///    `installerIsRequestingAbortInstallWithError:`（`SPUCoreBasedUpdateDriver.m:353`）→
@@ -657,12 +661,26 @@ final class UpdateController: NSObject, ObservableObject {
     /// `SUPipedUnarchiver.m:181/273/289`、`SUFlatPackageUnarchiver.m:59/61/72`、
     /// `SUUnarchiverNotifier.m:48`）。
     /// ⚠️ **下载阶段不产 3000 段**：`SPUDownloadDriver.m` 只会抛 `:100` / `:264` 的
-    /// `SUDownloadError(2001)` ⇒ **没有任何不经过安装器就能到达 3000 段的路径**。
+    /// `SUDownloadError(2001)` ⇒ **没有任何不经过安装器就能到达 3000 段的路径**
+    /// （ℹ️ 这句**仍成立**：§8.124 第 4 节，未被 §8.125 推翻；它说的是「**必须经过安装器**」，
+    /// 而 §8.125 证明了**安装器在本机能跑** ⇒ 两者不矛盾，反而是互补的）。
     ///
-    /// ⇒ 本环境（ad-hoc 自签 ⇒ 安装器 XPC 连不上，`SPUInstallerDriver.m:190`）**结构性**
+    /// ⇒ ~~本环境（ad-hoc 自签 ⇒ 安装器 XPC 连不上，`SPUInstallerDriver.m:190`）**结构性**
     /// 撞不到 3000 段 —— 不是「这次没撞到」。要真机证据须先让安装器能跑（Developer ID
-    /// 签名 + entitlement）。⚠️ **剩下没验的只剩「解压失败」这一类**，而它仍落在
-    /// `3000..<5000` 区间内 ⇒ 缺这段证据**不会放跑任何错误**，只影响文案精度，不影响分类。
+    /// 签名 + entitlement）~~
+    /// ✅ **2026-09-22 订正（§8.125 实测推翻）**：**安装器在本机能跑、不需要 Developer ID**
+    /// —— 自签身份 `TeamIdentifier=not set` ⇒ `SUCodeSigningVerifier.m:448-451` **不设**
+    /// XPC 校验要求；3000 段的真机证据也已拿到（造「验签能过、解压不能过」的 dmg ⇒
+    /// `SPUInstallerDriver.m:313`「解压时出现错误」，generic 码就是 3000）。
+    /// ⚠️ 当初「装不上」的**真变量不是签名**：app 是**用代码**控制
+    /// `automaticallyDownloadsUpdates`（不直接读 Sparkle 键）⇒ 用户域缺
+    /// `SUAutomaticallyUpdate` ⇒ **只检查、不下载**；启动方式（`open -a` 还是直接 exec）
+    /// **不是变量**（2026-09-22 对照组已证伪）。
+    /// ⚠️ **换签名等于换一条路**：真用 Apple 证书签会设 `(anchor apple generic …)`
+    /// ⇒ helper 必须同为 Apple 签 ⇒ 将来换了签名，这一段要重验。
+    /// ℹ️ 划掉的旧前提**故意留着**（不悄悄删）—— 否则下一段实验会重新踩回来。
+    /// ⇒ 3000 段仍落在 `3000..<5000` 区间内 ⇒ 缺不缺真机证据**都不会放跑任何错误**，
+    /// 只影响文案精度，不影响分类。
     ///
     /// ✅ 有一条**阴性**证据反而支持这段区间：`SUInstallationCanceledError`(4007) /
     /// `SUInstallationAuthorizeLaterError`(4008) 虽然也落在 4000 段，但
