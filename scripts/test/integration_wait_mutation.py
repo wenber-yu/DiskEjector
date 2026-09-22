@@ -32,11 +32,28 @@
 ⇒ `timeout: 5` 的窗口被整个吃掉 ⇒ 第 3 拍**永远没发生**。
 
 ⇒ 守卫里**不许**写「第 N 拍才成立」（N ≥ 3）：那是把机器的调度延迟写进判据。
-现在 ① 改成 `[nil, disk]`（第 **2** 拍 —— 「循环里那拍」与「补查那拍」两条路都在第 2 次
+当时 ① 改成 `[nil, disk]`（第 **2** 拍 —— 「循环里那拍」与「补查那拍」两条路都在第 2 次
 求值拿到盘，所以与调度无关），并新增 ④（`timeout: 0`）钉「超时后那次补查」。
 
 **M4 就是为 ④ 准备的**：删掉补查后，② 的 `polls >= 2` 可能仍然成立（循环自己跑了两拍
 就够了），只有 ④ 会红。
+
+## ⚠️ 第三次实测：**根因修掉了，那条禁令随之作废**（2026-09-23，§8.132）
+
+上面那条「不许写第 N 拍才成立」是**绕过**，不是修好 —— 循环的退出条件仍然是
+`while Date() < deadline`，墙钟说了算。本轮把退出条件换成**轮询预算**（`pollBudget`），
+墙钟降级成安全网（`hardCeilingMS`）⇒ 「迭代次数由截止时间决定」这个前提**不存在了**。
+
+⇒ 三条新变异专门守这一轮的新行为：
+
+- **M5**：退出条件退回纯墙钟 ⇒ 「预算说了算」那条守卫必须红（**这条就是旧 bug 的回归测试**）；
+- **M6**：`stopReason` 的默认值改成 `ceilingHit` ⇒ 「两个出口各有各的名字」必须红；
+- **M7**：把**参考实现**（阳性对照）的墙钟判断拆掉 ⇒ 阳性对照自己必须红 ——
+  否则「新写法成功了」这句话什么都没证明（装置死了与真修好了，输出**逐字相同**）。
+
+⚠️ 同时 M1 / M4 引用的源码文本**逐字更新**过：它们原来整段抄着旧实现，
+改了实现就会「目标片段找不到」⇒ 变异**没落地**，而脚本会把它报成失败（这正是要的行为：
+**先证明变异落地，再判红**）。
 
 ## 用法
 
@@ -74,35 +91,10 @@ MUTATIONS = [
         "M1",
         "`waitForDisk` 退回「只查一次」（模拟 2026-09-21 那次偶发的旧行为）",
         INTEGRATION,
-        """        let started = Date()
-        var polls = 0
-        let deadline = started.addingTimeInterval(timeout)
-        while Date() < deadline {
-            polls += 1
-            if let disk = await probe() {
-                return (
-                    WaitOutcome(ok: true, polls: polls, elapsed: Date().timeIntervalSince(started)),
-                    disk
-                )
-            }
-            // `Task.sleep` 是**让路**（不是 `usleep` 那种同步阻塞）——
-            // 本套件不标 `@MainActor`，但协作线程池上的同步阻塞同样会饿着别的用例（§8.99）。
-            try? await Task.sleep(nanoseconds: 50_000_000)
-        }
-        // 退出循环时可能刚好是最后一拍就绪 —— 再查一次，别把「刚好赶上」误报成超时。
-        polls += 1
-        let found = await probe()
-        return (
-            WaitOutcome(ok: found != nil, polls: polls, elapsed: Date().timeIntervalSince(started)),
-            found
-        )""",
-        """        let started = Date()
-        _ = started.addingTimeInterval(timeout)
-        let found = await probe()
-        return (
-            WaitOutcome(ok: found != nil, polls: 1, elapsed: Date().timeIntervalSince(started)),
-            found
-        )""",
+        """        var stopReason = WaitOutcome.StopReason.budgetExhausted
+        while polls < pollBudget {""",
+        """        var stopReason = WaitOutcome.StopReason.budgetExhausted
+        while polls < 0 {""",
         FILTER_SUITE,
     ),
     (
@@ -126,26 +118,64 @@ MUTATIONS = [
     ),
     (
         "M4",
-        "删掉「超时后那次补查」（`timeout: 0` 时盘就再也拿不到了）",
+        "删掉「放弃后那次补查」（`pollBudget: 0` 时盘就再也拿不到了）",
         INTEGRATION,
         """        // 退出循环时可能刚好是最后一拍就绪 —— 再查一次，别把「刚好赶上」误报成超时。
         polls += 1
         let found = await probe()
         return (
-            WaitOutcome(ok: found != nil, polls: polls, elapsed: Date().timeIntervalSince(started)),
+            WaitOutcome(
+                stopReason: found != nil ? .conditionMet : stopReason, polls: polls,
+                elapsed: Date().timeIntervalSince(started)),
             found
         )""",
         """        return (
-            WaitOutcome(ok: false, polls: polls, elapsed: Date().timeIntervalSince(started)),
+            WaitOutcome(
+                stopReason: stopReason, polls: polls,
+                elapsed: Date().timeIntervalSince(started)),
             nil
         )""",
+        FILTER_SUITE,
+    ),
+    (
+        "M5",
+        "退出条件退回**纯墙钟**（**旧 bug 的回归测试**：§8.118 那次 CI 红的写法）"
+        " ⇒「预算说了算」必须红",
+        INTEGRATION,
+        """        while polls < pollBudget {
+            if Date() >= ceiling {
+                stopReason = .ceilingHit
+                break
+            }
+            polls += 1""",
+        """        while Date() < ceiling {
+            polls += 1""",
+        FILTER_SUITE,
+    ),
+    (
+        "M6",
+        "`stopReason` 的默认值改成 `ceilingHit` ⇒「预算花完」与「安全网到点」就分不开了",
+        INTEGRATION,
+        """        var stopReason = WaitOutcome.StopReason.budgetExhausted
+        while polls < pollBudget {""",
+        """        var stopReason = WaitOutcome.StopReason.ceilingHit
+        while polls < pollBudget {""",
+        FILTER_SUITE,
+    ),
+    (
+        "M7",
+        "把**参考实现**（阳性对照）的墙钟窗口放到无限大 ⇒ 阳性对照自己必须红。"
+        " 它不红，就说明「新写法成功了」这句话什么都没证明（装置死了与真修好了，输出逐字相同）",
+        INTEGRATION,
+        "        while Date() < deadline {",
+        "        while Date() < deadline + 86_400 {",
         FILTER_SUITE,
     ),
 ]
 
 
 def run_tests(filter_expr: str) -> tuple[int, str]:
-    """跑一次 `swift test`（只跑目标用例），返回 (退出码, 原始尾部)。"""
+    """跑一次 `swift test`（只跑目标用例），返回 (退出码, 原始输出)。"""
     proc = subprocess.run(
         ["swift", "test", "--disable-sandbox", "--filter", filter_expr],
         cwd=REPO,
@@ -153,8 +183,22 @@ def run_tests(filter_expr: str) -> tuple[int, str]:
         text=True,
         errors="replace",
     )
-    raw = (proc.stdout or "") + (proc.stderr or "")
-    return proc.returncode, "\n".join(raw.splitlines()[-14:])
+    return proc.returncode, (proc.stdout or "") + (proc.stderr or "")
+
+
+def classify(code: int, raw: str) -> str:
+    """把一次运行判成 `red` / `green` / `invalid`。
+
+    ⚠️ **判据自己也要验**（同 `pixel_read_path_mutation.py` 的模块说明）：**变异体编译不过**
+    与**过滤器一条都没跑到**都会给出非 0 退出码，与「被守卫抓住」**逐字相同** ——
+    必须先排掉。2026-09-23（§8.132）补上这一步：在此之前本脚本只看退出码，
+    于是那两种假红会被**记成成功**，而「装置报绿」的四种可能里正有这两种。
+    """
+    if "error:" in raw:
+        return "invalid（变异体编译不过）"
+    if "Test run with 0 tests" in raw:
+        return "invalid（过滤器一条都没跑到）"
+    return "green" if code == 0 else "red"
 
 
 def main() -> int:
@@ -181,13 +225,22 @@ def main() -> int:
             if not landed:
                 failures.append(f"{name}: 变异没写进去")
                 continue
-            code, tail = run_tests(filter_expr)
-            print(f"[{name}] 原始尾部：\n{tail}")
-            if code == 0:
+            code, raw = run_tests(filter_expr)
+            verdict = classify(code, raw)
+            # 装置自证 ②：打印**原始输出**里的 ✘ 与汇总行，不只打印我的判红结论
+            lines = [ln for ln in raw.splitlines() if ln.startswith("✘") or "Test run with" in ln]
+            print(f"[{name}] 守卫输出（✘ 与汇总行）：")
+            for ln in lines[-8:] or ["（没有任何 ✘ / 汇总行）"]:
+                print(f"        {ln}")
+            print(f"[{name}] 原始尾部：\n" + "\n".join(raw.splitlines()[-4:]))
+            if verdict == "red":
+                print(f"[{name}] ✅ 被抓住（退出码 {code}）")
+            elif verdict == "green":
                 print(f"[{name}] ❌ 仍绿 —— 这条守卫没有牙")
                 failures.append(f"{name}: 仍绿")
             else:
-                print(f"[{name}] ✅ 被抓住（退出码 {code}）")
+                print(f"[{name}] ❌ {verdict} —— 结论作废")
+                failures.append(f"{name}: {verdict}")
         finally:
             # ⚠️ 还原**单独一条**，不挂在可能失败的语句后面；还原后再 cmp 确认
             shutil.copy2(backup, path)

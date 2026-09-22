@@ -21,6 +21,12 @@
 换成 `$results`（**会重放当前值**），阴性对照（没有任何轮次）就会立刻「等到」，
 于是「事件永不发生」这条判据**失去分辨力**。见 §8.127。
 
+⚠️ **2026-09-23 追加第 5 条（§8.132）**：``WaitOutcome`` 的 `ok` 改成从 ``WaitOutcome/StopReason``
+**派生**，且「放弃」必须说清是「看够了」（预算花完）还是「没看够」（撞安全网）。
+两条新变异守它：**M7** 把两种放弃说成同一句话、**M8** 拆掉派生关系（`budgetExhausted` 也报「等到了」）。
+⚠️ 同时 **M1 引用的格式串逐字更新**过 —— 它原来抄着旧的 `String(format:)` 调用，
+改了实现就会「目标片段找不到」⇒ 变异**没落地**（脚本会把它报成失败，这正是要的行为）。
+
 ## 用法
 
 ```bash
@@ -33,7 +39,9 @@ python3 scripts/test/wait_outcome_mutation.py
 - **备份用 `cp`，还原也用 `cp`**：不用 `git checkout`（它会连未提交的改动一起清掉）。
 - **每次变异前先证明它落地了**（回读文件、打印那一行），否则「仍绿」可能只是没改上。
 - **打印被测命令的原始尾部**，不只打印我的判红结论 —— 判据自己也会错。
-- 判红**看退出码**（`swift test` 失败即非 0），不靠 grep 认 ✘ 字符。
+- 判红**看退出码**（`swift test` 失败即非 0），但**先排掉两种假红**：
+  ⚠️ **变异体编译不过**与**过滤器一条都没跑到**的退出码同样非 0，与「被守卫抓住」**逐字相同**
+  ⇒ 由 ``classify`` 判成 `invalid`、**不算通过**（2026-09-23 补，§8.132）。
 - 还原之后 `cmp -s` 再确认一次；还原步骤**不挂在会失败的命令后面**（别用 `&&` 串）。
 """
 
@@ -55,8 +63,11 @@ RESOLVER = REPO / "Sources/Services/ProcessAppResolver.swift"
 # ⚠️ 2026-09-22 更新：`OccupancyStoreTests` 那条**轮询**守卫已换成**等事件**守卫
 # （`等事件的装置必须分开报事件到了与接线断了`）—— 名字变了，过滤器必须跟着变，
 # 否则「跑到了 0 条测试」与「守卫没牙」在退出码上**逐字相同**。
+# ⚠️ 2026-09-23（§8.132）追加第三条：`ok必须由stopReason派生` —— 它断的是
+# `ok` 与 `stopReason` 的**派生关系**、以及「两种放弃各有各的一句话」，正是本轮新增的判据。
 FILTER_WAIT = (
     "等事件的装置必须分开报事件到了与接线断了|等待可执行路径超时时必须报出轮询次数与耗时"
+    "|ok必须由stopReason派生"
 )
 FILTER_BUNDLE = "非app的运行中应用路径不被当成bundle"
 
@@ -66,8 +77,8 @@ MUTATIONS = [
         "M1",
         "`diagnostic` 退化成一句不带数字的空话（正是要修的病）",
         WAIT_OUTCOME,
-        'format: "等了 %.2fs、求值 %d 次，条件%@",\n            elapsed, polls, ok ? "最终成立" : "始终不成立")',
-        'format: "条件%@", ok ? "最终成立" : "始终不成立")',
+        'let head = String(format: "等了 %.2fs、求值 %d 次，条件", elapsed, polls)',
+        'let head = String(format: "条件")',
         FILTER_WAIT,
     ),
     (
@@ -111,11 +122,30 @@ MUTATIONS = [
         "return path",
         FILTER_BUNDLE,
     ),
+    (
+        "M7",
+        "`ceilingHit` 与 `budgetExhausted` 说成**同一句话**（两种放弃又分不开了，§8.132）",
+        WAIT_OUTCOME,
+        """        case .ceilingHit:
+            return head
+                + "始终不成立 —— **没看够**（撞上墙钟安全网）⇒ 是排不上队/环境的问题，别怪被测逻辑\"""",
+        """        case .ceilingHit:
+            return head + "始终不成立 —— **看够了**（轮询预算花完）⇒ 是被测逻辑的问题\"""",
+        FILTER_WAIT,
+    ),
+    (
+        "M8",
+        "`ok` 不再由 `stopReason` 派生（`budgetExhausted` 也会报成「等到了」）",
+        WAIT_OUTCOME,
+        "var ok: Bool { stopReason == .conditionMet }",
+        "var ok: Bool { stopReason != .ceilingHit }",
+        FILTER_WAIT,
+    ),
 ]
 
 
 def run_tests(filter_expr: str) -> tuple[int, str]:
-    """跑一次 `swift test`（只跑目标用例），返回 (退出码, 原始尾部)。"""
+    """跑一次 `swift test`（只跑目标用例），返回 (退出码, 原始输出)。"""
     proc = subprocess.run(
         ["swift", "test", "--disable-sandbox", "--filter", filter_expr],
         cwd=REPO,
@@ -123,8 +153,16 @@ def run_tests(filter_expr: str) -> tuple[int, str]:
         text=True,
         errors="replace",
     )
-    raw = (proc.stdout or "") + (proc.stderr or "")
-    return proc.returncode, "\n".join(raw.splitlines()[-6:])
+    return proc.returncode, (proc.stdout or "") + (proc.stderr or "")
+
+
+def classify(code: int, raw: str) -> str:
+    """把一次运行判成 `red` / `green` / `invalid`（口径见模块说明的「硬规则」）。"""
+    if "error:" in raw:
+        return "invalid（变异体编译不过）"
+    if "Test run with 0 tests" in raw:
+        return "invalid（过滤器一条都没跑到）"
+    return "green" if code == 0 else "red"
 
 
 def main() -> int:
@@ -151,13 +189,22 @@ def main() -> int:
             if not landed:
                 failures.append(f"{name}: 变异没写进去")
                 continue
-            code, tail = run_tests(filter_expr)
-            print(f"[{name}] 原始尾部：\n{tail}")
-            if code == 0:
+            code, raw = run_tests(filter_expr)
+            verdict = classify(code, raw)
+            # 装置自证 ②：打印**原始输出**里的 ✘ 与汇总行，不只打印我的判红结论
+            lines = [ln for ln in raw.splitlines() if ln.startswith("✘") or "Test run with" in ln]
+            print(f"[{name}] 守卫输出（✘ 与汇总行）：")
+            for ln in lines[-8:] or ["（没有任何 ✘ / 汇总行）"]:
+                print(f"        {ln}")
+            print(f"[{name}] 原始尾部：\n" + "\n".join(raw.splitlines()[-4:]))
+            if verdict == "red":
+                print(f"[{name}] ✅ 被抓住（退出码 {code}）")
+            elif verdict == "green":
                 print(f"[{name}] ❌ 仍绿 —— 这条守卫没有牙")
                 failures.append(f"{name}: 仍绿")
             else:
-                print(f"[{name}] ✅ 被抓住（退出码 {code}）")
+                print(f"[{name}] ❌ {verdict} —— 结论作废")
+                failures.append(f"{name}: {verdict}")
         finally:
             # ⚠️ 还原**单独一条**，不挂在可能失败的语句后面；还原后再 cmp 确认
             shutil.copy2(backup, path)

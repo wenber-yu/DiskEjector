@@ -95,9 +95,9 @@ struct IntegrationEjectTests {
             tail = tailProcess
 
             // ⚠️ **等到它出现在 `fetchExternalDisks()` 里**，而不是 `hdiutil attach` 一返回就查 ——
-            // 两者的差别见文件头「为什么必须等」。超时 15s：实测传播延迟在亚秒级，
-            // 15s 足够；真的 15s 都不出现，那是**环境或产品**的问题，必须硬失败。
-            let waited = await Self.waitForDisk(timeout: 15) { await Self.liveTestDisk(at: vol) }
+            // 两者的差别见文件头「为什么必须等」。默认预算 300 拍 ≈ 旧 15s 窗口：实测传播延迟在
+            // 亚秒级，15s 足够；真看够了 300 拍还不出现，那是**环境或产品**的问题，必须硬失败。
+            let waited = await Self.waitForDisk { await Self.liveTestDisk(at: vol) }
             guard let disk = waited.disk else {
                 // ⚠️ 2026-09-21 真红过一次（全量日志 `.build/preflight/门槛8.log`）。
                 // 只写「未找到测试盘」等于没说：至少三种可能，而它们的修法完全不同 ——
@@ -159,29 +159,49 @@ struct IntegrationEjectTests {
     /// 探针必须在超时后**放弃**（而不是挂住），且拍数 ≥ 2（证明是**轮询**，不是「查一次就睡」）。
     /// 见 `等待测试盘的装置必须真的轮询并且能超时`。
     ///
-    /// ⚠️ **注入探针只隔离了「被测逻辑」，没隔离「循环退出条件里的墙钟」**：拍数只有在
-    /// 迭代次数由**条件**决定时才与负载无关。两次求值之间那次 `await` 只保证**下界**
-    /// （CI 上实测 `Task.sleep(50ms)` 拖到 ~6.1s）⇒ 守卫里不许出现「第 N 拍才成立」
-    /// （N ≥ 3）。这条踩坑记录见 §8.118。
+    /// ⚠️ **注入探针只隔离了「被测逻辑」，没隔离「循环退出条件」** —— 2026-09-21 这条守卫
+    /// 自己在 CI 上红过一次（§8.118）：探针 `[nil, nil, disk]` 要求「第 3 拍」，而当时退出
+    /// 条件里的墙钟被**一次** `Task.sleep(50ms)`（runner 上实测拖到 ~6.1s）整个吃掉。
     ///
-    /// 判超时用 `Date()`、报数用 ``WaitOutcome`` —— 与 `ProcessAppResolverTests.waitForExecutablePath`
-    /// 同一口径，别再造第三套。
+    /// ⚠️ **2026-09-23（§8.132）把根因修掉了**：退出条件从「墙钟到点」换成「**看够了次数**」，
+    /// 墙钟降级成安全网。⇒ 那次踩坑的前提（「迭代次数由截止时间决定 ⇒ 拍数随负载变」）
+    /// **已经不存在**，当时那条「守卫里不许写第 N 拍才成立（N ≥ 3）」的禁令随之作废 ——
+    /// 它是**绕过**，不是修好。现在守卫可以直接钉「负载拖长也不误判」，
+    /// 见 `每拍被拖长时不再误报超时`。
+    ///
+    /// 判「谁说了算」用 ``WaitOutcome/StopReason``、报数用 ``WaitOutcome`` ——
+    /// 与 `ProcessAppResolverTests.waitForExecutablePath` 同一口径，别再造第三套。
     ///
     /// ⚠️ **2026-09-22 起用 ``WaitOutcome`` 的只剩这两处**：`OccupancyStoreTests` 那条等待
     /// 换成了**等事件**（``EventWait``）—— 它等的不是「条件成立」，而是「某一轮跑完了」，
     /// 两者的判据完全不同（见 `WaitOutcome.swift` 抬头）。这里仍然是**真在等条件**，留在这一族。
+    ///
+    /// | 参数 | 含义 | 与负载的关系 |
+    /// |---|---|---|
+    /// | `pollBudget` | **看几次**（默认 300 ≈ 旧 15s 窗口 / 50ms） | **无关** —— 它决定退出 |
+    /// | `hardCeilingMS` | **最长挂多久**（安全网，只防挂死） | 有关，但只在病态时才到点 |
     private static func waitForDisk(
-        timeout: TimeInterval = 15,
+        pollBudget: Int = 300,
+        hardCeilingMS: Int = 45_000,
         probe: @Sendable () async -> DiskInfo?
     ) async -> (outcome: WaitOutcome, disk: DiskInfo?) {
         let started = Date()
+        let ceiling = started.addingTimeInterval(Double(hardCeilingMS) / 1000)
         var polls = 0
-        let deadline = started.addingTimeInterval(timeout)
-        while Date() < deadline {
+        // ⚠️ 默认值就是「预算花完」：`while` 的条件先判，所以「预算已满」时
+        // 绝不会被误报成 `ceilingHit` —— 两个出口在结构上互斥。
+        var stopReason = WaitOutcome.StopReason.budgetExhausted
+        while polls < pollBudget {
+            if Date() >= ceiling {
+                stopReason = .ceilingHit
+                break
+            }
             polls += 1
             if let disk = await probe() {
                 return (
-                    WaitOutcome(ok: true, polls: polls, elapsed: Date().timeIntervalSince(started)),
+                    WaitOutcome(
+                        stopReason: .conditionMet, polls: polls,
+                        elapsed: Date().timeIntervalSince(started)),
                     disk
                 )
             }
@@ -193,7 +213,9 @@ struct IntegrationEjectTests {
         polls += 1
         let found = await probe()
         return (
-            WaitOutcome(ok: found != nil, polls: polls, elapsed: Date().timeIntervalSince(started)),
+            WaitOutcome(
+                stopReason: found != nil ? .conditionMet : stopReason, polls: polls,
+                elapsed: Date().timeIntervalSince(started)),
             found
         )
     }
@@ -330,40 +352,26 @@ struct IntegrationEjectTests {
     /// 而后者会让这条测试重新变成 2026-09-21 那次偶发（那次的病根正是「只查一次」）。
     /// 探针可注入，所以这条守卫**不碰任何真磁盘**、恒可运行。
     ///
-    /// ⚠️ **但探针只隔离了被测逻辑，没隔离「退出条件里的墙钟」** —— 2026-09-21 这条守卫
-    /// 自己在 CI 上红过一次（§8.118）：`[nil, nil, disk]` + `timeout: 5` 要求「第 3 拍」，
-    /// 而两次求值之间那次 `await` 只保证**下界**（runner 上实测拖了 ~6.1s）⇒ 第 3 拍永远没发生。
-    /// ⇒ 下面每条断言都只用**第 1 或第 2 拍**成立，见各条的注释。
+    /// ⚠️ **探针只隔离了被测逻辑，没隔离「循环退出条件」** —— 2026-09-21 这条守卫自己在 CI 上
+    /// 红过一次（§8.118）：`[nil, nil, disk]` 要求「第 3 拍」，而当时退出条件里的墙钟被
+    /// **一次** `await`（runner 上实测拖了 ~6.1s）整个吃掉 ⇒ 第 3 拍永远没发生。
+    /// ⇒ 当时只好把断言退到「第 1 或第 2 拍」。
+    ///
+    /// ⚠️ **2026-09-23（§8.132）根因修掉了**：退出条件换成**轮询预算**，墙钟只当安全网。
+    /// ⇒「第 N 拍才成立」不再与负载挂钩（见 `每拍被拖长时不再误报超时`，那里用**第 3 拍**）。
+    /// 下面 ① 仍用第 2 拍，因为它钉的是**另一件事**：「求值了不止一次」。
     @Test func 等待测试盘的装置必须真的轮询并且能超时() async {
-        let probePath = "/Volumes/DiskEjectorWaitProbe"
-        let disk = DiskInfo(
-            id: probePath,
-            bsdName: "disk9s1",
-            volumeName: "DiskEjectorWaitProbe",
-            mountPath: probePath,
-            totalBytes: 1_000,
-            usedBytes: 400,
-            freeBytes: 600,
-            deviceProtocol: "USB",
-            deviceModel: nil
-        )
+        let disk = Self.probeDisk
 
         // ① 第 1 拍 nil、第 2 拍给盘 —— 必须等到，且恰好 2 拍。
         //
-        // ⚠️ **别写「第三拍才出现」（`[nil, nil, disk]`）** —— 2026-09-21 这条守卫在 CI 上
-        // 就是这么红的：两次求值之间那次 `await`（`Task.sleep` 或 actor 跳转）**只保证下界**，
-        // runner 上实测拖了 ~6.1s ⇒ `timeout: 5` 的窗口被整个吃掉 ⇒ 第 3 拍**永远没发生**
-        // （实得 `WaitOutcome(ok: false, polls: 2, elapsed: 6.14)`）。见 §8.118。
-        //
-        // 判据：``WaitOutcome/polls`` 只有「循环的迭代次数由**条件**决定」时才与负载无关；
-        // 一旦**退出由截止时间决定**，它就变成负载相关。
-        //
-        // 为什么 2 拍是安全的：`[nil, disk]` 下**两条路都在第 2 次求值拿到盘** ——
+        // 为什么 2 拍是**结构上**确定的（与调度无关）：`[nil, disk]` 下两条路都在第 2 次
+        // 求值拿到盘 ——
         //   快路：循环里第 1 拍 nil → 睡 → 第 2 拍拿到盘（在循环里 `return`）；
-        //   慢路：第 1 拍 nil → 睡过头 ⇒ 退出循环 → **超时后那次补查**（也是第 2 拍）拿到盘。
+        //   慢路：第 1 拍 nil → 睡过头 ⇒ 退出循环 → **补查**（也是第 2 拍）拿到盘。
         // ⇒ `polls == 2` 与调度无关，而「求值了不止一次」仍被钉住（M1 变异仍红）。
         let late = ScriptedProbe([nil, disk])
-        let waited = await Self.waitForDisk(timeout: 5) { await late.next() }
+        let waited = await Self.waitForDisk { await late.next() }
         #expect(waited.outcome.ok, "第 2 拍才出现的盘没被等到：\(waited.outcome.diagnostic)")
         #expect(
             waited.disk == disk,
@@ -371,29 +379,35 @@ struct IntegrationEjectTests {
         #expect(
             waited.outcome.polls == 2,
             "第 1 拍 nil、第 2 拍给盘 ⇒ 恰好 2 次求值，实得 \(waited.outcome.polls)")
+        #expect(
+            waited.outcome.stopReason == .conditionMet,
+            "等到了 ⇒ 必须是「条件成立」，实得 \(waited.outcome.stopReason)")
 
         // ② 恒不出现：必须**放弃**（不挂住），且拍数 ≥ 2。
         let never = ScriptedProbe([])
-        let timedOut = await Self.waitForDisk(timeout: 0.1) { await never.next() }
+        let timedOut = await Self.waitForDisk(pollBudget: 1) { await never.next() }
         #expect(timedOut.disk == nil, "恒不出现却拿到了盘：\(String(describing: timedOut.disk))")
         #expect(!timedOut.outcome.ok, "恒不出现 ⇒ `ok` 必须是 false")
         #expect(
             timedOut.outcome.polls >= 2,
-            "至少要有「循环里那次」与「超时后那次补查」两次求值，实得 \(timedOut.outcome.polls)")
+            "至少要有「循环里那次」与「放弃后那次补查」两次求值，实得 \(timedOut.outcome.polls)")
+        #expect(
+            timedOut.outcome.stopReason == .budgetExhausted,
+            "预算 1 拍花完而放弃 ⇒ 必须报「看够了」，实得 \(timedOut.outcome.stopReason)")
 
         // ③ 第 1 拍就出现 ⇒ 恰好 1 拍。**反向对照**：证明 ① 的 `polls == 2` 不是恒真。
         let immediate = ScriptedProbe([disk])
-        let fast = await Self.waitForDisk(timeout: 5) { await immediate.next() }
+        let fast = await Self.waitForDisk { await immediate.next() }
         #expect(fast.outcome.polls == 1, "第 1 拍就出现 ⇒ 恰好 1 拍，实得 \(fast.outcome.polls)")
         #expect(fast.disk != nil, "第 1 拍就出现的盘必须被带出来")
 
-        // ④ `timeout: 0` ⇒ **循环体一次都不跑**，盘只能靠「超时后那次补查」拿到。
+        // ④ `pollBudget: 0` ⇒ **循环体一次都不跑**，盘只能靠「放弃后那次补查」拿到。
         //
         // 这条钉的是 ② 钉不住的那一半：② 的 `polls >= 2` 在「循环自己跑了两拍」时同样成立，
         // 所以**把补查整块删掉不会有任何东西变红**（M4）。这里循环没有机会跑，
         // 拿到盘就只可能是补查干的 ⇒ `polls == 1` 与调度无关（循环跑没跑都是 1）。
         let noLoop = ScriptedProbe([disk])
-        let caughtUp = await Self.waitForDisk(timeout: 0) { await noLoop.next() }
+        let caughtUp = await Self.waitForDisk(pollBudget: 0) { await noLoop.next() }
         #expect(
             caughtUp.disk != nil,
             "循环没机会跑时，盘必须靠补查拿到（补查被删就退化成 nil）")
@@ -405,6 +419,141 @@ struct IntegrationEjectTests {
             "循环没跑 + 补查 1 次 ⇒ 恰好 1 拍，实得 \(caughtUp.outcome.polls)")
     }
 
+    /// **「墙钟不再说了算」的守卫**（2026-09-23，§8.132）—— 这条待办的收官判据。
+    ///
+    /// 要证的是：**每拍被拖长**（2026-09-21 CI 上实测一次 `Task.sleep(50ms)` 拖到 ~6.1s）
+    /// 不再让等待**误报超时**，而只是让它**多等一会儿**。
+    ///
+    /// ## 装置自证：拿「改动前的写法」当阳性对照
+    ///
+    /// 只断言「新写法成功了」**证明不了任何事** —— 它可能是这份探针根本没制造出旧状态
+    /// （本仓库最贵的那条坑：装置报绿有三种可能，其中一种是**装置死了**）。
+    /// ⇒ 这里**同时跑一份参考实现**（``refWallClockOnly``，逐字保留改动前的退出条件：
+    /// 只看墙钟），给它一个**比每拍耗时还短的窗口**：它**必须失败**。
+    /// 两边用**同一份探针脚本**，差别只有退出条件。
+    ///
+    /// ⚠️ 这条也是「**N ≥ 3 的守卫**」——§8.118 那条禁令（守卫里不许写「第 N 拍才成立」，
+    /// N ≥ 3）的**前提**是「退出由截止时间决定 ⇒ 拍数随负载变」，而那个前提已经不存在。
+    /// 禁令不是被无视，是**随根因一起作废**（订正见 §8.132）。
+    @Test func 每拍被拖长时不再误报超时() async {
+        let disk = Self.probeDisk
+
+        // ① 参考实现（改动前的写法）：窗口 10ms ≪ 每拍 50ms ⇒ 只够看 1 拍，第 3 拍**永远没发生**。
+        let refProbe = ScriptedProbe([nil, nil, disk])
+        let ref = await Self.refWallClockOnly(timeout: 0.01) {
+            try? await Task.sleep(nanoseconds: 50_000_000)
+            return await refProbe.next()
+        }
+        #expect(
+            !ref.outcome.ok,
+            """
+            阳性对照：参考实现（纯墙钟）在这份脚本下**必须**失败 —— 它不失败，就说明这份探针
+            根本没制造出旧状态，下面 ② 的结论一并作废
+            """)
+        #expect(
+            ref.outcome.polls == 2,
+            "参考实现：窗口只够 1 拍 + 补查 1 拍 ⇒ 恰好 2 拍，实得 \(ref.outcome.polls)")
+
+        // ② 新写法：同一份脚本，预算 40 拍 ⇒ 第 3 拍照常发生 ⇒ 等到。
+        let newProbe = ScriptedProbe([nil, nil, disk])
+        let now = await Self.waitForDisk(pollBudget: 40, hardCeilingMS: 30_000) {
+            try? await Task.sleep(nanoseconds: 50_000_000)
+            return await newProbe.next()
+        }
+        #expect(
+            now.outcome.ok,
+            "每拍被拖长 ⇒ 应该**多等一会儿**，不该误报超时：\(now.outcome.diagnostic)")
+        #expect(
+            now.outcome.polls == 3,
+            "第 3 拍才给盘 ⇒ 恰好 3 次求值，实得 \(now.outcome.polls)")
+        #expect(now.disk == disk, "等到的那块盘必须带出来")
+    }
+
+    /// **两个出口都要有牙**（2026-09-23，§8.132）：预算花完（看够了）与安全网到点（没看够）
+    /// 必须**各自可被观测** —— 否则「分清真因」只是文档里的一句话。
+    ///
+    /// ⚠️ ① 的前提是「一次 50ms 的 sleep 不会拖到 6s」：安全网 6s 对每拍 50ms 留了 **120×**
+    /// 余量（CI 实测过的最坏值是 ~6.1s，也就是说真撞上时环境已经病态 —— 那时它红是对的）。
+    @Test func 放弃时要分清看够了与没看够() async {
+        let never = ScriptedProbe([])
+
+        // ① **预算说了算**：预算 2 拍、安全网 6s ⇒ 停下来的原因只可能是预算
+        //    （2 拍 ≈ 100ms，离 6s 差两个数量级）。
+        let exhausted = await Self.waitForDisk(pollBudget: 2, hardCeilingMS: 6_000) {
+            await never.next()
+        }
+        #expect(
+            exhausted.outcome.polls == 3,
+            "预算 2 拍 + 补查 1 拍 ⇒ 恰好 3 拍，实得 \(exhausted.outcome.polls)")
+        #expect(
+            exhausted.outcome.stopReason == .budgetExhausted,
+            "预算先到 ⇒ 必须报「看够了」，实得 \(exhausted.outcome.stopReason)")
+
+        // ② **安全网兜底**：预算 100 拍、安全网 200ms ⇒ 拍数必须**远小于**预算。
+        //    这条判据刻意写成「小于」而不是某个具体拍数 —— 撞安全网时拍数**本来就**随负载变
+        //    （那正是「没看够」的定义），钉死数字等于把调度延迟写进判据。
+        let starved = await Self.waitForDisk(pollBudget: 100, hardCeilingMS: 200) {
+            await never.next()
+        }
+        #expect(
+            starved.outcome.stopReason == .ceilingHit,
+            "安全网先到 ⇒ 必须报「没看够」，实得 \(starved.outcome.stopReason)")
+        #expect(
+            starved.outcome.polls < 100,
+            "撞安全网时拍数必须**远小于**预算 —— 这正是「没看够」的判据，实得 \(starved.outcome.polls)")
+        #expect(!starved.outcome.ok, "恒不出现 ⇒ `ok` 必须是 false")
+    }
+
+    /// 守卫用的**合成探针盘**：不碰任何真磁盘，恒可运行。
+    private static let probeDisk = DiskInfo(
+        id: "/Volumes/DiskEjectorWaitProbe",
+        bsdName: "disk9s1",
+        volumeName: "DiskEjectorWaitProbe",
+        mountPath: "/Volumes/DiskEjectorWaitProbe",
+        totalBytes: 1_000,
+        usedBytes: 400,
+        freeBytes: 600,
+        deviceProtocol: "USB",
+        deviceModel: nil
+    )
+
+    /// **参考实现 = 改动前的写法**（2026-09-23，§8.132）：退出条件**只看墙钟**。
+    ///
+    /// ⚠️ **只用来当阳性对照**，不是备用实现 —— 生产路径一律走 ``waitForDisk``。
+    /// 保留它的理由见 `每拍被拖长时不再误报超时`：「新写法成功了」这句话只有在
+    /// **旧写法在同一份脚本下会失败**时才成立。
+    ///
+    /// ⚠️ 它的 `stopReason` 在放弃时是 ``WaitOutcome/StopReason/ceilingHit`` ——
+    /// 对这份实现来说**语义是对的**：停下来的是墙钟，不是「看够了」。
+    private static func refWallClockOnly(
+        timeout: TimeInterval,
+        probe: @Sendable () async -> DiskInfo?
+    ) async -> (outcome: WaitOutcome, disk: DiskInfo?) {
+        let started = Date()
+        var polls = 0
+        let deadline = started.addingTimeInterval(timeout)
+        while Date() < deadline {
+            polls += 1
+            if let disk = await probe() {
+                return (
+                    WaitOutcome(
+                        stopReason: .conditionMet, polls: polls,
+                        elapsed: Date().timeIntervalSince(started)),
+                    disk
+                )
+            }
+            try? await Task.sleep(nanoseconds: 50_000_000)
+        }
+        polls += 1
+        let found = await probe()
+        return (
+            WaitOutcome(
+                stopReason: found != nil ? .conditionMet : .ceilingHit, polls: polls,
+                elapsed: Date().timeIntervalSince(started)),
+            found
+        )
+    }
+
     /// **失败诊断的守卫**：那段文本必须带上「在找哪个卷」、求值次数，以及**四条证据**。
     ///
     /// 上面那条覆盖不到这里 —— `notFoundDiagnostic` 只在**真失败**时才被调用，
@@ -412,7 +561,7 @@ struct IntegrationEjectTests {
     @Test func 未找到测试盘时的诊断必须带上四条证据与数字() {
         let vol = "/Volumes/DiskEjectorNotThere"
         let message = Self.notFoundDiagnostic(
-            vol: vol, outcome: WaitOutcome(ok: false, polls: 7, elapsed: 1.25))
+            vol: vol, outcome: WaitOutcome(stopReason: .budgetExhausted, polls: 7, elapsed: 1.25))
 
         #expect(message.contains(vol), "诊断里没有「在找哪个卷」：\(message)")
         #expect(message.contains("7"), "诊断里没有求值次数（``WaitOutcome`` 的口径）：\(message)")

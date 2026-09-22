@@ -262,25 +262,61 @@ struct ProcessAppResolverTests {
     /// 「知道没等到」，没做到「知道为什么没等到」。失败时 `ready` 为 false 同样分不清
     /// 「进程真没起来」与「主 actor 被别的用例占住、这几拍没轮到」——
     /// 现在带上「等了多久、求值几次」，两条路的区别一眼可见（口径见 ``WaitOutcome``）。
+    ///
+    /// ## ⚠️ 2026-09-23：退出条件从「墙钟窗口」换成「轮询预算」（§8.132）
+    ///
+    /// 原来这个函数收 `timeoutMS: Int = 2000`，循环是 `while Date() < deadline`。
+    /// **那是个墙钟窗口，不是「愿意看几次」** —— 而 CI 上**一次** `Task.sleep(50ms)`
+    /// 实测能拖到 ~6.1s（§8.118）⇒ 整个窗口被一次睡眠吃掉，第 2 拍都轮不到
+    /// ⇒ 「进程其实早就绪了」被报成「等不到」（`polls: 2, elapsed: 6.14` 就是这个形状）。
+    ///
+    /// ⇒ 现在拆成两个参数，各管一件事：
+    ///
+    /// | 参数 | 含义 | 与负载的关系 |
+    /// |---|---|---|
+    /// | `pollBudget` | **看几次**（默认 40 ≈ 旧 2s 窗口 / 50ms） | **无关** —— 它决定退出 |
+    /// | `hardCeilingMS` | **最长挂多久**（安全网，只防挂死） | 有关，但它只在病态时才到点 |
+    ///
+    /// 于是「进程没就绪」与「我排不上队」在 ``WaitOutcome/stopReason`` 上**分得开**：
+    /// 前者是 ``WaitOutcome/StopReason/budgetExhausted``（看够了），
+    /// 后者是 ``WaitOutcome/StopReason/ceilingHit``（没看够）。
+    ///
+    /// ⚠️ **默认预算 40 是「与旧行为等价」的取值**（40 × 50ms = 2s）：未加载时这个函数
+    /// 的耗时与改前**一样**，改的只是**谁说了算**。别把它当成新门槛。
     @discardableResult
     nonisolated static func waitForExecutablePath(
-        pid: Int32, timeoutMS: Int = 2000
+        pid: Int32,
+        pollBudget: Int = 40,
+        hardCeilingMS: Int = 20_000
     ) async -> WaitOutcome {
         let started = Date()
+        let ceiling = started.addingTimeInterval(Double(hardCeilingMS) / 1000)
         var polls = 0
-        let deadline = started.addingTimeInterval(Double(timeoutMS) / 1000)
-        while Date() < deadline {
+        // ⚠️ 默认值就是「预算花完」：`while` 的条件先判，所以「预算已满」时
+        // 绝不会被误报成 `ceilingHit`（两个出口在结构上互斥，见下面补查那段）。
+        var stopReason = WaitOutcome.StopReason.budgetExhausted
+        while polls < pollBudget {
+            if Date() >= ceiling {
+                stopReason = .ceilingHit
+                break
+            }
             polls += 1
             if ProcessAppResolver.executablePath(forPid: pid) != nil {
                 return WaitOutcome(
-                    ok: true, polls: polls, elapsed: Date().timeIntervalSince(started))
+                    stopReason: .conditionMet, polls: polls,
+                    elapsed: Date().timeIntervalSince(started))
             }
             try? await Task.sleep(nanoseconds: 50_000_000)
         }
         // 退出循环时可能刚好是最后一拍就绪 —— 再查一次，别把「刚好赶上」误报成超时。
         polls += 1
-        let ok = ProcessAppResolver.executablePath(forPid: pid) != nil
-        return WaitOutcome(ok: ok, polls: polls, elapsed: Date().timeIntervalSince(started))
+        if ProcessAppResolver.executablePath(forPid: pid) != nil {
+            return WaitOutcome(
+                stopReason: .conditionMet, polls: polls,
+                elapsed: Date().timeIntervalSince(started))
+        }
+        return WaitOutcome(
+            stopReason: stopReason, polls: polls, elapsed: Date().timeIntervalSince(started))
     }
 
     // MARK: - ① 可执行路径 → 最外层 .app
@@ -575,16 +611,24 @@ struct ProcessAppResolverTests {
     ///
     /// ⚠️ 样本是**确定性**的，不依赖机器快慢，也不依赖被测逻辑：
     /// - 正路：一个**不可能存在**的 PID（`kern.maxproc` 上限约 10 万，所以 `999_999` 必不存在）
-    ///   + 极短超时 ⇒ 一定超时，且轮询次数下界由代码结构决定；
+    ///   + **极小的轮询预算**（1 拍）⇒ 一定放弃，且轮询次数下界由代码结构决定；
     /// - 反路（阴性对照）：**当前进程自己的 PID** ⇒ 第一次求值就成立，恰好 1 拍。
+    ///
+    /// ⚠️ **2026-09-23（§8.132）**：参数从 `timeoutMS: 50` 换成 `pollBudget: 1`。
+    /// 旧写法是「墙钟窗口 50ms」，而墙钟会被调度拖长（一次 `Task.sleep(50ms)` 在 CI 上
+    /// 实测能拖到 ~6.1s）⇒ 那条 `elapsed >= 0.05` 是**被拖出来的**，不是「窗口到了」。
+    /// 现在预算 1 拍 ⇒ 恰好一次 50ms 睡眠 ⇒ 那条断言量的才是它自己说的话。
     @Test func 等待可执行路径超时时必须报出轮询次数与耗时() async {
-        let timedOut = await Self.waitForExecutablePath(pid: 999_999, timeoutMS: 50)
+        let timedOut = await Self.waitForExecutablePath(pid: 999_999, pollBudget: 1)
 
         #expect(!timedOut.ok, "999999 不可能有进程，`ok` 必须是 false")
         #expect(
             timedOut.polls >= 2,
-            "至少要有「循环里那次」与「超时后那次补查」两次求值，实得 \(timedOut.polls)")
-        #expect(timedOut.elapsed >= 0.05, "墙钟不小于超时值，实得 \(timedOut.elapsed)")
+            "至少要有「循环里那次」与「放弃后那次补查」两次求值，实得 \(timedOut.polls)")
+        #expect(timedOut.elapsed >= 0.05, "预算 1 拍 ⇒ 恰好一次 50ms 睡眠，实得 \(timedOut.elapsed)")
+        #expect(
+            timedOut.stopReason == .budgetExhausted,
+            "预算花完而放弃 ⇒ 必须是「看够了」，实得 \(timedOut.stopReason)")
         // ⚠️ 只断言 ok/polls/elapsed **还不够**：`diagnostic` 才是给下一个排查的人看的那句话，
         // 而它完全可能被写成一句不带数字的空话（那样等于没改）。
         #expect(
@@ -595,18 +639,49 @@ struct ProcessAppResolverTests {
         // 那句话（``expectArrived`` 用它当 `#expect` 的消息），它完全可能把 `diagnostic`
         // 整个丢掉 —— 那样等于没改，而且不会有任何东西变红。所以这里直接断言拼出来的结果。
         // （断言只挑**与 locale 无关**的部分：`%.2f` 的小数点在某些 locale 下会变逗号。）
-        let note = WaitOutcome(ok: false, polls: 7, elapsed: 1.25).failureNote("在等 X")
+        let note = WaitOutcome(stopReason: .budgetExhausted, polls: 7, elapsed: 1.25)
+            .failureNote("在等 X")
         #expect(
             note.contains("在等 X") && note.contains("7") && note.contains("s、"),
             "失败信息没把「在等什么」与数字拼在一起：\(note)")
 
         // 阴性对照（反向）：上面那条 `polls >= 2` 必须能区分「等到了」与「没等到」，
         // 否则它可能只是恒真。
-        let immediate = await Self.waitForExecutablePath(pid: getpid(), timeoutMS: 2000)
+        let immediate = await Self.waitForExecutablePath(pid: getpid())
         #expect(immediate.ok, "当前进程自己的可执行路径必须取得到")
         #expect(immediate.polls == 1, "第一次求值就成立 ⇒ 恰好 1 拍，实得 \(immediate.polls)")
         #expect(
+            immediate.stopReason == .conditionMet,
+            "等到了 ⇒ 必须是「条件成立」，实得 \(immediate.stopReason)")
+        #expect(
             !immediate.diagnostic.contains("始终不成立"),
             "成立的等待不该报「始终不成立」：\(immediate.diagnostic)")
+    }
+
+    /// **`ok` 必须是从 ``WaitOutcome/StopReason`` 派生的**（2026-09-23，§8.132）。
+    ///
+    /// 为什么值得单独一条：`ok` 与 `stopReason` 表达的是**同一件事**（条件到底成没成立）。
+    /// 一旦有人把它们写成两个各自赋值的存储属性，就会出现「`ok == true` 但
+    /// `stopReason == .ceilingHit`」这种自相矛盾的组合 —— 而**没有任何东西会红**。
+    /// 这条守卫用三个构造样本把「派生关系」钉死。
+    @Test func ok必须由stopReason派生() {
+        let met = WaitOutcome(stopReason: .conditionMet, polls: 1, elapsed: 0.01)
+        let exhausted = WaitOutcome(stopReason: .budgetExhausted, polls: 40, elapsed: 2.0)
+        let starved = WaitOutcome(stopReason: .ceilingHit, polls: 2, elapsed: 20.0)
+
+        #expect(met.ok, "`conditionMet` ⇒ `ok` 必须为 true")
+        #expect(!exhausted.ok && !starved.ok, "两种「放弃」⇒ `ok` 必须为 false")
+
+        // ⚠️ **两种放弃必须说成两句不同的话**：它们在 ok/polls/elapsed 上都可能逐字相同，
+        // 只有这句话能把下一个排查的人指向正确的方向（被测逻辑 vs 环境）。
+        #expect(
+            exhausted.diagnostic.contains("看够了") && !exhausted.diagnostic.contains("没看够"),
+            "「预算花完」必须说成「看够了」：\(exhausted.diagnostic)")
+        #expect(
+            starved.diagnostic.contains("没看够") && !starved.diagnostic.contains("看够了"),
+            "「撞上安全网」必须说成「没看够」：\(starved.diagnostic)")
+        #expect(
+            exhausted.diagnostic != starved.diagnostic,
+            "两种放弃说成了同一句话 ⇒ 分辨力为零：\(exhausted.diagnostic)")
     }
 }
