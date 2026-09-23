@@ -57,6 +57,29 @@ jobs:
       - name: 代码门槛（scripts/preflight.sh --with-tests）
         run: ./scripts/preflight.sh --with-tests
 
+      # ⚠️ **绿的时候也要把门槛日志传出来**（2026-09-23，账本 #51）。
+      #
+      # 门槛**成功**时 `run_gate` 只回显尾部 3 行，而测试全量输出落在
+      # `.build/preflight/测试全量.log`（`coverage.sh` 写，跑完不删）⇒
+      # **逐条 `passed after` 一行都不进 CI 日志**（实测 `gh api .../logs`
+      # 的 zip 解开只有 298 行、`passed after` **0 条**）⇒
+      # 「CI 上那条测试慢了多少」永远只能靠再造一次失败去看（§8.135 就栽在这上面）。
+      #
+      # ⇒ 这里当 artifact 上传，事后 `./run.sh ci --logs` 下载下来 grep。
+      #
+      # ⚠️ `if: always()` **不能省**：门槛一红，后面的步骤默认全被跳过，
+      #    而**红的那一轮恰恰最需要日志** —— 少了它，这条只对绿跑生效。
+      #    （绿跑才是这次要补的那一半；红跑本来就有 `--log-failed`。）
+      - name: 上传门槛日志（含绿跑的逐条测试耗时）
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: preflight-logs
+          path: .build/preflight/
+          # 有就传、没有也别把 CI 判红：日志不是判据，缺了只该提醒。
+          if-no-files-found: warn
+          retention-days: 7
+
       # 打包验证：确认 .app 能构建出来且签名步骤不报错。
       # 提前发现 Info.plist / 资源拷贝 / codesign 环节的问题，
       # 而不是等到准备上架时才发现打不出包。

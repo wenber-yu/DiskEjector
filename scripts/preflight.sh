@@ -103,6 +103,11 @@ trap 'rm -f "$LOG"' EXIT
 # 留一份持久副本 ⇒ 事后追查**不依赖**当时的环境变量。`.build/` 已被 gitignore。
 KEEP_DIR="$REPO_ROOT/.build/preflight"
 mkdir -p "$KEEP_DIR"
+# ⚠️ **必须 export**（2026-09-23，账本 #51）：`coverage.sh` 从环境变量里**派生**
+#    自己那份测试全量日志的落点，从而与这里**同一处**（不另写一份路径 ⇒ 不会漂）。
+#    不 export 的话，它会退回自己的默认值 —— 两边各写一个目录，正是「同一事实
+#    写两处」那个病。单独跑 `coverage.sh` 时没有这个变量 ⇒ 才走默认值那一支。
+export KEEP_DIR
 
 FAILED=0
 GATE_NO=0

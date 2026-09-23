@@ -5297,7 +5297,7 @@ Sparkle 会不会装上这次更新 —— 依据是 `showUpdateFound` 的文档
 | 48 | ~~⚠️ **离屏渲染里仍有 7 个文件逐像素 `colorAt`**（`TitleBarBaselineTests` / `EmptyStateTests` / `GlassSurfaceTests` / `TrafficLightAlignmentTests` / `ProcessChipLayoutTests` / `SettingsLayoutTests` / `VisualStyleTests`）。§8.129 只换了最重的那条（`MainWindowDiskListTests` **8.792s → 1.965s**）；这 7 个的扫描区域小（毫秒级），所以**没动**~~ ⚠️ **「毫秒级」这句原话是错的**（§8.131.1）：原语探针实测单次 `colorAt` **0.773 µs**，按 6 处循环的矩形面积算合计约 **186 万次** ⇒ **约 1.4 秒**，与「毫秒级」差**三个数量级**。成因是**推出来的、不是量出来的** | ✅ **已关闭**（§8.131） | §8.129 / **§8.131** | ✅ **已关闭（2026-09-23，§8.131）**：6 个调用方收敛进 `OffscreenRender`（`TitleBarBaselineTests` 顺手删掉**两份自带出图块**、`GlassSurfaceTests` 删掉**第三份**）；**同一会话内 A/B**（各三次取均值）整轮 **9.156s → 7.590s**（净省 **1.566s / 约 17%**），两组区间不重叠。新增守卫 `PixelReadPathTests`（两条规则 + 双向棘轮 + 装置自证，变异 **6 红**）。⚠️ 过程中抓到一个**真 bug**：公共遍历是 **x 外层**，「扫到的第一个」的含义从「最小 y」变成「最左那一列自己的最小 y」—— `first` 从 `19.5` 悄悄变成 `51.0`，**照样是个合理的数**、没有任何东西会红（修法：一律 `min`/`max` 累积）。ℹ️ 顺带登记两处**产品代码**漏项（`WindowSelfCheck.swift:191` / `:297`）—— 决定**登记不收敛**（读的是 `CGWindowListCreateImage` 的真机截图、不在测试 target） |
 | 49 | ⚠️ **「本地门槛全绿」≠「CI 绿」的第三类成因：本地编译器比 CI 新** —— 2026-09-22 CI run `35761198327` 红在 `OffscreenRender.swift` 的一行**元组返回**上（`return (c.redComponent, …)`，目的地 `(Double, Double, Double)?`）。「元组字面量内部的 `CGFloat` → `Double` 隐式转换」是 **Swift 6.4 才放宽**的：本地 Xcode 27 / **6.4 接受**，CI 的 Xcode 26.6 / **6.3.3 拒绝**；同一个包、同一 `swiftLanguageModes: [.v6]`、同一 arm64 ⇒ 不是语言模式、不是架构、不是 SDK | 以后写这类代码的人：**CGFloat 进 Double 一律显式 `Double(...)`**，别指望本地门槛能发现（本地**没有任何旗标**能关掉该转换，实测 `-disable-implicit-cgfloat-conversion` / `-disable-implicit-conversions` 都是 `unknown argument`） | §8.130 | ⬜ **仍开着**（2026-09-23 立；**刻意不关**）：新守卫 `ImplicitCGFloatConversionTests` 只钉住「**字面量内部**」这一半，别的「新编译器才接受」的写法仍只能靠 CI 兜 —— 这一行本身就是「推后必须看 CI」的记账，不是待办 |
 | 50 | ⚠️ **安全网的余量必须拿「实测最坏单拍」算**（不能拿名义的 50ms 算） —— 2026-09-23 CI run `35783127520` 红在 `放弃时要分清看够了与没看够`：安全网写死 6s、CI 上一拍实测 ~7.2s ⇒ 名义余量 120×、实际余量 **0×** | 只有 **CI** 才能关（本地一拍 50ms ⇒ 把安全网改回 6s 本地照样全绿，**本地做不出回归测试**）；同族那两处薄点要动时由人拍板 | `IntegrationEjectTests.swift`（`worstObservedPollMS`） | 🟢 **已关闭（2026-09-23，§8.135）**：安全网改为由 `worstObservedPollMS`（7_200，出处写进注释）×10 **派生**（不再写死），守卫的拍间隔压到 1ms ⇒ 两层保险各自独立；本地拿 CI 的量级做了阳性对照（`7.772s / 2 issues`，与 CI 的 `7.579s / 2 issues` **逐字同形**）。⚠️ **两处薄点刻意未动**（它们是**已知限制**、不是待办）：`waitForDisk` 生产默认 45s ≈ **6 拍**、`ProcessAppResolverTests` 默认 20s ≈ **2.8 拍** ⇒ CI 若再现「看够了/没看够」类翻面，先查这两处。 ⚠️ **§8.136 订正（2026-09-23，同日稍后）**：那两处**已经改为派生**（这条记的「刻意未动」已成历史） —— 尺子搬到 ``WaitOutcome/worstObservedPollMS``（**一处真相**，两个 helper 不再各抄一份），两处默认都改为 ``WaitOutcome/derivedCeilingMS``（72s）；顺带补上 `waitForExecutablePath` **缺的撞网守卫**（见 §8.136.4）。 |
-| 51 | CI **绿**的时候拿不到逐条测试耗时 —— `./run.sh ci` 只在**红**时打 `--log-failed`；`gh run view --log`（连 `--job`）只返回 **298 行**、没有测试明细 | 改 CI / preflight：绿的时候也把明细落盘（或上传 artifact） | `scripts/preflight.sh` / `.github/workflows` | ⬜ **仍开着**（2026-09-23 记，§8.135.8）：本轮想量 §8.135 那三条守卫在 **CI 上**的耗时降幅，**没量到** ⇒ 文档里那三个降幅已标注是**本地**值，别拿本地数冒充 CI 数。 |
+| 51 | CI **绿**的时候拿不到逐条测试耗时 —— `./run.sh ci` 只在**红**时打 `--log-failed`；`gh run view --log`（连 `--job`）只返回 **298 行**、没有测试明细 | 改 CI / preflight：绿的时候也把明细落盘（或上传 artifact） | `scripts/preflight.sh` / `.github/workflows` | 🟢 **已关闭（2026-09-23，§8.137）**：根因**不在 CI** —— `coverage.sh` 把测试输出写进 `mktemp` + `trap` 删掉（**跑完即删**）⇒ 明细根本没被写下来（绿的那次 CI 日志 298 行里 `passed after` **0 条**）。修法四处：`coverage.sh` 改写到 `$KEEP_DIR/测试全量.log`、`preflight.sh` `export KEEP_DIR`、`ci.yml` 上传 `.build/preflight/`（`if: always()`）、`coverage_tail_smoke.sh` 加守卫。本地绿跑实测 **540 条**（改前 0 条）。⚠️ **CI 侧未验**（要推一轮才知道 artifact 带没带上）。 ⚠️ 本轮**砍掉**了先写的另外半套（`PREFLIGHT_KEEP_GATES` / `ci_status.sh --logs` / 假 gh）：日志一旦持久化它们就是冗余，见 §8.137.5。 |
 > **判据：这张「仍开着」的表本身也是承诺型的话。** 17:55 回头核对时，第 4、5 行**早已关掉
 > 而表还写着「仍开着」** —— 和 §8.33 清掉的那 6 条是同一个病：**还了账没人回来划掉**。
 > 所以它现在多了一列「现状」和一个**核对时刻**：下次谁来读，先看时刻再看结论。
@@ -16940,6 +16940,90 @@ let starved = await Self.waitForExecutablePath(pid: 999_999, pollBudget: 100, ha
 ⚠️ 而我自己写的校验脚本只数了「末格有没有 🟢/✅/⬜」，**没数格子数** ⇒ 漏掉了它。
 ⇒ 教训：**往表格行里追加内容时，校验要数「管道个数」，不是数「有没有标记」**
 （后者在「多一格」这个形状上是绿的，与「没问题」逐字相同）。
+
+### 8.137 CI **绿**的时候也要能拿到逐条测试耗时（账本 #51 关闭，2026-09-23）
+
+#### 8.137.1 现场：绿的那次 CI 日志里 `passed after` 是 **0 条**
+
+#51 记的是「绿的时候拿不到逐条耗时」。本轮先把**根因**量出来，而不是先改：
+
+| 量的是什么 | 结果 |
+|---|---|
+| `gh api .../logs` 的 zip 解开（绿的那次 `35817084193`） | **298 行** |
+| 其中 `passed after` | **0 条** |
+| 门槛 11 成功时 `run_gate` 回显的内容 | 3 行（行覆盖率 / 最慢 3 条 / ✅ 达标） |
+
+⇒ 「绿的时候没有明细」**不是**「`gh` 拿得不够」，是**明细根本没被写下来**。
+（顺带：那次 CI 的覆盖率是 **67.37%**、本地 **65.90%** —— 又一例「覆盖率不是常量」。）
+
+#### 8.137.2 根因在 `coverage.sh` 的 `mktemp`，不在 CI
+
+`scripts/coverage.sh` 把 `swift test` 的输出写进 `TEST_LOG="$(mktemp -t diskejector-tests)"`
+并挂 `trap 'rm -f "$TEST_LOG"' EXIT` ⇒ **跑完即删**；门槛成功时只 `tail -3` 回显
+⇒ 逐条 `passed after` 在**本地**也拿不到（2026-09-21 那组「本地 <1s / CI 57.1s」
+的数字来自一次**红**跑，之后想再看就得再造一次失败）。
+
+⇒ 所以这不是「CI 的问题」，是**观测窗口本来就没开**。修它不需要动 CI 的判据。
+
+#### 8.137.3 修法：日志写到门槛的持久目录，再由 CI 当 artifact 传出来
+
+四处改动，**每一处不做就不成立**：
+
+| 文件 | 改动 | 为什么必须 |
+|---|---|---|
+| `scripts/coverage.sh` | 测试日志改写到 `$KEEP_DIR/测试全量.log`，去掉 `trap`，开头打印落点 | 明细只有写下来才存在 |
+| `scripts/preflight.sh` | `export KEEP_DIR` | 让子进程**派生**同一个目录，而不是各写一份路径（同一事实写两处必漂） |
+| `.github/workflows/ci.yml` | 把 `.build/preflight/` 当 artifact 上传（`if: always()`） | 日志在 runner 上，不传出来等于没写 |
+| `scripts/test/coverage_tail_smoke.sh` | 守卫：不许再用 `mktemp`、落点必须派生自 `KEEP_DIR` | 改回 `mktemp` 不会让任何东西变红 |
+
+⚠️ `if: always()` **不能省**：门槛一红，后面的步骤默认全被跳过，而红的那一轮
+**恰恰最需要日志**（红时虽然有 `--log-failed`，但门槛 1 那种几 MB 的构建输出
+只有 artifact 拿得到）。
+
+#### 8.137.4 本地验证：540 条 vs 0 条
+
+同一台机器、同一次门槛 11 绿跑：
+
+| | 改前 | 改后 |
+|---|---|---|
+| `.build/preflight/测试全量.log` | 不存在（`trap` 删了） | **1155 行** |
+| 其中 `passed after` | 0 | **540 条** |
+
+门槛 11/11 绿；`coverage_tail_smoke` 17/17。
+
+#### 8.137.5 本轮的**减法**：先写了半套，砍掉了
+
+第一版还做了另外三样（`gate_report.sh` 的 `PREFLIGHT_KEEP_GATES` 开关、
+`ci_status.sh` 的 `--logs`、一个假 `gh` 装置 + 3 条冒烟用例）。写完之后**砍掉**了，
+理由是它们**在「日志已持久化」这个前提下是冗余的**：
+
+| 被砍的 | 为什么冗余 |
+|---|---|
+| `PREFLIGHT_KEEP_GATES`（成功也留门槛 11 的日志） | 门槛 11 的 3 行摘要**CI 上本来就看得见**；全量那份另有 `测试全量.log` |
+| `ci_status.sh --logs` + 假 `gh` + 2 条用例 + artifact 名一致性判据 | 只是把 `gh run download` 包了一层。代价是 40 行脚本 + 一个夹具 + 2 条用例 + 1 条判据，而取证动作一行命令就够 —— **不值得进门槛** |
+
+⚠️ 这不是「写错了再删」，是**先按能想到的做，再按「不做就不成立」剪**。
+判据就是那句：**能派生的就别用开关**；而 `--logs` 连派生都不算，是把一条命令包成机制。
+（用户当场指出「搞复杂了」—— 这个判断是对的。）
+
+#### 8.137.6 本轮自己踩的坑：判据写成了**顺序敏感**的一串 `*A*B*`
+
+守卫第一版写成 `case "$COV_BODY" in *'TEST_LOG="'*'${KEEP_DIR}'*) …`。而实际代码里
+`${KEEP_DIR}` 出现在 `TEST_LOG=` **之前**（先派生目录、再拼文件名）⇒ 这个模式
+**永远不成立**，报出来的却是「没派生自 KEEP_DIR」—— 与「真的没派生」**逐字相同**。
+这正是本仓库记过的「静态扫描器的错多半是口径错」。
+
+⇒ 改成**两步派生**判据（`TEST_LOG_DIR="${KEEP_DIR…` 与 `TEST_LOG="$TEST_LOG_DIR/…`
+各一条），并保留阴性对照（`preflight.sh` 确实还在用 `mktemp` ⇒ 判据能分辨）。
+变异（把落点改回 `mktemp`）红 **2 条**且指了名。
+
+#### 8.137.7 还留着的边界
+
+- **CI 侧未验**：本轮只证明「本地绿跑能留下 540 条」。artifact 是否真的带上去，
+  要推一轮 CI 才知道（本地绿 ≠ CI 绿，账本 #49 就是为这条立的）。
+- `.build/preflight/测试全量.log` **每次覆盖**：它代表「最近一次绿跑」，不是历史。
+  要对比两次得自己先拷走。
+- 它**不进本地门槛的判据**：日志是取证材料，缺了不该把门槛判红。
 
 ## 9. 文件清单
 

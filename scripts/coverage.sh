@@ -45,8 +45,21 @@ echo "▶ 运行测试（启用覆盖率采集）..."
 # 4 个失败的具体断言全被吞掉，排查只能靠猜（本项目 2026-09-12 实际踩过）。
 # 顺带也绕开了 `cmd | tail` 让 `$?` 变成 tail 状态的老坑——这里靠 pipefail 兜底，
 # 但用日志文件表达意图更明确。
-TEST_LOG="$(mktemp -t diskejector-tests)"
-trap 'rm -f "$TEST_LOG"' EXIT
+#
+# ⚠️⚠️ **这份日志必须持久化**（2026-09-23，账本 #51）：
+# 它原来写成 `mktemp` + `trap 'rm -f "$TEST_LOG"' EXIT`，**跑完即删** ⇒ 门槛
+# **成功**时只剩回显的最后 3 行（行覆盖率 / 最慢 3 条 / ✅ 达标），**逐条
+# `passed after` 一行都留不下**。而 CI 日志里连那 3 行的来源都没有 ——
+# 实测 `gh api .../logs` 的 zip 解开只有 298 行、`passed after` **0 条** ⇒
+# 「CI 上那条测试到底快了多少」**根本量不到**（§8.135 就栽在这上面，
+# 最后只能把**本地**数写进文档冒充 CI 数）。
+# ⇒ 直接写进门槛的持久日志目录 —— 与 `preflight.sh` 的 `KEEP_DIR` **同一处**
+#   （由它 export 下来；单独跑本脚本时退回 `$REPO_ROOT/.build/preflight`），
+#   再由 ci.yml 当 artifact 上传 ⇒ `./run.sh ci --logs` 拿得到全量。
+TEST_LOG_DIR="${KEEP_DIR:-$REPO_ROOT/.build/preflight}"
+mkdir -p "$TEST_LOG_DIR"
+TEST_LOG="$TEST_LOG_DIR/测试全量.log"
+echo "   测试全量日志：${TEST_LOG#$PWD/}（跑完**不删** —— 逐条耗时只在这里）"
 
 if ! swift test --enable-code-coverage \
     ${SWIFT_SANDBOX_FLAGS[@]+"${SWIFT_SANDBOX_FLAGS[@]}"} > "$TEST_LOG" 2>&1; then
@@ -121,9 +134,13 @@ echo "   行覆盖率: $LINE_COVER   门槛: ${MIN_COVERAGE}%"
 # ---------------------------------------------------------------
 # 最慢的几条测试（**诊断信息，不是判据**）。
 #
-# 为什么需要：测试输出只落 `TEST_LOG`（mktemp），成功时只回显最后 3 行、
-# 文件随即被 trap 删掉 ⇒ 测试的**耗时分布没有任何观测窗口**。2026-09-21
-# 「本地 <1s / CI 57.1s」那组数字来自一次**红**跑，之后想再看就得再造一次失败。
+# 为什么需要：测试输出只落 `TEST_LOG`，而门槛成功时只回显最后 3 行 ⇒
+# 想在**回显里**看见耗时，只能靠这里补一条名单。2026-09-21「本地 <1s /
+# CI 57.1s」那组数字来自一次**红**跑，之后想再看就得再造一次失败。
+# （⚠️ 2026-09-23 起 `TEST_LOG` 已持久化到 `.build/preflight/测试全量.log`，
+#   **全量**耗时不必再造失败了 —— 但**回显**仍然只有这几行，所以这条摘要照留。
+#   「回显」与「落盘」是两条不同的路，别互相替代：CI 上看的是回显，
+#   事后取证看的是落盘那份。）
 #
 # ⚠️ **口径（别把这个数字当成该测试自身的耗时）**：`passed after X seconds`
 #    是「完成时刻距 run 开始」的墙钟，测试并行执行 ⇒ 早开始晚结束的那条会把

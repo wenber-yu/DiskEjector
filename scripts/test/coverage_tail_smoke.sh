@@ -141,6 +141,42 @@ case "$(sed 's/#.*//' "$REPO/scripts/lib/gate_report.sh")" in
 *) check "阴性对照：别的脚本不会被误判成有接线" 0 ;;
 esac
 
+# ── 测试日志必须**持久化**（2026-09-23，账本 #51）──
+#
+# 为什么值得一条：它原来是 `mktemp` + `trap rm`，**跑完即删** ⇒ 门槛成功时
+# 逐条 `passed after` 一行都留不下 ⇒ 「CI 上那条测试慢了多少」永远量不到
+# （§8.135 就栽在这上面）。改回 mktemp **不会让任何东西变红** —— 测试照样绿、
+# 覆盖率照样达标，只是那条路又断了。
+#
+# 判据：① 文件里**不许**再出现 `mktemp`（那正是「跑完即删」的来源）；
+#       ② `TEST_LOG=` 的赋值必须**派生自** `KEEP_DIR`（与门槛同一处持久目录，
+#          不在别处再写一个路径 ⇒ 不会漂）。两条都要 —— 只查 ② 的话，
+#          把 `KEEP_DIR` 换成 `mktemp` 就只剩下 ① 抓得住。
+COV_BODY="$(sed 's/#.*//' "$REPO/scripts/coverage.sh")"
+case "$COV_BODY" in
+*mktemp*) check "coverage.sh 不再用 mktemp 存测试日志（跑完即删就量不到逐条耗时）" 1 ;;
+*) check "coverage.sh 不再用 mktemp 存测试日志（跑完即删就量不到逐条耗时）" 0 ;;
+esac
+# ⚠️ **判据要按「两步派生」写，不能写成一串 `*A*B*`**（本脚本第一版就是这么错的）：
+#    `TEST_LOG="` 出现在 `TEST_LOG_DIR=...` **之后**，而 `${KEEP_DIR}` 在**之前**
+#    ⇒ `*'TEST_LOG="'*'${KEEP_DIR}'*` **永远不成立**，报出来的却是「没派生自 KEEP_DIR」
+#    —— 与「真的没派生」逐字相同。这是「静态扫描器的错多半是口径错」的又一例。
+#    改成两步：① 落点变量取自 KEEP_DIR；② 日志文件名挂在那个变量下。
+case "$COV_BODY" in
+*'TEST_LOG_DIR="${KEEP_DIR'*) check "测试日志目录取自 KEEP_DIR（不与门槛目录分叉）" 0 ;;
+*) check "测试日志目录取自 KEEP_DIR（不与门槛目录分叉）" 1 ;;
+esac
+case "$COV_BODY" in
+*'TEST_LOG="$TEST_LOG_DIR/'*) check "测试日志文件名挂在那个目录下（不是另写一个路径）" 0 ;;
+*) check "测试日志文件名挂在那个目录下（不是另写一个路径）" 1 ;;
+esac
+# 阴性对照：同一个 `mktemp` 判据，对**确实用** mktemp 的文件必须报「有」
+# （少了这条，判据写反或永远不成立时上面那条会假绿）。
+case "$(sed 's/#.*//' "$REPO/scripts/preflight.sh")" in
+*mktemp*) check "阴性对照：preflight.sh 确实还在用 mktemp ⇒ 判据能分辨" 0 ;;
+*) check "阴性对照：preflight.sh 确实还在用 mktemp ⇒ 判据能分辨" 1 ;;
+esac
+
 echo ""
 echo "── 合计：${pass} 通过 / ${failn} 不符合 ──"
 [ "$failn" -eq 0 ]
