@@ -343,4 +343,40 @@ struct MainWindowTests {
             真机上这会让红绿灯被裁成半圆（墨迹 12×8 而不是 12×12）—— 2026-09-23 用户报的正是这个。
             """)
     }
+
+    /// **resize 之后，观察者盯的还是同一个标题栏视图吗。**
+    ///
+    /// `watchTitleBarResets` 把观察者挂在**装配那一刻**的标题栏视图上。若 AppKit 在窗口尺寸
+    /// 变化时**重建**标题栏（换一个新的 `NSTitlebarView`），观察者就挂在了一个已被移出层级树
+    /// 的对象上 —— **它再也不会响**。而 `标题栏被拨回时必须自己补回来` 发现不了这件事：
+    /// 那条不 resize，取到的仍然是装配时那一个对象。
+    ///
+    /// 实测（2026-09-23，离屏）：`setContentSize` 与 `setFrame` 之后都是**同一个对象**，
+    /// 宽度跟着窗口走（800 → 700 → 640）、高度一直是 52pt。
+    ///
+    /// ⇒ 这同时给出了「resize 这条触发源已被覆盖」的证据：resize **一定会改标题栏宽度**
+    /// ⇒ `frameDidChangeNotification` **必响** ⇒ 即使 AppKit 顺手把高度拨回去也会被立刻补回。
+    /// （主窗口没有 `.resizable`，用户拉不动 ⇒ 真机上这条目前走不到；但
+    /// ``AppDelegate/alignTrafficLights(in:)`` 的文档里记着「哪天给它加上 `.resizable`，
+    /// 必须在这里补一次 resize 后的重对齐」—— 那个补法现在已经在收敛里了。）
+    @Test func resize之后观察者盯的还是同一个标题栏() {
+        let window = makeWindow()
+        guard let before = window.standardWindowButton(.closeButton)?.superview else {
+            Issue.record("取不到标题栏 —— 这条断言的前提不成立（不是通过）")
+            return
+        }
+
+        window.setContentSize(NSSize(width: 700, height: 480))
+
+        let after = window.standardWindowButton(.closeButton)?.superview
+        #expect(
+            before === after,
+            """
+            resize 之后标题栏换了对象 ⇒ `watchTitleBarResets` 的观察者挂在旧对象上，不会再响
+            —— 外观一换灯就被裁成半圆，而且没人补回来。
+            """)
+        #expect(
+            abs((after?.frame.height ?? 0) - DesignTokens.Size.titleBarBandHeight) < 0.5,
+            "resize 之后标题栏高度是 \(after?.frame.height ?? -1)pt，没保持在内容带高度")
+    }
 }
