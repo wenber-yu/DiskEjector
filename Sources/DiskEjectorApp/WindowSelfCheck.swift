@@ -8,7 +8,7 @@ import AppKit
 ///
 /// 搬出来的那一半是 7 个（按源文件顺序）：``trafficLightUnion`` /
 /// ``checkTrafficLightBaseline`` / ``checkTitleBarHorizontalSymmetry`` /
-/// ``measureRedLightInkCenter`` / ``checkEmptyStateInsteadOfSkeleton`` /
+/// ``measureRedLightInk`` / ``checkRedLightInkShape`` / ``checkEmptyStateInsteadOfSkeleton`` /
 /// ``dumpSettingsWindowState`` / ``waitUntilAppIsActive``；
 /// 需要读窗口/状态属性的入口与 `dump*` 仍在 `DiskEjectorApp.swift` 里。
 ///
@@ -99,7 +99,7 @@ enum WindowSelfCheck {
     /// - Returns: `红灯中心距左 − 设置按钮中心距右`，供调用方接着判断。
     @discardableResult
     static func checkTitleBarHorizontalSymmetry(
-        window: NSWindow, label: String, mismatches: inout [String]
+        window: NSWindow, label: String, ink: RedLightInk?, mismatches: inout [String]
     ) -> CGFloat {
         guard let close = window.standardWindowButton(.closeButton) else {
             mismatches.append("\(label) 取不到关闭按钮（红灯），无法核对水平对称")
@@ -126,12 +126,17 @@ enum WindowSelfCheck {
         }
 
         // **绝对断言兜底**：上面比的两个数里，红灯那个是我们自己改出来的 frame ——
-        // 同源比较守不住「改歪了」。这里数一遍真机像素，独立确认红灯**画**在哪。
-        if let ink = measureRedLightInkCenter(window: window, label: label, mismatches: &mismatches) {
+        // 同源比较守不住「改歪了」。这里用真机像素独立确认红灯**画**在哪。
+        //
+        // ⚠️ 墨迹由**调用方**量好传进来（`ink`），**不要在本函数里再抓一次图**：
+        //    `measureRedLightInk` 里有重试循环（最多 3s），量两遍纯属浪费；
+        //    更要紧的是**两次抓图可能落在不同状态上**（一次灯是灰的），
+        //    于是两个断言各说各话。一次抓图，多处断言。
+        if let ink {
             let anchor = DesignTokens.Size.titleBarInsetCenter
-            if abs(ink - anchor) > 1.5 {
+            if abs(ink.centerX - anchor) > 1.5 {
                 mismatches.append(
-                    "\(label) 红灯**渲染**出来的中心距左 \(ink)pt，设计稿锚点 \(anchor)pt —— "
+                    "\(label) 红灯**渲染**出来的中心距左 \(ink.centerX)pt，设计稿锚点 \(anchor)pt —— "
                         + "frame 层面是对齐的，但画出来的位置不是 —— "
                         + "检查 alignTrafficLights 是否真的作用到了被绘制的那个视图")
             }
@@ -139,7 +144,25 @@ enum WindowSelfCheck {
         return delta
     }
 
-    /// 从**真机渲染的像素**里量红灯的墨迹中心，兜住「frame 对了但画的位置不对」。
+    /// 红灯在**真机渲染出来的像素**里的墨迹范围（图像坐标，**原点在左上**）。
+    ///
+    /// ⚠️ **两个轴都要量**：2026-09-23 那次「灯被裁掉下半部分」的缺陷里，
+    /// `frame` 层面的判据（``checkTrafficLightBaseline`` 量并集中心）**一直是绿的** ——
+    /// 被裁的是**绘制**，不是 frame。只有「高」这个数会说话。
+    struct RedLightInk: Equatable {
+        /// 墨迹中心距窗口**左边**（pt）。设计稿锚点 ``DesignTokens/Size/titleBarInsetCenter``。
+        var centerX: CGFloat
+        /// 墨迹中心距窗口**顶**（pt）。设计稿要的是内容带中心（52 / 2 = 26）。
+        var centerYFromTop: CGFloat
+        /// 墨迹宽度（pt）。12pt 的圆在 2x 下是 24px。
+        var width: CGFloat
+        /// 墨迹高度（pt）。**被裁掉下半部分时它只有宽度的一半** —— 判据就架在这上面。
+        var height: CGFloat
+        /// 扫到的红色像素个数（自证字段：太少说明没抢到前台，灯被画成了灰色）。
+        var count: Int
+    }
+
+    /// 从**真机渲染的像素**里量红灯的墨迹范围，兜住「frame 对了但画出来的不对」。
     ///
     /// **为什么必须有这条**：``checkTitleBarHorizontalSymmetry`` 比较的是
     /// 「红灯 frame 中心」与「设置按钮中心」，而红灯的 frame **正是我们自己改的**
@@ -147,18 +170,26 @@ enum WindowSelfCheck {
     /// 断言与被断言的对象同源，改歪了它可能照样是绿的。
     /// 这里绕开 frame，直接**数屏幕上的红色像素**，是独立的一条证据。
     ///
-    /// **扫描范围为什么只取左半侧的一小条**：主窗口里有 `.btn--danger` 红色按钮
+    /// **扫描范围为什么只取左上角那一块**：主窗口里有 `.btn--danger` 红色按钮
     /// （「关闭并推出」），全窗口扫红色会把那些按钮也算进来 —— 与「量不到」
-    /// 一样会让数字失去意义。红灯只在标题栏那一条（距顶 20…32pt）里。
+    /// 一样会让数字失去意义。那块按钮在内容区，所以「左上角 200pt × 内容带高」
+    /// 这个框里只可能是红灯。
     ///
-    /// - Returns: 量到的红灯墨迹中心距窗口左边的距离（pt）；量不到时为 `nil`。
-    static func measureRedLightInkCenter(
+    /// ⚠️ **y 的范围是 0…内容带高，不是「内容带中心 ± 7」**（2026-09-23 改）。
+    /// 原来那 ±7pt 的窄条**恰好把「被裁」这个形状裁掉了**：灯的下缘掉出 33pt 时，
+    /// 窄条里剩下的部分看起来仍然「有墨迹、量得到中心」—— 缺陷因此躲过了所有守卫。
+    /// 要判「是不是圆」，扫描框必须**比灯大**。
+    ///
+    /// - Returns: 量到的墨迹范围；量不到（或不可信）时为 `nil`，并已把原因写进 `mismatches`。
+    static func measureRedLightInk(
         window: NSWindow, label: String, mismatches: inout [String]
-    ) -> CGFloat? {
+    ) -> RedLightInk? {
         let scale = window.backingScaleFactor
         let band = DesignTokens.Size.titleBarBandHeight
-        let y0 = Int((band / 2 - 7) * scale)
-        let y1 = Int((band / 2 + 7) * scale)
+        // ⚠️ 从 **0** 开始扫（不是从内容带中心往上数）：要看见「掉出去的那一截」，
+        //    框的上边界必须贴着窗口顶。
+        let y0 = 0
+        let y1 = Int(band * scale)
         let xLimit = Int(200 * scale)
 
         // ⚠️ **交通灯的红色只在窗口处于活跃态时才画**（2026-09-17 实测）：
@@ -173,6 +204,8 @@ enum WindowSelfCheck {
         var count = 0
         var minX = Int.max
         var maxX = Int.min
+        var minY = Int.max
+        var maxY = Int.min
         var pixelsWide = 0
         let deadline = Date().addingTimeInterval(3)
         while true {
@@ -186,6 +219,8 @@ enum WindowSelfCheck {
                 count = 0
                 minX = Int.max
                 maxX = Int.min
+                minY = Int.max
+                maxY = Int.min
                 for y in y0..<min(rep.pixelsHigh, y1) {
                     for x in 0..<min(rep.pixelsWide, xLimit) {
                         guard let c = rep.colorAt(x: x, y: y) else { continue }
@@ -198,6 +233,8 @@ enum WindowSelfCheck {
                             count += 1
                             if x < minX { minX = x }
                             if x > maxX { maxX = x }
+                            if y < minY { minY = y }
+                            if y > maxY { maxY = y }
                         }
                     }
                 }
@@ -224,11 +261,73 @@ enum WindowSelfCheck {
                         : "要么玻璃没渲染完，要么扫描范围把红色按钮包了进来。这个数不可信"))
             return nil
         }
-        let center = CGFloat(minX + maxX) / 2 / scale
+        // ⚠️ `NSBitmapImageRep.colorAt(x:y:)` 的 y **从图像顶部数**（图像是
+        //    `CGWindowListCreateImage` 抓的位图）⇒ `minY` 直接就是「距窗口顶」，
+        //    **不要**再拿窗口高去减。上面那个 `y0 = 0` 也是同一个坐标系。
+        let ink = RedLightInk(
+            centerX: CGFloat(minX + maxX) / 2 / scale,
+            centerYFromTop: CGFloat(minY + maxY) / 2 / scale,
+            width: CGFloat(maxX - minX + 1) / scale,
+            height: CGFloat(maxY - minY + 1) / scale,
+            count: count)
         print(
-            "    红灯墨迹（真机像素）=\(CGFloat(minX) / scale)…\(CGFloat(maxX) / scale)pt "
-                + "中心距左=\(center)pt 像素数=\(count)")
-        return center
+            "    红灯墨迹（真机像素）=宽 \(ink.width)pt × 高 \(ink.height)pt "
+                + "中心=(距左 \(ink.centerX)pt, 距顶 \(ink.centerYFromTop)pt) 像素数=\(ink.count)")
+        return ink
+    }
+
+    /// 红灯**画出来必须是圆的** —— 这条守的是「标题栏把灯裁掉下半部分」。
+    ///
+    /// ## 为什么非要有它（2026-09-23，用户反馈「红绿灯下半部分被 UI 挡住」）
+    ///
+    /// 改前的所有守卫**对这件事全瞎**：
+    ///
+    /// | 既有守卫 | 为什么看不见 |
+    /// |---|---|
+    /// | ``checkTrafficLightBaseline`` | 量的是三个按钮 `frame` 并集的中心 ⇒ **一直 26.0pt** |
+    /// | ``checkTitleBarHorizontalSymmetry`` | 只量**水平**中心 ⇒ 竖直方向被裁它不管 |
+    /// | 离屏快照 | 离屏**没有窗口**，也就没有系统画的灯 |
+    ///
+    /// 而缺陷是**绘制**层面的：macOS 标题栏只有 28pt 且 `masksToBounds = true`，
+    /// 把灯的下半部分裁掉。真机实测墨迹 **24×16 px**（本该 24×24）。
+    /// ⇒ 修法见 ``AppDelegate/enlargeTitleBar(in:)``（把标题栏区域加高到 52pt）。
+    ///
+    /// ## 判据（纯函数 ⇒ 可以离屏单测）
+    ///
+    /// 1. **圆**：`|宽 − 高| ≤ 2pt`（抗锯齿会吃掉边界像素，2pt 留给它）；
+    /// 2. **竖直中心**：距顶应等于内容带中心（26pt），容差 1.5pt。
+    ///
+    /// 两条指向同一个根因，但**不能只留一条**：只判「圆」会漏掉「灯整体被挪了但没被裁」；
+    /// 只判中心会漏掉「中心看着对、其实只画了一半」。
+    /// ⚠️ 反过来说，**它们也不是互相独立的证据**：被裁时墨迹中心必然上移
+    /// （裁的是下缘）⇒ 两条会**同时**红。这不是重复判据，是**同一根因的两个方向**
+    /// —— 报错信息里要把这个从属关系写清楚，免得读的人以为是两个毛病。
+    ///
+    /// ⚠️ 本函数**只吃参数、不抓图** —— 于是单测能拿合成样本喂它（完整圆 / 半圆），
+    /// 而抓图那半（``measureRedLightInk``）只能真机跑。**这是有意的切分**：
+    /// 判据进得了门槛，量测进不了。
+    static func checkRedLightInkShape(ink: RedLightInk?, label: String, mismatches: inout [String]) {
+        // 量不到时 `measureRedLightInk` 已经把原因（多半是没抢到前台）写进 mismatches 了，
+        // 这里再报一条只会让同一件事看起来像两个毛病。
+        guard let ink else { return }
+        let band = DesignTokens.Size.titleBarBandHeight
+        let expected = band / 2
+        if abs(ink.width - ink.height) > 2 {
+            mismatches.append(
+                "\(label) 红灯墨迹是 \(ink.width)×\(ink.height)pt，**不是圆的** —— "
+                    + "宽比高大 \(ink.width - ink.height)pt。这是「标题栏把灯裁掉了」的形状："
+                    + "`NSTitlebarView` 只有 28pt 高且 masksToBounds=true，"
+                    + "而中心 26pt 的灯要占到 34pt ⇒ 下缘被裁。"
+                    + "检查 ``AppDelegate/enlargeTitleBar(in:)`` 有没有被调用、"
+                    + "有没有被 AppKit 重排拨回（`showMainWindow()` 里那次收敛不能删）")
+        }
+        if abs(ink.centerYFromTop - expected) > 1.5 {
+            mismatches.append(
+                "\(label) 红灯墨迹的竖直中心距顶 \(ink.centerYFromTop)pt，"
+                    + "内容带中心应为 \(expected)pt（差 \(ink.centerYFromTop - expected)pt）—— "
+                    + "⚠️ 灯被裁掉一部分时**墨迹中心必然上移**（裁的是下缘），"
+                    + "所以这个偏差通常是「被裁」的副产品：先看上面那条「是不是圆」")
+        }
     }
 
     /// 无外置磁盘时，列表区必须画**空状态**，而不是卡在首屏骨架层。

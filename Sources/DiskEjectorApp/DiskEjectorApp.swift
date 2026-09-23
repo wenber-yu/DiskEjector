@@ -864,7 +864,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     /// 于是红灯像素扫描得到 0。2026-09-17 实测这条断言因此**偶发变红**（约 1/3 次），
     /// 而当时窗口尺寸、玻璃、内容墨迹全部正常。
     ///
-    /// ⚠️ 这里和 ``measureRedLightInkCenter`` 里的重试是**两道保险**，不是重复：
+    /// ⚠️ 这里和 ``measureRedLightInk`` 里的重试是**两道保险**，不是重复：
     /// 这一道等状态，那一道等绘制。激活状态与重绘不是同一时刻发生的事 ——
     /// 只等状态仍可能抓到「状态已变、像素还没重画」的那一帧。
     @MainActor
@@ -1037,7 +1037,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             await WindowSelfCheck.waitUntilAppIsActive()
             // ⚠️ **「应用活跃」不等于「主窗口是 key」**：交通灯的红色只在 **key 窗口**上画，
             // 而窗口拿到 key 要等下一次通知。只等 `NSApp.isActive` 会偶发抓到**灰灯**
-            // （红灯像素 = 0，实测约 1/3 次）—— 见 ``measureRedLightInkCenter`` 里记的那次。
+            // （红灯像素 = 0，实测约 1/3 次）—— 见 ``measureRedLightInk`` 里记的那次。
             await waitUntilMainWindowIsKey()
             // 等窗口上屏并把 SwiftUI 的视图树建好（玻璃是 `NSViewRepresentable`，
             // 要等 AppKit 那一层真的建出来才找得到）。
@@ -1155,11 +1155,21 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // AppKit 哪天把灯挪了，只有这里会红。
         WindowSelfCheck.checkTrafficLightBaseline(window: window, label: "A", mismatches: &mismatches)
 
-        // 4 · 标题栏左右两个边缘部件**光学中心对称**（红灯 vs 设置按钮）。
+        // 4 · 红灯**画出来**的位置与形状。
         //
-        // 这两个部件来源不同：红灯由 AppKit 画、设置按钮由 SwiftUI 的 padding 定，
-        // 凭印象对齐一定会对错。设计稿两侧都是 26pt，判据用中心（不能用盒边缘）。
-        WindowSelfCheck.checkTitleBarHorizontalSymmetry(window: window, label: "A", mismatches: &mismatches)
+        // ⚠️ **墨迹只抓一次图、喂给两条断言**（`ink`）：`measureRedLightInk` 里有重试循环
+        // （最多 3s），抓两遍纯属浪费；更要紧的是**两次抓图可能落在不同状态上**
+        // （一次灯是灰的）⇒ 两条断言各说各话，读的人无从分辨。
+        //
+        // 4a 左右两个边缘部件**光学中心对称**（红灯 vs 设置按钮）：这两个部件来源不同
+        //    （红灯 AppKit 画、设置按钮 SwiftUI 的 padding 定），凭印象对齐一定会对错。
+        // 4b **墨迹必须是圆**（`checkRedLightInkShape`）：这条守的是「标题栏把灯裁掉
+        //    下半部分」—— 2026-09-23 用户反馈的那个缺陷，上面所有 `frame` 判据对它全瞎。
+        let redInk = WindowSelfCheck.measureRedLightInk(
+            window: window, label: "A", mismatches: &mismatches)
+        WindowSelfCheck.checkTitleBarHorizontalSymmetry(
+            window: window, label: "A", ink: redInk, mismatches: &mismatches)
+        WindowSelfCheck.checkRedLightInkShape(ink: redInk, label: "A", mismatches: &mismatches)
 
         // 5 · 没有外置磁盘时必须显示**空状态**，不能卡在首屏骨架层。
         //
@@ -1670,9 +1680,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // 必须在 `contentView` 赋值之后设 —— 否则会被随后的赋值重置掉。
         win.initialFirstResponder = nil
 
-        // **把系统交通灯挪到设计稿要的位置（竖直 + 水平）。** 它默认落在中心距顶 16pt、
-        // 中心距左 16pt（标准 28pt 标题栏的位置），而设计稿是 52pt 里居中（中心 26pt）、
-        // 且红灯要与右侧设置按钮对称（中心距左也 26pt）。两个方向都差 10pt。
+        // **先把标题栏区域加高到 52pt，再把灯挪到设计稿要的位置。**
+        //
+        // ⚠️ **顺序有意义**：`enlargeTitleBar` 会改变灯在窗口坐标里的位置，而
+        // `alignTrafficLights` 是「量当前位置补差额」—— 先加高才量得到最终位置。
+        // （两者都幂等，顺序错了也不会坏，只是白多一次校正。）
+        // 不加高的话灯会被标题栏裁掉下半部分，见 ``enlargeTitleBar(in:)``。
+        enlargeTitleBar(in: win)
+        //
+        // 灯默认落在中心距顶 16pt、中心距左 16pt（标准 28pt 标题栏的位置），
+        // 而设计稿是 52pt 里居中（中心 26pt）、且红灯要与右侧设置按钮对称
+        // （中心距左也 26pt）。两个方向都差 10pt。
         // 详见 ``DesignTokens/Size/trafficLightNudgeY`` 与 ``trafficLightNudgeX``。
         alignTrafficLights(in: win)
 
@@ -1760,6 +1778,70 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         return moved
     }
 
+    /// 把标题栏**区域**加高到设计稿的内容带高度（52pt）。
+    ///
+    /// ## 为什么必须加高（2026-09-23，用户反馈「红绿灯下半部分被挡住」）
+    ///
+    /// macOS 的标准标题栏只有 **28pt** 高（`NSTitlebarView.frame.height == 28`，
+    /// 窗口的安全区顶部也是 28），而它的 `masksToBounds == true` ⇒ **超出这个高度的
+    /// 子视图被裁掉**。设计稿要的是「三个灯的中心距顶 26pt」
+    /// （``DesignTokens/Size/titleBarInsetCenter``），而一个 16pt 高的按钮居中在 26pt
+    /// 时占 y ∈ [18, 34] —— **底部 6pt 落在 28pt 之外**。
+    ///
+    /// 真机实测（改前）：红灯墨迹 **24×16 px**，本该是 24×24 px ⇒ 三个灯都画成了「半圆」。
+    /// ⚠️ **frame 层面的判据对此完全失明**：``checkTrafficLightBaseline`` 量的是
+    /// 「三个按钮的并集中心距顶 26pt」，那**一直是 26.0pt、一直是绿的** ——
+    /// 因为被裁的是**绘制**，不是 frame。这正是本仓库记过多次的「frame 对了但画出来不对」。
+    ///
+    /// ⇒ 把 `NSTitlebarView` 与它的容器一起加高到 52pt（= 设计稿 `.titlebar` 的高度），
+    /// **顶部对齐窗口顶** ⇒ 26pt 落进区域内部，不再被裁。
+    /// 52 这个数不是新拍的：它就是 ``DesignTokens/Size/titleBarBandHeight``，
+    /// 内容带本来就按它排版 —— 加高之后**系统标题栏区域与设计稿的内容带重合**。
+    ///
+    /// ## 为什么可以这么改
+    ///
+    /// 与 ``alignTrafficLights(in:)`` 同款：`NSTitlebarView` /
+    /// `NSTitlebarContainerView` 都是普通 `NSView`，只改 `frame`，
+    /// 不涉及任何私有视图层级，也不碰按钮的 action/target
+    /// ⇒ 关闭/最小化/缩放、悬停图标、⌘W 全都还是系统的。
+    ///
+    /// ## ⚠️ 幂等，且必须「每次上屏后再来一次」
+    ///
+    /// 量当前高度再补差额，所以可以反复调用。AppKit 在窗口状态变化时会重排标题栏
+    /// （与「resize 会把灯拨回系统位置」是同一类行为，见 ``alignTrafficLights(in:)``）
+    /// ⇒ `showMainWindow()` 里那次**不是重复调用**，是收敛。别删。
+    ///
+    /// - Returns: 实际被调整的视图数（0 = 没找到标题栏，或本来就对 ——
+    ///   真机自检会因此报错，不要静默）。
+    @discardableResult
+    static func enlargeTitleBar(in window: NSWindow) -> Int {
+        guard let close = window.standardWindowButton(.closeButton),
+            let titlebar = close.superview,
+            let container = titlebar.superview
+        else { return 0 }
+        let band = DesignTokens.Size.titleBarBandHeight
+        var moved = 0
+        // 容器：顶部贴住窗口顶，高度改成内容带高度。
+        // ⚠️ **必须是「顶部对齐」**（改 `origin.y` 而不只是改高度）：
+        //    只加高不改原点的话，标题栏会往**下**长，灯反而被推到更下面。
+        if abs(container.frame.height - band) > 0.01 {
+            var f = container.frame
+            f.origin.y = window.frame.height - band
+            f.size.height = band
+            container.frame = f
+            moved += 1
+        }
+        // 标题栏视图：填满容器（它就是那个 `masksToBounds = true` 的裁剪框）。
+        if abs(titlebar.frame.height - band) > 0.01 {
+            var f = titlebar.frame
+            f.origin.y = 0
+            f.size.height = band
+            titlebar.frame = f
+            moved += 1
+        }
+        return moved
+    }
+
     /// 显示主窗口。菜单栏弹窗的「打开主窗口」、菜单里的「显示主窗口」（⌘O）与
     /// Dock 图标点击（reopen）都走这里。
     ///
@@ -1776,10 +1858,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         mainWindow.makeKeyAndOrderFront(nil)
         mainWindow.orderFrontRegardless()
         activateApp()
-        // 上屏之后再对齐一次：``alignTrafficLights(in:)`` 是**幂等**的（量当前位置补差额），
-        // 而 `NSHostingView` 上屏时的重排会把灯的 **x 拨回 4pt**（实测请求 +10、实得 +6）。
-        // 装配时那一次只保证「初始大致对」，这一次才把它收敛到 26pt。
+        // 上屏之后再收敛一次（**两件都要做，顺序同装配时**）：
+        //
+        // ① ``enlargeTitleBar(in:)`` —— AppKit 会在窗口状态变化时重排标题栏
+        //    （上屏、切换 key、改外观都会），重排后标题栏会退回 28pt ⇒ 灯又被裁。
+        // ② ``alignTrafficLights(in:)`` —— `NSHostingView` 上屏时的重排会把灯的
+        //    **x 拨回 4pt**（实测请求 +10、实得 +6）。
+        //
+        // 装配时那一次只保证「初始大致对」，这一次才收敛到「52pt 区域 + 中心 26pt」。
         // ⚠️ 别把这行删掉当成「重复调用」—— 删了红灯会停在 22pt，真机自检会红。
+        Self.enlargeTitleBar(in: mainWindow)
         Self.alignTrafficLights(in: mainWindow)
     }
 

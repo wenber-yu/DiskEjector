@@ -198,4 +198,98 @@ struct MainWindowTests {
         // **建窗不上屏**：单测跑到这里如果窗口可见，就是抢了用户的焦点。
         #expect(!window.isVisible)
     }
+
+    // MARK: - 交通灯（2026-09-23：被标题栏裁掉下半部分）
+
+    /// **标题栏区域必须够高到放得下设计稿的灯。**
+    ///
+    /// 守的是 2026-09-23 用户反馈的那个缺陷：macOS 标准标题栏只有 **28pt** 高，
+    /// 且 `NSTitlebarView.masksToBounds == true` ⇒ 超出它的子视图被**裁掉**。
+    /// 设计稿要的是「灯中心距顶 26pt」（``DesignTokens/Size/titleBarInsetCenter``），
+    /// 而一个 16pt 高的按钮居中在 26pt 时占 y ∈ [18, 34] ⇒ 底部 6pt 落在 28pt 之外
+    /// ⇒ 三个灯都画成了「半圆」（真机实测墨迹 **24×16px**，本该 24×24）。
+    ///
+    /// ⇒ 修法 ``AppDelegate/enlargeTitleBar(in:)``：把标题栏区域加高到内容带高度（52pt）。
+    /// 这条断言的是**那件事的后果**，两条都要判：
+    /// 1. 区域高度 == 内容带高度；
+    /// 2. 区域**完整落在窗口内且顶部贴顶** —— 只加高不改原点的话它会往**下**长，
+    ///    灯反而被裁得更多（那正是「修了但更糟」的形状）。
+    ///
+    /// ⚠️ 这条**离屏测得到**（窗口即使不上屏也有标题栏视图），而「灯真的画全了没有」
+    /// 离屏测不到（离屏没有系统画的灯）⇒ 真机那半在 `--preview-main-window-keys`
+    /// 的 ``WindowSelfCheck/checkRedLightInkShape``。两条合起来才是完整的守卫。
+    @Test func 标题栏区域必须够高到放得下设计稿的灯() {
+        let window = makeWindow()
+        guard let close = window.standardWindowButton(.closeButton) else {
+            Issue.record("取不到关闭按钮 —— 窗口没有标题栏？这条断言的前提不成立（不是通过）")
+            return
+        }
+        guard let titlebar = close.superview else {
+            Issue.record("关闭按钮没有父视图 —— 标题栏视图层级变了，`enlargeTitleBar` 也会失效")
+            return
+        }
+        let band = DesignTokens.Size.titleBarBandHeight
+        #expect(
+            abs(titlebar.bounds.height - band) < 0.5,
+            """
+            标题栏区域高 \(titlebar.bounds.height)pt，内容带 \(band)pt。
+            区域比灯要的高度矮的话，`masksToBounds` 会把灯的下半部分裁掉
+            （2026-09-23 用户反馈的「红绿灯显示不全」）。
+            检查 `AppDelegate.makeMainWindow()` 里有没有调用 `enlargeTitleBar(in:)`。
+            """)
+        // ⚠️ 从**窗口坐标**核对位置，而不是只看高度：只加高不改原点会让标题栏
+        //    往**下**长（下缘掉到窗口外），灯被裁得更多，而高度那一项照样是 52。
+        let inWindow = titlebar.convert(titlebar.bounds, to: nil)
+        // ⚠️ `#expect` 的第二个参数是 `Comment`，**不能用 `+` 拼字符串**
+        //    （`Comment` 只支持字面量初始化）⇒ 用多行字符串字面量。
+        #expect(
+            abs(inWindow.maxY - window.frame.height) < 0.5,
+            """
+            标题栏区域在窗口坐标里是 \(inWindow)，顶部没贴住窗口顶（高 \(window.frame.height)）——
+            它是往**下**长的（只改高度、没改原点），灯只会被裁得更多。
+            """)
+        #expect(
+            inWindow.minY >= -0.5,
+            "标题栏区域下缘跑到窗口外了（minY=\(inWindow.minY)）—— 容器的高度/原点算错了")
+    }
+
+    /// **墨迹不是圆时必须报错** —— 喂合成样本，不需要真机。
+    ///
+    /// 为什么值得单独立一条：真机那条（``WindowSelfCheck/checkRedLightInkShape``）要窗口、
+    /// 要前台、要系统把灯画成红色 —— **门槛里跑不了**。判据被切成「纯函数 + 量测」两半，
+    /// 就是为了让**判据这半进得了门槛**：这里喂合成样本，把「什么形状算被裁」钉死。
+    ///
+    /// ⚠️ **三个方向都要有**（少一个就可能假绿）：
+    /// ① 完整圆 ⇒ **不报**（否则「永远报错」也能绿）；
+    /// ② 半圆 ⇒ 报，且要报**两条**（不是圆 + 中心上移）—— 这两条是同一根因的两个方向，
+    ///    数量写死是为了让「只留一条」这种退化被抓出来；
+    /// ③ `nil` ⇒ 不报（量测那半已经写过原因，再报一条会把一件事说成两件）。
+    @Test func 红灯墨迹不是圆时必须报错() {
+        let anchor = DesignTokens.Size.titleBarBandHeight / 2
+        let inset = DesignTokens.Size.titleBarInsetCenter
+
+        // ① 完整圆：12pt 的圆在 2x 下量到 12×12pt，中心正好在内容带中心。
+        var ok: [String] = []
+        WindowSelfCheck.checkRedLightInkShape(
+            ink: .init(centerX: inset, centerYFromTop: anchor, width: 12, height: 12, count: 452),
+            label: "T", mismatches: &ok)
+        #expect(ok.isEmpty, "完整的圆不该报错，实得：\(ok)")
+
+        // ② 被裁：真机实测的形态 —— 24×16px ⇒ 12×8pt，中心因下缘被裁而上移。
+        var bad: [String] = []
+        WindowSelfCheck.checkRedLightInkShape(
+            ink: .init(centerX: inset, centerYFromTop: anchor - 4, width: 12, height: 8, count: 320),
+            label: "T", mismatches: &bad)
+        #expect(
+            bad.count == 2,
+            "被裁掉下半部分应报 2 条（不是圆 + 中心上移），实得 \(bad.count) 条：\(bad)")
+        #expect(
+            bad.contains { $0.contains("不是圆的") },
+            "报错信息必须指出「不是圆」—— 否则读的人会顺着中心偏移去查错方向。实得：\(bad)")
+
+        // ③ 量不到时不重复报：原因已由 `measureRedLightInk` 写过。
+        var none: [String] = []
+        WindowSelfCheck.checkRedLightInkShape(ink: nil, label: "T", mismatches: &none)
+        #expect(none.isEmpty, "ink 为 nil 时不该报错（原因由量测那半写），实得：\(none)")
+    }
 }
