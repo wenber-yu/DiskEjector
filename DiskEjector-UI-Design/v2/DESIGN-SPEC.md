@@ -5297,7 +5297,7 @@ Sparkle 会不会装上这次更新 —— 依据是 `showUpdateFound` 的文档
 | 48 | ~~⚠️ **离屏渲染里仍有 7 个文件逐像素 `colorAt`**（`TitleBarBaselineTests` / `EmptyStateTests` / `GlassSurfaceTests` / `TrafficLightAlignmentTests` / `ProcessChipLayoutTests` / `SettingsLayoutTests` / `VisualStyleTests`）。§8.129 只换了最重的那条（`MainWindowDiskListTests` **8.792s → 1.965s**）；这 7 个的扫描区域小（毫秒级），所以**没动**~~ ⚠️ **「毫秒级」这句原话是错的**（§8.131.1）：原语探针实测单次 `colorAt` **0.773 µs**，按 6 处循环的矩形面积算合计约 **186 万次** ⇒ **约 1.4 秒**，与「毫秒级」差**三个数量级**。成因是**推出来的、不是量出来的** | ✅ **已关闭**（§8.131） | §8.129 / **§8.131** | ✅ **已关闭（2026-09-23，§8.131）**：6 个调用方收敛进 `OffscreenRender`（`TitleBarBaselineTests` 顺手删掉**两份自带出图块**、`GlassSurfaceTests` 删掉**第三份**）；**同一会话内 A/B**（各三次取均值）整轮 **9.156s → 7.590s**（净省 **1.566s / 约 17%**），两组区间不重叠。新增守卫 `PixelReadPathTests`（两条规则 + 双向棘轮 + 装置自证，变异 **6 红**）。⚠️ 过程中抓到一个**真 bug**：公共遍历是 **x 外层**，「扫到的第一个」的含义从「最小 y」变成「最左那一列自己的最小 y」—— `first` 从 `19.5` 悄悄变成 `51.0`，**照样是个合理的数**、没有任何东西会红（修法：一律 `min`/`max` 累积）。ℹ️ 顺带登记两处**产品代码**漏项（`WindowSelfCheck.swift:191` / `:297`）—— 决定**登记不收敛**（读的是 `CGWindowListCreateImage` 的真机截图、不在测试 target） |
 | 49 | ⚠️ **「本地门槛全绿」≠「CI 绿」的第三类成因：本地编译器比 CI 新** —— 2026-09-22 CI run `35761198327` 红在 `OffscreenRender.swift` 的一行**元组返回**上（`return (c.redComponent, …)`，目的地 `(Double, Double, Double)?`）。「元组字面量内部的 `CGFloat` → `Double` 隐式转换」是 **Swift 6.4 才放宽**的：本地 Xcode 27 / **6.4 接受**，CI 的 Xcode 26.6 / **6.3.3 拒绝**；同一个包、同一 `swiftLanguageModes: [.v6]`、同一 arm64 ⇒ 不是语言模式、不是架构、不是 SDK | 以后写这类代码的人：**CGFloat 进 Double 一律显式 `Double(...)`**，别指望本地门槛能发现（本地**没有任何旗标**能关掉该转换，实测 `-disable-implicit-cgfloat-conversion` / `-disable-implicit-conversions` 都是 `unknown argument`） | §8.130 | ⬜ **仍开着**（2026-09-23 立；**刻意不关**）：新守卫 `ImplicitCGFloatConversionTests` 只钉住「**字面量内部**」这一半，别的「新编译器才接受」的写法仍只能靠 CI 兜 —— 这一行本身就是「推后必须看 CI」的记账，不是待办 |
 | 50 | ⚠️ **安全网的余量必须拿「实测最坏单拍」算**（不能拿名义的 50ms 算） —— 2026-09-23 CI run `35783127520` 红在 `放弃时要分清看够了与没看够`：安全网写死 6s、CI 上一拍实测 ~7.2s ⇒ 名义余量 120×、实际余量 **0×** | 只有 **CI** 才能关（本地一拍 50ms ⇒ 把安全网改回 6s 本地照样全绿，**本地做不出回归测试**）；同族那两处薄点要动时由人拍板 | `IntegrationEjectTests.swift`（`worstObservedPollMS`） | 🟢 **已关闭（2026-09-23，§8.135）**：安全网改为由 `worstObservedPollMS`（7_200，出处写进注释）×10 **派生**（不再写死），守卫的拍间隔压到 1ms ⇒ 两层保险各自独立；本地拿 CI 的量级做了阳性对照（`7.772s / 2 issues`，与 CI 的 `7.579s / 2 issues` **逐字同形**）。⚠️ **两处薄点刻意未动**（它们是**已知限制**、不是待办）：`waitForDisk` 生产默认 45s ≈ **6 拍**、`ProcessAppResolverTests` 默认 20s ≈ **2.8 拍** ⇒ CI 若再现「看够了/没看够」类翻面，先查这两处。 ⚠️ **§8.136 订正（2026-09-23，同日稍后）**：那两处**已经改为派生**（这条记的「刻意未动」已成历史） —— 尺子搬到 ``WaitOutcome/worstObservedPollMS``（**一处真相**，两个 helper 不再各抄一份），两处默认都改为 ``WaitOutcome/derivedCeilingMS``（72s）；顺带补上 `waitForExecutablePath` **缺的撞网守卫**（见 §8.136.4）。 |
-| 51 | CI **绿**的时候拿不到逐条测试耗时 —— `./run.sh ci` 只在**红**时打 `--log-failed`；`gh run view --log`（连 `--job`）只返回 **298 行**、没有测试明细 | 改 CI / preflight：绿的时候也把明细落盘（或上传 artifact） | `scripts/preflight.sh` / `.github/workflows` | 🟢 **已关闭（2026-09-23，§8.137）**：根因**不在 CI** —— `coverage.sh` 把测试输出写进 `mktemp` + `trap` 删掉（**跑完即删**）⇒ 明细根本没被写下来（绿的那次 CI 日志 298 行里 `passed after` **0 条**）。修法四处：`coverage.sh` 改写到 `$KEEP_DIR/测试全量.log`、`preflight.sh` `export KEEP_DIR`、`ci.yml` 上传 `.build/preflight/`（`if: always()`）、`coverage_tail_smoke.sh` 加守卫。本地绿跑实测 **540 条**（改前 0 条）。⚠️ **CI 侧未验**（要推一轮才知道 artifact 带没带上）。 ⚠️ 本轮**砍掉**了先写的另外半套（`PREFLIGHT_KEEP_GATES` / `ci_status.sh --logs` / 假 gh）：日志一旦持久化它们就是冗余，见 §8.137.5。 |
+| 51 | CI **绿**的时候拿不到逐条测试耗时 —— `./run.sh ci` 只在**红**时打 `--log-failed`；`gh run view --log`（连 `--job`）只返回 **298 行**、没有测试明细 | 改 CI / preflight：绿的时候也把明细落盘（或上传 artifact） | `scripts/preflight.sh` / `.github/workflows` | 🟢 **已关闭（2026-09-23，§8.137）**：根因**不在 CI** —— `coverage.sh` 把测试输出写进 `mktemp` + `trap` 删掉（**跑完即删**）⇒ 明细根本没被写下来（绿的那次 CI 日志 298 行里 `passed after` **0 条**）。修法四处：`coverage.sh` 改写到 `$KEEP_DIR/测试全量.log`、`preflight.sh` `export KEEP_DIR`、`ci.yml` 上传 `.build/preflight/`（`if: always()`）、`coverage_tail_smoke.sh` 加守卫。本地绿跑实测 **540 条**（改前 0 条）。 ✅ **CI 侧已验**（2026-09-23 稍后补）：`7aa86f8` 的 CI run `35838793984` artifact `preflight-logs` 解开后是 `测试全量.log`、**542 条** `passed after`（见 §8.137.7）。 ⚠️ 本轮**砍掉**了先写的另外半套（`PREFLIGHT_KEEP_GATES` / `ci_status.sh --logs` / 假 gh）：日志一旦持久化它们就是冗余，见 §8.137.5。 |
 | 52 | ⚠️ **红绿灯被标题栏裁掉下半部分**（用户 2026-09-23 反馈「显示不全，下半部分被挡住」）—— macOS 标准标题栏只有 **28pt** 高、且 `NSTitlebarView.masksToBounds = true`，而设计稿要的「灯中心距顶 26pt」要求按钮 y ∈ [−6, 10] ⇒ **底部 6pt 落在区域外被裁**（真机实测墨迹 **24×16px**，本该 24×24，三个灯看起来都是半圆） | 修窗口装配（**本轮已修**） | §8.138 | 🟢 **已关闭（2026-09-23，§8.138）**：`AppDelegate.enlargeTitleBar(in:)` 把标题栏区域加高到 `DesignTokens.Size.titleBarBandHeight`（52pt，**顶部贴窗口顶**）⇒ 系统标题栏区域与设计稿的内容带重合。真机复量 **12×12pt / 452 像素**（理论值 452.4，逐位吻合）。⚠️ 既有守卫对这件事**全瞎**（frame 判据一直是 26.0pt、离屏快照没有灯）⇒ 补了三层守卫：窗口层 + 判据层（都进门槛）+ 真机量测层。⚠️ **残留风险**：窗口显示期间切换外观时 AppKit 会不会把标题栏拨回 28pt，**本轮没验**（§8.138.9）。 |
 > **判据：这张「仍开着」的表本身也是承诺型的话。** 17:55 回头核对时，第 4、5 行**早已关掉
 > 而表还写着「仍开着」** —— 和 §8.33 清掉的那 6 条是同一个病：**还了账没人回来划掉**。
@@ -17018,10 +17018,24 @@ let starved = await Self.waitForExecutablePath(pid: 999_999, pollBudget: 100, ha
 各一条），并保留阴性对照（`preflight.sh` 确实还在用 `mktemp` ⇒ 判据能分辨）。
 变异（把落点改回 `mktemp`）红 **2 条**且指了名。
 
-#### 8.137.7 还留着的边界
+#### 8.137.7 CI 侧已验（2026-09-23 稍后补）+ 还留着的边界
 
-- **CI 侧未验**：本轮只证明「本地绿跑能留下 540 条」。artifact 是否真的带上去，
-  要推一轮 CI 才知道（本地绿 ≠ CI 绿，账本 #49 就是为这条立的）。
+**先补上那条「未验」**（本小节原写作「CI 侧未验，要推一轮才知道」）：
+`7aa86f8` 推上去后 CI run **`35838793984`** ✅ success，artifact **`preflight-logs`**
+（20 024 bytes）下载解开 —— 里面就是 `测试全量.log`，**1134 行 / `passed after` 542 条**。
+
+| 量 | 本地绿跑 | CI artifact |
+|---|---|---|
+| `passed after` 条数 | 542 | **542** |
+| 日志行数 | 1161 | 1134 |
+| 末尾汇总行 | — | `Test run with 481 tests in 61 suites passed after 22.500 seconds.` |
+
+⇒ **逐条耗时这条路在 CI 上真的通了**（不是「artifact 存在」这种间接证据：解开数过）。
+
+ℹ️ 条数从上一轮记的 **540** 变成 **542**，是因为本轮 §8.138 加了 2 条测试
+（`540 = 479 测试 + 61 suite`，`542 = 481 测试 + 61 suite`）—— **这个数是会动的，别当基准**
+（它同时含 suite 的 `passed after` 行，也不是测试总数）。
+
 - `.build/preflight/测试全量.log` **每次覆盖**：它代表「最近一次绿跑」，不是历史。
   要对比两次得自己先拷走。
 - 它**不进本地门槛的判据**：日志是取证材料，缺了不该把门槛判红。
