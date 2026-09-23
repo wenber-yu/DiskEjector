@@ -1694,6 +1694,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // 详见 ``DesignTokens/Size/trafficLightNudgeY`` 与 ``trafficLightNudgeX``。
         alignTrafficLights(in: win)
 
+        // **让「加高」扛得住 AppKit 的重排。**
+        //
+        // ⚠️ 上面这两行**只保证「此刻是对的」**。窗口已经在屏幕上时切换深/浅色外观，
+        // AppKit 会把标题栏拨回 28pt（灯又被裁成半圆），而 `showMainWindow()` 里那次收敛
+        // 只发生在「显示窗口」时 ⇒ 窗口一直开着就没人管。真机实测见
+        // ``watchTitleBarResets(in:)``。
+        watchTitleBarResets(in: win)
+
         win.center()
         // 窗口**没有** `.resizable`，用户拉不动，所以尺寸实际上由 `contentRect` 与这条
         // `minSize` 一起保证。
@@ -1840,6 +1848,84 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             moved += 1
         }
         return moved
+    }
+
+    /// 盯住标题栏的 frame 变化，**每当 AppKit 重排就再收敛一次**。
+    ///
+    /// ## 为什么必须有它（2026-09-23 真机实测）
+    ///
+    /// ``enlargeTitleBar(in:)`` 加高到 52pt **不是一劳永逸的**：窗口**已经在屏幕上**时
+    /// 切换深/浅色外观，AppKit 会重排标题栏、把它拨回 **28pt** ⇒ 灯又被裁成半圆。
+    ///
+    /// 受控实验（本进程只读，外观由**外部**改 —— 与真实用户动作同形，每轮都打印
+    /// `effectiveAppearance` 当自证）：
+    ///
+    /// | 帧 | 外观 | 标题栏高 | 红灯墨迹 |
+    /// |---|---|---|---|
+    /// | 1–5 | Aqua | 52.0 | 12.0 × 12.0 |
+    /// | 6 起 | DarkAqua | **28.0** | **12.0 × 8.0** |
+    /// | 17 起（切回 Aqua） | Aqua | **28.0** | 12.0 × 8.0 |
+    ///
+    /// ⚠️ **最后一行最要紧**：切回原外观**也不会自己恢复** ⇒ 一旦发生，用户得重启才看得见完整的灯。
+    /// 而 `showMainWindow()` 里那次收敛只发生在「显示窗口」时 —— 窗口一直开着就没人管。
+    ///
+    /// ## 为什么用「frame 变化通知」而不是别的
+    ///
+    /// 同一次实验里试了四条路，只有最后一条**有效**：
+    ///
+    /// | 路 | 结果 |
+    /// |---|---|
+    /// | `NSApp.effectiveAppearance` 的 KVO | 会响，但补完**被随后的重排覆盖** |
+    /// | `window.effectiveAppearance` 的 KVO | 同上 |
+    /// | 分布式通知 `AppleInterfaceThemeChangedNotification` | 同上 |
+    /// | **标题栏视图的 `frameDidChangeNotification`** | ✅ **响在 AppKit 改完之后** |
+    ///
+    /// 前三条问的是「外观是不是要变了」，回答在 AppKit 动手**之前** ⇒ 我们写的 52pt
+    /// 立刻被它按回 28pt。第四条问的是「**它是不是刚动过**」，天然排在它后面。
+    /// 这是**事件驱动**，不是「等 0.5 秒再补」那种时序赌博（本仓库吃过那个亏）。
+    ///
+    /// ## 不会死循环
+    ///
+    /// ``enlargeTitleBar(in:)`` 幂等（量当前值再补差额）⇒ 我们补完之后高度就对，
+    /// 自己的写入再触发一次通知时它报「改动 0 处」、什么都不做。
+    /// 实测每次重排**只响 2 次**（一次自己的回声 + 一次真的补回），然后安静。
+    ///
+    /// ## 顺带覆盖的其它触发
+    ///
+    /// 任何让 AppKit 重排标题栏的动作都走这条路（改外观、窗口状态变化、切屏……），
+    /// 不必为每种触发各写一次收敛 —— **可观测的触发源只有「frame 变了」这一个**。
+    ///
+    /// ## 令牌为什么是 `static`
+    ///
+    /// 调用方 ``makeMainWindow()`` 是 `static`（窗口装配没有实例状态可依）⇒ 这里也只能是 `static`。
+    /// 它在 `@MainActor` 类型上，所以并发上是安全的；写入只发生在主 actor 上。
+    ///
+    /// ## 为什么要「先摘旧的」
+    ///
+    /// `makeMainWindow()` 在**单测里会被反复调用**（每个用例各建一次窗口）。
+    /// 不摘的话观察者会越挂越多，各自绑在已经没人用的旧标题栏上 —— 那是一次静默的泄漏。
+    private static var titleBarWatchToken: NSObjectProtocol?
+
+    private static func watchTitleBarResets(in window: NSWindow) {
+        if let old = titleBarWatchToken {
+            NotificationCenter.default.removeObserver(old)
+            titleBarWatchToken = nil
+        }
+        guard let titlebar = window.standardWindowButton(.closeButton)?.superview else { return }
+        titleBarWatchToken = NotificationCenter.default.addObserver(
+            forName: NSView.frameDidChangeNotification, object: titlebar, queue: .main
+        ) { [weak window] _ in
+            // `queue: .main` 已保证回调在主线程执行，用 assumeIsolated 把这一事实告知编译器，
+            // 否则 Swift 6 严格并发会拒绝在 `@Sendable` 闭包里触碰 @MainActor 隔离的东西。
+            // （同款写法见 ``setupStatusItem()`` 里那条屏幕参数通知。）
+            MainActor.assumeIsolated {
+                guard let window else { return }
+                // 两件都要做，顺序同装配时（见 ``makeMainWindow()``）：先加高、再对齐灯的 x。
+                // 实测外观切换只把**高度**拨回去、x 没动 —— 但重贴一遍是幂等的，不必分开判。
+                AppDelegate.enlargeTitleBar(in: window)
+                AppDelegate.alignTrafficLights(in: window)
+            }
+        }
     }
 
     /// 显示主窗口。菜单栏弹窗的「打开主窗口」、菜单里的「显示主窗口」（⌘O）与

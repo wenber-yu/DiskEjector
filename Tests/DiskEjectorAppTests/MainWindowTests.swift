@@ -292,4 +292,55 @@ struct MainWindowTests {
         WindowSelfCheck.checkRedLightInkShape(ink: nil, label: "T", mismatches: &none)
         #expect(none.isEmpty, "ink 为 nil 时不该报错（原因由量测那半写），实得：\(none)")
     }
+
+    /// **AppKit 把标题栏拨回去时，必须自己补回来。**
+    ///
+    /// 守的是 2026-09-23 真机实测的第二个缺陷：窗口**已经在屏幕上**时切换深/浅色外观，
+    /// AppKit 会把标题栏从 52pt 拨回 **28pt** ⇒ 灯又被裁成半圆（墨迹从 12×12 退回 **12×8**），
+    /// 而且**切回原外观也不会自己恢复**。
+    /// `showMainWindow()` 里那次收敛只发生在「显示窗口」时 —— 窗口一直开着就没人管。
+    ///
+    /// 修法是 ``AppDelegate/watchTitleBarResets(in:)``：盯住标题栏的
+    /// `frameDidChangeNotification`，一响就把 52pt 补回去（为什么是这条信号而不是
+    /// 外观 KVO，见那个函数的说明 —— 四条路只有这条响在 AppKit 改完之后）。
+    ///
+    /// ⚠️ **这里模拟的必须是 AppKit 真正做的事** —— 直接写 `frame`。
+    /// 若改成「调一次 `enlargeTitleBar`」，那就是**拿自己的函数验自己**：
+    /// 观察者有没有挂上、信号对不对，全都测不出来（本仓库那条「守卫要有辨别力」）。
+    ///
+    /// ⚠️ 真机上那个**触发源**（系统外观变化）在这里造不出来 —— 那要真机受控实验（见 SPEC §8.139）。
+    /// 但这里测的是它的**后果**（frame 被改小）与我们修法的**接缝**，
+    /// 而那段代码不依赖屏幕 ⇒ 离屏单测足够，不必再加一条真机自检。
+    @Test func 标题栏被拨回时必须自己补回来() {
+        let window = makeWindow()
+        guard let titlebar = window.standardWindowButton(.closeButton)?.superview else {
+            Issue.record("取不到标题栏 —— 这条断言的前提不成立（不是通过）")
+            return
+        }
+        let band = DesignTokens.Size.titleBarBandHeight
+        #expect(abs(titlebar.frame.height - band) < 0.5, "装配之后本该已经是 \(band)pt")
+
+        // **前提自证**：观察者挂的是 `frameDidChangeNotification`，而它只在视图
+        // `postsFrameChangedNotifications == true` 时才会发。这一条不成立的话，
+        // 下面那次「改小」根本不会产生信号，测试会以「补回来了」的形式**假绿**。
+        #expect(
+            titlebar.postsFrameChangedNotifications,
+            "标题栏关掉了 frame 变化通知 ⇒ `watchTitleBarResets` 挂的观察者永远不会响")
+
+        // 模拟 AppKit 的重排：把标题栏改回系统默认的 28pt。
+        var reset = titlebar.frame
+        reset.size.height = 28
+        titlebar.frame = reset
+
+        // `queue: .main` + 在主线程 post ⇒ 同一线程上**同步**执行，所以这里可以直接断言，
+        // 不需要 `await` / 重试（那样又变成一次时序赌博）。
+        #expect(
+            abs(titlebar.frame.height - band) < 0.5,
+            """
+            标题栏被拨回 28pt 之后没有补回来（实得 \(titlebar.frame.height)pt）。
+            检查 `AppDelegate.makeMainWindow()` 里有没有调用 `watchTitleBarResets(in:)`、
+            以及观察者挂的还是不是 `NSView.frameDidChangeNotification`。
+            真机上这会让红绿灯被裁成半圆（墨迹 12×8 而不是 12×12）—— 2026-09-23 用户报的正是这个。
+            """)
+    }
 }
