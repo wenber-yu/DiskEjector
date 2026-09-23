@@ -277,6 +277,11 @@ struct ProcessAppResolverTests {
     /// | `pollBudget` | **看几次**（默认 40 ≈ 旧 2s 窗口 / 50ms） | **无关** —— 它决定退出 |
     /// | `hardCeilingMS` | **最长挂多久**（安全网，只防挂死） | 有关，但它只在病态时才到点 |
     ///
+    /// ⚠️ **`hardCeilingMS` 的默认值由 ``WaitOutcome/derivedCeilingMS`` 派生**（72s），
+    /// 不再写死 20s：CI 上一拍（一次 `Task.sleep(50ms)`）实测能拖到 ~7.2s ⇒ 20s 只剩
+    /// **2.8 拍**余量，而「安全网一响，它就又变成判据」（§8.135.4）。细节见
+    /// ``WaitOutcome/worstObservedPollMS``（§8.136）。
+    ///
     /// 于是「进程没就绪」与「我排不上队」在 ``WaitOutcome/stopReason`` 上**分得开**：
     /// 前者是 ``WaitOutcome/StopReason/budgetExhausted``（看够了），
     /// 后者是 ``WaitOutcome/StopReason/ceilingHit``（没看够）。
@@ -287,7 +292,7 @@ struct ProcessAppResolverTests {
     nonisolated static func waitForExecutablePath(
         pid: Int32,
         pollBudget: Int = 40,
-        hardCeilingMS: Int = 20_000
+        hardCeilingMS: Int = WaitOutcome.derivedCeilingMS
     ) async -> WaitOutcome {
         let started = Date()
         let ceiling = started.addingTimeInterval(Double(hardCeilingMS) / 1000)
@@ -656,6 +661,34 @@ struct ProcessAppResolverTests {
         #expect(
             !immediate.diagnostic.contains("始终不成立"),
             "成立的等待不该报「始终不成立」：\(immediate.diagnostic)")
+    }
+
+    /// **安全网先到时也必须报「没看够」**（2026-09-23，§8.136）。
+    ///
+    /// ⚠️ 补的是**一直开着的缺口**：本文件原来只守了 `.budgetExhausted`（「看够了」）那一个
+    /// 出口，`.ceilingHit`（「没看够」）**没有任何守卫** ⇒ 谁把安全网的判断改坏
+    /// （让它永不发生、或反过来永远发生），**不会有任何东西变红**。
+    /// `IntegrationEjectTests` 那边两个出口都有牙（§8.132），这边缺一个 ⇒ 补上。
+    ///
+    /// 判据**刻意写成「拍数远小于预算」而不是某个具体数字**：撞安全网时拍数本来就随负载变
+    /// （那正是「没看够」的定义），钉死数字等于把调度延迟写进判据。
+    ///
+    /// ⚠️ 拍间隔**保持默认 50ms**：这条要的就是「一拍比安全网长」—— 压到 1ms ⇒ 100 拍只花
+    /// 100ms ⇒ 变成预算先到，这条守卫就没了。
+    @Test func 安全网先到时必须报没看够() async {
+        let starved = await Self.waitForExecutablePath(
+            pid: 999_999, pollBudget: 100, hardCeilingMS: 200)
+
+        #expect(
+            starved.stopReason == .ceilingHit,
+            "安全网先到 ⇒ 必须是「没看够」，实得 \(starved.stopReason)")
+        #expect(
+            starved.polls < 100,
+            "撞安全网时拍数必须**远小于**预算 —— 这正是「没看够」的判据，实得 \(starved.polls)")
+        #expect(!starved.ok, "恒不成立 ⇒ `ok` 必须是 false")
+        #expect(
+            starved.diagnostic.contains("没看够"),
+            "「没看够」这句话必须出现在诊断里 —— 它是给下一个排查的人看的：\(starved.diagnostic)")
     }
 
     /// **`ok` 必须是从 ``WaitOutcome/StopReason`` 派生的**（2026-09-23，§8.132）。

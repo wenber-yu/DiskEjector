@@ -187,12 +187,12 @@ struct IntegrationEjectTests {
     /// `35783127520` 又实测到 ~7.2s）⇒ 名义值下「6s 是 120× 余量」，按实测最坏值算却是 **0×**。
     /// 本仓就在这上面红过一次：守卫把安全网设成 6s，而 CI 上一拍就吃掉 7.2s ⇒ 「预算说了算」
     /// 被翻成「没看够」（`polls: 2, stopReason: .ceilingHit`）。
-    /// ⇒ **凡断言 `.budgetExhausted` 的守卫，安全网都由 ``worstObservedPollMS`` 派生**（见该文件里的常量），
+    /// ⇒ **凡断言 `.budgetExhausted` 的守卫，安全网都由 ``WaitOutcome/worstObservedPollMS`` 派生**（见该文件里的常量），
     /// 并且把拍间隔压到 1ms，让「预算的名义时长」远小于安全网 —— 双重保险，且守卫的
     /// **耗时不再随 runner 抖动**（原来每条守卫在 CI 上都要 7 秒）。
     private static func waitForDisk(
         pollBudget: Int = 300,
-        hardCeilingMS: Int = 45_000,
+        hardCeilingMS: Int = WaitOutcome.derivedCeilingMS,
         pollIntervalNS: UInt64 = 50_000_000,
         probe: @Sendable () async -> DiskInfo?
     ) async -> (outcome: WaitOutcome, disk: DiskInfo?) {
@@ -230,23 +230,6 @@ struct IntegrationEjectTests {
             found
         )
     }
-
-    /// **实测过的最坏单拍耗时**（毫秒）—— 安全网的余量必须拿**它**算，不能拿名义的 50ms 算。
-    ///
-    /// | 出处 | 实测值 | 场合 |
-    /// |---|---|---|
-    /// | §8.118（2026-09-21） | **~6.1s** | 一次 `Task.sleep(50ms)` 被 CI runner 拖长 |
-    /// | 本仓 run `35783127520`（2026-09-23） | **~7.2s** | 同上，并把「预算说了算」的守卫翻成了「没看够」（§8.135） |
-    ///
-    /// ⚠️ 取 **7.2s**：两次实测里更糟的那个。它**不是**推算出来的，是从 CI 日志里读出来的
-    /// （`放弃时要分清看够了与没看够() failed after 7.579 seconds`，其中约 7.2s 是一拍）。
-    /// ⚠️ 若日后 CI 更慢，这个数要**跟着实测更新** —— 它一过期，由它派生的安全网就退化成
-    /// 又一个「名义值」，本轮那次红会原样重演。
-    ///
-    /// ℹ️ **为什么它进不了断言**：本地一拍就是 50ms，永远撞不到安全网 ⇒ 「安全网够不够大」
-    /// 这件事**在本地无法用测试守住**（改回 6s 本地照样全绿）。能守住它的只有 CI，
-    /// 以及下面这些**由它派生而不是写死**的参数（想改坏得先改这个常量）。
-    private static let worstObservedPollMS = 7_200
 
     /// 生产探针：**在协作线程池之外**枚举。
     ///
@@ -419,7 +402,7 @@ struct IntegrationEjectTests {
         let never = ScriptedProbe([])
         let timedOut = await Self.waitForDisk(
             pollBudget: 1,
-            hardCeilingMS: Self.worstObservedPollMS * 10,
+            hardCeilingMS: WaitOutcome.derivedCeilingMS,
             pollIntervalNS: 1_000_000
         ) { await never.next() }
         #expect(timedOut.disk == nil, "恒不出现却拿到了盘：\(String(describing: timedOut.disk))")
@@ -498,7 +481,7 @@ struct IntegrationEjectTests {
         // 安全网改成派生：探针第 3 拍才给盘，3 拍 × 最坏 7.2s = 21.6s ⇒ 原来写死的 30s
         // 只剩 1.4× 余量，runner 再慢一点就会把「等到了」误判成「没看够」。
         let now = await Self.waitForDisk(
-            pollBudget: 40, hardCeilingMS: Self.worstObservedPollMS * 10
+            pollBudget: 40, hardCeilingMS: WaitOutcome.derivedCeilingMS
         ) {
             try? await Task.sleep(nanoseconds: 50_000_000)
             return await newProbe.next()
@@ -518,7 +501,7 @@ struct IntegrationEjectTests {
     /// ⚠️ **① 曾经在这里红过一次**（CI run `35783127520`，2026-09-23，§8.135）：安全网当时
     /// 写死 **6s**，而 CI 上**一拍**就吃掉 ~7.2s ⇒ 出口从「看够了」翻成「没看够」。
     /// 病根是余量**拿名义的 50ms 算**（120×，看着很宽），而不是拿实测最坏单拍算（**0×**）。
-    /// ⇒ 现在安全网由 ``worstObservedPollMS`` 派生（72s），拍间隔压到 1ms ⇒ 预算名义时长 2ms。
+    /// ⇒ 现在安全网由 ``WaitOutcome/derivedCeilingMS`` 派生（72s），拍间隔压到 1ms ⇒ 预算名义时长 2ms。
     /// 两层是**各自独立**的保险：即便有人把拍间隔改回 50ms，最坏单拍 7.2s 也远小于 72s。
     @Test func 放弃时要分清看够了与没看够() async {
         let never = ScriptedProbe([])
@@ -527,7 +510,7 @@ struct IntegrationEjectTests {
         //    ⇒ 停下来的原因只可能是预算（差 4 个数量级，与负载无关）。
         let exhausted = await Self.waitForDisk(
             pollBudget: 2,
-            hardCeilingMS: Self.worstObservedPollMS * 10,
+            hardCeilingMS: WaitOutcome.derivedCeilingMS,
             pollIntervalNS: 1_000_000
         ) {
             await never.next()
