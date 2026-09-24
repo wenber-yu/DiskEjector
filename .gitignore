@@ -1,5 +1,5 @@
 # ---- 构建产物 ----
-dist/
+Dist/
 .build/
 /Packages
 SPMPackages/
@@ -8,7 +8,7 @@ SPMPackages/
 # `swift test --enable-code-coverage` 之后直接跑一次二进制就会在仓库根留下它。
 default.profraw
 
-# `tools/clt_swift_env.sh` 在「Xcode 许可未接受」时会往**包根**放一个指向 Xcode
+# `Tools/clt_swift_env.sh` 在「Xcode 许可未接受」时会往**包根**放一个指向 Xcode
 # `xcstringstool` 的软链：CLT 没有这个工具，而 SwiftPM 找不到它时按**包根**回落
 # （不是调用目录，也不看 PATH —— 见该脚本注释）。只锚定包根，不匹配子目录同名文件。
 /xcstringstool
@@ -17,8 +17,11 @@ default.profraw
 xcuserdata/
 DerivedData/
 .swiftpm/
-.swiftpm/configuration/registries.json
-.swiftpm/xcode/package.xcworkspace/contents.xcworkspacedata
+# ⚠️ 2026-09-24 删掉两条**冗余**：`.swiftpm/configuration/registries.json` 与
+#    `.swiftpm/xcode/package.xcworkspace/contents.xcworkspacedata` ——
+#    上面那句 `.swiftpm/` 已经覆盖它们（gitignore 里非 `!` 开头的规则只做忽略，
+#    不会重新纳入）。那两条是从 GitHub 的 Swift.gitignore 模板照抄来的，模板里
+#    本来是配合别的条目用的，到这儿就成了死条目。
 .netrc
 
 # ---- 设计工具运行时产物 ----
@@ -31,13 +34,13 @@ DerivedData/
 Design/ui/runtime-*.json
 
 # ---- 真机实验装置产物 ----
-# `feedsrv.py` 的请求日志默认就落在**脚本所在目录**（tools/probe/）里，且默认路径
+# `feedsrv.py` 的请求日志默认就落在**脚本所在目录**（Tools/probe/）里，且默认路径
 # 不能改（有人照旧用法去那儿找日志）；`make_broken_appcast.py` 生成的那一份也常被
-# 拷到 tools/probe/appcast.xml，因为 feedsrv.py 只服务它自己那个目录、挪不走。
-# ⇒ 这两类是每次真机实验后必然出现的脏文件，直接忽略（只锚 tools/probe/ 下，
+# 拷到 Tools/probe/appcast.xml，因为 feedsrv.py 只服务它自己那个目录、挪不走。
+# ⇒ 这两类是每次真机实验后必然出现的脏文件，直接忽略（只锚 Tools/probe/ 下，
 #   不碰仓库根那份真 appcast.xml）。
-tools/probe/feed-hits.log
-tools/probe/appcast.xml
+Tools/probe/feed-hits.log
+Tools/probe/appcast.xml
 
 # ---- macOS ----
 .DS_Store
@@ -47,6 +50,6 @@ tools/probe/appcast.xml
 # 新一代记忆目录（与 .workbuddy/ 并存，同样不入库）
 .workbuddy-ai/
 
-# ---- Python（tools/ 下的探针脚本跑一次就会生成）----
+# ---- Python（Tools/ 下的探针脚本跑一次就会生成）----
 __pycache__/
 *.pyc

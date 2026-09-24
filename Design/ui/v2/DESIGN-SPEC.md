@@ -3,10 +3,24 @@
 > 应用中文名：磁盘推出助手 · macOS 14+ · SwiftUI · 2026-09
 > 设计稿：`Design/ui/v2/`（`index.html` 为总览入口）
 >
-> ⚠️ **2026-09-24 目录迁移**：本文（**含下面 §8.x 的历史改动记录**）里出现的旧路径
-> `DiskEjector-UI-Design/v2/…` 一律指 `Design/ui/v2/…`。
-> 历史记录**按当时原样保留、不做替换** —— 那批记的是「当时那个文件叫什么」，
-> 改了就是伪造历史。**全仓只有这一处写新旧对应**（一处真相 + 一处指针）。
+> ⚠️ **2026-09-24 目录迁移（两批）**：本文（**含下面 §8.x 的历史改动记录**）里出现的
+> 旧路径一律按下表读。历史记录**按当时原样保留、不做替换** —— 那批记的是
+> 「当时那个文件叫什么」，改了就是伪造历史。
+> **全仓只有这一处写新旧对应**（一处真相 + 一处指针）。
+>
+> | 旧路径 | 现路径 |
+> |---|---|
+> | `DiskEjector-UI-Design/…` | `Design/ui/…` |
+> | `DiskEjector-Icons/…` | `Design/icon-candidates/…` |
+> | `assets/icons/…` | `Design/app-icon/…` |
+> | `assets/screenshots/…` | `Design/screenshots/…` |
+> | `scripts/…` | `Scripts/…` |
+> | `tools/…` | `Tools/…` |
+> | `dist/…` | `Dist/…` |
+> | `release-notes/…` | `Release-notes/…` |
+>
+> 口径：顶层目录**一律大写开头**（`Sources` / `Tests` / `Plugins` 本来就是 SwiftPM
+> 的约定名，改不了；既然统一不了小写，就统一到大写）。
 
 ---
 
@@ -17383,6 +17397,96 @@ swift run -v -Xswiftc -plugin-path -Xswiftc /tmp/definitely-nope-xyz <exe>   →
   覆盖率 65.90%**（与改动前逐字一致）。
 - 工作区 3 个文件：`Sources/Services/UpdateController.swift`(+33)、
   `Tests/DiskEjectorAppTests/UpdateSettingsTests.swift`(+81)、`tools/clt_swift_env.sh`(+40/−1)。
+
+## 8.141 目录大写化 + 部署目标统一到 14：**「最低系统版本」收成一处真相**（2026-09-24）
+
+### 8.141.1 四个小写顶层目录改大写（`git mv` 两段式）
+
+macOS 文件系统**大小写不敏感** ⇒ `git mv scripts Scripts` 报「同一个文件」（实测
+`test -d SCRIPTS` 为真）⇒ 必须**两段式**改名：
+
+```
+git mv scripts .rename-tmp-scripts && git mv .rename-tmp-scripts Scripts
+```
+
+顶层现在**全是大写开头**：`Design` `Dist` `Plugins` `Release-notes` `Resources`
+`Scripts` `Sources` `Tests` `Tools`。
+
+⚠️ 代价在**引用侧**：`Scripts/` `Tools/` `Dist/` `Release-notes/` 在 **69 个文本文件**里
+被引用过。批量替换按 `git ls-files --cached --others --exclude-standard` 枚举，
+**跳过 `Design/ui/v2/DESIGN-SPEC.md`**（§8.x 是历史流水，改了就是伪造历史；只在抬头加一张新旧对照表）。
+
+⚠️ **大小写不敏感会把残留藏起来**：`Scripts/preflight.sh` 里那行 `"$PACKAGE_DIR/tools"`
+在本机**照样解析成功**（解析到 `Tools/`）⇒ 本地永远绿，只有换到大小写敏感的文件系统才炸。
+⇒ 判据不能是「跑得起来」，只能是**文本扫描**。
+
+### 8.141.2 部署目标 13 → 14：同一件事被抄了 7 遍，而没有任何东西会让它们一致
+
+| 声明处 | 上一轮的值 | 现在 |
+|---|---|---|
+| `Package.swift` 的 `platforms` | `.v13` | `.v14` |
+| `Tools/gen_l10n_tool/Package.swift` 的 `platforms` | `.v13` | `.v14` |
+| `README.md` hero 行 | `macOS 13+` | `macOS 14+` |
+| `SPEC.md` 「最低系统版本」行 | `macOS 13.0+` | `macOS 14.0+` |
+| `SPEC.md` 「技术栈 · UI」行 | `支持 macOS 13+` | `支持 macOS 14+` |
+| 设计稿抬头（`DESIGN-SPEC.md` / `index.html`） | `macOS 14+` | `macOS 14+`（本来就是对的） |
+| `build_app.sh` → Info.plist 的 `LSMinimumSystemVersion` | **硬编码 `13.0`** | **从 `Package.swift` 派生** |
+
+实测抓到一处真漂：**最后那一行**。它**不会**在构建 / 测试 / 格式检查里露头（打包一路绿灯），
+症状只出现在用户机器上 —— 包在 macOS 13 上**启动、然后崩**：Gatekeeper 只看
+`LSMinimumSystemVersion`，它写着 13.0 ⇒ 系统放行，然后 dyld 找不到只有 14 才有的符号。
+
+⇒ 修法不是「把 13.0 改成 14.0」，而是**让它派生**；派不出来就硬报错
+（少一个键与值写空，在 Gatekeeper 眼里都不算拦得住）。
+
+提到 14 之后连带修了两处 macOS 14 废弃 API：`CGWindowListCreateImage`（改 `dlopen` / `dlsym`
+动态解析，见 `WindowSelfCheck.captureWindowImage`）与 `.onChange(of:perform:)` 单参闭包
+（改双参）；并清掉一层死代码（`disableFocusRingIfAvailable` → `disableFocusRing`）。
+
+### 8.141.3 守卫：`Tests/DiskEjectorAppTests/DeploymentTargetTests.swift`（5 条）
+
+| 轴 | 判据 | 变异证明 |
+|---|---|---|
+| 唯一真相 | 主包 + 工具包的 `platforms` 必须都是 14 | M7 |
+| 文档一致 | 5 处声明**逐个锚定**，与 `Package.swift` 的**实际值**比；**锚点失配也判红** | M3 / M8 |
+| 打包脚本 | `LSMinimumSystemVersion` 必须是**变量**（不是字面量数字），且从 `Package.swift` 取 | M4 |
+| 全仓负向扫 | `git grep --untracked`；部署目标形状的版本号必须都等于真相 | M3 / M6 |
+| 装置自证 | 双向对照（该报 / 不该报）+ 白名单自证 + 排除生效的**数量差** | M5 |
+
+⚠️ 判据**只认三种部署目标形状**（`macOS NN+` / `.macOS(.vNN)` / `部署目标 macOS NN`），
+**故意不匹配** `#available(macOS 13.3, *)`、`macOS 13 起已废弃`、`在 macOS 14 上偏厚`
+这些讲 **API 可用性事实**的写法。为了让这条边界成立，本轮把两处「（macOS 13+）」改成了
+「（macOS 13.0 起提供）」—— **把那个形状留给部署目标**，免得守卫被迫维护一张越来越长的白名单。
+
+⚠️ 比对基准取 `Package.swift` 的**实际值**而不是写死的 `expectedMajor`：这样「真升级到 15、
+文档没跟上」时，报的是**哪几份文档要改**；拿 `expectedMajor` 当基准的话，那时只有
+「唯一真相」那条会红，信息指向「Package.swift 不是 14」，还得自己想半天（M7 实测出来的差别）。
+
+### 8.141.4 变异：9 条全部符合预期（`Scripts/test/deployment_target_mutation.py`，手动跑、不进门槛）
+
+| 变异 | 结果 | 说明 |
+|---|---|---|
+| M1 只降主包、工具包不动 | invalid | **SwiftPM 自己报**：`gen_l10n_tool-product requires minimum platform version 14.0 … but this target supports 13.0` |
+| M2 两个包一起降回 13 | invalid | **编译器自己报**：源码里 `focusEffectDisabled()` 是 14-only |
+| M3 / M4 / M5 / M6 | red | 文档一致 + 负向扫 / 打包脚本 / 白名单自证 / 排除范围，各守各的轴 |
+| M7 真升级到 15 但不动文档 | red（3 条） | 逼着把 `expectedMajor` 与 5 份文档一起改齐 |
+| M8 锚点措辞被改写 | red | 证明「提取不到」也判红，守卫不会静默失效 |
+| M9 与版本号无关的改动 | green | 阴性对照：守卫没过严 |
+
+⇒ **意外收获**：退回 13 **编译不过**（两处各挡一层）。所以守卫的价值不在「防退回 13」，
+而在**防升级、防文档与打包脚本漂**。
+
+### 8.141.5 变异脚本自己踩的两个坑（K4 家族的新成员）
+
+1. **备份文件名撞车**：第一版用 `p.name` 当备份名 ⇒ 主包 `Package.swift` 与
+   `Tools/gen_l10n_tool/Package.swift` **撞成同一个备份文件** ⇒ 还原时把主包的内容写进了
+   工具包，**而末尾自检还报「一致」**（比对的正是那份错备份）。修法：按**相对路径**拼名字。
+2. **过期备份**：上一次跑留下的备份还在（清理被批量删除守卫拦下）⇒ 第二版加的
+   「备份后立刻 `cmp -s` 自证」当场报「备份内容与当前文件不一致」并中止 —— **正是它该干的事**。
+   修法：发现过期就重新采一份并打印。
+
+⇒ 合并句：**备份内容本身也可能是错的，而且自检会替它说谎** —— 校验必须拿备份去和
+**当前文件**比一次，而不是和「我以为它是什么」比。
 
 ## 9. 文件清单
 

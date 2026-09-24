@@ -4,11 +4,11 @@ import Testing
 /// **本地门槛 = CI 门槛** —— 这条约定此前只在**文字里**承诺，没有任何机器检查。
 ///
 /// 现在有四处写着它：
-/// 1. `SPEC.md` §6.4：「本地门槛 `./run.sh check`，或直接 `./scripts/preflight.sh`；
+/// 1. `SPEC.md` §6.4：「本地门槛 `./run.sh check`，或直接 `./Scripts/preflight.sh`；
 ///    **与 CI 调用同一文件**，判据不会分叉」
-/// 2. `.github/workflows/ci.yml` line 57 调用 `./scripts/preflight.sh --with-tests`
+/// 2. `.github/workflows/ci.yml` line 57 调用 `./Scripts/preflight.sh --with-tests`
 /// 3. `ci.yml` line 52–55 的注释：本地跑的是同一个文件，「否则 13 条并发错误会潜伏三天」
-/// 4. `run.sh` 的 `check` 分支：`exec "$SCRIPT_DIR/scripts/preflight.sh" "$@"`
+/// 4. `run.sh` 的 `check` 分支：`exec "$SCRIPT_DIR/Scripts/preflight.sh" "$@"`
 ///    （⚠️ **不写行号** —— 2026-09-20 给 `run.sh` 加了 `ci` 子命令，行号当场就漂了）
 ///
 /// ⚠️ 但**四处都是人写的字** —— 谁改了其中一处，其余三处不会有任何报错，
@@ -34,7 +34,7 @@ import Testing
 ///
 /// ### ⚠️ 收得过头也是假红：「唯一」是相对于**角色**，不是相对于整个文件
 ///
-/// 第二版把「SPEC.md 里所有 `scripts/*.sh` 引用必须唯一」当断言 ⇒ 立刻红，
+/// 第二版把「SPEC.md 里所有 `Scripts/*.sh` 引用必须唯一」当断言 ⇒ 立刻红，
 /// 报出 `build_icon.sh` / `coverage.sh` / `make_appcast.sh` —— 它们是**别的脚本**，
 /// 从来没自称过「门槛」。⇒ 收集范围必须是「**自称门槛的那些行**」，不是「全文」。
 /// 与 §8.59 那条正好互补：那边是「来源比想的多」（假绿），这边是「范围比该管的宽」（假红）。
@@ -153,7 +153,7 @@ struct GateParityTests {
 
     /// 文档（SPEC.md §6.4）承诺的门槛命令必须与实际**同一个文件**，且**只能有一个说法**。
     ///
-    /// ⚠️ 第一版用 `contains` ⇒ 文档里有**第二处**写法不同的引用（`scripts/preflight.sh`
+    /// ⚠️ 第一版用 `contains` ⇒ 文档里有**第二处**写法不同的引用（`Scripts/preflight.sh`
     /// 不带 `./`），改掉第一处仍绿。现在查「引用集合**必须唯一**且等于实际脚本」。
     ///
     /// ⚠️ 收集范围只限**自称门槛的行**：全文扫会捞到 `build_icon.sh` / `coverage.sh` 等
@@ -170,7 +170,7 @@ struct GateParityTests {
             let s = String(line)
             guard Self.gateClaimKeywords.contains(where: { s.contains($0) }) else { continue }
             claimLines.append(s)
-            for m in Self.allMatches(in: s, pattern: #"[A-Za-z0-9_./-]*scripts/[A-Za-z0-9_]+\.sh"#) {
+            for m in Self.allMatches(in: s, pattern: #"[A-Za-z0-9_./-]*Scripts/[A-Za-z0-9_]+\.sh"#) {
                 refs.insert(Self.normalize(m))
             }
         }
@@ -181,7 +181,7 @@ struct GateParityTests {
             "SPEC.md 里找不到自称「门槛」的行 —— §6.4 那句承诺被删了，或关键词失效（假绿）")
         #expect(
             !refs.isEmpty,
-            "自称门槛的那些行里没有 `scripts/xxx.sh` 引用 —— 只写「与 CI 同一文件」却不写是哪个文件（假绿）")
+            "自称门槛的那些行里没有 `Scripts/xxx.sh` 引用 —— 只写「与 CI 同一文件」却不写是哪个文件（假绿）")
 
         #expect(
             refs == [run],
@@ -332,7 +332,7 @@ struct GateParityTests {
     /// 判据：ci.yml 顶层 env 里的 runner 级变量，门槛脚本必须设成**逐字相同的值**。
     @Test func 门槛必须把CI的runner级变量设成同一个值() throws {
         let env = try loadEnv()
-        let gate = Self.stripComments(try read("scripts/preflight.sh"))
+        let gate = Self.stripComments(try read("Scripts/preflight.sh"))
 
         // 负向锚：两边都得真读到（读不到 = 口径失效，不是「一致」）
         #expect(!Self.runnerLevelEnv.isEmpty, "runner 级白名单是空的 —— 守卫自己被清空了（假绿）")
@@ -353,7 +353,7 @@ struct GateParityTests {
             #expect(
                 assigned,
                 """
-                门槛脚本 `scripts/preflight.sh` 没有把 `\(name)` 设成 CI 那个值（`\(value)`）。
+                门槛脚本 `Scripts/preflight.sh` 没有把 `\(name)` 设成 CI 那个值（`\(value)`）。
                 它被 `runnerLevelEnv` 白名单排除在「脚本必须读」之外 ⇒ **断了不会有任何东西变红**。
                 后果：本地门槛跑在与 CI **不同的 shell locale** 下（本机 LC_COLLATE=C、
                 CI en_US.UTF-8）—— 这类差异曾让 `b530f68`（§8.108.1）**推上去才炸**，
@@ -425,12 +425,12 @@ struct GateParityTests {
         var files: [String] = []
         let scriptsDir = repoRoot.appendingPathComponent("scripts")
         // ⚠️ **必须递归**（`subpathsOfDirectory`，不是 `contentsOfDirectory`）：
-        //    2026-09-20 把 `run_gate` 抽到 `scripts/lib/gate_report.sh`，环境契约的
+        //    2026-09-20 把 `run_gate` 抽到 `Scripts/lib/gate_report.sh`，环境契约的
         //    「读」随之挪走，而这里只枚举一层 ⇒ 立刻报「**没有任何脚本读**
         //    `PREFLIGHT_FAIL_TAIL`」。那句与「真的没人读了」**逐字相同** ——
         //    范围窄了一层，判据就从「查接线」变成了「报错文不对题」。
         files += ((try? fm.subpathsOfDirectory(atPath: scriptsDir.path)) ?? [])
-            .filter { $0.hasSuffix(".sh") }.sorted().map { "scripts/\($0)" }
+            .filter { $0.hasSuffix(".sh") }.sorted().map { "Scripts/\($0)" }
         files += ((try? fm.contentsOfDirectory(atPath: repoRoot.path)) ?? [])
             .filter { $0.hasSuffix(".sh") }.sorted()
 
@@ -441,9 +441,9 @@ struct GateParityTests {
         return scan
     }
 
-    /// ⚠️ **范围锚**：`loadEnv` 扫到的脚本集必须 == `scripts/` 下**所有** `.sh`（递归）。
+    /// ⚠️ **范围锚**：`loadEnv` 扫到的脚本集必须 == `Scripts/` 下**所有** `.sh`（递归）。
     ///
-    /// 2026-09-20 它只枚举一层，`scripts/lib/gate_report.sh` 一挪进去就**不在范围里**，
+    /// 2026-09-20 它只枚举一层，`Scripts/lib/gate_report.sh` 一挪进去就**不在范围里**，
     /// 于是「`PREFLIGHT_FAIL_TAIL` 没有脚本读」—— 而这条消息与「真的没人读了」
     /// **逐字相同**，读它的人会去改接线，越改越错。⇒ 范围本身要有一条守卫。
     /// 少了这一条，退回 `contentsOfDirectory`（一层）**照样绿**。
@@ -454,14 +454,14 @@ struct GateParityTests {
         let expected = Set(
             ((try? fm.subpathsOfDirectory(atPath: dir.path)) ?? [])
                 .filter { $0.hasSuffix(".sh") }
-                .map { "scripts/\($0)" })
-        let got = Set(env.scriptBodies.keys.filter { $0.hasPrefix("scripts/") })
+                .map { "Scripts/\($0)" })
+        let got = Set(env.scriptBodies.keys.filter { $0.hasPrefix("Scripts/") })
         #expect(
             !expected.isEmpty,
-            "scripts/ 下没找到任何 .sh —— 枚举口径失效，后面的「没人读」全是假绿")
+            "Scripts/ 下没找到任何 .sh —— 枚举口径失效，后面的「没人读」全是假绿")
         #expect(
             got == expected,
-            "扫描范围与「scripts/ 下所有 .sh（递归）」不一致，缺：\(expected.subtracting(got).sorted())")
+            "扫描范围与「Scripts/ 下所有 .sh（递归）」不一致，缺：\(expected.subtracting(got).sorted())")
     }
 
     /// 承接某个环境变量的**局部变量名**：`FAIL_TAIL="${PREFLIGHT_FAIL_TAIL:-30}"` ⇒ `FAIL_TAIL`。
@@ -542,7 +542,7 @@ struct GateParityTests {
             .joined(separator: "\n")
     }
 
-    /// 路径归一化：`./scripts/preflight.sh` 与 `scripts/preflight.sh` 是同一个文件。
+    /// 路径归一化：`./Scripts/preflight.sh` 与 `Scripts/preflight.sh` 是同一个文件。
     private static func normalize(_ path: String) -> String {
         var p = path
         while p.hasPrefix("./") { p = String(p.dropFirst(2)) }

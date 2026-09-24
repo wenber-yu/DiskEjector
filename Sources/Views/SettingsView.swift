@@ -1136,7 +1136,7 @@ private struct AccentSwatch: View {
         }
         .buttonStyle(.plain)
         .focusable(false)
-        .disableFocusRingIfAvailable()
+        .disableFocusRing()
         .onHover { hovering = $0 }
         .help(color.displayName)
         .accessibilityLabel(color.displayName)
@@ -1197,7 +1197,7 @@ struct SettingsSegmentedControl: View {
                 }
                 .buttonStyle(.plain)
                 .focusable(false)
-                .disableFocusRingIfAvailable()
+                .disableFocusRing()
                 // 视觉上只有「透明」两个字，VoiceOver 念完整表述，
                 // 否则用户听到的选项名没有说明「透明什么」。
                 .accessibilityLabel(option.accessibilityTitle)
@@ -1301,7 +1301,7 @@ struct SettingsPopUp<Item: Hashable>: View {
         }
         .buttonStyle(.plain)
         .focusable(false)
-        .disableFocusRingIfAvailable()
+        .disableFocusRing()
         // 宽度由**最长的那一项**决定，不许被同行标签列压缩 ——
         // 压窄的结果是文字被截成「跟…」，用户看不出选了什么。
         .fixedSize()
@@ -1365,7 +1365,7 @@ struct SettingsPopUp<Item: Hashable>: View {
                 }
                 .buttonStyle(.plain)
                 .focusable(false)
-                .disableFocusRingIfAvailable()
+                .disableFocusRing()
             }
         }
         .padding(DesignTokens.Spacing.xs)
@@ -1399,7 +1399,7 @@ private struct SettingsLineButton<Content: View>: View {
         }
         .buttonStyle(.plain)
         .focusable(false)
-        .disableFocusRingIfAvailable()
+        .disableFocusRing()
         .onHover { hovering = $0 }
     }
 }

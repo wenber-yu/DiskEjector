@@ -1,7 +1,7 @@
 {
   "_comment": [
     "设计稿专有文案（实现侧 xcstrings 里没有的）。手改本文件，然后跑：",
-    "  python3 tools/build_i18n.py",
+    "  python3 Tools/build_i18n.py",
     "重新生成 assets/i18n.js —— 不要直接改 i18n.js，它是生成物。",
     "",
     "键名约定：",

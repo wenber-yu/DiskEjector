@@ -490,7 +490,7 @@ struct HoverBackground: View {
 /// 经过 NSButton 路径，第一次点击立即可触发；`onTapGesture` 在首次渲染后存在约 1 个
 /// runloop tick 的注册延迟，会出现「第一次点击没反应」——这是本项目用户报告过的核心症状。
 ///
-/// **去焦点环**：`.buttonStyle(.plain)` + `.focusable(false)` + `disableFocusRingIfAvailable()`。
+/// **去焦点环**：`.buttonStyle(.plain)` + `.focusable(false)` + `disableFocusRing()`。
 struct ActionButton: View {
     let title: String
     var systemImage: String?
@@ -534,7 +534,7 @@ struct ActionButton: View {
         .buttonStyle(.plain)
         .keyboardShortcut(keyboardShortcut)
         .focusable(false)
-        .disableFocusRingIfAvailable()
+        .disableFocusRing()
         .onHover { hovering = $0 }
         .animation(DesignTokens.Motion.animation(DesignTokens.Motion.fast, reduceMotion: reduceMotion), value: hovering)
         .opacity(isEnabled ? 1 : 0.45)
@@ -820,7 +820,7 @@ struct TextLinkButton: View {
         }
         .buttonStyle(.plain)
         .focusable(false)
-        .disableFocusRingIfAvailable()
+        .disableFocusRing()
         .onHover { hovering = $0 }
         .animation(
             DesignTokens.Motion.animation(DesignTokens.Motion.fast, reduceMotion: reduceMotion),

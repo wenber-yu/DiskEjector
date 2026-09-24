@@ -32,7 +32,7 @@ import Testing
 /// 1. 扩展名是 `yml` / `yaml`；
 /// 2. **首行是 `#!`**（shebang）。
 ///
-/// ⚠️ 第 2 条不是凑数：本仓库有**没有扩展名的可执行脚本**（`scripts/test/fake-gh/gh`），
+/// ⚠️ 第 2 条不是凑数：本仓库有**没有扩展名的可执行脚本**（`Scripts/test/fake-gh/gh`），
 /// 只按扩展名枚举会把它漏掉 —— 而「漏一个文件」与「那个文件干净」在输出上**逐字相同**
 /// （§8.105 的原话）。`扫描范围必须覆盖全部活工具文件` 就是钉这件事的。
 ///
@@ -104,7 +104,7 @@ import Testing
     ///
     /// ⚠️ 比「红」更糟的是**不红**：脚本若没开 `set -u`，bash 会把它当成
     /// **另一个不存在的变量**静默展开成空 —— 输出少几个字，不报错。
-    /// 本仓库 `scripts/ci_status.sh` 那几处正是这样（`set -u` 下才会红，
+    /// 本仓库 `Scripts/ci_status.sh` 那几处正是这样（`set -u` 下才会红，
     /// 而它只在**开发者本机**跑，本机 locale 是 C ⇒ 一直没暴露）。
     ///
     /// ⚠️ **口径：只管「具名变量」，不管位置参数** —— 这是实测出来的，不是猜的
@@ -278,7 +278,7 @@ import Testing
             \(claims.joined(separator: "\n"))
             门槛会加，数字会漂 —— 2026-09-20 实测：门槛已加到 5 道，而 `run.sh` 仍写「两道」、
             `ci.yml` 仍写「三道」，读的人据此**低估了检查范围**。
-            改法：别写数字，指向唯一实现（「过 CI 的门槛，见 `scripts/preflight.sh`」），
+            改法：别写数字，指向唯一实现（「过 CI 的门槛，见 `Scripts/preflight.sh`」），
             或在注释里说明「要清单就跑 `./run.sh check`」——它逐道打印标题。
             """)
     }
@@ -454,9 +454,9 @@ import Testing
             """)
 
         #expect(
-            live.contains("scripts/test/fake-gh/gh"),
+            live.contains("Scripts/test/fake-gh/gh"),
             """
-            无扩展名的 `scripts/test/fake-gh/gh` 没进范围 ——
+            无扩展名的 `Scripts/test/fake-gh/gh` 没进范围 ——
             枚举退化成「只看扩展名」了。它是**可执行脚本**（首行 `#!`），
             正是「不能拿扩展名当判据」的理由。
             """)
@@ -475,7 +475,7 @@ import Testing
             """
             这些**未入库**的活文件没进范围：\(missedUntracked.joined(separator: "、"))
             ⇒ 新写的脚本在 `git add` 之前不被扫 ⇒ **本地全绿、推上去才红**
-            （2026-09-21 实测：`scripts/test/stamp_lines_smoke.sh`）。
+            （2026-09-21 实测：`Scripts/test/stamp_lines_smoke.sh`）。
             改法：`gitLsFiles` 的枚举带 `--others --exclude-standard`。
             """)
     }

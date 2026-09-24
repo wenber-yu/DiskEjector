@@ -640,7 +640,7 @@ struct EvidenceBlock: View {
             }
             .buttonStyle(.plain)
             .focusable(false)
-            .disableFocusRingIfAvailable()
+            .disableFocusRing()
             .accessibilityAddTraits(.isButton)
         } else {
             Text(text)
@@ -909,7 +909,7 @@ private struct MenuBarEjectButton: View {
         }
         .buttonStyle(.plain)
         .focusable(false)
-        .disableFocusRingIfAvailable()
+        .disableFocusRing()
         .onHover { hovering = $0 }
         .help(label)
         .accessibilityLabel(label)

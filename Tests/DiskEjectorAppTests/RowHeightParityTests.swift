@@ -18,14 +18,14 @@ import Testing
 /// 而**没有任何机制会去复核那次实测还成不成立**（清单 #17）。
 ///
 /// ⇒ 所以这里的口径是：**把实测值固化成仓库里的一份快照**
-/// （`assets/design-row-heights.json`，由 `tools/measure_row_heights.py` 生成），
+/// （`assets/design-row-heights.json`，由 `Tools/measure_row_heights.py` 生成），
 /// 再让 CI 去比。这把「只能手工复核」变成了「CI 能抓漂移」。
 ///
 /// ## ⚠️ 这条守卫的边界（别把它读成同源守卫）
 ///
 /// - **能抓**：实现侧飘了（谁改了 padding / 行距，行高变 180 ⇒ 立刻红）。
 /// - **抓不住**：设计稿改了而没重跑脚本 —— 快照里还是旧值，两边依然「一致」。
-///   要复核设计稿，就**重跑 `tools/measure_row_heights.py`**（它会覆盖快照并打印时刻）。
+///   要复核设计稿，就**重跑 `Tools/measure_row_heights.py`**（它会覆盖快照并打印时刻）。
 ///   这是「实测值」这一类事实的固有代价，`DESIGN-SPEC` 清单 #17 记的就是它。
 ///
 /// ## 容差为什么是 1pt
@@ -104,7 +104,7 @@ struct RowHeightParityTests {
             bad.isEmpty,
             """
             快照有问题：\(bad.joined(separator: "、"))。
-            重跑 `tools/measure_row_heights.py` —— 它会带着这些自证字段重新生成。
+            重跑 `Tools/measure_row_heights.py` —— 它会带着这些自证字段重新生成。
             """)
     }
 
@@ -143,7 +143,7 @@ struct RowHeightParityTests {
     private func row(_ r: Report, _ key: String) throws -> Row {
         try #require(
             r.rows[key],
-            "快照里没有 \(key) 这一档 —— 重跑 tools/measure_row_heights.py")
+            "快照里没有 \(key) 这一档 —— 重跑 Tools/measure_row_heights.py")
     }
 
     /// 实测值（小数）与实现常量（取整）的差不能超过 1pt。
@@ -153,7 +153,7 @@ struct RowHeightParityTests {
             """
             \(who)：设计稿实测 \(design)pt，实现 \(impl)pt —— 差 \(abs(design - Double(impl)))pt，超过 1pt。
             实现侧改了 padding / 行距 / 字号，或设计稿改版了而快照没更新。
-            ⚠️ 设计稿改版请**重跑** `tools/measure_row_heights.py`，别手改 JSON。
+            ⚠️ 设计稿改版请**重跑** `Tools/measure_row_heights.py`，别手改 JSON。
             """)
     }
 }

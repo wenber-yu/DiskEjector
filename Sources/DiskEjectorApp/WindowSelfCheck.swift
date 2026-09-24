@@ -22,6 +22,48 @@ import AppKit
 @MainActor
 enum WindowSelfCheck {
 
+    // MARK: - 窗口位图抓取（同步）
+
+    /// `CGWindowListCreateImage` 的**动态解析**入口。
+    ///
+    /// ⚠️ 为什么不直接调它（2026-09-24）：该 API **在 macOS 14.0 被废弃**，而本包的
+    /// 部署目标就是 14.0 ⇒ 直接引用会触发 `[#DeprecatedDeclaration]`，在门槛 1 的
+    /// `-warnings-as-errors` 下**变成硬错误**（实测：`swift build -Xswiftc -warnings-as-errors`
+    /// 报 `WindowSelfCheck.swift:213/378`）。
+    ///
+    /// 它的官方替代品 ScreenCaptureKit 是**异步 + 需要屏幕录制权限**，而本函数服务于
+    /// 「交通灯红灯有没有被标题栏裁掉」「空状态有没有被骨架屏顶掉」这两条**确定性**自检：
+    /// 异步化要改整条调用链，权限化会让判据在没授权时**永远量不到** —— 那不是变弱，是**静默失效**。
+    /// ⇒ 保留同步旧 API，把「我知道它废弃了」这件事**收在这一处**并写明理由。
+    ///
+    /// ⚠️ 解析失败返回 `nil`，调用方按「抓不到图」处理（它们本来就有这条分支）。
+    /// **不**静默退化成别的取图方式 —— 那会改变判据的坐标口径（见 ``measureRedLightInk``）。
+    @MainActor
+    private static let windowImageFn:
+        (
+            @convention(c) (CGRect, CGWindowListOption, CGWindowID, CGWindowImageOption)
+                -> Unmanaged<CGImage>?
+        )? = {
+            guard
+                let handle = dlopen(
+                    "/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics", RTLD_LAZY),
+                let symbol = dlsym(handle, "CGWindowListCreateImage")
+            else { return nil }
+            return unsafeBitCast(
+                symbol,
+                to: (@convention(c) (CGRect, CGWindowListOption, CGWindowID, CGWindowImageOption)
+                    -> Unmanaged<CGImage>?).self)
+        }()
+
+    /// 同步抓指定窗口的位图（``windowImageFn`` 的 Swift 包装，接好内存管理）。
+    ///
+    /// `CGWindowListCreateImage` 遵循 Create 规则（返回 +1）⇒ 必须 `takeRetainedValue()`。
+    @MainActor
+    static func captureWindowImage(_ windowID: CGWindowID) -> CGImage? {
+        windowImageFn?(.null, .optionIncludingWindow, windowID, .boundsIgnoreFraming)?
+            .takeRetainedValue()
+    }
+
     /// 等应用真的变成前台（最多 2 秒）。
     ///
     /// `NSApp.activate(ignoringOtherApps:)` 只是**请求**激活，真正生效要等下一次
@@ -210,9 +252,7 @@ enum WindowSelfCheck {
         let deadline = Date().addingTimeInterval(3)
         while true {
             let windowID = CGWindowID(window.windowNumber)
-            if let cg = CGWindowListCreateImage(
-                CGRect.null, .optionIncludingWindow, windowID, .boundsIgnoreFraming)
-            {
+            if let cg = Self.captureWindowImage(windowID) {
                 // `NSBitmapImageRep(cgImage:)` 在 macOS 上**不是** Optional，不能放 `guard let` 里。
                 let rep = NSBitmapImageRep(cgImage: cg)
                 pixelsWide = rep.pixelsWide
@@ -374,10 +414,7 @@ enum WindowSelfCheck {
             return
         }
         let windowID = CGWindowID(window.windowNumber)
-        guard
-            let cg = CGWindowListCreateImage(
-                CGRect.null, .optionIncludingWindow, windowID, .boundsIgnoreFraming)
-        else {
+        guard let cg = Self.captureWindowImage(windowID) else {
             mismatches.append("\(label) 抓不到主窗口图像，无法核对空状态")
             return
         }

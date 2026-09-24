@@ -1,5 +1,5 @@
 {
-  "_comment": "生成物：`tools/measure_row_heights.py` 用无头 Chrome 量出来的实测值。别手改 —— 要改就重跑脚本。由 RowHeightParityTests 读取。",
+  "_comment": "生成物：`Tools/measure_row_heights.py` 用无头 Chrome 量出来的实测值。别手改 —— 要改就重跑脚本。由 RowHeightParityTests 读取。",
   "measuredAt": "2026-09-19 14:03",
   "rows": {
     "busy": {

@@ -414,7 +414,7 @@ struct DesignDraftIntegrityTests {
 
     /// 页面**引用了但声明集里没有**的键 —— 静默回退，一个都不许有。
     ///
-    /// `tools/build_i18n.py` 的注释自己写着：「抄漏一条不会报错，只会在切到那门语言时
+    /// `Tools/build_i18n.py` 的注释自己写着：「抄漏一条不会报错，只会在切到那门语言时
     /// **静默回退成中文** —— 而『回退』和『翻好了』长得一模一样」。
     /// 声明集是 **`i18n-extra.json` ∪ `Localizable.xcstrings`**（设计稿可以引用产品已有文案）。
     @Test func 页面引用了但没有声明的文案键一个都不许有() throws {
@@ -436,7 +436,7 @@ struct DesignDraftIntegrityTests {
         )
     }
 
-    /// **生成物与源必须同步**：改了源忘了重跑 `tools/build_i18n.py`，`i18n.js` 就是旧的。
+    /// **生成物与源必须同步**：改了源忘了重跑 `Tools/build_i18n.py`，`i18n.js` 就是旧的。
     ///
     /// 这一向才贵：**加了键忘了重跑** ⇒ 切到英文时设计稿**静默回退成中文**，
     /// 而「回退」和「翻好了」在界面上长得一模一样 —— `build_i18n.py` 的头注释自己写着这句。
@@ -457,7 +457,7 @@ struct DesignDraftIntegrityTests {
             Self.matches(in: js, pattern: #"源指纹\s+([0-9a-f]{64})"#).first,
             """
             \(jsURL.lastPathComponent) 头部找不到「源指纹 <64 位 hex>」。
-            要么没跑过 `python3 tools/build_i18n.py`，要么头部格式改了而这里的正则没跟上。
+            要么没跑过 `python3 Tools/build_i18n.py`，要么头部格式改了而这里的正则没跟上。
             """)
 
         let expected = try Self.sourceFingerprint(repoRoot: repoRoot)
@@ -469,7 +469,7 @@ struct DesignDraftIntegrityTests {
               文件里  \(embedded.prefix(16))…
               源算得  \(expected.prefix(16))…
             源（Localizable.xcstrings / i18n-extra.json / build_i18n.py）有一方改过了 —— 重跑：
-                python3 tools/build_i18n.py
+                python3 Tools/build_i18n.py
             并把新生成的 i18n.js 一起提交（它是生成物，但必须入库）。
             """)
     }
@@ -2282,7 +2282,7 @@ struct DesignDraftIntegrityTests {
     }
 
     /// 源指纹 = sha256(xcstrings → extra → 生成脚本)，**拼接顺序必须与
-    /// `tools/build_i18n.py` 的 `fingerprint()` 逐字一致**（那边注释里标了顺序）。
+    /// `Tools/build_i18n.py` 的 `fingerprint()` 逐字一致**（那边注释里标了顺序）。
     ///
     /// 顺序写反**不会报错** —— 只会算出另一个值，于是守卫**永远红**且看不出为什么。
     /// 所以顺带钉住三件事：三个输入都得读得到、**都得有内容**。
@@ -2291,7 +2291,7 @@ struct DesignDraftIntegrityTests {
         let rels = [
             "Sources/Localization/Localizable.xcstrings",
             "Design/ui/v2/assets/i18n-extra.json",
-            "tools/build_i18n.py",
+            "Tools/build_i18n.py",
         ]
         var sha = SHA256()
         for rel in rels {

@@ -232,22 +232,17 @@ extension View {
     /// **去 SwiftUI Button 默认 focus 环**。
     ///
     /// 主窗口启动时第一个 interactive Button 会自动获得焦点环（macOS 14+ 的 SwiftUI 默认行为），
-    /// 蓝色环套在 RefreshButton 上看着像"按钮被高亮选中"——但用户没点任何按钮。
-    /// - `.focusable(false)` 在 macOS 13+ 上移除 focus 资格；
-    /// - `.focusEffectDisabled()` 仅 macOS 14+ 可用，单独包一层 ViewModifier 包版本守卫。
-    func disableFocusRingIfAvailable() -> some View {
-        modifier(DisableFocusRingModifier())
-    }
-}
-
-private struct DisableFocusRingModifier: ViewModifier {
-    @ViewBuilder
-    func body(content: Content) -> some View {
-        if #available(macOS 14.0, *) {
-            content.focusEffectDisabled()
-        } else {
-            content
-        }
+    /// 蓝色环套在 RefreshButton 上看着像「按钮被高亮选中」——但用户没点任何按钮。
+    /// - `.focusable(false)` 移除 focus 资格；
+    /// - `.focusEffectDisabled()` 关掉焦点效果。
+    ///
+    /// ⚠️ 2026-09-24 随部署目标提到 14.0 简化：原实现是
+    /// `disableFocusRing()` + 一个 `DisableFocusRingModifier`，里面用
+    /// `if #available(macOS 14.0, *)` 分岔 —— 目标到 14 之后那个 `else`（原样返回 content）
+    /// **永远走不到**，整层包装成了死代码，名字里的 `IfAvailable` 也不再成立。
+    /// ⇒ 直接调用，把「为什么需要它」的理由留在注释里（比留一个空壳值钱）。
+    func disableFocusRing() -> some View {
+        focusable(false).focusEffectDisabled()
     }
 }
 

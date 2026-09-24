@@ -388,7 +388,7 @@ struct MenuPopoverAction: Equatable {
 // 的注册延迟，会让「第一次点击没反应」——这是用户报告的核心症状）。
 //
 // **去焦点环**：`.buttonStyle(.plain)` + `.focusable(false)` +
-// `.disableFocusRingIfAvailable()`。Hover 高亮仍由 `@State hovering` + `.onHover` 手动驱动。
+// `.disableFocusRing()`。Hover 高亮仍由 `@State hovering` + `.onHover` 手动驱动。
 
 struct MenuActionRow: View {
     let systemName: String
@@ -458,7 +458,7 @@ struct MenuActionRow: View {
         }
         .buttonStyle(.plain)
         .focusable(false)
-        .disableFocusRingIfAvailable()
+        .disableFocusRing()
         .onHover { hovering = $0 }
         .animation(
             DesignTokens.Motion.animation(DesignTokens.Motion.fast, reduceMotion: reduceMotion),
@@ -511,7 +511,7 @@ private struct PopoverIconButton: View {
         }
         .buttonStyle(.plain)
         .focusable(false)
-        .disableFocusRingIfAvailable()
+        .disableFocusRing()
         .onHover { hovering = $0 }
         .animation(
             DesignTokens.Motion.animation(DesignTokens.Motion.fast, reduceMotion: reduceMotion),

@@ -35,7 +35,7 @@ import Testing
 /// ## 这件事的**最终**证据不在这里
 ///
 /// 「有没有真的敲钟」是进程级副作用，没有可断言的返回值 —— 单元测试只能守到「规则接线正确」。
-/// 真正的硬证据是调试器断点（`scripts/catch-beep.sh` 把 `NSBeep` 设成断点）：
+/// 真正的硬证据是调试器断点（`Scripts/catch-beep.sh` 把 `NSBeep` 设成断点）：
 ///
 /// | | ⌘C 到达窗口 | `NSBeep` 命中 |
 /// |---|---|---|
@@ -53,7 +53,7 @@ struct KeySilentWindowTests {
     /// 只有 `keyDown:` 该被吞 —— Apple 文档：`NSResponder.noResponderFor(_:)` 的默认实现
     /// *"beeps if `eventSelector` is `keyDown:`"*，其余 selector 本来就静默。
     ///
-    /// 实测（`tools/catch_beep.py` 的探针）`mouseDragged:` / `mouseUp:` / `keyUp:` 也都会
+    /// 实测（`Tools/catch_beep.py` 的探针）`mouseDragged:` / `mouseUp:` / `keyUp:` 也都会
     /// 走到兜底 —— 但它们不该改变行为，所以必须放行给 `super`。
     /// 把这几条一起钉住，是为了防止有人图省事写成「一律 return」。
     @Test func 无人接管的按键被静默吞掉() {

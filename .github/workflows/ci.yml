@@ -49,13 +49,13 @@ jobs:
           swift --version
           xcrun swift-format --version
 
-      # 门槛全部封装在 scripts/preflight.sh 里 —— 本地跑的是**同一个文件**
+      # 门槛全部封装在 Scripts/preflight.sh 里 —— 本地跑的是**同一个文件**
       # （`./run.sh check --with-tests`），因此不存在「本地判据与 CI 判据分叉」的可能。
       # 本仓库曾因两侧不一致，让 13 条 Swift 6 并发错误在本地一路绿灯的情况下潜伏三天。
       # ⚠️ 这里**不写门槛数量**（门槛会加，数字会漂 —— 本行曾写「三道」，而实际早已不是了）。
       #    要清单就跑 `./run.sh check`：它逐道打印标题，那份输出才是权威。
-      - name: 代码门槛（scripts/preflight.sh --with-tests）
-        run: ./scripts/preflight.sh --with-tests
+      - name: 代码门槛（Scripts/preflight.sh --with-tests）
+        run: ./Scripts/preflight.sh --with-tests
 
       # ⚠️ **绿的时候也要把门槛日志传出来**（2026-09-23，账本 #51）。
       #
@@ -93,4 +93,4 @@ jobs:
       #   · 缺 `SUFeedURL` ⇒ 「检查更新」永远成功、永远说「已是最新版本」（§8.94 那个病）。
       # ⇒ 判据读**产物**（Info.plist / 目录 / codesign），不读源码 —— 拿源码跟自己比是没牙的守卫。
       - name: 产物自检（读打出来的包，不是读源码）
-        run: ./scripts/verify_app.sh dist/DiskEjector.app
+        run: ./Scripts/verify_app.sh Dist/DiskEjector.app

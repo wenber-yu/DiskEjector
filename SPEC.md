@@ -13,7 +13,7 @@
 |------|------|
 | 项目名称 | DiskEjector |
 | 类型 | macOS 工具类应用 |
-| 最低系统版本 | **macOS 13.0+**（Ventura 及以上；`Package.swift` 的 `platforms` 即此值） |
+| 最低系统版本 | **macOS 14.0+**（Sonoma 及以上；`Package.swift` 的 `platforms` 是**唯一真相**，本行由 `DeploymentTargetTests` 钉住一致） |
 | UI 框架 | SwiftUI |
 | 核心功能 | 安全优雅地推出第三方移动硬盘（支持查看并自动终止占用进程、显示磁盘信息、卸载失败告警与日志） |
 
@@ -106,7 +106,7 @@
 
 | 层 | 技术选型 |
 |----|----------|
-| UI | SwiftUI（支持 macOS 13+） |
+| UI | SwiftUI（支持 macOS 14+） |
 | 磁盘枚举/属性 | DiskArbitration.framework（`DADiskCopyDescription`） |
 | 推出执行 | `NSWorkspace.unmountAndEjectDevice(at:)` |
 | 进程查询 | 非沙盒构建（本应用唯一的发布形态）：`lsof`；**沙盒构建：不可用，降级**（沙盒形态不发布，代码里仅作防御分支） |
@@ -194,10 +194,10 @@ DiskEjector/
 ├── Plugins/
 │   └── LocalizationGenerator/       # 构建插件：由 .xcstrings 生成 L10n.Key 枚举
 ├── Resources/
-│   ├── AppIcon.icns                 # 应用图标资产（由 scripts/build_icon.sh 生成）
+│   ├── AppIcon.icns                 # 应用图标资产（由 Scripts/build_icon.sh 生成）
 │   ├── AppIcon.png
 │   └── DiskEjector.direct.entitlements # 直发版（无沙盒，可列出占用进程；沙盒版 entitlements 已随不上架决定删除）
-├── scripts/
+├── Scripts/
 │   ├── build_icon.sh                # 源图 → AppIcon.icns（sips + iconutil）
 │   ├── catch-beep.sh                # 抓「系统提示音」用的辅助脚本
 │   ├── ci_status.sh                 # 推送**之后**看 CI 结论（`./run.sh ci`；与 check 配对）
@@ -205,11 +205,11 @@ DiskEjector/
 │   ├── make_appcast.sh              # 生成 Sparkle appcast
 │   ├── preflight.sh                 # CI 严格门槛预检（本地与 CI 共用的唯一实现）
 │   └── scan_stale_comments.sh       # 门槛 3：注释承诺句必须带日期
-├── tools/
+├── Tools/
 │   ├── gen_l10n_tool/               # 独立 SPM 包：本地化代码生成器（被 Plugins 调用）
 │   └── icon_tool.swift              # 增强版图标生成器（ImageIO，当前未被脚本调用）
 └── Design/                          # 设计资源总目录（图标源图 / 候选素材 / 截图 / UI 设计稿）
-    ├── app-icon/                    # 图标源图专用目录（放图后跑 scripts/build_icon.sh）
+    ├── app-icon/                    # 图标源图专用目录（放图后跑 Scripts/build_icon.sh）
     ├── icon-candidates/             # 图标设计候选素材（8 款 + .design）
     ├── screenshots/                 # README 用的截图
     └── ui/                          # UI 设计稿（HTML 页面 + 设计令牌 CSS + v2/ 规范）
@@ -255,7 +255,7 @@ DiskEjector/
 
 ### 6.2 开机自启
 
-使用 `SMAppService.mainApp`（macOS 13+）——目前唯一不依赖已废弃 API、也不需要内嵌
+使用 `SMAppService.mainApp`（macOS 13.0 起提供）——目前唯一不依赖已废弃 API、也不需要内嵌
 helper 的登录项方案。（「符合 MAS 要求」这条理由随不上架决定作废，选型不变。）
 不使用 `LSSharedFileList`（macOS 13 起已废弃、不再可靠生效）、不自写 LaunchAgents plist
 （沙盒无写权限）。
@@ -278,7 +278,7 @@ helper 的登录项方案。（「符合 MAS 要求」这条理由随不上架�
 | `DEBUG` 开发构建 | 同上，版本行显示「开发版」而非「官网直发版」（避免误判为可分发产物） |
 
 **feed 不是 GitHub 的 `/releases/latest`**：那是 HTML / atom 页面，Sparkle 解析不了
-（它要带 `sparkle:` 命名空间的 RSS）。`appcast.xml` 由 `scripts/make_appcast.sh`
+（它要带 `sparkle:` 命名空间的 RSS）。`appcast.xml` 由 `Scripts/make_appcast.sh`
 （内部调 `generate_appcast`）生成并提交进仓库，`SUFeedURL` 指向它的
 `raw.githubusercontent.com` 地址；真正的下载地址写在 appcast 的 enclosure 里，
 指向 `…/releases/download/v<TAG>/DiskEjector-<VERSION>.dmg`。
@@ -297,10 +297,10 @@ helper 的登录项方案。（「符合 MAS 要求」这条理由随不上架�
 > - **Release 已建、enclosure 不再 404**：仓库根 `appcast.xml` 现在的 enclosure 指向
 >   `v2026.09.21.1/DiskEjector-2026.09.21.1.dmg` 且带 `sparkle:edSignature`。
 >   （`v2026.09.18.3` 那个 Release **确实没建过** —— 当时改发 `.4`，见账本 #8。）
-> - 判据落在 `scripts/verify_app.sh`：它校验 `SUPublicEDKey` 存在且与仓库里的默认值同源，
+> - 判据落在 `Scripts/verify_app.sh`：它校验 `SUPublicEDKey` 存在且与仓库里的默认值同源，
 >   缺了 / 不一致都算产物不合格。⚠️ 它是**打包后手跑**的，**不在 preflight 门槛里**。
 > ⇒ 「唯一还差的一步」这句话在 2026-09-18 是对的，**今天已经不成立**。
-> 上传时**必须用** `dist/updates/DiskEjector-<VERSION>.dmg` 这个文件名（改名即 404，
+> 上传时**必须用** `Dist/updates/DiskEjector-<VERSION>.dmg` 这个文件名（改名即 404，
 > 而 appcast 本身不报任何错）。`make_appcast.sh` 现在会打印该路径，并有一条守卫
 > 比对「enclosure 末段」与「待上传文件名」是否逐字相同 —— 这条守卫是补的，
 > 因为此前脚本的指引写的是 `DiskEjector.dmg`，与 enclosure 不一致。
@@ -315,13 +315,13 @@ helper 的登录项方案。（「符合 MAS 要求」这条理由随不上架�
 现在有守卫 `UpdateSettingsTests.启动链上必须真的建起updater` 钉住（读源码，
 且**限定在该函数体内**）。实测自动检查发生在**启动后 2~13 秒**，不是启动瞬间。
 
-**发布说明（新版本弹窗的「本次更新」清单）**：由 `release-notes/<版本>.html`
+**发布说明（新版本弹窗的「本次更新」清单）**：由 `Release-notes/<版本>.html`
 （只含 `<ul><li>…</li></ul>`）在生成时经 `RELEASE_NOTES_FILE=…` 传入，
 被 `generate_appcast` **内嵌**进 appcast 的 `<description>` —— 界面只读内嵌的那份
 （`UpdateUserDriver.showUpdateReleaseNotes` 是空实现，外链的 `sparkle:releaseNotesLink` 它不看）。
 不传就没有 `<description>`，弹窗里那一块**不会被画出来**。
 ⚠️ 说明文件里**不能有 HTML 注释**：解析器 `UpdateReleaseNotes.stripTags` 只剥 `<…>` 尖括号对，
-不认注释，注释正文会原样进到弹窗。格式要求见 `release-notes/README.md`。
+不认注释，注释正文会原样进到弹窗。格式要求见 `Release-notes/README.md`。
 
 打包时 `build_app.sh` 必须做三件事，少一件就是「构建成功、双击打不开」：
 ① 把 `Sparkle.framework` 拷进 `Contents/Frameworks`；② 给可执行文件补
@@ -367,12 +367,12 @@ CI 走 `SPARKLE_PRIVATE_KEY` 从 stdin 传入（不落盘）。
 
 | 项 | 内容 |
 |----|------|
-| CI | `.github/workflows/ci.yml`：代码门槛（`scripts/preflight.sh --with-tests`）→ 打包验证 → 产物校验 |
-| 本地门槛 | `./run.sh check [--with-tests]`，或直接 `./scripts/preflight.sh`；**与 CI 调用同一文件**，判据不会分叉 |
+| CI | `.github/workflows/ci.yml`：代码门槛（`Scripts/preflight.sh --with-tests`）→ 打包验证 → 产物校验 |
+| 本地门槛 | `./run.sh check [--with-tests]`，或直接 `./Scripts/preflight.sh`；**与 CI 调用同一文件**，判据不会分叉 |
 | CI 结论 | 推送后用 `./run.sh ci` 看结论（默认等它跑完；`--no-wait` 只看当前状态）。退出码 **0=绿 / 1=红 / 2=没拿到结论**（⚠️ 2 ≠ 绿）。起因：CI 曾连续 76 次红没人看 |
 | 发布前 | `STRICT_CI=1 ./build_app.sh` —— 打包前先过零警告构建 + 格式门槛 |
 | 格式 | `swift-format`，配置 `./.swift-format`（4 空格缩进 / 120 行宽） |
-| 覆盖率 | `scripts/coverage.sh`，**仅统计核心逻辑**（Models/Services/Settings），门槛 40% |
+| 覆盖率 | `Scripts/coverage.sh`，**仅统计核心逻辑**（Models/Services/Settings），门槛 40% |
 | 版本号 | `build_app.sh` 从 git 自动派生：VERSION ← 最近 tag，BUILD_NUMBER ← 提交数；可用环境变量覆盖 |
 
 三条容易踩空的细节：

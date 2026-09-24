@@ -17,10 +17,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PACKAGE_DIR="$SCRIPT_DIR"
 
 # 子命令 check：改完代码先过 CI 门槛的最短路径。
-# 与 CI 调用同一个脚本（scripts/preflight.sh），确保本地判据与 CI 完全一致。
+# 与 CI 调用同一个脚本（Scripts/preflight.sh），确保本地判据与 CI 完全一致。
 if [ "${1:-}" = "check" ]; then
     shift
-    exec "$SCRIPT_DIR/scripts/preflight.sh" "$@"
+    exec "$SCRIPT_DIR/Scripts/preflight.sh" "$@"
 fi
 
 # 子命令 ci：推送**之后**看 CI 结论的最短路径（与 check 配对）。
@@ -28,7 +28,7 @@ fi
 # 退出码 0 = 绿 / 1 = 红 / 2 = 没拿到结论（⚠️ 2 **不等于**绿）。
 if [ "${1:-}" = "ci" ]; then
     shift
-    exec "$SCRIPT_DIR/scripts/ci_status.sh" "$@"
+    exec "$SCRIPT_DIR/Scripts/ci_status.sh" "$@"
 fi
 
 if [ ! -f "$PACKAGE_DIR/Package.swift" ]; then
@@ -48,7 +48,7 @@ echo "▶ 启动 DiskEjector ..."
 # 产物旁边就有 `Sparkle.framework`（同目录），`@loader_path` 正好指过去。
 #
 # ⚠️ **参数必须排在可执行名之前**：`swift run [<options>] [<executable>] [<arguments>...]`
-# —— 可执行名之后的参数是传给**程序**的（同 `tools/clt_swift_env.sh` 里那个坑）。
+# —— 可执行名之后的参数是传给**程序**的（同 `Tools/clt_swift_env.sh` 里那个坑）。
 #
 # ⚠️ **为什么写在 run.sh 而不是 CLT 包装器**：`build_app.sh` 走的是
 # `swift build -c release`，配置不同 ⇒ 产物目录不同，两条路径**不会互相污染**；

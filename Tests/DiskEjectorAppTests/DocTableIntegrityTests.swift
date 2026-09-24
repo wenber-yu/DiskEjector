@@ -77,7 +77,7 @@ import Testing
         "Design/ui/v2/DESIGN-SPEC.md",
         "SPEC.md",
         "README.md",
-        "release-notes/README.md",
+        "Release-notes/README.md",
     ]
 
     /// **会被 git 带进版本库的 `.md`**；拿不到输出返回 `nil`。

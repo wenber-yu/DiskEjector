@@ -1,0 +1,34 @@
+#!/bin/bash
+# 假 `gh` —— **测试装置**，用来确定性地复现 `ci_status.sh` 的「查询失败」路径。
+#
+# 为什么需要它（2026-09-20，见 SPEC §8.107）：
+# `ci_status.sh` 有一类失败**只在网络抖动时出现**（`… EOF`），而它当时被错报成
+# 「这次 run 验的不是你刚改的代码」—— 诊断方向完全错（真相是请求没回来）。
+# 靠「等下一次抖动」来验修复是不行的 ⇒ 把那条路径变成**可重复样本**
+# （同族做法：`SubprocessOutputTests` 用 `/bin/sleep` 钉「偶发挂死」）。
+#
+# 它模拟的正是本机真实撞到的那一次：`run list` 成功（拿到 run，status=queued），
+# 随后 `run view` 失败（`… EOF`）。
+#
+# 用法（**通过 PATH 注入**，别去替换真的 gh）：
+#   PATH="$PWD/Scripts/test/fake-gh:$PATH" ./run.sh ci               # 自动路径 → 应报「查询失败」
+#   PATH="$PWD/Scripts/test/fake-gh:$PATH" ./run.sh ci 999999999     # 显式 run-id → 应报「拿不到 run」
+# 一次跑完这几条：`./Scripts/test/ci_status_smoke.sh`
+case "$1 $2" in
+    "run list")
+        # `--jq` 期望 6 行：id / status / conclusion / sha(7) / branch / title
+        printf '%s\n' "35504440757" "queued" "" "d834bbd" "master" "假 run（ci_status.sh 的测试装置）"
+        exit 0
+        ;;
+    "run watch")
+        exit 0
+        ;;
+    "run view")
+        echo 'failed to get run: Get "https://api.github.com/repos/wenber-yu/DiskEjector/actions/runs/35504440757?exclude_pull_requests=true": EOF' >&2
+        exit 1
+        ;;
+    *)
+        echo "假 gh：未预期的调用：$*" >&2
+        exit 1
+        ;;
+esac

@@ -149,7 +149,8 @@ struct PixelReadPathTests {
         ),
         "Sources/DiskEjectorApp/WindowSelfCheck.swift": (
             2,
-            "产品代码：读 `CGWindowListCreateImage` 的真机截图 —— 不在测试 target，用不到 `OffscreenRender`"
+            "产品代码：读**真机截图**的像素（`captureWindowImage` 抓的位图，两处逐像素扫描）"
+                + " —— 不在测试 target，用不到 `OffscreenRender`"
         ),
     ]
 

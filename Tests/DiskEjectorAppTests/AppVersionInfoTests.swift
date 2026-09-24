@@ -136,13 +136,13 @@ struct AppVersionInfoTests {
     /// 用户照着报一个查不到的构建号。产物不在（没打包过 / 被移走）时跳过。
     ///
     /// ⚠️ **路径必须从本文件位置派生，不能写死绝对路径**（2026-09-21 修）：
-    /// 原先写死 `/Users/wenbo/…/dist/DiskEjector.app` ⇒ 在任何别的 checkout
+    /// 原先写死 `/Users/wenbo/…/Dist/DiskEjector.app` ⇒ 在任何别的 checkout
     /// （CI runner、另一台机器、另一个目录）上 `fileExists` 都是 false
     /// ⇒ 整条用例**静默空转**，而它与「查过了没问题」在输出上**逐字相同**。
     ///
     /// ⚠️ **跳过时必须把「跳过」打出来**：CI 里测试跑在 `build_app.sh` **之前**，
     /// 所以这条用例在 CI 上**永远是空转的** —— 真正端到端的那条判据在
-    /// `scripts/verify_app.sh`（CI 在打包之后跑它，读同一个键）。
+    /// `Scripts/verify_app.sh`（CI 在打包之后跑它，读同一个键）。
     /// 两条一起才是「有牙」的：本用例守本地（产物在手时），verify_app 守 CI。
     @Test func 打包产物里确实写入了版本号与构建号() throws {
         // #filePath = <仓库根>/Tests/DiskEjectorAppTests/AppVersionInfoTests.swift
@@ -150,10 +150,10 @@ struct AppVersionInfoTests {
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .deletingLastPathComponent()
-        let appPath = repoRoot.appendingPathComponent("dist/DiskEjector.app").path
+        let appPath = repoRoot.appendingPathComponent("Dist/DiskEjector.app").path
         // 自证：派生出来的路径得**像**仓库里的产物，否则「路径算错了」
         // 与「产物不存在」会走同一个 return（两者诊断方向完全不同）。
-        guard appPath.hasSuffix("/dist/DiskEjector.app") else {
+        guard appPath.hasSuffix("/Dist/DiskEjector.app") else {
             Issue.record("派生的产物路径不像仓库里的产物：\(appPath) —— 装置算错了，本次结论作废")
             return
         }

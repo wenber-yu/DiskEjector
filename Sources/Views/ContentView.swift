@@ -240,7 +240,9 @@ struct ContentView: View {
             try? await Task.sleep(nanoseconds: 300_000_000)
             skeletonGatePassed = true
         }
-        .onChange(of: store.disks) { _ in
+        // ⚠️ 双参闭包（不是单参）：`onChange(of:perform:)` 的单参形态在 macOS 14.0 废弃，
+        //    部署目标是 14.0 ⇒ 单参写法在门槛 1 的 `-warnings-as-errors` 下是硬错误。
+        .onChange(of: store.disks) { _, _ in
             // 磁盘列表变化时刷新 FDA（用户可能刚插了带占用进程的磁盘、也可能在系统设置里授权完了）。
             //
             // **占用检测不在这里**：它由 ``OccupancyStore`` 自己监听 `DiskListStore.$disks`
@@ -578,7 +580,7 @@ struct TitleBarIconButton: View {
         // **去 SwiftUI 默认 focus 环**：启动时第一个 Button 会被自动 focus，
         // 蓝色环套在 RefreshButton 上看着像「按钮被高亮选中」——但用户没点任何按钮。
         .focusable(false)
-        .disableFocusRingIfAvailable()
+        .disableFocusRing()
         .onHover { hovering = $0 }
         .animation(
             DesignTokens.Motion.animation(DesignTokens.Motion.fast, reduceMotion: reduceMotion),

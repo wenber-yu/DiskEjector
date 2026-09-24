@@ -8,16 +8,16 @@
 #                                               #   （本机无 Developer ID 证书时用它出 GitHub Release 资产）
 #   VERSION=2.1.0 ./build_app.sh                # 显式指定版本
 #   BUILD_NUMBER=42 ./build_app.sh              # 显式指定构建号
-#   OUTPUT_DIR=/tmp ./build_app.sh              # 指定输出目录（默认 dist/）
-#   STRICT_CI=1 ./build_app.sh                  # 打包前先过 CI 的门槛（见 scripts/preflight.sh）
+#   OUTPUT_DIR=/tmp ./build_app.sh              # 指定输出目录（默认 Dist/）
+#   STRICT_CI=1 ./build_app.sh                  # 打包前先过 CI 的门槛（见 Scripts/preflight.sh）
 #   DISABLE_SANDBOX=1 ./build_app.sh            # 让 swift build 跳过 SwiftPM 自带的 sandbox-exec
 #                                               #   （仅供本机执行环境已自带沙箱、导致
 #                                               #    "sandbox_apply: Operation not permitted" 时使用）
-# 产物：dist/DiskEjector.app（可拖入 /Applications 或双击运行）
-#       dist/DiskEjector.dmg + dist/DiskEjector.zip（仅 PACKAGE=1 / NOTARIZE=1 时生成）
+# 产物：Dist/DiskEjector.app（可拖入 /Applications 或双击运行）
+#       Dist/DiskEjector.dmg + Dist/DiskEjector.zip（仅 PACKAGE=1 / NOTARIZE=1 时生成）
 # 图标：复制预先生成的 Resources/AppIcon.icns（打包时不生成图标）；
 #       图标由独立脚本生成：把源图放进 Design/app-icon/ 后运行
-#         sh scripts/build_icon.sh
+#         sh Scripts/build_icon.sh
 #
 # ---------------------------------------------------------------
 # 分发渠道：**只有 direct 一种**（2026-09-18 决定：本应用不上架 Mac App Store）。
@@ -78,10 +78,10 @@ EXECUTABLE="DiskEjectorApp"                 # SPM 可执行 target 名
 #      「**工作区干净**」，而真相是「**不知道**」（Swift 侧 `AppVersionInfo.dirtyCount`
 #      的注释早就写明「不要拿 `0` 代替缺失 —— 「干净」与「不知道」是两回事」）。
 #    ⇒ 判据只能**试跑**（`[ -x ]` / `command -v` / 退出码三条都判不出来），
-#      实现见 `scripts/lib/find_git.sh`；本段的门见 `scripts/test/build_app_version_smoke.sh`。
+#      实现见 `Scripts/lib/find_git.sh`；本段的门见 `Scripts/test/build_app_version_smoke.sh`。
 # ---------------------------------------------------------------
-# shellcheck source=scripts/lib/find_git.sh
-. "$SCRIPT_DIR/scripts/lib/find_git.sh"
+# shellcheck source=Scripts/lib/find_git.sh
+. "$SCRIPT_DIR/Scripts/lib/find_git.sh"
 if find_usable_git; then
     GIT_AVAILABLE=1
 else
@@ -151,7 +151,7 @@ if [ -n "$VERSION_UNTRUSTED_REASON" ]; then
     else
         echo "错误：${VERSION_UNTRUSTED_REASON} —— 版本信息不可信，拒绝产出包。" >&2
         echo "      常见原因：Xcode 许可未接受 ⇒ git 只打印许可警告、**零输出、退出码 0**。" >&2
-        echo "      正解：sudo xcodebuild -license（或先 source tools/clt_swift_env.sh）。" >&2
+        echo "      正解：sudo xcodebuild -license（或先 source Tools/clt_swift_env.sh）。" >&2
         echo "      若确实要跳过版本派生，显式指定两个值：" >&2
         echo "          VERSION=… BUILD_NUMBER=… ./build_app.sh" >&2
         exit 1
@@ -182,7 +182,32 @@ if [ -n "${BUILD_DIRTY}" ] && [ "${BUILD_DIRTY}" != "0" ]; then
     echo "    版本号 ${VERSION} 取自 tag「${DERIVED_VERSION:-无}」，指向的是提交 ${BUILD_COMMIT}"
     echo "    它**不代表本次构建的实际代码**；设置窗口会标出这一点。"
 fi
-OUTPUT_DIR="${OUTPUT_DIR:-$SCRIPT_DIR/dist}"
+
+# ---------------------------------------------------------------
+# 部署目标（写进 Info.plist 的 `LSMinimumSystemVersion`）—— **派生，不写死**
+#
+# 唯一真相是 `Package.swift` 的 `platforms: [.macOS(.vNN)]`（编译器读的也是它）。
+# `LSMinimumSystemVersion` 是**同一件事的第二次声明**，写死就一定会漂：
+# 2026-09-24 实测 —— 代码已提到 14.0，这里还硬编码着 `13.0`。差一档的后果**不是**
+# 「被系统拦下」，而是**在 13 上启动、然后崩**（Gatekeeper 只看这个键）。
+# ⇒ 从 Package.swift 派生；**派不出来就硬报错** —— 不退回字面量、也不写空串
+#    （少一个键与值写空，在 Gatekeeper 眼里都不算拦得住）。
+# 守卫：Tests/DiskEjectorAppTests/DeploymentTargetTests.swift
+# ---------------------------------------------------------------
+DEPLOY_TARGET_MAJOR="$(sed -nE 's/^[[:space:]]*platforms:[[:space:]]*\[\.macOS\(\.v([0-9]+)\)\].*$/\1/p' "$PACKAGE_DIR/Package.swift")"
+# 必须**恰好是一个数字**：空 = 一行都没匹配到；带换行 = 匹配到多行。
+# ⚠️ 用 `case` 而不是 `[ -z ]`：后者只挡得住「空」，挡不住「匹配到两行」。
+case "$DEPLOY_TARGET_MAJOR" in
+    '' | *[!0-9]*)
+        echo "❌ 取不到部署目标：${PACKAGE_DIR}/Package.swift 里没有形如" >&2
+        echo "   platforms: [.macOS(.vNN)] 的行（拿到的是「${DEPLOY_TARGET_MAJOR}」）。" >&2
+        echo "   LSMinimumSystemVersion 由它派生 ⇒ 派不出来就拒绝产出包。" >&2
+        exit 1
+        ;;
+esac
+DEPLOY_TARGET="${DEPLOY_TARGET_MAJOR}.0"
+echo "ⓘ 部署目标：${DEPLOY_TARGET}（派生自 Package.swift 的 platforms ⇒ Info.plist 的 LSMinimumSystemVersion）"
+OUTPUT_DIR="${OUTPUT_DIR:-$SCRIPT_DIR/Dist}"
 APP_BUNDLE="$OUTPUT_DIR/$APP_NAME.app"
 ICON_SOURCE="$PACKAGE_DIR/Resources/AppIcon.icns"
 
@@ -296,17 +321,17 @@ if [ ! -f "$PACKAGE_DIR/Package.swift" ]; then
 fi
 
 # ---------------------------------------------------------------
-# STRICT_CI=1：打包前先过 CI 的门槛（`scripts/preflight.sh`，逐道打印标题）
+# STRICT_CI=1：打包前先过 CI 的门槛（`Scripts/preflight.sh`，逐道打印标题）
 #
 # **为什么默认关闭**：这些门槛比打包本身严格得多，日常迭代反复跑会拖慢节奏；
 # 但它们恰恰是 CI 会拦下来的东西，而本脚本的 release 构建**不带**这些 flag，
 # 所以「打包成功」不能推出「CI 会绿」。发布 / 提交 PR 前应显式开启：
 #     STRICT_CI=1 ./build_app.sh
-# 门槛实现见 scripts/preflight.sh（本地与 CI 共用同一文件，避免逻辑分叉）。
+# 门槛实现见 Scripts/preflight.sh（本地与 CI 共用同一文件，避免逻辑分叉）。
 # ---------------------------------------------------------------
 if [ "${STRICT_CI:-0}" = "1" ]; then
     echo "▶ [0/5] 严格门槛预检（STRICT_CI=1）..."
-    "$SCRIPT_DIR/scripts/preflight.sh"
+    "$SCRIPT_DIR/Scripts/preflight.sh"
 fi
 
 # 注意：此处**不使用 shell 内建 `cd`** 切换目录。部分执行环境（带 brokered 沙盒的 shell）
@@ -356,7 +381,7 @@ echo "   ✓ 已嵌入 Sparkle.framework（取自 $(basename "$(dirname "$(dirna
 # SUFeedURL —— appcast 地址。**必须是 appcast.xml，不能填 /releases/latest**：
 #   GitHub 的「latest release」链接给的是 HTML 页面 / atom 源，Sparkle 解析不了 ——
 #   它要的是带 `sparkle:` 命名空间的 RSS。真正的下载地址写在 appcast 的 enclosure 里，
-#   由 `scripts/make_appcast.sh`（内部调 generate_appcast）生成，指向 Releases 的 dmg/zip。
+#   由 `Scripts/make_appcast.sh`（内部调 generate_appcast）生成，指向 Releases 的 dmg/zip。
 #
 # SUPublicEDKey —— EdDSA 公钥（base64）。为空时**不写这个键**，Sparkle 于是跳过验签：
 #   任何人处在中间人位置都能推一个恶意版本进来。所以这里会**大声警告**，不悄悄略过。
@@ -448,7 +473,7 @@ $SPARKLE_PUBLIC_ED_KEY_PLIST
 	<key>DEBuildDirtyCount</key>
 	<string>$BUILD_DIRTY</string>
 	<key>LSMinimumSystemVersion</key>
-	<string>13.0</string>
+	<string>$DEPLOY_TARGET</string>
 	<key>NSHighResolutionCapable</key>
 	<true/>
 </dict>
@@ -461,7 +486,7 @@ if [ -f "$ICON_SOURCE" ]; then
     echo "   ✓ AppIcon.icns（来自 ${ICON_SOURCE}）"
 else
     echo "   ⚠ 未找到 ${ICON_SOURCE}，将使用系统默认图标"
-    echo "     生成图标：把源图放进 Design/app-icon/ 后运行 sh scripts/build_icon.sh"
+    echo "     生成图标：把源图放进 Design/app-icon/ 后运行 sh Scripts/build_icon.sh"
 fi
 
 echo "▶ [3.5/4] 写入本地化应用名（Finder / 系统设置列表取本地化值）..."

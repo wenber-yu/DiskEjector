@@ -85,7 +85,7 @@ struct UpdateFeedTests {
     /// 产出 `.../download/DiskEjector-1.2.3.dmg` —— **tag 那一段没了，而且不报错**，
     /// 直到用户点「安装更新」才 404。
     @Test func appcast脚本的下载前缀必须以斜杠结尾() throws {
-        let script = try contents("scripts/make_appcast.sh")
+        let script = try contents("Scripts/make_appcast.sh")
         // 只看**真正传参的那一行**：注释和错误提示里也会出现这个选项名，
         // 连它们一起断言会把「改了注释」误判成「改了参数」。
         var invocation: String?
@@ -94,7 +94,7 @@ struct UpdateFeedTests {
                 invocation = String(line)
             }
         }
-        let line = try #require(invocation, "scripts/make_appcast.sh 里找不到 --download-url-prefix 的调用")
+        let line = try #require(invocation, "Scripts/make_appcast.sh 里找不到 --download-url-prefix 的调用")
         #expect(
             line.hasSuffix("v$VERSION/\")"),
             "下载前缀必须以斜杠结尾，否则 generate_appcast 会吃掉最后一段（tag）而不报错：\(line)"
@@ -169,7 +169,7 @@ struct UpdateFeedTests {
             !lines.isEmpty,
             """
             appcast.xml 的 <description> 解析不出任何条目 → 新版本弹窗的「本次更新」是空的。
-            要么补 release-notes/<版本>.html 后用 RELEASE_NOTES_FILE=… ./scripts/make_appcast.sh 重新生成，
+            要么补 Release-notes/<版本>.html 后用 RELEASE_NOTES_FILE=… ./Scripts/make_appcast.sh 重新生成，
             要么明确接受「这一块不显示」。
             """
         )
@@ -227,13 +227,13 @@ struct UpdateFeedTests {
             let body = try String(contentsOf: dir.appendingPathComponent(file), encoding: .utf8)
             #expect(
                 !body.contains("<!--"),
-                "release-notes/\(file) 里有 HTML 注释 —— 解析器不认注释，注释正文会原样出现在弹窗里"
+                "Release-notes/\(file) 里有 HTML 注释 —— 解析器不认注释，注释正文会原样出现在弹窗里"
             )
             let lines = UpdateReleaseNotes.lines(fromHTML: body)
             #expect(
                 !lines.isEmpty,
                 """
-                release-notes/\(file) 用真实解析器跑出来是空的 → 用它生成的 appcast
+                Release-notes/\(file) 用真实解析器跑出来是空的 → 用它生成的 appcast
                 会让弹窗的「本次更新」整块不显示，而那与「没写说明」长得一模一样。
                 """
             )

@@ -63,7 +63,7 @@ enum AppLanguage: String, CaseIterable, Sendable {
 /// ## 与 `L10n` 同源
 ///
 /// ``active`` 必须读 `Locale.current` —— 因为 `L10n.tr` 就是按它的 identifier 查表的
-/// （见 `tools/gen_l10n_tool`）。**不能读 `Bundle.main.preferredLocalizations`**：
+/// （见 `Tools/gen_l10n_tool`）。**不能读 `Bundle.main.preferredLocalizations`**：
 /// 本应用没有 `.lproj` 目录（文案由构建插件生成成 Swift 常量），那个 API 在这里答非所问，
 /// 只会答出 `CFBundleDevelopmentRegion`。
 enum LanguageManager {

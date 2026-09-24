@@ -58,7 +58,7 @@ enum LaunchAtLoginError: LocalizedError, Equatable {
 
 /// 开机自启动（登录项）管理。
 ///
-/// 基于 macOS 13+ 的 `SMAppService.mainApp` 将当前应用注册为登录项——它是目前**唯一**
+/// 基于 macOS 13.0 起提供的 `SMAppService.mainApp` 将当前应用注册为登录项——它是目前**唯一**
 /// 不依赖已废弃 API、也不需要内嵌 helper 的方案。
 ///
 /// > 「符合 Mac App Store 要求」曾经是选它的首要理由；本应用已决定不上架 MAS

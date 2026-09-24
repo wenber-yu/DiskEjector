@@ -1,11 +1,11 @@
 /* ============================================================================
    DiskEjector UI v2 — 设计稿语言包（**生成物，不要手改**）
    ----------------------------------------------------------------------------
-   生成：python3 tools/build_i18n.py
+   生成：python3 Tools/build_i18n.py
    来源：Sources/Localization/Localizable.xcstrings
        + Design/ui/v2/assets/i18n-extra.json
    ----------------------------------------------------------------------------
-   源指纹 ba6ade4e55ccf25224d1f42690d4bacc92795ebf478deeb6506c1cbf2e115ee5
+   源指纹 05c85f4231b092d7058d1d237ee0a59caa5be9bc2afac809f87c26332e4e3124
      = sha256(xcstrings + extra + 本脚本) —— 任一方变了它就是旧的，
        由 DesignDraftIntegrityTests 拦下「改了源忘了重跑」。
    ----------------------------------------------------------------------------
