@@ -56,7 +56,10 @@ var seen: [String] = []
 var seenSet = Set<String>()
 func collect(_ s: String) {
     guard !s.isEmpty else { return }
-    if !seenSet.contains(s) { seenSet.insert(s); seen.append(s) }
+    if !seenSet.contains(s) {
+        seenSet.insert(s)
+        seen.append(s)
+    }
 }
 
 func walk(_ e: AXUIElement, depth: Int) {
@@ -106,7 +109,9 @@ func pressableElements() -> [(role: String, label: String, el: AXUIElement)] {
         var canPress = false
         if AXUIElementCopyActionNames(e, &actionNames) == .success,
             let names = actionNames as? [String], names.contains(kAXPressAction as String)
-        { canPress = true }
+        {
+            canPress = true
+        }
         if canPress {
             let role = attrString(e, kAXRoleAttribute) ?? "?"
             let label =
@@ -194,8 +199,9 @@ while Date() < deadline {
         // 「抓不到窗口」必须**显式报出来**：它与「那一格没显示」的输出逐字相同（都是空）。
         if !warnedGone {
             warnedGone = true
-            print("  ⚠️ \(String(format: "%.1f", Date().timeIntervalSince(t0)))s：AX 抓不到窗口/文本"
-                + "（进程可能已退出，也可能窗口关了 —— 后面用 aliveness 采样区分）")
+            print(
+                "  ⚠️ \(String(format: "%.1f", Date().timeIntervalSince(t0)))s：AX 抓不到窗口/文本"
+                    + "（进程可能已退出，也可能窗口关了 —— 后面用 aliveness 采样区分）")
             fflush(stdout)
         }
     }

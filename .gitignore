@@ -23,8 +23,12 @@ DerivedData/
 
 # ---- 设计工具运行时产物 ----
 # solo-design 生成的调度清单与会话摘要，内含本机绝对路径（/Users/...），
-# 属工具元数据而非设计交付物；设计本身见 pages/*.html 与 colors_and_type.css。
-DiskEjector-UI-Design/runtime-*.json
+# 属工具元数据而非设计交付物；设计本身见 ui/pages/*.html 与 ui/colors_and_type.css。
+#
+# ⚠️ 这条锚的是**迁移后**的路径（2026-09-24：DiskEjector-UI-Design/ → Design/ui/）。
+#    目录一搬，旧规则会**静默失效** —— 不报错、也没有任何东西会红，
+#    只是那两个 runtime-*.json 突然出现在 `git status` 里（实测已复现）。
+Design/ui/runtime-*.json
 
 # ---- 真机实验装置产物 ----
 # `feedsrv.py` 的请求日志默认就落在**脚本所在目录**（tools/probe/）里，且默认路径

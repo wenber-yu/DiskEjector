@@ -1,7 +1,7 @@
 import AppKit
 import SwiftUI
 
-// 本文件是设计稿 `DiskEjector-UI-Design/v2/screens/03-eject-flow.html` 里
+// 本文件是设计稿 `Design/ui/v2/screens/03-eject-flow.html` 里
 // A（被占用确认）/ B（推出失败）两个弹窗的 Swift 实现。两个变体**共用同一个视图** ——
 // 它们的结构完全一致（图标 → 标题+说明 → 区块 → 提示块 → 操作区），
 // 差异只在数据（图标色调、区块是进程还是原因、按钮组合），所以没有理由写两遍。

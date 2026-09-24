@@ -1,7 +1,7 @@
 import AppKit
 import SwiftUI
 
-// 本文件是设计稿 `DiskEjector-UI-Design/v2/screens/04-onboarding.html`
+// 本文件是设计稿 `Design/ui/v2/screens/04-onboarding.html`
 // **第一块**「引导面板」的 Swift 实现 —— 首次启动、尚未授予完全磁盘访问时，
 // 应用唯一一次主动打断用户的界面。
 //

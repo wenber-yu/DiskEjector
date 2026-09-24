@@ -135,7 +135,7 @@ struct RowHeightParityTests {
 
     private func load() throws -> Report {
         let url = repoRoot.appendingPathComponent(
-            "DiskEjector-UI-Design/v2/assets/design-row-heights.json")
+            "Design/ui/v2/assets/design-row-heights.json")
         let data = try Data(contentsOf: url)
         return try JSONDecoder().decode(Report.self, from: data)
     }

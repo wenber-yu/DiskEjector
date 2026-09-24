@@ -54,7 +54,7 @@ struct DesignDraftIntegrityTests {
     }
 
     private var designRoot: URL {
-        repoRoot.appendingPathComponent("DiskEjector-UI-Design/v2")
+        repoRoot.appendingPathComponent("Design/ui/v2")
     }
 
     // MARK: 豁免表
@@ -2268,7 +2268,7 @@ struct DesignDraftIntegrityTests {
     private static func declaredTextKeys(repoRoot: URL) throws -> Set<String> {
         var out: Set<String> = []
         let extraURL = repoRoot.appendingPathComponent(
-            "DiskEjector-UI-Design/v2/assets/i18n-extra.json")
+            "Design/ui/v2/assets/i18n-extra.json")
         if let obj = try? JSONSerialization.jsonObject(with: Data(contentsOf: extraURL)) as? [String: Any] {
             out.formUnion(obj.keys.filter { !$0.hasPrefix("_") })
         }
@@ -2290,7 +2290,7 @@ struct DesignDraftIntegrityTests {
     private static func sourceFingerprint(repoRoot: URL) throws -> String {
         let rels = [
             "Sources/Localization/Localizable.xcstrings",
-            "DiskEjector-UI-Design/v2/assets/i18n-extra.json",
+            "Design/ui/v2/assets/i18n-extra.json",
             "tools/build_i18n.py",
         ]
         var sha = SHA256()

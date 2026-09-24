@@ -30,7 +30,7 @@ struct DocCrossReferenceTests {
     }
 
     private var specURL: URL {
-        repoRoot.appendingPathComponent("DiskEjector-UI-Design/v2/DESIGN-SPEC.md")
+        repoRoot.appendingPathComponent("Design/ui/v2/DESIGN-SPEC.md")
     }
 
     private var rootSpecURL: URL {

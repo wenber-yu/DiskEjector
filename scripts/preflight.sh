@@ -5,7 +5,8 @@
 # 【为什么需要这个脚本】
 # CI 在普通 `swift build` 之外还加了更严的门槛，其中最早的两道是：
 #   1. `-Xswiftc -warnings-as-errors`（零警告构建，捕获 Swift 6 并发隔离问题）
-#   2. `swift-format lint --strict`（格式零违规）
+#   2. `swift-format lint --strict`（格式零违规；范围 = Sources + Tests +
+#      Package.swift + Plugins + tools，见门槛 2 处的范围说明）
 # 而这两道**不在 build_app.sh 的执行路径上**——build_app.sh 用的是不带该
 # flag 的 `swift build -c release`。于是本地打包一路绿灯、CI 却红。
 # 本项目曾因此让 13 条 Swift 6 并发错误潜伏三天（详见 SPEC.md §6.4）。
@@ -146,7 +147,17 @@ run_gate "构建（-Xswiftc -warnings-as-errors，含测试目标）" \
 # **--strict 不可省**：swift-format lint 默认即使发现问题也返回 0，不加它形同虚设。
 # 显式传 --configuration：脚本可能从任意工作目录被调用，不能依赖自动发现。
 # 修复方式：xcrun swift-format format --in-place --recursive \
-#             --configuration "$FORMAT_CONFIG" Sources Tests
+#             --configuration "$FORMAT_CONFIG" \
+#             Sources Tests Package.swift Plugins tools
+#
+# ⚠️ **「范围」也是判据**（2026-09-24 实测补上）：原来只传 Sources + Tests，
+# 于是 `Package.swift`、`Plugins/`、`tools/` 下的 Swift **整批在门外** ——
+# 实测那 7 个文件里 **5 个共 39 处违规**（TrailingComma / OrderedImports /
+# Spacing / AddLines / Indentation / LineLength / DoNotUseSemicolons），
+# 而**没有任何东西会红**。已全部格式化，并把范围补齐。
+# ⇒ 以后**新增顶层含 Swift 的目录**，这里要跟着加，否则同样的洞再开一次。
+# 变异证明（2026-09-24）：往 tools/probe/ 塞一个格式坏文件 ⇒ 本命令 rc=1；
+# 移除 ⇒ rc=0。即补上范围后**确实扫到了**，不是摆设。
 # ---------------------------------------------------------------
 GATE2_TITLE="格式检查（swift-format lint --strict）"
 # ⚠️ 2026-09-21：下面那句「格式问题一键修复」**曾经无条件打印**
@@ -168,7 +179,11 @@ else
     run_gate "$GATE2_TITLE" \
         xcrun swift-format lint --strict \
         --configuration "$FORMAT_CONFIG" \
-        --recursive "$PACKAGE_DIR/Sources" "$PACKAGE_DIR/Tests" \
+        --recursive \
+        "$PACKAGE_DIR/Sources" "$PACKAGE_DIR/Tests" \
+        "$PACKAGE_DIR/Package.swift" \
+        "$PACKAGE_DIR/Plugins" \
+        "$PACKAGE_DIR/tools" \
         || { FAILED=$((FAILED + 1)); GATE2_FAILED=1; }
 fi
 

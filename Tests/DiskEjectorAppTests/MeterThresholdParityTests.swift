@@ -278,7 +278,7 @@ struct MeterThresholdParityTests {
     /// 被别的守卫当成真页面扫过（§8.47.8）。这里多一道保险 —— 一个探针里的
     /// `width:95%` 就能把「区间上界」搅乱，而症状是「守卫红了但页面没问题」。
     private func screenFiles() throws -> [URL] {
-        let dir = repoRoot.appendingPathComponent("DiskEjector-UI-Design/v2/screens")
+        let dir = repoRoot.appendingPathComponent("Design/ui/v2/screens")
         return
             try FileManager.default
             .contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)

@@ -35,7 +35,7 @@ from datetime import datetime
 
 CHROME = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 ROOT = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
-V2 = os.path.join(ROOT, "DiskEjector-UI-Design", "v2")
+V2 = os.path.join(ROOT, "Design/ui", "v2")
 OUT = os.path.join(V2, "assets", "design-row-heights.json")
 
 SELECTORS = {

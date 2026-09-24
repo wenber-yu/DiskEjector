@@ -3,7 +3,7 @@ import Foundation
 import OSLog
 import Sparkle
 
-// 本文件是设计稿 `DiskEjector-UI-Design/v2/screens/08-update.html` 的实现侧另一半：
+// 本文件是设计稿 `Design/ui/v2/screens/08-update.html` 的实现侧另一半：
 // 把 Sparkle 的回调翻译成 ``UpdateController`` 的状态，并在该弹窗的时候弹窗。
 //
 // **为什么必须自己实现 driver**：见 `UpdateController` 的类注释（下载进度只在 driver 里给）。

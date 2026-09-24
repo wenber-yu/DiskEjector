@@ -12,8 +12,8 @@
 // 注意：PackagePlugin 自 SwiftPM 6 起弃用 `Path` 类型，统一改用 `URL`
 // （`path`→`url`、`pluginWorkDirectory`→`pluginWorkDirectoryURL`、文件参数收 `URL`）。
 
-import PackagePlugin
 import Foundation
+import PackagePlugin
 
 @main
 struct LocalizationGenerator: BuildToolPlugin {

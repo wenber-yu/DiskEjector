@@ -48,7 +48,7 @@
 ### 3.1 视觉风格
 
 - **整体风格**：macOS Native SwiftUI + **Liquid Glass 毛玻璃**（「Liquid Glass」是**设计稿侧的
-  视觉目标名**，见 `DiskEjector-UI-Design/`；实现是 `NSVisualEffectView`
+  视觉目标名**，见 `Design/ui/`；实现是 `NSVisualEffectView`
   `.underWindowBackground` / `.behindWindow`，见 `Sources/Views/GlassViews.swift`。
   ⚠️ **不是** macOS 26 才有的 `.glassEffect()` / `NSGlassEffectView` ⇒ **没有版本下限**，
   别写「macOS 15+ / 26+」）
@@ -197,7 +197,6 @@ DiskEjector/
 │   ├── AppIcon.icns                 # 应用图标资产（由 scripts/build_icon.sh 生成）
 │   ├── AppIcon.png
 │   └── DiskEjector.direct.entitlements # 直发版（无沙盒，可列出占用进程；沙盒版 entitlements 已随不上架决定删除）
-├── assets/icons/                    # 图标源图专用目录（放图后跑 scripts/build_icon.sh）
 ├── scripts/
 │   ├── build_icon.sh                # 源图 → AppIcon.icns（sips + iconutil）
 │   ├── catch-beep.sh                # 抓「系统提示音」用的辅助脚本
@@ -209,12 +208,17 @@ DiskEjector/
 ├── tools/
 │   ├── gen_l10n_tool/               # 独立 SPM 包：本地化代码生成器（被 Plugins 调用）
 │   └── icon_tool.swift              # 增强版图标生成器（ImageIO，当前未被脚本调用）
-├── DiskEjector-Icons/               # 图标设计候选素材（8 款 + .design）
-└── DiskEjector-UI-Design/           # UI 设计稿（HTML 页面 + 设计令牌 CSS）
+└── Design/                          # 设计资源总目录（图标源图 / 候选素材 / 截图 / UI 设计稿）
+    ├── app-icon/                    # 图标源图专用目录（放图后跑 scripts/build_icon.sh）
+    ├── icon-candidates/             # 图标设计候选素材（8 款 + .design）
+    ├── screenshots/                 # README 用的截图
+    └── ui/                          # UI 设计稿（HTML 页面 + 设计令牌 CSS + v2/ 规范）
 ```
 
-> 设计资源（`DiskEjector-Icons/`、`DiskEjector-UI-Design/`）与 `assets/` 置于根级，
+> 设计资源（图标源图 / 候选素材 / 截图 / UI 设计稿）统一收在根级 `Design/` 下，
 > 与 ProxyGenerator 中 `proxy-generator-icons/` 的摆放惯例保持一致。
+> ⚠️ `Sources/`、`Tests/`、`Plugins/` 三个**大写**目录名是 SwiftPM 的约定名，
+> **不要**为了「统一小写」而改名（改 `Sources` 还要同步 `Package.swift` 的 `path:`）。
 
 ---
 

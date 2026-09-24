@@ -74,7 +74,7 @@ import Testing
     /// **本守卫只断言下限（`>= 300`，约为当时实测总量的 83%），打印不出真值**，
     /// 所以「写错的数字」能在它这里活下来。
     private static let docs = [
-        "DiskEjector-UI-Design/v2/DESIGN-SPEC.md",
+        "Design/ui/v2/DESIGN-SPEC.md",
         "SPEC.md",
         "README.md",
         "release-notes/README.md",

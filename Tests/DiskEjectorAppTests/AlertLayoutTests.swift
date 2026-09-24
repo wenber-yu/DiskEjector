@@ -37,7 +37,7 @@ struct AlertLayoutTests {
     ///
     /// **量测前提**：必须在**图标水合之后**量（`--virtual-time-budget` 让
     /// `DOMContentLoaded` 跑完，页面上应有 6 个 svg）。量测脚本与命令见
-    /// `DiskEjector-UI-Design/v2/DESIGN-SPEC.md` §8.3。
+    /// `Design/ui/v2/DESIGN-SPEC.md` §8.3。
     private enum Spec {
         /// `.alert { width: 400px }`
         static let width: CGFloat = 400

@@ -6,11 +6,11 @@
 # 打包脚本 build_app.sh 只负责复制使用，绝不在打包时生成图标。
 #
 # 目录约定：
-#   assets/icons/             <- 图标源图专用目录（你自己放图片）
+#   Design/app-icon/             <- 图标源图专用目录（你自己放图片）
 #   Resources/AppIcon.icns    <- 生成的图标资产（构建时直接复制）
 #
 # 用法:
-#   ① 方式 A（推荐，不用手动改名）：把一张图片复制进 assets/icons/，直接运行：
+#   ① 方式 A（推荐，不用手动改名）：把一张图片复制进 Design/app-icon/，直接运行：
 #        sh scripts/build_icon.sh
 #      脚本会自动识别这张图片，规范化为 app_icon_source.png 后生成图标。
 #   ② 方式 B（显式指定源图路径）：
@@ -24,7 +24,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"   # 本脚本位于 scripts/，项目根为上一级
 
-ICONS_DIR="$PROJECT_DIR/assets/icons"
+ICONS_DIR="$PROJECT_DIR/Design/app-icon"
 CANONICAL="$ICONS_DIR/app_icon_source.png"   # 规范源图（脚本自动维护，无需手动改名）
 OUT_ICNS="$PROJECT_DIR/Resources/AppIcon.icns"
 
@@ -37,7 +37,7 @@ if [ "$#" -ge 1 ]; then
         exit 1
     fi
 else
-    # 方式 A：自动在 assets/icons/ 里查找源图
+    # 方式 A：自动在 Design/app-icon/ 里查找源图
     mkdir -p "$ICONS_DIR"
     NEW_IMAGES="$(find "$ICONS_DIR" -maxdepth 1 -type f \( -iname '*.png' -o -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.heic' -o -iname '*.tiff' -o -iname '*.tif' -o -iname '*.webp' -o -iname '*.bmp' -o -iname '*.gif' \) ! -name 'app_icon_source.png' 2>/dev/null)"
     if [ -z "$NEW_IMAGES" ]; then
@@ -52,7 +52,7 @@ else
             SRC="$CANONICAL"
             echo "ℹ️  未发现新图片，使用现有源图重新生成"
         else
-            echo "❌ assets/icons/ 内没有可用的源图。" >&2
+            echo "❌ Design/app-icon/ 内没有可用的源图。" >&2
             echo "   请把一张图片（建议 ≥1024×1024 的正方形 PNG）复制进：$ICONS_DIR" >&2
             echo "   然后重新运行： sh scripts/build_icon.sh" >&2
             exit 1
@@ -71,7 +71,7 @@ else
         SRC="$CANONICAL"
         echo "✅ 已规范化为源图: $CANONICAL"
     else
-        echo "❌ assets/icons/ 里发现多张候选图片，无法自动判断用哪一张：" >&2
+        echo "❌ Design/app-icon/ 里发现多张候选图片，无法自动判断用哪一张：" >&2
         printf '%s\n' "$NEW_IMAGES" | sed 's/^/     - /' >&2
         echo "   请只保留一张，或用方式 B 指定： sh scripts/build_icon.sh <图片路径>" >&2
         exit 1

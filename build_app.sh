@@ -16,7 +16,7 @@
 # 产物：dist/DiskEjector.app（可拖入 /Applications 或双击运行）
 #       dist/DiskEjector.dmg + dist/DiskEjector.zip（仅 PACKAGE=1 / NOTARIZE=1 时生成）
 # 图标：复制预先生成的 Resources/AppIcon.icns（打包时不生成图标）；
-#       图标由独立脚本生成：把源图放进 assets/icons/ 后运行
+#       图标由独立脚本生成：把源图放进 Design/app-icon/ 后运行
 #         sh scripts/build_icon.sh
 #
 # ---------------------------------------------------------------
@@ -461,7 +461,7 @@ if [ -f "$ICON_SOURCE" ]; then
     echo "   ✓ AppIcon.icns（来自 ${ICON_SOURCE}）"
 else
     echo "   ⚠ 未找到 ${ICON_SOURCE}，将使用系统默认图标"
-    echo "     生成图标：把源图放进 assets/icons/ 后运行 sh scripts/build_icon.sh"
+    echo "     生成图标：把源图放进 Design/app-icon/ 后运行 sh scripts/build_icon.sh"
 fi
 
 echo "▶ [3.5/4] 写入本地化应用名（Finder / 系统设置列表取本地化值）..."

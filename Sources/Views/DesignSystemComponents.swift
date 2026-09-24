@@ -1,7 +1,7 @@
 import AppKit
 import SwiftUI
 
-// 本文件是设计稿 `DiskEjector-UI-Design/v2/` 的**基础组件库** Swift 实现。
+// 本文件是设计稿 `Design/ui/v2/` 的**基础组件库** Swift 实现。
 // 每个组件上方都标注了它在 `assets/ds.css` 里的对应类与关键尺寸来源。
 // 改视觉先改设计稿与 ``DesignTokens``，再回来对齐这里 —— 不要在视图里写魔法数。
 

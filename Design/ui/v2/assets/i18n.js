@@ -3,9 +3,9 @@
    ----------------------------------------------------------------------------
    生成：python3 tools/build_i18n.py
    来源：Sources/Localization/Localizable.xcstrings
-       + DiskEjector-UI-Design/v2/assets/i18n-extra.json
+       + Design/ui/v2/assets/i18n-extra.json
    ----------------------------------------------------------------------------
-   源指纹 128781c7ff0b2d69a64446a15ec1b6c2d90f39c8c1074ddb9a78a2645c8de93a
+   源指纹 ba6ade4e55ccf25224d1f42690d4bacc92795ebf478deeb6506c1cbf2e115ee5
      = sha256(xcstrings + extra + 本脚本) —— 任一方变了它就是旧的，
        由 DesignDraftIntegrityTests 拦下「改了源忘了重跑」。
    ----------------------------------------------------------------------------

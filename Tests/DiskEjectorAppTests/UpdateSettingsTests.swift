@@ -1577,7 +1577,7 @@ struct UpdateSettingsTests {
     ///
     /// 判据取**键名同源**，不取文案内容：文案会改，键名是两边唯一的接缝。
     @Test func 设计稿3b那一帧与实现用同一个说明键() throws {
-        let html = try contents("DiskEjector-UI-Design/v2/screens/08-update.html")
+        let html = try contents("Design/ui/v2/screens/08-update.html")
         let frame = try #require(
             slice(after: "3b · 后台下载中", upTo: "<!-- B4", in: html),
             "找不到 3b 那一帧 —— 改了帧标题或注释就要同步这条断言（口径失效必须是红的）")

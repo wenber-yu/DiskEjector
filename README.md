@@ -2,7 +2,7 @@
 
 **推出硬盘之前，先看清是谁占着它。**
 
-![DiskEjector 主窗口：列出正在占用移动硬盘的程序](assets/screenshots/disk-list.png)
+![DiskEjector 主窗口：列出正在占用移动硬盘的程序](Design/screenshots/disk-list.png)
 
 macOS 13+ · SwiftUI · 菜单栏常驻 + 独立窗口 · 应用中文名「磁盘推出助手」 · 简体中文 / 繁體中文 / English
 

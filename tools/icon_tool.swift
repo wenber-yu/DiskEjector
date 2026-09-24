@@ -1,4 +1,6 @@
 #!/usr/bin/env swift
+import CoreGraphics
+import CoreText
 // =============================================================
 // icon_tool.swift — 图标生成工具（增强实现，当前未被脚本调用）
 //
@@ -28,8 +30,6 @@
 // =============================================================
 import Foundation
 import ImageIO
-import CoreGraphics
-import CoreText
 import UniformTypeIdentifiers
 
 guard CommandLine.arguments.count == 3 else {
@@ -43,7 +43,8 @@ let iconsetDir = CommandLine.arguments[2]
 // 尝试解码源图；失败则用占位图
 var baseImage: CGImage?
 if let source = CGImageSourceCreateWithURL(URL(fileURLWithPath: sourcePath) as CFURL, nil),
-   let image = CGImageSourceCreateImageAtIndex(source, 0, nil) {
+    let image = CGImageSourceCreateImageAtIndex(source, 0, nil)
+{
     baseImage = image
 }
 if baseImage == nil {
@@ -52,15 +53,15 @@ if baseImage == nil {
 
 // macOS iconset 规范的全部尺寸（文件名必须与 iconutil 约定一致）
 let specs: [(Int, String)] = [
-    (16,   "icon_16x16"),
-    (32,   "icon_16x16@2x"),
-    (32,   "icon_32x32"),
-    (64,   "icon_32x32@2x"),
-    (128,  "icon_128x128"),
-    (256,  "icon_128x128@2x"),
-    (256,  "icon_256x256"),
-    (512,  "icon_256x256@2x"),
-    (512,  "icon_512x512"),
+    (16, "icon_16x16"),
+    (32, "icon_16x16@2x"),
+    (32, "icon_32x32"),
+    (64, "icon_32x32@2x"),
+    (128, "icon_128x128"),
+    (256, "icon_128x128@2x"),
+    (256, "icon_256x256"),
+    (512, "icon_256x256@2x"),
+    (512, "icon_512x512"),
     (1024, "icon_512x512@2x"),
 ]
 
@@ -83,24 +84,30 @@ func drawPlaceholder(_ ctx: CGContext, size: Int) {
 
     let font = CTFontCreateWithName("HelveticaNeue-Bold" as CFString, s * 0.42, nil)
     let white = CGColor(colorSpace: colorSpace, components: [1, 1, 1, 1])!
-    let attrs = [kCTFontAttributeName as String: font,
-                 kCTForegroundColorAttributeName as String: white] as CFDictionary
+    let attrs =
+        [
+            kCTFontAttributeName as String: font,
+            kCTForegroundColorAttributeName as String: white,
+        ] as CFDictionary
     let attributed = CFAttributedStringCreate(nil, "DE" as CFString, attrs)!
     let line = CTLineCreateWithAttributedString(attributed)
     let bounds = CTLineGetBoundsWithOptions(line, [.useGlyphPathBounds])
-    ctx.textPosition = CGPoint(x: (s - bounds.width) / 2 - bounds.minX,
-                               y: (s - bounds.height) / 2 - bounds.minY)
+    ctx.textPosition = CGPoint(
+        x: (s - bounds.width) / 2 - bounds.minX,
+        y: (s - bounds.height) / 2 - bounds.minY)
     CTLineDraw(line, ctx)
 }
 
 for (size, name) in specs {
     let outURL = URL(fileURLWithPath: iconsetDir).appendingPathComponent("\(name).png")
-    guard let ctx = CGContext(
-        data: nil, width: size, height: size,
-        bitsPerComponent: 8, bytesPerRow: 0,
-        space: colorSpace,
-        bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
-    ) else {
+    guard
+        let ctx = CGContext(
+            data: nil, width: size, height: size,
+            bitsPerComponent: 8, bytesPerRow: 0,
+            space: colorSpace,
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        )
+    else {
         FileHandle.standardError.write("无法创建画布 \(size)x\(size)\n".data(using: .utf8)!)
         exit(1)
     }
@@ -111,7 +118,8 @@ for (size, name) in specs {
         drawPlaceholder(ctx, size: size)
     }
     guard let outImage = ctx.makeImage(),
-          let dest = CGImageDestinationCreateWithURL(outURL as CFURL, UTType.png.identifier as CFString, 1, nil) else {
+        let dest = CGImageDestinationCreateWithURL(outURL as CFURL, UTType.png.identifier as CFString, 1, nil)
+    else {
         FileHandle.standardError.write("无法写入 \(name).png\n".data(using: .utf8)!)
         exit(1)
     }

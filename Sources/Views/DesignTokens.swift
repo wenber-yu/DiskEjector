@@ -3,7 +3,7 @@ import SwiftUI
 
 /// 全局设计令牌（与设计稿统一规范的视觉常量集中声明处）。
 ///
-/// **单一事实来源**：`DiskEjector-UI-Design/v2/`（`index.html` 为总览入口）。
+/// **单一事实来源**：`Design/ui/v2/`（`index.html` 为总览入口）。
 /// 本文件是设计稿里 `assets/ds.css` 的 Swift 侧镜像 —— 两边数值必须一致，
 /// 改设计稿时同步改这里，不要各写一份。
 ///

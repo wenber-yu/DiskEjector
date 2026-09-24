@@ -11,12 +11,12 @@ let package = Package(
     name: "gen_l10n_tool",
     platforms: [.macOS(.v13)],
     products: [
-        .executable(name: "gen_l10n_tool", targets: ["gen_l10n_tool"]),
+        .executable(name: "gen_l10n_tool", targets: ["gen_l10n_tool"])
     ],
     targets: [
         .executableTarget(
             name: "gen_l10n_tool",
             path: "Sources/gen_l10n_tool"
-        ),
+        )
     ]
 )

@@ -45,7 +45,7 @@ CHROME = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 # 与 SwiftPM 的 `sandbox_apply: Operation not permitted` 是同一类问题。
 CHROME_BASE = [CHROME, "--headless=new", "--no-sandbox", "--disable-gpu", "--hide-scrollbars"]
 REPO = pathlib.Path(__file__).resolve().parent.parent
-DESIGN = REPO / "DiskEjector-UI-Design" / "v2"
+DESIGN = REPO / "Design/ui" / "v2"
 SCREENS = DESIGN / "screens"
 OUT = REPO / ".build" / "design-cmp"
 SNAP = pathlib.Path("/tmp/de-snapshots")

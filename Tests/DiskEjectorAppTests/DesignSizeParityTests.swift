@@ -646,7 +646,7 @@ struct DesignSizeParityTests {
 
     private func loadCSS() throws -> String {
         try String(
-            contentsOf: repoRoot.appendingPathComponent("DiskEjector-UI-Design/v2/assets/ds.css"),
+            contentsOf: repoRoot.appendingPathComponent("Design/ui/v2/assets/ds.css"),
             encoding: .utf8)
     }
 

@@ -246,7 +246,7 @@ struct StatusLabelParityTests {
     /// 不会静默给一个错的文案。
     private func zhPack() throws -> [String: String] {
         let js = try read(
-            repoRoot.appendingPathComponent("DiskEjector-UI-Design/v2/assets/i18n.js"))
+            repoRoot.appendingPathComponent("Design/ui/v2/assets/i18n.js"))
         guard let start = js.range(of: #""zh-Hans": {"#)?.upperBound,
             let end = js[start...].range(of: "\n  },")?.lowerBound
         else { return [:] }
@@ -356,7 +356,7 @@ struct StatusLabelParityTests {
     private func statusVariants() throws -> [String] {
         guard let re = Self.statusClass else { return [] }
         let css = try read(
-            repoRoot.appendingPathComponent("DiskEjector-UI-Design/v2/assets/ds.css"))
+            repoRoot.appendingPathComponent("Design/ui/v2/assets/ds.css"))
         var out = Set<String>()
         for m in re.matches(in: css, range: NSRange(css.startIndex..., in: css)) {
             guard let r = Range(m.range, in: css) else { continue }
@@ -421,7 +421,7 @@ struct StatusLabelParityTests {
     /// ⚠️ 跳过 `_` 开头的文件：无头 Chrome 探针（`_probe_*.html`）曾残留在设计稿目录里，
     /// 被别的守卫当成真页面扫过（§8.47.8）。
     private func htmlFiles() throws -> [URL] {
-        let root = repoRoot.appendingPathComponent("DiskEjector-UI-Design/v2")
+        let root = repoRoot.appendingPathComponent("Design/ui/v2")
         guard let e = FileManager.default.enumerator(at: root, includingPropertiesForKeys: nil)
         else { return [] }
         return e.compactMap { $0 as? URL }

@@ -7,11 +7,11 @@
   1. Sources/Localization/Localizable.xcstrings —— 产品已有文案。
      设计稿的英文必须**逐字取自这里**：走查是把设计稿与真机并排看的，
      两边对不上就白设计了。
-  2. DiskEjector-UI-Design/v2/assets/i18n-extra.json —— 设计稿专有文案
+  2. Design/ui/v2/assets/i18n-extra.json —— 设计稿专有文案
      （实现侧还没有的界面、样本数据、设计稿自己的 chrome）。
 
 输出（生成物，别手改）：
-  DiskEjector-UI-Design/v2/assets/i18n.js
+  Design/ui/v2/assets/i18n.js
 
 为什么要有这个脚本：加一门语言 = 在 xcstrings 里补一列 + 在 extra 里补一个值。
 没有脚本的话，i18n.js 里 150 条 × N 语言只能手抄，抄漏一条不会报错，
@@ -25,9 +25,9 @@ import sys
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 XCS = os.path.join(REPO, 'Sources/Localization/Localizable.xcstrings')
-EXTRA = os.path.join(REPO, 'DiskEjector-UI-Design/v2/assets/i18n-extra.json')
+EXTRA = os.path.join(REPO, 'Design/ui/v2/assets/i18n-extra.json')
 SELF = os.path.abspath(__file__)
-OUT = os.path.join(REPO, 'DiskEjector-UI-Design/v2/assets/i18n.js')
+OUT = os.path.join(REPO, 'Design/ui/v2/assets/i18n.js')
 
 LANGS = [
     ('zh-Hans', 'zh-Hans', '简体中文'),
@@ -148,7 +148,7 @@ def main():
         '   ----------------------------------------------------------------------------',
         '   生成：python3 tools/build_i18n.py',
         '   来源：Sources/Localization/Localizable.xcstrings',
-        '       + DiskEjector-UI-Design/v2/assets/i18n-extra.json',
+        '       + Design/ui/v2/assets/i18n-extra.json',
         '   ----------------------------------------------------------------------------',
         '   源指纹 %s' % fingerprint(),
         '     = sha256(xcstrings + extra + 本脚本) —— 任一方变了它就是旧的，',
