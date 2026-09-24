@@ -3,21 +3,21 @@
     <channel>
         <title>DiskEjector</title>
         <item>
-            <title>2026.09.23.1</title>
-            <pubDate>Wed, 23 Sep 2026 22:47:34 +0800</pubDate>
+            <title>2026.09.24.1</title>
+            <pubDate>Thu, 24 Sep 2026 21:09:04 +0800</pubDate>
             <link>https://github.com/wenber-yu/DiskEjector</link>
-            <sparkle:version>265</sparkle:version>
-            <sparkle:shortVersionString>2026.09.23.1</sparkle:shortVersionString>
-            <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
+            <sparkle:version>273</sparkle:version>
+            <sparkle:shortVersionString>2026.09.24.1</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
             <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
             <description><![CDATA[<ul>
-<li>修掉三处「更新这件事」上的错误提示：安装阶段失败时不再谎报「网络不可用」（下载其实是成功的）、下载失败后那一行不再无声消失、以及「自动更新不可用」不再被误说成「构建未签名」</li>
-<li>修掉设置里「自动更新」开关的一个单向问题：此前关掉之后就再也打不开（只能去改偏好文件才能反悔），现在可以正常来回拨</li>
-<li>修掉窗口标题栏的一处裁切：切换系统外观之后，左上角红绿灯会被 28pt 的标题栏裁掉下半部分 —— 现在切外观、改尺寸都不会</li>
-<li>这期间其余改动都落在测试守卫、工程文档与工具链上，没有界面上的其它可见变化</li>
+<li>窗口玻璃在 macOS 26（Tahoe）上改用系统新的 Liquid Glass 材质，边缘有折射与高光；macOS 14 到 25 上保持原来的毛玻璃观感，界面不会因此变化</li>
+<li>磁盘列表的占用率刷新不再牵动整窗重绘：此前每刷一次进度都会重画主窗口与菜单栏面板的全部内容，现在只重画列表本身</li>
+<li>最低系统要求从 macOS 13 提到 macOS 14 —— 这一版无法在 macOS 13 上运行；仍在用 macOS 13 的话请留在 2026.09.23.1，它照常可用</li>
+<li>这期间其余改动都落在测试守卫、工程目录结构与工具链上，没有界面上的其它可见变化</li>
 </ul>
 ]]></description>
-            <enclosure url="https://github.com/wenber-yu/DiskEjector/releases/download/v2026.09.23.1/DiskEjector-2026.09.23.1.dmg" length="2725425" type="application/octet-stream" sparkle:edSignature="g+qmTxZNpOPFJe3KCao22OsruTIkqoBpLxIXPE4Immn/YwnAMqsC0srj3ESi2Y54HaWvCX5DPHveW1jsblfZCw=="/>
+            <enclosure url="https://github.com/wenber-yu/DiskEjector/releases/download/v2026.09.24.1/DiskEjector-2026.09.24.1.dmg" length="2731113" type="application/octet-stream" sparkle:edSignature="lMtp9HwPD4iFAosWmz951a57V+Vg91hz/v8Gm+gYO2YyAVfrTZ/48DYX8bMSNFw6UrzqiDzxy19tbG2iBNIeCg=="/>
         </item>
     </channel>
 </rss>
