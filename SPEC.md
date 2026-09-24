@@ -13,7 +13,7 @@
 |------|------|
 | 项目名称 | DiskEjector |
 | 类型 | macOS 工具类应用 |
-| 最低系统版本 | **macOS 14.0+**（ Sonoma 及以上） |
+| 最低系统版本 | **macOS 13.0+**（Ventura 及以上；`Package.swift` 的 `platforms` 即此值） |
 | UI 框架 | SwiftUI |
 | 核心功能 | 安全优雅地推出第三方移动硬盘（支持查看并自动终止占用进程、显示磁盘信息、卸载失败告警与日志） |
 
@@ -47,7 +47,11 @@
 
 ### 3.1 视觉风格
 
-- **整体风格**：macOS Native SwiftUI + **Liquid Glass** 毛玻璃效果（macOS 15+）
+- **整体风格**：macOS Native SwiftUI + **Liquid Glass 毛玻璃**（「Liquid Glass」是**设计稿侧的
+  视觉目标名**，见 `DiskEjector-UI-Design/`；实现是 `NSVisualEffectView`
+  `.underWindowBackground` / `.behindWindow`，见 `Sources/Views/GlassViews.swift`。
+  ⚠️ **不是** macOS 26 才有的 `.glassEffect()` / `NSGlassEffectView` ⇒ **没有版本下限**，
+  别写「macOS 15+ / 26+」）
 - **配色方案**：
   - **透明模式（Transparent）**：全透明毛玻璃背景，contentTint 蓝色系，适配毛玻璃系统主题
   - **色调模式（Tinted）**：固定浅色 tint 背景（系统 background 色），适合不喜欢透明的用户
@@ -102,7 +106,7 @@
 
 | 层 | 技术选型 |
 |----|----------|
-| UI | SwiftUI（支持 macOS 14+） |
+| UI | SwiftUI（支持 macOS 13+） |
 | 磁盘枚举/属性 | DiskArbitration.framework（`DADiskCopyDescription`） |
 | 推出执行 | `NSWorkspace.unmountAndEjectDevice(at:)` |
 | 进程查询 | 非沙盒构建（本应用唯一的发布形态）：`lsof`；**沙盒构建：不可用，降级**（沙盒形态不发布，代码里仅作防御分支） |

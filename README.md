@@ -4,7 +4,7 @@
 
 ![DiskEjector 主窗口：列出正在占用移动硬盘的程序](assets/screenshots/disk-list.png)
 
-macOS 14+ · SwiftUI · 菜单栏常驻 + 独立窗口 · 应用中文名「磁盘推出助手」 · 简体中文 / 繁體中文 / English
+macOS 13+ · SwiftUI · 菜单栏常驻 + 独立窗口 · 应用中文名「磁盘推出助手」 · 简体中文 / 繁體中文 / English
 
 [![CI](https://github.com/wenber-yu/DiskEjector/actions/workflows/ci.yml/badge.svg)](https://github.com/wenber-yu/DiskEjector/actions/workflows/ci.yml)
 
