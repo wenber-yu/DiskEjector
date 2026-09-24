@@ -150,6 +150,23 @@ final class UpdateController: NSObject, ObservableObject {
 
     private static let logger = Logger(subsystem: "com.diskejector.app", category: "Update")
 
+    /// 本次运行是不是调试构建（决定 `ensureUpdater()` 要不要整个跳过 Sparkle）。
+    ///
+    /// ⚠️ **为什么是「常量 + 运行时判断」，而不是直接用 `#if DEBUG` 包住 `ensureUpdater()`
+    /// 的其余部分**（2026-09-23 实测踩到）：
+    /// `#if DEBUG` 里直接 `return nil` 会让**后面那一整段成为不可达代码**，
+    /// `-Xswiftc -warnings-as-errors` 的门槛 1 立刻报
+    /// `error: code after 'return' will never be executed`；
+    /// 反过来把那段塞进 `#else`，则 Release 的代码在开发期**从未被类型检查过**，错了要等打包才发现。
+    /// 把「判断」与「逻辑」分开之后，**两条分支都参与编译**，也没有不可达代码。
+    nonisolated static let isDebugBuild: Bool = {
+        #if DEBUG
+            return true
+        #else
+            return false
+        #endif
+    }()
+
     private var updater: SPUUpdater?
 
     /// 必须强引用住：`SPUUpdater` 对 user driver 是**弱引用**，driver 一被释放，
@@ -240,12 +257,28 @@ final class UpdateController: NSObject, ObservableObject {
     /// **预览模式不建**：`--preview-*` 跑的是未签名的命令行产物，
     /// `Bundle.main` 不是合规的 app bundle，Sparkle 会为此报错 ——
     /// 而那句报错跟「更新能不能用」无关，只会污染自检输出（真机自检有 6 个场景要读输出）。
+    ///
+    /// **调试构建也不建**（2026-09-23）：开发路径 `./run.sh` → `swift run DiskEjectorApp`
+    /// 跑的是**裸可执行文件、不是 `.app`**（`.build/out/Products/Debug/` 里没有 `Info.plist`、
+    /// 也没内嵌 `__info_plist` 段）⇒ `Bundle.main.bundleIdentifier` 是 `nil`，
+    /// Sparkle 在 `checkIfConfiguredProperlyAndRequireFeedURL:` 里**直接 `return NO`**
+    /// （`SUInvalidHostBundleIdentifierError`）。实测它**不会联网、不查 feed、不装任何东西**，
+    /// 但每次启动都会记一条 error，并让「自动更新」那一行进入「不可用」——
+    /// 而真因是「这是开发构建」，不是「更新坏了」。⇒ 开发期本来就不该检查更新，
+    /// 干脆别去构造一个注定失败的 `SPUUpdater`。
     private func ensureUpdater() -> SPUUpdater? {
         if let updater { return updater }
         if startError != nil { return nil }
 
         if AppDelegate.isPreviewRun {
             startError = "预览模式（--preview-*）"
+            return nil
+        }
+
+        // ⚠️ 放在 `isPreviewRun` **之后**：预览跑的也是 DEBUG 构建，
+        // 先撞这里会让 `startError` 丢掉「预览模式」那个更有信息量的原因。
+        if Self.isDebugBuild {
+            startError = "调试构建不检查更新"
             return nil
         }
 

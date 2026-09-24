@@ -472,6 +472,87 @@ struct UpdateSettingsTests {
         )
     }
 
+    // MARK: - 调试构建不许去碰 Sparkle
+
+    /// **调试构建必须在 `ensureUpdater()` 里就早退**（2026-09-23）。
+    ///
+    /// ## 它防的是什么
+    ///
+    /// 开发路径 `./run.sh` → `swift run DiskEjectorApp` 跑的是**裸可执行文件、不是 `.app`**
+    /// （`.build/out/Products/Debug/` 里没有 `Info.plist`、也没内嵌 `__info_plist` 段）
+    /// ⇒ `Bundle.main.bundleIdentifier` 是 `nil` ⇒ Sparkle 在
+    /// `checkIfConfiguredProperlyAndRequireFeedURL:`（`SPUUpdater.m:217`）里
+    /// **直接 `return NO`**（`SUInvalidHostBundleIdentifierError`）。
+    ///
+    /// 实测它**不会联网、不查 feed、不装任何东西** —— 所以这条**不是防危险，是防脏**：
+    /// 每次开发启动都会记一条 `Sparkle 启动失败：…` 的 error，并把「自动更新」那一行
+    /// 推成「不可用」，而真因是「这是开发构建」。
+    ///
+    /// ## 为什么是源码文本守卫
+    ///
+    /// 早退是 `private func` + 只读 `startError` —— 测试进程里没法断言「它早退了」
+    /// 而不真的去构造 `SPUUpdater`（那正是要避免的事）。
+    /// 删掉它**编译不会失败、别处也不会红**，所以只能钉源码。
+    ///
+    /// ⚠️ **钉两条轴**（一条守卫只覆盖一条变形轴）：
+    /// ① `ensureUpdater()` 里要真的查 `Self.isDebugBuild`，且排在 `isPreviewRun` **之后**
+    ///   —— 预览跑的也是 DEBUG 构建，先撞 DEBUG 那条会让 `startError`
+    ///   丢掉「预览模式（--preview-*）」这个更有信息量的原因；
+    /// ② 那个常量的定义里必须有 `#if DEBUG` —— 否则它恒为 `false`，
+    ///   守卫在源码里看着还在，实际**一点用都没有**（典型的「装置死了」）。
+    @Test func 调试构建不许去碰Sparkle() throws {
+        let controllerSource = try contents("Sources/Services/UpdateController.swift")
+        let body = codeOnly(try functionBody("private func ensureUpdater()", in: controllerSource))
+
+        let debugAt = try #require(
+            body.range(of: "Self.isDebugBuild")?.lowerBound,
+            """
+            ensureUpdater() 里没有 `Self.isDebugBuild` 早退。
+            调试构建（`./run.sh` → `swift run`）是裸可执行文件、没有 bundle 身份，
+            Sparkle 必然启动失败 ⇒ 每次开发启动都会刷一条 error，
+            并把「自动更新」那一行推成「不可用」（真因是「开发构建」，不是「更新坏了」）。
+            """)
+        let previewAt = try #require(
+            body.range(of: "isPreviewRun")?.lowerBound,
+            "ensureUpdater() 里没有 isPreviewRun 分支 —— 改名了就要同步这条断言")
+
+        #expect(
+            debugAt > previewAt,
+            """
+            `Self.isDebugBuild` 早退排到 `isPreviewRun` 之前了。
+            预览跑的也是 DEBUG 构建 ⇒ 先撞 DEBUG 那条会让 startError 丢掉
+            「预览模式（--preview-*）」这个更有信息量的原因。实得：
+            \(body)
+            """)
+
+        // ② 常量本身必须真的挂在 `#if DEBUG` 上，否则它恒假 ⇒ 守卫形同虚设。
+        let constDecl = codeOnly(
+            try #require(
+                slice(after: "static let isDebugBuild", upTo: "}()", in: controllerSource),
+                "找不到 `static let isDebugBuild` 的定义 —— 改名了就要同步这条断言"))
+        #expect(
+            constDecl.contains("#if DEBUG"),
+            """
+            `isDebugBuild` 的定义里没有 `#if DEBUG` ⇒ 它在任何构建里都走同一条分支，
+            这条守卫等于没有牙（源码里看着还在，实际一点用都没有）。实得：
+            \(constDecl)
+            """)
+        #expect(
+            constDecl.contains("return true"),
+            "`isDebugBuild` 的 DEBUG 分支没有 `return true` —— 写反了就等于没拦。实得：\(constDecl)")
+
+        // ③ 运行时自证：测试本身就跑在 DEBUG 构建里，所以这个常量必须是 `true`。
+        // ⚠️ 这条覆盖的是**另一条变形轴**：源码里 `#if DEBUG` 与 `return true` 都还在，
+        // 但把条件写成 `#if !DEBUG`、或把两个分支的返回值对调时，上面两条**文本断言都会绿**
+        // —— 文本只能回答「这两个词在不在」，回答不了「它们是不是配对的」。
+        #expect(
+            UpdateController.isDebugBuild,
+            """
+            `isDebugBuild` 在 DEBUG 构建里是 false ⇒ `#if DEBUG` 的条件写反了，
+            或两个分支的返回值对调了。这一条是源码文本断言看不出来的。
+            """)
+    }
+
     // MARK: - 「下载失败」这一态必须真的有生产者
 
     /// 这次报错该不该算成「下载失败」——**纯函数**，所以能把两种情形都构造出来。

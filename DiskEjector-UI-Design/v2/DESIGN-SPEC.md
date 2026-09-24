@@ -17281,6 +17281,104 @@ let starved = await Self.waitForExecutablePath(pid: 999_999, pollBudget: 100, ha
 **③ 它不是「设一次就永久有效」**：`enlargeTitleBar` 是「每次被改坏就补回来」。
 谁把它改成「只在装配时设一次」，`标题栏被拨回时必须自己补回来` 会红。
 
+## 8.140 DEBUG 早退守卫的**真机 A/B 自检**，以及 CLT 包装器里挖出的两个真 bug（2026-09-24）
+
+### 一、守卫本身
+
+`UpdateController.ensureUpdater()` 加早退（**落点选它而不是 `startIfNeeded()`**：
+它覆盖 `startIfNeeded()` / `checkForUpdates()` 全部调用方）：
+
+```swift
+if AppDelegate.isPreviewRun { startError = "预览模式（--preview-*）"; return nil }
+if Self.isDebugBuild { startError = "调试构建不检查更新"; return nil }   // ⚠️ 必须排在上一行之后
+```
+
+⚠️ **`#if DEBUG` 不能直接包住 `return nil`**：DEBUG 下后面那一整段成**不可达代码**，
+门槛 1（`-Xswiftc -warnings-as-errors`）当场报 `error: code after 'return' will never be executed`
+（本次真被它抓到过一次）。改成 `nonisolated static let isDebugBuild` 常量 + 运行时判断
+⇒ **两条分支都参与编译**，也没有不可达代码。
+
+⚠️ **顺序是判据**：预览跑的也是 DEBUG 构建，先撞 `isDebugBuild` 会让 `startError` 丢掉
+「预览模式」那个更有信息量的原因。守卫测试因此**断言两个锚点的先后**，不只断言「存在」。
+
+### 二、真机自检：A/B 双跑（阴性结论必须配阳性对照）
+
+同一份 DEBUG 产物、同一套启动流程，**只改 `isDebugBuild` 的值**：
+
+| | A（恒 `false` ＝ 修复前） | B（守卫在位） |
+|---|---|---|
+| 日志总行 | 362 | 359 |
+| 含 `sparkle` 的行 | **5** | **0** |
+| 应用自身业务日志 | — | **345**（含 `AppKit:StatusBar … NSStatusItemScene`） |
+
+A 的那 5 行 = Sparkle 自报 3×`no CFBundleIdentifier!` + 1×`no CFBundleVersion!`
++ 应用 1×`Sparkle 启动失败：Sparkle cannot target a bundle that does not have a valid bundle identifier for Debug.`
+
+⇒ 结论：**不是「应用没起来」**（B 里业务日志 345 条、状态栏场景都建了），是**守卫拦住了**。
+⚠️ **只跑 B 那一次是无效证据** —— 「守卫生效」与「应用没起来 / 日志谓词写错」在输出上**逐字相同**。
+落盘：`.build/probe/round-debugguard/{A,B}-*.log`、`run_once.sh`。
+
+### 三、⚠️ 顺带挖出两个真 bug（都在 `tools/clt_swift_env.sh`，都不是本改动的锅）
+
+**1. `-plugin-path` 追加在命令行末尾 ⇒ `swift run <exe>` 那条路一直是坏的**（`./run.sh` 打不开）。
+
+`swift run` 的用法行是 `swift run [<options>] [<executable>] [<arguments> ...]`
+—— 可执行名**之后**的东西是**传给程序**的。旧写法把 `-Xswiftc …` 追加在末尾 ⇒
+全被当成应用自己的参数 ⇒ 构建**一个插件路径都没拿到** ⇒ 满屏
+`SwiftUIMacros.StateMacro could not be found`。
+
+判据（造 token，两条互为对照）：
+
+```
+swift run -v <exe> -Xswiftc -plugin-path -Xswiftc /tmp/definitely-nope-xyz   → 构建输出里 token 0 次
+swift run -v -Xswiftc -plugin-path -Xswiftc /tmp/definitely-nope-xyz <exe>   → token 5 次
+```
+
+⚠️ **为什么能潜伏很久**：`swift build` / `swift test` **没有位置参数**，末尾追加的选项照样
+被解析成选项 ⇒ 那两条一直是对的。**只有 `swift run <exe>` 有「可执行名」这个分水岭。**
+⇒ 一般规律：**往别人命令行末尾追加参数之前，先问「这条命令有没有位置参数」**。
+
+⚠️ **症状与真因不同形**：报的是「宏插件找不到」，看起来像「CLT 又缺东西 / 脚本没生效」。
+排查要点：`-v` 抓**真实命令行**再判断。⚠️ 而成功的 `swift build -v` 会用 `swiftc @<响应文件>`
+把命令行压到 3960 字符，**插件路径在响应文件里** ⇒ 在可见行里搜 `SwiftUIMacros` 得到 **0 次**，
+别据此下结论。
+
+**已修**：wrapper 改成 `exec /usr/bin/swift "$_sub" <插件参数> "$@"`，并加了一条**自证**：
+生成后 `grep -qF 'exec /usr/bin/swift "$_sub" '`，顺序不对就直接报出来。
+
+**2. 裸产物找不到 `Sparkle.framework`**（`dyld: Library not loaded: @rpath/Sparkle.framework/Versions/B/Sparkle`）
+
+产物二进制的 `LC_RPATH` 只有 `/usr/lib/swift` 与 CLT 的 `swift-6.2/macosx`，
+**没有一条指向产物目录**（`otool -l` 实测），而 `Sparkle.framework` 就躺在产物目录里。
+⚠️ 外壳报的是 **`Abort trap: 6`**（不是 SIGTERM）⇒ 「杀不掉 / 自己退了」要往这边想。
+
+⚠️ **自己 `export DYLD_FRAMEWORK_PATH=<产物目录>` 也没用**：实测该变量到不了 app
+（`DYLD_PRINT_ENV=1` 探过，app 侧一条 `DYLD_*` 都看不到 ⇒ 像是被 SwiftPM 从子进程环境里剥掉了；
+**没逐行读 SwiftPM 源码，只按观测说**）。
+
+⇒ 真机自检的做法改成**绕开 `swift run`，直接执行产物**并自己喂 `DYLD_FRAMEWORK_PATH`。
+⚠️ **没有改 `run.sh`**：修法是给链接期加 `-Xlinker -rpath -Xlinker @loader_path`
+（产物就在 framework 旁边，配置无关），但那会改**发布路径**可能用到的二进制 ⇒ 留给用户拍板。
+
+### 四、两个「装置骗人」的坑（本次亲踩）
+
+- ⚠️ **`pgrep -f '<产物路径>'` 会先抓到 `swift-driver`**（链接那一步的命令行里也含这个路径）
+  ⇒ 拿到的是**编译器的 PID**，杀它、查它的日志 ⇒ 得到「应用一条日志都没有」的**假象**
+  （实测：00:05:29 抓到 89156，日志那一行是 `swift-driver[89156] … Retrieve User by ID`）。
+  ⇒ 模式要**锚到行尾**（`pgrep -f '<产物路径>$'`，应用自己的命令行恰好等于这个路径），
+  并把 `pgrep -fl` 的**完整命令行**打出来当证据。
+- ⚠️ **自检脚本里写了 `$pid，`（全角逗号紧跟变量名）** ⇒ `set -u` 下
+  `pid，: unbound variable`，脚本死在该行、**日志没来得及拉**（应用其实跑满 12 秒）。
+  本机 C locale 不炸、**CI 设了 `LC_ALL` 就炸** ⇒ 老规矩：`$变量` 后紧跟非 ASCII 一律写 `${变量}`；
+  写完用正则 `\$(\w+)(?=[^\x00-\x7f])` **静态扫一遍**（本次扫出 0 处）。
+
+### 五、验收
+
+- 完整门槛 `DISABLE_SANDBOX=1 ./scripts/preflight.sh --with-tests` → **EXIT=0，11/11 绿，
+  覆盖率 65.90%**（与改动前逐字一致）。
+- 工作区 3 个文件：`Sources/Services/UpdateController.swift`(+33)、
+  `Tests/DiskEjectorAppTests/UpdateSettingsTests.swift`(+81)、`tools/clt_swift_env.sh`(+40/−1)。
+
 ## 9. 文件清单
 
 ```

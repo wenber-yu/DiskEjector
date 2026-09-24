@@ -149,13 +149,42 @@ rm -f "${TMPDIR:-/tmp}/xcrun_db"
 # `swift` 包装：只给 build/test/run 追加 `-plugin-path`。
 # ⚠️ 不能无条件追加 —— `swift --version` / `swift package describe` 不认 `-Xswiftc`，
 # 追加了会把不相关的命令弄坏（而那种坏法看起来像「环境更烂了」）。
+#
+# ⚠️⚠️ **参数必须插在「子命令之后、可执行名之前」，不能追加在整条命令末尾**
+# （2026-09-24 实测查清；此前一直追加在末尾，导致 `./run.sh` **一直是坏的**）：
+#
+# `swift run` 的官方用法行是
+#     swift run [<options>] [<executable>] [<arguments> ...]
+# —— 可执行名**之后**的东西是**传给程序的**，不是给 SwiftPM 的。
+# 所以旧写法 `swift run DiskEjectorApp -Xswiftc -plugin-path …` 里，
+# 那几个 `-Xswiftc` 全被当成**应用自己的参数**吃掉了，构建**一个插件路径都没拿到**，
+# 于是满屏 `SwiftUIMacros.StateMacro could not be found`（`@State` 编不过）。
+#
+# 判据（两条实测，互为对照；`definitely-nope-xyz` 是造出来的 token）：
+#   `swift run -v DiskEjectorApp -Xswiftc -plugin-path -Xswiftc /tmp/definitely-nope-xyz`
+#       → 构建输出里 token 出现 **0 次**（参数没进构建）
+#   `swift run -v -Xswiftc -plugin-path -Xswiftc /tmp/definitely-nope-xyz DiskEjectorApp`
+#       → token 出现 **5 次**（参数进了构建）
+#
+# ⚠️ **为什么以前没被发现**：`swift build` / `swift test` **没有位置参数**
+# （`swift build [<options>]`），末尾追加的选项照样被解析成选项 ⇒ 那两条一直是对的。
+# 只有 `swift run <exe>` 有「可执行名」这个分水岭，**只有它中招**。
+# ⇒ 一般规律：**往别人命令行末尾追加参数时，先问「这条命令有没有位置参数」**。
+#
+# ⚠️ 顺带一个「症状与真因不同形」的坑：`swift run` 失败时报的是**宏插件找不到**，
+# 看起来像「CLT 又缺东西 / 脚本没生效」，而真因是**参数位置**。
+# 排查时不要停在第一层症状上——先 `-v` 把**真实命令行**抓出来，
+# 与 `swift build -v` 成功的命令行**逐项对拍**（那次成功的命令行长 3960 字符、
+# 用的是 `swiftc @<响应文件>`，`SwiftUIMacros` 在可见行里出现 0 次、其实在响应文件里）。
 cat >"$_bin/swift" <<WRAPPER
 #!/bin/bash
 # 由 tools/clt_swift_env.sh 生成，请勿手改（下次 source 会覆盖）。
 export DEVELOPER_DIR="$_clt"
 case "\${1:-}" in
     build | test | run)
-        exec /usr/bin/swift "\$@" $_plugin_args
+        _sub="\$1"
+        shift
+        exec /usr/bin/swift "\$_sub" $_plugin_args "\$@"
         ;;
     *)
         exec /usr/bin/swift "\$@"
@@ -183,4 +212,13 @@ echo "  [clt-swift] 包根 xcstringstool → $([ -x "$_repo_root/xcstringstool" 
 echo "  [clt-swift] 宏插件 ① Swift/Observation → $([ -f "$_clt_plugins/libSwiftMacros.dylib" ] && echo 有 || echo 缺)"
 echo "  [clt-swift] 宏插件 ② Testing           → $([ -f "$_clt_plugins/testing/libTestingMacros.dylib" ] && echo 有 || echo 缺)"
 echo "  [clt-swift] 宏插件 ③ SwiftUI           → $([ -f "$_plugin_dir/libSwiftUIMacros.dylib" ] && echo 有 || echo 缺)"
+# ⚠️ **参数顺序也是判据，不是风格**（2026-09-24）：`run` 那一路的插件参数必须排在
+# **可执行名之前**，否则 `swift run` 会把它们当成**应用自己的参数** ⇒ 构建拿不到插件路径
+# ⇒ `./run.sh` 报「SwiftUIMacros.StateMacro could not be found」。上面 wrapper 段有实测。
+# 用 `grep -F`（固定串）：ERE 里 `$` 在中段是字面量还是锚，各家实现不一致，别赌。
+if grep -qF 'exec /usr/bin/swift "$_sub" ' "$_bin/swift"; then
+    echo "  [clt-swift] 包装器参数顺序           → 插件参数排在子命令之后（run 也吃得到）✅"
+else
+    echo "  [clt-swift] 包装器参数顺序           → ⚠️ 插件参数没排在可执行名之前 ⇒ ./run.sh 会构建失败" >&2
+fi
 echo "  [clt-swift] ⚠️ CLT 的 SDK 与 CI 的 Xcode SDK 不是同一把尺子：本地绿只证明「没写坏」"
