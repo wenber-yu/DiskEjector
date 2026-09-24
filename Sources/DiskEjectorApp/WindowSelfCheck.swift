@@ -470,15 +470,44 @@ enum WindowSelfCheck {
         }
     }
 
+    /// 真机判据：macOS 26 起，**真机**上玻璃底衬必须走 Liquid Glass。
+    ///
+    /// **为什么要有这一条**：离屏通路（出图与像素判据）**故意**退回 `NSVisualEffectView`
+    /// —— Liquid Glass 在离屏渲染里是不透明浅色，会让「透明 / 色调」两种风格画成一样、
+    /// 走查图也失真（实测数据见 `EnvironmentValues.offscreenRendering` 那张表）。
+    /// 于是「26 上到底走没走 Liquid Glass」这件事**只剩真机能问** —— 就是这里。
+    ///
+    /// ⚠️ 只认**我们自己画的**那块（``GlassBackdrop/isOurs``）：系统标题栏在 26 上也是
+    /// 同一种视图，算进来的话，「我们自己那块退回了旧材质」时这条断言仍然会通过。
+    @MainActor
+    static func checkLiquidGlassBackdrop(
+        _ glasses: [(frame: CGRect, kind: GlassBackdrop)],
+        label: String,
+        mismatches: inout [String]
+    ) {
+        guard #available(macOS 26.0, *) else { return }
+        let ours = glasses.filter { $0.kind.isOurs }
+        guard !ours.isEmpty else {
+            mismatches.append("\(label) 没找到自定义玻璃 —— 背景没铺上")
+            return
+        }
+        if !ours.contains(where: { $0.kind == .liquidGlass }) {
+            mismatches.append(
+                "\(label) 本机是 macOS 26 起，玻璃底衬应当走 Liquid Glass，实际："
+                    + ours.map(\.kind.label).joined(separator: "、"))
+        }
+    }
+
     /// 把设置窗口的状态打到终端，并就地核对。
     ///
     /// 四条断言各有明确后果：
     /// 1. 窗口必须是设计稿的 **480 × 800**（`DesignTokens.Size.settingsPanel`）——
     ///    这条抓的是「`NSHostingView` 把 800+32 的固有尺寸回推给窗口」（实测会撑到 832）；
     /// 2. **玻璃必须覆盖整个窗口内容区**（含 52pt 头部那一带）—— 与主窗口同款的露底捕手。
-    ///    判据不是看颜色（离屏取不到桌面），而是问 AppKit 那块 `NSVisualEffectView`
-    ///    在窗口里占多大：``GlassSurface`` 用的材质是 `.underWindowBackground`，
-    ///    系统标题栏自带的不是这一档，所以能精确挑出「我们自己画的那块玻璃」；
+    ///    判据不是看颜色（离屏取不到桌面），而是问玻璃底衬在窗口里占多大：走
+    ///    ``NSView/glassBackdrops``，**只认 ``GlassBackdrop/isOurs`` 的那块**
+    ///    （14–25 认材质 `.underWindowBackground`，26 起认 ``GlassIdentifiers/surface``），
+    ///    系统标题栏自带的那块不算 —— 它算进来会替我们那块把「没铺满」补上；
     /// 3. 系统标题栏的标题必须隐藏 —— 否则「设置」在同一个窗口上出现两遍；
     /// 4. **三个系统按钮必须都藏着**（``SettingsWindow``）—— 设计稿的 `.shead` 里没有
     ///    `traffic`，红绿灯的关窗与头部的「完成」是**同一个动作的两个出口**
@@ -497,12 +526,13 @@ enum WindowSelfCheck {
     ) {
         let hosting = window.contentView
         // ⚠️ **两边都必须转成窗口坐标再比**。`NSHostingView` 是 flipped 的
-        // （`isFlipped == true`，原点在左上），它的 `bounds` 与 `glassEffectFrames`
+        // （`isFlipped == true`，原点在左上），它的 `bounds` 与 `glassBackdrops`
         // 返回的窗口坐标（原点在左下）**y 轴方向相反** —— 直接比会得到荒谬的结论。
         let contentRect = hosting?.convert(hosting?.bounds ?? .zero, to: nil) ?? .zero
-        let glasses = window.glassEffectFrames
-        let ours = glasses.filter { $0.material == .underWindowBackground }
+        let glasses = window.glassBackdrops
+        let ours = glasses.filter { $0.kind.isOurs }
         let covered = ours.map(\.frame).reduce(CGRect.null) { $0.union($1) }
+        checkLiquidGlassBackdrop(glasses, label: label, mismatches: &mismatches)
         // 显式写类型：在字符串插值里 `.zero` 没有上下文类型可推，Swift 会去猜
         // （实测猜成 `Int.zero`），然后在一个莫名其妙的地方报运算符不匹配。
         let insets: NSEdgeInsets = hosting?.safeAreaInsets ?? NSEdgeInsetsZero
@@ -519,7 +549,7 @@ enum WindowSelfCheck {
                 + "不透明=\(window.isOpaque)"
         )
         for (index, glass) in glasses.enumerated() {
-            print("    玻璃[\(index)] material=\(glass.material.rawValue) frame=\(glass.frame)")
+            print("    玻璃[\(index)] \(glass.kind.label) frame=\(glass.frame)")
         }
         print("    自定义玻璃并集=\(covered)")
 

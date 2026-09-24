@@ -63,13 +63,14 @@ struct MainWindowTests {
         window.contentView as? NSHostingView<ContentView>
     }
 
-    /// 玻璃覆盖范围：视图树里 `.underWindowBackground` 材质那块，统一到 `host` 坐标系。
+    /// 玻璃覆盖范围：**我们自己画的那块**玻璃，统一到 `host` 坐标系。
     ///
-    /// 判据不是看颜色（离屏取不到桌面），而是**问 AppKit 那块 `NSVisualEffectView` 占多大**。
-    /// 系统标题栏自带的玻璃是别的材质档，所以能精确挑出「我们自己画的那块」。
+    /// 判据不是看颜色（离屏取不到桌面），而是**问 AppKit 那块玻璃视图占多大**。
+    /// 「自己画的」由 ``GlassBackdrop/isOurs`` 判定（14–25 看材质档，26 起看 `identifier`）——
+    /// 系统标题栏自带的玻璃必须排除，否则「我们没铺满」会被它补上。
     private func glassCoverage(in host: NSView) -> CGRect {
-        host.glassEffectFrames
-            .filter { $0.material == .underWindowBackground }
+        host.glassBackdrops
+            .filter { $0.kind.isOurs }
             .map(\.frame)
             .reduce(CGRect.null) { $0.union($1) }
     }

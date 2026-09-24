@@ -50,7 +50,16 @@ struct ContentView: View {
     /// （41 行，实测坐实，取证见 `DESIGN-SPEC.md` §8.28.6）。
     ///
     /// 渲染 `ContentView` 的测试请走 ``ViewFixtures``，**不要写 `ContentView()`**。
-    @ObservedObject private var occupancyStore: OccupancyStore
+    /// ⚠️ **故意不是 `@ObservedObject`**（2026-09-24）：本视图只在两个**显式**时机用它
+    /// （`refreshDisks()` 与「回到前台」那一次 refresh），**界面上不读它的任何属性** ——
+    /// 读的地方全在 ``DiskListRegion`` 里。
+    ///
+    /// 而 `@ObservedObject` 订阅的是 `objectWillChange` **整条**，不是「读到的那几个属性」：
+    /// 只要挂上它，``OccupancyStore`` 每 15s 跑完 `lsof` 就会让**整个窗口重算**
+    /// （标题栏、横幅、滚动区一起重建），而这些地方一个字节都没变。
+    /// ⇒ **订阅随读取走**：谁画谁订阅。想加一处读占用结论的新 UI，就让它自己接
+    /// ``OccupancyStore``，别在这里挂一个 `@ObservedObject` 图省事。
+    private let occupancyStore: OccupancyStore
 
     /// 是否已授予「完全磁盘访问」（FDA）。决定是否在主窗口顶部展示未授权横幅。
     ///
@@ -431,60 +440,22 @@ struct ContentView: View {
     // MARK: - 滚动区
 
     private var scrollRegion: some View {
-        ScrollView {
-            LazyVStack(spacing: density == .compact ? DesignTokens.Spacing.xs : DesignTokens.Spacing.sm) {
-                if store.disks.isEmpty {
-                    if Self.showsSkeleton(
-                        gatePassed: skeletonGatePassed,
-                        hasFinishedInitialLoad: hasFinishedInitialLoad)
-                    {
-                        skeletonList
-                    } else {
-                        emptyState
-                    }
-                } else {
-                    ForEach(store.disks) { disk in
-                        DiskRow(
-                            disk: disk,
-                            occupancy: occupancyStore.result(for: disk),
-                            accent: accentColor,
-                            onEject: { eject(disk) },
-                            density: density,
-                            isEjecting: ejectingDiskId == disk.id
-                        )
-                    }
-                }
-            }
-            .padding(.horizontal, DesignTokens.Spacing.lg)
-            .padding(.top, DesignTokens.Spacing.md)
-            .padding(.bottom, DesignTokens.Spacing.lg)
-        }
-        .scrollContentBackground(.hidden)
+        DiskListRegion(
+            occupancyStore: occupancyStore,
+            disks: store.disks,
+            density: density,
+            accent: accentColor,
+            ejectingId: ejectingDiskId,
+            showsSkeleton: Self.showsSkeleton(
+                gatePassed: skeletonGatePassed,
+                hasFinishedInitialLoad: hasFinishedInitialLoad),
+            onEject: { disk in eject(disk) },
+            onRefresh: { Task { await refreshDisks() } }
+        )
     }
 
     /// 空状态。**不用警告色**（不是出错，是还没开始）；
     /// 文案提前解释筛选规则，消灭「插了盘却看不到」的困惑。
-    private var emptyState: some View {
-        EmptyStateView(
-            systemName: "externaldrive",
-            title: L10n.tr(.noRemovableDisks),
-            description: L10n.tr(.insertDiskHint) + "\n" + L10n.tr(.emptyStateFilterHint),
-            actionTitle: L10n.tr(.refresh),
-            actionSystemImage: "arrow.clockwise",
-            action: { Task { await refreshDisks() } },
-            accent: accentColor
-        )
-        .frame(height: 380)
-    }
-
-    private var skeletonList: some View {
-        VStack(spacing: DesignTokens.Spacing.sm) {
-            ForEach(0..<3, id: \.self) { _ in
-                SkeletonRow()
-            }
-        }
-        .accessibilityLabel(L10n.tr(.loadingDisks))
-    }
 
     // MARK: - 数据
 
@@ -542,6 +513,99 @@ struct ContentView: View {
             await refreshDisks()
             await EjectUI.handle(outcome, disk: disk)
         }
+    }
+}
+
+// MARK: - 磁盘列表区（占用结论的订阅点在这里）
+
+/// 主窗口的**磁盘列表区**：滚动容器 + 列表 / 空状态 / 骨架屏。
+///
+/// ## 为什么单独一个视图（2026-09-24）
+///
+/// ``ContentView`` 只在两个**显式**时机需要 ``OccupancyStore``（`refreshDisks()` 与
+/// 「回到前台」那一次刷新），界面上**不读它的任何属性** —— 读的地方全在这里。
+/// 但 `@ObservedObject` 订阅的是 `objectWillChange` **整条**，不是「读到的那几个属性」：
+/// 挂一个在 `ContentView` 上，占用每 15s 跑完 `lsof` 就会让**整个窗口重算**
+/// （标题栏、横幅、滚动区一起重建），而这些地方一个字节都没变。
+/// ⇒ **订阅随读取走**：这里读 ⇒ 这里订阅；``ContentView`` 只把它当参数传下来。
+///
+/// ⚠️ **光把 body 拆成计算属性没有用**（这正是 swiftui-patterns 那条建议容易做错的地方）：
+/// 计算属性会被**内联**进同一个 body，失效范围一点没变小。要拆就拆成**独立 struct**，
+/// 并且**只传值**（`disks` / `ejectingId` / `showsSkeleton` 全是值）——
+/// 传整个 store 或传闭包都会让「输入没变就跳过重算」失效。
+struct DiskListRegion: View {
+
+    /// 占用结论来源。**唯一的订阅点**在列表这一层。
+    @ObservedObject var occupancyStore: OccupancyStore
+
+    /// 磁盘列表（**值**）—— 由 ``ContentView`` 传下来，本视图**不订阅** ``DiskListStore``。
+    let disks: [DiskInfo]
+
+    let density: DiskRowDensity
+
+    let accent: AccentColor
+
+    /// 正在推出的那块盘的 id。``ContentView`` 的 `@State` 传值下来，不传闭包。
+    let ejectingId: String?
+
+    /// 是否画骨架。闸门（300ms）在 ``ContentView`` 里算好，这里只收结论。
+    let showsSkeleton: Bool
+
+    let onEject: (DiskInfo) -> Void
+
+    let onRefresh: () -> Void
+
+    var body: some View {
+        ScrollView {
+            LazyVStack(spacing: density == .compact ? DesignTokens.Spacing.xs : DesignTokens.Spacing.sm) {
+                if disks.isEmpty {
+                    if showsSkeleton {
+                        skeleton
+                    } else {
+                        emptyState
+                    }
+                } else {
+                    ForEach(disks) { disk in
+                        DiskRow(
+                            disk: disk,
+                            occupancy: occupancyStore.result(for: disk),
+                            accent: accent,
+                            onEject: { onEject(disk) },
+                            density: density,
+                            isEjecting: ejectingId == disk.id
+                        )
+                    }
+                }
+            }
+            .padding(.horizontal, DesignTokens.Spacing.lg)
+            .padding(.top, DesignTokens.Spacing.md)
+            .padding(.bottom, DesignTokens.Spacing.lg)
+        }
+        .scrollContentBackground(.hidden)
+    }
+
+    /// 空状态。**不用警告色**（不是出错，是还没开始）；
+    /// 文案提前解释筛选规则，消灭「插了盘却看不到」的困惑。
+    private var emptyState: some View {
+        EmptyStateView(
+            systemName: "externaldrive",
+            title: L10n.tr(.noRemovableDisks),
+            description: L10n.tr(.insertDiskHint) + "\n" + L10n.tr(.emptyStateFilterHint),
+            actionTitle: L10n.tr(.refresh),
+            actionSystemImage: "arrow.clockwise",
+            action: onRefresh,
+            accent: accent
+        )
+        .frame(height: 380)
+    }
+
+    private var skeleton: some View {
+        VStack(spacing: DesignTokens.Spacing.sm) {
+            ForEach(0..<3, id: \.self) { _ in
+                SkeletonRow()
+            }
+        }
+        .accessibilityLabel(L10n.tr(.loadingDisks))
     }
 }
 

@@ -204,4 +204,52 @@ struct GlassSurfaceTests {
         #expect(a.a == 255 && b.a == 255, "描边不该把边缘弄成透明")
         #expect(a.r < b.r, "画了 0.5px var(--border-strong) 的左边缘必须比不画时暗：\(a) vs \(b)")
     }
+
+    // MARK: 玻璃底衬走哪一条路（2026-09-24 新增）
+
+    /// `GlassSurface` 必须按**系统版本**挑对那条路：26 起走 Liquid Glass，14–25 走
+    /// `NSVisualEffectView`。
+    ///
+    /// **为什么值得钉**：两条路在界面上都是「一块玻璃」，看不出差别；写反了（或有人为了
+    /// 省事把 26 那条删了）**没有任何东西会红** —— 只有这条测试会。
+    ///
+    /// ⚠️ 它是**自证型**的：期望值由当前的 `#available` 决定，所以只能证明
+    /// 「跑测试的这台机器上挑对了」，证明不了 14–25 上的行为 —— 后者要靠部署目标守卫
+    /// （`@available` 写错版本是编译不过的）与真机 `--preview-main-window-keys`。
+    ///
+    /// ⚠️ **它测的是「真机那条路」**：这里的宿主是**裸建**的，**不注入**
+    /// ``EnvironmentValues/offscreenRendering``（注入是 ``OffscreenRender`` 干的）。
+    /// 而像素判据（`GlassSurface 会画出不透明的底` / `两种风格画出来的底色不同`）走的是
+    /// 注入后的离屏通路 ⇒ **两边各自测一半**：
+    /// 这一条管「26 上选的是不是 Liquid Glass」，那两条管「叠加色 / 描边画得对不对」。
+    /// 别把这条改成走 `OffscreenRender` —— 那样它就永远只能看到旧材质，等于不测。
+    @Test("玻璃底衬挑的是本系统该走的那条路")
+    @MainActor
+    func 玻璃底衬按系统版本分叉() {
+        _ = NSApplication.shared
+        let host = NSHostingView(rootView: GlassSurface(cornerRadius: 12))
+        host.frame = NSRect(x: 0, y: 0, width: 120, height: 80)
+        host.layoutSubtreeIfNeeded()
+
+        let ours = host.glassBackdrops.filter { $0.kind.isOurs }
+        #expect(
+            !ours.isEmpty,
+            """
+            视图树里找不到**我们自己画的**玻璃 —— 要么底衬根本没铺上，要么
+            `isOurs` 的识别办法没跟上（26 起那条路靠 `identifier` 认）。
+            """)
+
+        // 只声明「应当」而不逐一比对，是为了让失败信息能说出**实际走的是哪条路** ——
+        // 光写 `isLiquidGlass == true` 的话，红的时候只能看到 false，看不出它其实是旧材质。
+        let walked = ours.map(\.kind.label).joined(separator: ", ")
+        if #available(macOS 26.0, *) {
+            #expect(
+                ours.allSatisfy { $0.kind.label == GlassBackdrop.liquidGlass.label },
+                "本机是 macOS 26 起，玻璃底衬应当走 Liquid Glass；实际：\(walked)")
+        } else {
+            #expect(
+                ours.allSatisfy { $0.kind.label.hasPrefix("NSVisualEffectView") },
+                "本机不到 macOS 26，玻璃底衬应当走 NSVisualEffectView；实际：\(walked)")
+        }
+    }
 }

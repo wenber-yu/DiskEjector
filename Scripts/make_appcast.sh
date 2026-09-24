@@ -27,7 +27,10 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PACKAGE_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-OUTPUT_DIR="${OUTPUT_DIR:-$PACKAGE_DIR/dist}"
+# ⚠️ 大写 `Dist`：2026-09-24 目录统一大写（`dist`/`scripts`/`tools`/`release-notes` 已废弃）。
+# 本机文件系统**大小写不敏感** ⇒ 写成小写照样跑通，只在大小写敏感的卷上（或 Linux CI 里）
+# 才暴露成「产物找不到」—— 与「还没打包」逐字相同。别改回去。
+OUTPUT_DIR="${OUTPUT_DIR:-$PACKAGE_DIR/Dist}"
 UPDATES_DIR="$OUTPUT_DIR/updates"
 APP_NAME="DiskEjector"
 REPO_URL="https://github.com/wenber-yu/DiskEjector"

@@ -1099,12 +1099,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
         let hosting = window.contentView
         // ⚠️ **两边都必须转成窗口坐标再比**。`NSHostingView` 是 flipped 的
-        // （`isFlipped == true`，原点在左上），它的 `bounds` 与 `glassEffectFrames`
+        // （`isFlipped == true`，原点在左上），它的 `bounds` 与 `glassBackdrops`
         // 返回的窗口坐标（原点在左下）**y 轴方向相反** —— 直接比会得到荒谬的结论。
         let contentRect = hosting?.convert(hosting?.bounds ?? .zero, to: nil) ?? .zero
-        let glasses = window.glassEffectFrames
-        let ours = glasses.filter { $0.material == .underWindowBackground }
+        let glasses = window.glassBackdrops
+        let ours = glasses.filter { $0.kind.isOurs }
         let covered = ours.map(\.frame).reduce(CGRect.null) { $0.union($1) }
+        WindowSelfCheck.checkLiquidGlassBackdrop(glasses, label: label, mismatches: &mismatches)
 
         // **不用 `.zero` 这种隐式成员**：在字符串插值里它没有上下文类型可推，
         // Swift 会去猜（实测猜成 `Int.zero`），然后在一个莫名其妙的地方报
@@ -1117,7 +1118,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 + "内容区(窗口坐标)=\(contentRect) 安全区=\(insets)"
         )
         for (index, glass) in glasses.enumerated() {
-            print("    玻璃[\(index)] material=\(glass.material.rawValue) frame=\(glass.frame)")
+            print("    玻璃[\(index)] \(glass.kind.label) frame=\(glass.frame)")
         }
         print("    自定义玻璃并集=\(covered)")
 

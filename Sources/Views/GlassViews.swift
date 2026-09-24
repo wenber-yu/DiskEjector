@@ -91,26 +91,113 @@ extension NSView {
     }
 }
 
+// MARK: - 玻璃底衬的两条路
+
+/// **离屏渲染**（出图 / 像素判据）专用的环境值，默认 `false`（= 真机）。
+///
+/// ## 为什么需要它（2026-09-24 实测，不是推测）
+///
+/// macOS 26 起的 `NSGlassEffectView` 在**离屏渲染**里被画成**不透明的浅色** ——
+/// 它背后没有真实桌面可采样。实测 `GlassSurface` 的中心像素：
+///
+/// | 风格 | 明 | 暗 |
+/// |---|---|---|
+/// | 透明 | **255,255,255** | 94,94,97 |
+/// | 色调 | **255,255,255** | 28,28,30 |
+///
+/// 后果是两条守卫直接失效：
+/// ① **透明风格退化成纯白** ⇒ 与色调风格「画出来完全一样」（`VisualStyleTests` 红）；
+/// ② 深色下玻璃不再被叠加色压暗到 < 70（实测 94 ⇒ `GlassSurfaceTests` 红）。
+///
+/// 而这两条正是「三块玻璃三种色温」那组修复的判据，走查图（`SnapshotRenderTests`）
+/// 也靠同一条通路 —— 26 上出的图会把透明玻璃画成白板。
+/// ⇒ **离屏时退回 `NSVisualEffectView`**（它在离屏下让叠加色正常透出），真机才用 Liquid Glass。
+///
+/// ## 代价与分工（**必须知道**）
+///
+/// 离屏通路**测不到** 26 那条（真机）路径。那一条由**真机自检**负责：
+/// `--preview-main-window-keys` 会打印每块玻璃的 `kind`，并在 26 上断言必须是
+/// ``GlassBackdrop/liquidGlass``。两边分工：**离屏管「叠加色 / 描边 / 铺满」，
+/// 真机管「走的是哪条玻璃路」**。
+private struct OffscreenRenderingKey: EnvironmentKey {
+    static let defaultValue = false
+}
+
+extension EnvironmentValues {
+    /// 见 ``OffscreenRenderingKey``。由 ``OffscreenRender`` 注入 `true`。
+    var offscreenRendering: Bool {
+        get { self[OffscreenRenderingKey.self] }
+        set { self[OffscreenRenderingKey.self] = newValue }
+    }
+}
+
+/// 我们自己那块玻璃的标记。
+///
+/// ⚠️ **故意不挂在 `LiquidGlassBackground` 上**：那个类型是 `@available(macOS 26.0, *)` 的，
+/// 而这里的判据在**部署目标 14** 下也要能编译、能读 —— 挂上去，14 那条路就引用不到了。
+enum GlassIdentifiers {
+    static let surface = NSUserInterfaceItemIdentifier("DiskEjector.GlassSurface")
+}
+
+/// 一块玻璃底衬是哪一条路的产物。
+///
+/// **为什么会有两条**：macOS 26 起 AppKit 提供 `NSGlassEffectView`（Liquid Glass），
+/// 观感与旧材质不同（边缘折射 + 高光）。而本包的部署目标是 14 ⇒ 两条路都得留，
+/// 由 ``GlassSurface`` 按可用性挑一条。
+enum GlassBackdrop: Equatable {
+    /// AppKit 的 `NSVisualEffectView`（14–25 那条路）。带材质档位，用来挑出「我们画的那块」。
+    case visualEffect(NSVisualEffectView.Material)
+    /// macOS 26 起提供的 `NSGlassEffectView`（Liquid Glass）。
+    case liquidGlass
+
+    /// 是不是**我们自己画的那块** —— 判据只认它。
+    ///
+    /// 两条路的识别办法不同：`NSVisualEffectView` 看 `material`（``GlassSurface`` 用
+    /// `.underWindowBackground`，系统标题栏自带的是别的档）；macOS 26 起提供的
+    /// `NSGlassEffectView` 没有 `material` 可看，改靠 ``GlassIdentifiers/surface``。
+    ///
+    /// ⚠️ 26 那条路**不能「见到 `NSGlassEffectView` 就算」** —— 系统标题栏在 26 上也是
+    /// 同一种视图，算进来的话「我们自己那块没铺满」会被系统那块补上，判据就瞎了。
+    var isOurs: Bool {
+        switch self {
+        case .visualEffect(let material): material == .underWindowBackground
+        case .liquidGlass: true
+        }
+    }
+
+    /// 真机自检打印用的名字（只看得懂就行，不作判据）。
+    var label: String {
+        switch self {
+        case .visualEffect(let material): "NSVisualEffectView(material=\(material.rawValue))"
+        case .liquidGlass: "LiquidGlass"
+        }
+    }
+}
+
 // MARK: - 窗口玻璃的自检入口
 
 extension NSView {
 
-    /// 本视图**及其子树**里所有 `NSVisualEffectView` 的 frame（**统一转成 `self` 的坐标系**）
-    /// 与材质。
-    ///
-    /// 判定「那块玻璃」的办法是看 `material`：``GlassSurface`` 用的是
-    /// `.underWindowBackground`，系统标题栏自带的那些是别的档。
+    /// 本视图**及其子树**里所有玻璃底衬的 frame（**统一转成 `self` 的坐标系**）与种类。
     ///
     /// **为什么下沉到 `NSView`**：`NSWindow` 版本只能问「窗口里占多大」（真机自检用），
     /// 而 `MainWindowTests` 要问的是**「玻璃有没有铺满宿主」** —— 那只需要一个宿主视图，
-    /// 不需要窗口（实测离屏也能建出 `NSVisualEffectView`，`layoutSubtreeIfNeeded()` 就够）。
-    var glassEffectFrames: [(frame: CGRect, material: NSVisualEffectView.Material)] {
-        var result: [(CGRect, NSVisualEffectView.Material)] = []
+    /// 不需要窗口（实测离屏也能建出玻璃视图，`layoutSubtreeIfNeeded()` 就够）。
+    ///
+    /// ⚠️ **为什么两条路都能离屏探到**（2026-09-24 实测，决定这条设计的关键数据）：
+    /// SwiftUI 的 `.glassEffect(in:)` **在视图树里完全没有落脚点** —— 离屏搭一个
+    /// `NSHostingView` 铺满它，子树里一个视图都没有 ⇒ 换它，这里所有判据会**静默失效**。
+    /// AppKit 的 `NSGlassEffectView` 则**挂在视图树上**（`AppKitPlatformViewHost` 之下、
+    /// frame 铺满）⇒ 探得到、判据不用改弱。⇒ 26 那条路走 AppKit，不走 SwiftUI 修饰器。
+    var glassBackdrops: [(frame: CGRect, kind: GlassBackdrop)] {
+        var result: [(CGRect, GlassBackdrop)] = []
         func walk(_ view: NSView) {
+            // ⚠️ 必须转成统一坐标系：各层 frame 是各自父视图坐标系里的值，
+            // 直接拿来求并集会得到毫无意义的矩形。
             if let effect = view as? NSVisualEffectView {
-                // ⚠️ 必须转成统一坐标系：各层 frame 是各自父视图坐标系里的值，
-                // 直接拿来求并集会得到毫无意义的矩形。
-                result.append((effect.convert(effect.bounds, to: self), effect.material))
+                result.append((effect.convert(effect.bounds, to: self), .visualEffect(effect.material)))
+            } else if view.identifier == GlassIdentifiers.surface {
+                result.append((view.convert(view.bounds, to: self), .liquidGlass))
             }
             for sub in view.subviews { walk(sub) }
         }
@@ -121,7 +208,7 @@ extension NSView {
 
 extension NSWindow {
 
-    /// 窗口内容视图树里所有 `NSVisualEffectView` 的**窗口坐标** frame。
+    /// 窗口内容视图树里所有玻璃底衬的**窗口坐标** frame。
     ///
     /// **用途**：回答「窗口玻璃有没有覆盖整窗」这个**只有真机才能问**的问题。
     /// 离屏渲染里没有窗口，也就没有「标题栏安全区」这回事 ——
@@ -131,13 +218,38 @@ extension NSWindow {
     ///
     /// **必须转成窗口坐标再比**：内容视图树里各层的坐标系互不相同，
     /// 而 `NSHostingView` 还是 flipped 的（原点在左上），拿它的 `bounds` 去比 y 轴会反过来。
-    var glassEffectFrames: [(frame: CGRect, material: NSVisualEffectView.Material)] {
+    var glassBackdrops: [(frame: CGRect, kind: GlassBackdrop)] {
         guard let root = contentView else { return [] }
         // 复用 `NSView` 那一份的遍历（坐标先归到 `root`，再转窗口坐标）——
         // 两个版本各写一份 `walk` 迟早会漂移。
-        return root.glassEffectFrames.map {
-            (root.convert($0.frame, to: nil), $0.material)
+        return root.glassBackdrops.map {
+            (root.convert($0.frame, to: nil), $0.kind)
         }
+    }
+}
+
+// MARK: - Liquid Glass 那条路（macOS 26 起提供）
+
+/// macOS 26 起提供的 AppKit 玻璃视图 `NSGlassEffectView` 的 SwiftUI 包装。
+///
+/// ⚠️ **为什么是 AppKit 而不是 SwiftUI 的 `.glassEffect(in:)`**（2026-09-24 实测）：
+/// 后者在视图树里**不留任何落脚点**（离屏铺满一个 `NSHostingView` 也探不到），
+/// 换它 ⇒ `glassBackdrops` 找不到东西 ⇒ 「玻璃铺满整窗」那几条判据**静默失效**。
+/// `NSGlassEffectView` 挂在视图树上、frame 可测，判据不用改弱。
+///
+/// ⚠️ **为什么要打 `identifier`**：系统在 26 上也用同一种视图画标题栏，
+/// 判据必须能区分「我们画的」和「系统自带的」 ⇒ 建视图时打上
+/// ``GlassIdentifiers/surface``，``GlassBackdrop/isOurs`` 只认它。
+@available(macOS 26.0, *)
+struct LiquidGlassBackground: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSGlassEffectView {
+        let view = NSGlassEffectView(frame: .zero)
+        view.identifier = GlassIdentifiers.surface
+        return view
+    }
+
+    func updateNSView(_ nsView: NSGlassEffectView, context: Context) {
+        nsView.identifier = GlassIdentifiers.surface
     }
 }
 
@@ -194,16 +306,33 @@ struct GlassSurface: View {
         RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
     }
 
+    /// 玻璃底衬：**26 起在真机上走 Liquid Glass，其余情况走 `NSVisualEffectView`**。
+    ///
+    /// 分叉写在这一处（``GlassSurface`` 是三处外壳的唯一来源），调用方不感知。
+    ///
+    /// ⚠️ `!offscreenRendering` 这一半**不是可有可无的开关**：Liquid Glass 在离屏渲染里
+    /// 是不透明浅色（实测数据见 ``OffscreenRenderingKey``）⇒ 出图与像素判据会失真。
+    /// 去掉它，`VisualStyleTests` 与 `GlassSurfaceTests` 立刻红，走查图也会变成白板。
+    @ViewBuilder private var backdrop: some View {
+        if #available(macOS 26.0, *), !offscreenRendering {
+            LiquidGlassBackground()
+        } else {
+            VisualEffectBackground()
+        }
+    }
+
+    @Environment(\.offscreenRendering) private var offscreenRendering
+
     var body: some View {
         ZStack {
-            // **两种风格都保留这一层系统材质**，只换上面那层色：
+            // **两种视觉风格都保留这一层玻璃**，只换上面那层色：
             // - 透明：半透明 `--bg-glass` 铺在模糊之上 → 桌面透出来，是毛玻璃；
             // - 色调：不透明的 `--bg-base` 把它完全盖住 → 固定的实体面。
             //
             // 不按风格摘掉它，是因为「玻璃铺满整窗」这条不变量由 `MainWindowTests`
-            // 与 `--preview-main-window-keys` 靠**找 `NSVisualEffectView`** 来断言。
+            // 与 `--preview-main-window-keys` 靠**找玻璃底衬**（``glassBackdrops``）来断言。
             // 摘掉的话，那两条断言就会随用户的偏好值变绿变红 —— 自检不该依赖运行态偏好。
-            VisualEffectBackground()
+            backdrop
             style == .tinted
                 ? DesignTokens.Palette.windowBase(for: colorScheme)
                 : DesignTokens.Palette.windowGlass(for: colorScheme)

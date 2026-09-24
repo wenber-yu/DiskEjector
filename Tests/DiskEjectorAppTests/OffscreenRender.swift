@@ -1,6 +1,8 @@
 import AppKit
 import SwiftUI
 
+@testable import DiskEjectorApp
+
 /// 离屏渲染工具：把 SwiftUI 视图画进位图，再量**墨迹**（深色像素）或**某个颜色的覆盖范围**。
 ///
 /// ## 为什么只能这么量
@@ -50,7 +52,12 @@ enum OffscreenRender {
     ) -> NSBitmapImageRep? {
         _ = NSApplication.shared
         let scale: CGFloat = 2
-        let hosting = NSHostingView(rootView: view.background(background))
+        // ⚠️ **必须注入 `offscreenRendering`**：macOS 26 起的 Liquid Glass 在离屏渲染里
+        // 是不透明浅色（实测见 `OffscreenRenderingKey` 的表）⇒ 不注入的话，透明玻璃会被
+        // 画成纯白、与色调风格无法区分，本文件所有像素判据和走查图一起失真。
+        // 真机那条路（Liquid Glass）由 `--preview-main-window-keys` 负责。
+        let hosting = NSHostingView(
+            rootView: view.environment(\.offscreenRendering, true).background(background))
         hosting.appearance = NSAppearance(named: appearance)
         hosting.frame = CGRect(origin: .zero, size: size)
         hosting.layoutSubtreeIfNeeded()

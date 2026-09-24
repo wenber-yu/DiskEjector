@@ -29,7 +29,11 @@ struct MenuPopoverView: View {
     /// 而 `.onChange` 又只在**值不相等**时触发 —— `DiskListStore.refresh()` 赋的新数组
     /// 内容相同时它静默不动。于是面板上的「刷新磁盘列表」从来不刷新占用结论，
     /// 面板与主窗口也会长期显示两个不同的判定（2026-09-15 用户报告）。
-    @ObservedObject private var occupancyStore: OccupancyStore
+    /// ⚠️ **故意不是 `@ObservedObject`**（2026-09-24）：本视图**不读**它的任何属性
+    /// （读的地方全在 ``MenuDiskList`` 里），而 `@ObservedObject` 订阅的是
+    /// `objectWillChange` **整条** —— 挂上它，占用每 15s 跑完 `lsof` 就会把整个面板
+    /// （头部计数、分隔线、四行动作）一起重建。⇒ **订阅随读取走**，理由同 ``DiskListRegion``。
+    private let occupancyStore: OccupancyStore
 
     let accent: AccentColor
     let onOpenMainWindow: () -> Void
@@ -60,7 +64,7 @@ struct MenuPopoverView: View {
         onEject: @escaping (DiskInfo) -> Void
     ) {
         _store = ObservedObject(wrappedValue: store)
-        _occupancyStore = ObservedObject(wrappedValue: occupancyStore)
+        self.occupancyStore = occupancyStore
         self.accent = accent
         self.onOpenMainWindow = onOpenMainWindow
         self.onRefresh = onRefresh
@@ -250,18 +254,12 @@ struct MenuPopoverView: View {
     ///
     /// 曾经用 `Spacing.xs`（4pt）作行距，两块盘就多出 4pt —— 面板总高因此对不上设计稿。
     private var diskList: some View {
-        VStack(spacing: 0) {
-            ForEach(store.disks) { disk in
-                MenuBarDiskRow(
-                    disk: disk,
-                    occupancy: occupancyStore.result(for: disk),
-                    accent: accent,
-                    onEject: { onEject(disk) }
-                )
-            }
-        }
-        .padding(.horizontal, DesignTokens.Spacing.sm)
-        .padding(.bottom, DesignTokens.Spacing.sm)
+        MenuDiskList(
+            occupancyStore: occupancyStore,
+            disks: store.disks,
+            accent: accent,
+            onEject: { disk in onEject(disk) }
+        )
     }
 
     // MARK: - 分隔线
@@ -519,5 +517,39 @@ private struct PopoverIconButton: View {
         )
         .help(label)
         .accessibilityLabel(label)
+    }
+}
+
+// MARK: - 菜单磁盘列表（占用结论的订阅点在这里）
+
+/// 菜单栏面板的磁盘列表。
+///
+/// 与 ``DiskListRegion`` 同一条规矩（2026-09-24）：``OccupancyStore`` 的**订阅随读取走** ——
+/// 面板自己不订阅它（这里读 ⇒ 这里订阅），否则占用每 15s 刷一次就会把**整个面板**
+/// （头部计数、分隔线、四行动作）一起重建，而它们根本不关心占用结论。
+///
+/// 只收**值**（`disks` / `accent`）与一个 `onEject`；不传 store。
+struct MenuDiskList: View {
+    @ObservedObject var occupancyStore: OccupancyStore
+
+    let disks: [DiskInfo]
+
+    let accent: AccentColor
+
+    let onEject: (DiskInfo) -> Void
+
+    var body: some View {
+        VStack(spacing: 0) {
+            ForEach(disks) { disk in
+                MenuBarDiskRow(
+                    disk: disk,
+                    occupancy: occupancyStore.result(for: disk),
+                    accent: accent,
+                    onEject: { onEject(disk) }
+                )
+            }
+        }
+        .padding(.horizontal, DesignTokens.Spacing.sm)
+        .padding(.bottom, DesignTokens.Spacing.sm)
     }
 }
