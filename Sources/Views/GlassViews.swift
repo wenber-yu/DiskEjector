@@ -222,7 +222,12 @@ struct GlassSurface: View {
     }
 }
 
-/// 卡片式样式：无填充底色 + 背面投影 + 发丝描边（对齐 ProxyGenerator 的 cardStyle）。
+/// 视图级辅助（**只放有真实调用方的辅助**）。
+///
+/// ⚠️ 这里曾有一个 `cardStyle()`（设计稿迁移期遗留）：**零调用方**、描边用
+/// `Color.primary.opacity(0.14)`（违反 `DesignTokens` 的令牌政策）、注释里引用的
+/// `ProxyGenerator` 也不在本仓。2026-09-24 删除 —— 理由记在这里，
+/// 免得下次有人从设计稿翻出这个样式名却找不到实现（「删宿主会顺带删知识」）。
 extension View {
     /// **去 SwiftUI Button 默认 focus 环**。
     ///
@@ -232,34 +237,6 @@ extension View {
     /// - `.focusEffectDisabled()` 仅 macOS 14+ 可用，单独包一层 ViewModifier 包版本守卫。
     func disableFocusRingIfAvailable() -> some View {
         modifier(DisableFocusRingModifier())
-    }
-
-    /// 卡片式样式：透明底（靠液态玻璃透出）+ 外圈投影 + 发丝描边 + 14pt 圆角。
-    ///
-    /// 与 ProxyGenerator 保持一致：**不填充任何底色**，只靠「实体模糊投影 + 反向遮罩」
-    /// 在背后做出浮动感，卡片内部始终透出窗口玻璃，暗/亮模式下都不会出现色块。
-    /// 调用方负责给内容加内边距（惯例 `.padding(12)` 再 `.cardStyle()`）。
-    func cardStyle() -> some View {
-        self
-            .background(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .fill(Color.black.opacity(0.26))
-                    .blur(radius: 12)
-                    .offset(y: 6)
-                    .mask(
-                        Rectangle()
-                            .padding(-60)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                    .blendMode(.destinationOut)
-                            )
-                            .compositingGroup()
-                    )
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .strokeBorder(Color.primary.opacity(0.14), lineWidth: 1)
-            )
     }
 }
 
