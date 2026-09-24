@@ -570,7 +570,18 @@ echo "     ✓ Sparkle.framework 已嵌入，rpath 已就位"
 #
 # 为什么 dmg 里要放 Applications 替身：这是 dmg 相对 zip 的主要优势——
 # 挂载后能把 app 直接拖进 /Applications，不必让用户自己找路径。
+#
+# 安装窗口的外观（背景图 + 图标位置）由两个**入库的**资产决定：
+#   Resources/dmg/background.png —— 背景图（`Tools/make_dmg_background.py` 生成）
+#   Resources/dmg/DS_Store       —— Finder 布局模板（`Tools/make_dmg_layout.sh` 生成）
+# ⚠️ 打包期**不碰 Finder**：`.DS_Store` 是「生成一次、入库」的模板，这里只做拷贝。
+# 所以 CI / 无 GUI 的环境照样能出带布局的 dmg（Finder 自动化只在**改布局**时才需要）。
+# ⚠️ 两个文件**缺一不可，缺了就硬报错**：静默退化成「两个图标 + 一片空白」的窗口，
+# 用户得自己猜「拖过去算安装」—— 而这正是 dmg 相对 zip 的唯一优势。
 # ---------------------------------------------------------------
+DMG_BACKGROUND="$PACKAGE_DIR/Resources/dmg/background.png"
+DMG_DSSTORE_TEMPLATE="$PACKAGE_DIR/Resources/dmg/DS_Store"
+
 create_dmg() {
     local dmg_path="$OUTPUT_DIR/$APP_NAME.dmg"
     local staging
@@ -582,6 +593,22 @@ create_dmg() {
     trap "rm -rf '$staging'" EXIT
     ditto "$APP_BUNDLE" "$staging/$APP_NAME.app"
     ln -s /Applications "$staging/Applications"
+
+    # 安装窗口的外观。`.background/` 是 Finder 约定的背景图位置（隐藏目录，用户看不见）。
+    [ -f "$DMG_BACKGROUND" ] || {
+        echo "❌ 缺 $DMG_BACKGROUND" >&2
+        echo "   生成：python3 Tools/make_dmg_background.py" >&2
+        exit 1
+    }
+    [ -f "$DMG_DSSTORE_TEMPLATE" ] || {
+        echo "❌ 缺 $DMG_DSSTORE_TEMPLATE" >&2
+        echo "   生成：./Tools/make_dmg_layout.sh（需要 Finder 自动化授权）" >&2
+        exit 1
+    }
+    mkdir -p "$staging/.background"
+    cp "$DMG_BACKGROUND" "$staging/.background/background.png"
+    cp "$DMG_DSSTORE_TEMPLATE" "$staging/.DS_Store"
+
     rm -f "$dmg_path"
     hdiutil create -fs HFS+ -format UDZO -volname "$APP_NAME" -srcfolder "$staging" "$dmg_path" >/dev/null
     rm -rf "$staging"
