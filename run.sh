@@ -38,5 +38,21 @@ fi
 
 cd "$PACKAGE_DIR"
 echo "▶ 启动 DiskEjector ..."
+# `-Xlinker -rpath -Xlinker @loader_path`：给链接期补一条 rpath。
+#
+# ⚠️ **为什么必须有**（2026-09-24 实测）：Sparkle 是动态框架，可执行文件里记的是
+# `@rpath/Sparkle.framework/Versions/B/Sparkle`，而 SwiftPM 给它生成的 `LC_RPATH`
+# 只有 `/usr/lib/swift` 与 CLT 的 swift-6.2 目录 —— **没有一条指向产物自己的目录**
+# ⇒ `swift run` 起来就死在 dyld：
+#     Library not loaded: @rpath/Sparkle.framework/Versions/B/Sparkle
+# 产物旁边就有 `Sparkle.framework`（同目录），`@loader_path` 正好指过去。
+#
+# ⚠️ **参数必须排在可执行名之前**：`swift run [<options>] [<executable>] [<arguments>...]`
+# —— 可执行名之后的参数是传给**程序**的（同 `tools/clt_swift_env.sh` 里那个坑）。
+#
+# ⚠️ **为什么写在 run.sh 而不是 CLT 包装器**：`build_app.sh` 走的是
+# `swift build -c release`，配置不同 ⇒ 产物目录不同，两条路径**不会互相污染**；
+# 把改动收在开发入口这一个文件里，发版路径的二进制保持原样（它自己用
+# `install_name_tool -add_rpath @executable_path/../Frameworks` 补，且会回读验证）。
 # exec 让程序直接接管当前终端进程，Ctrl+C 即可退出
-exec swift run DiskEjectorApp "$@"
+exec swift run -Xlinker -rpath -Xlinker '@loader_path' DiskEjectorApp "$@"
