@@ -3,19 +3,26 @@
     <channel>
         <title>DiskEjector</title>
         <item>
-            <title>2026.09.24.2</title>
-            <pubDate>Thu, 24 Sep 2026 23:38:53 +0800</pubDate>
+            <title>2026.09.28.1</title>
+            <pubDate>Mon, 28 Sep 2026 13:22:10 +0800</pubDate>
             <link>https://github.com/wenber-yu/DiskEjector</link>
-            <sparkle:version>277</sparkle:version>
-            <sparkle:shortVersionString>2026.09.24.2</sparkle:shortVersionString>
+            <sparkle:version>281</sparkle:version>
+            <sparkle:shortVersionString>2026.09.28.1</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
             <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
             <description><![CDATA[<ul>
-<li>安装包（dmg）打开后不再是一个空白窗口：现在有背景图、一个指向 Applications 的箭头和一句安装提示，把 DiskEjector 图标拖进右侧的 Applications 文件夹即可安装 —— 此前窗口里只有两个图标，怎么装得自己猜</li>
-<li>应用本身的界面与功能没有变化；这期间其余改动都落在测试守卫与工具链上</li>
+<li>新增「接管访达的推出」（设置 › 通用，默认关）。打开后，在访达里点推出也先由 DiskEjector 判定：没人占用就照常推出；有人占用就弹出本应用的占用窗，把是谁挡着一并列出 —— 不必再对着系统那句「因为一个或多个程序正在使用它」自己猜</li>
+<li>这一项要用「完全磁盘访问」才可能生效：本应用本来就靠它才能看出是谁占着磁盘。<strong>没授权时这个开关不再让你空拨</strong> —— 那一行会写明原因，并就地给一个「打开系统设置」的按钮；授权回来后它会自动恢复可用</li>
+<li>打开前请知道它的代价：判定期间访达会静默等待你的决定，而这段时间里其它磁盘的推出请求也会被系统一并暂缓。默认关，是因为它会改变系统行为</li>
+<li><strong>弹窗上有 8 秒决策时限</strong>：到点没选，弹窗会自己收起、磁盘保持挂载（回到系统原本那句「正在使用」）。这不是催促 —— 而是超过这个时间，即便把占用进程关掉，系统那侧也不会再接着把盘推出去，点「关闭并推出」就等于什么都没发生</li>
+<li>设置面板因新增这一行而变高，以免最后一行被折叠线藏到滚动区外</li>
+<li>修掉一处更新界面的谎报：按 Esc 关掉更新弹窗（弹窗角上写着「Esc 稍后再提醒」）之后，设置行此前会错说「已是最新版本」；现在它会正确停在「发现新版本」，点「查看更新」能重新打开弹窗，而且不会因此多跑一次网络请求</li>
+<li>「后台更新并重启」现在真的会重启：此前点完之后，下载并校验完成却停在原地等你再点一次；现在它自己重启并完成安装。唯一例外是此刻正有磁盘在推出 —— 那种情况下它会先等推出结束，不打断你手上的事</li>
+<li>有占用的磁盘，推出弹窗不再让你干等：此前要先等系统那次推出调用返回（真被占用时最长要十几秒）才弹窗，而主窗口那行占用信息其实早就有了；现在检测到占用就立刻弹窗</li>
+<li>其余改动落在测试守卫、变异装置与设计文档上，没有界面上的其它可见变化</li>
 </ul>
 ]]></description>
-            <enclosure url="https://github.com/wenber-yu/DiskEjector/releases/download/v2026.09.24.2/DiskEjector-2026.09.24.2.dmg" length="2741714" type="application/octet-stream" sparkle:edSignature="QVufP0a5LkjQdC2ptznDO8FSrTSC9euI0nUR0PuqvEK/jUpaglKZgqvPmIhfFgfgmGeWE4FJe6Xu5/OI6PUGDA=="/>
+            <enclosure url="https://github.com/wenber-yu/DiskEjector/releases/download/v2026.09.28.1/DiskEjector-2026.09.28.1.dmg" length="2799551" type="application/octet-stream" sparkle:edSignature="63riL4Tu7Wea2OGd+RSvoO50PviY/QbJSngTEI34a1OfLSb88YZOaeyIcvYSsgF4XnrulNIskRy+yIzfMvWdBA=="/>
         </item>
     </channel>
 </rss>
