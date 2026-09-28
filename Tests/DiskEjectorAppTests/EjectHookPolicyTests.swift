@@ -276,7 +276,6 @@ struct EjectHookPolicyTests {
 @Suite("接管访达推出的同盘去重")
 struct EjectHookThrottleTests {
 
-    private let t0 = Date(timeIntervalSince1970: 1_000_000)
     private let key = "/Volumes/SpikeVol"
 
     /// ⚠️ `claim` / `release` 是 `mutating`，而 `#expect` 会把表达式包进一个
@@ -284,73 +283,61 @@ struct EjectHookThrottleTests {
     /// `cannot use mutating member on immutable value`）。先调、再断言。
 
     @Test func 弹窗期间同一块盘的第二个请求被挡下() {
-        var throttle = EjectHookThrottle(window: 30)
-        let first = throttle.claim(key: key, now: t0)
-        let second = throttle.claim(key: key, now: t0)
-        let third = throttle.claim(key: key, now: t0.addingTimeInterval(0.001))
+        var throttle = EjectHookThrottle()
+        let first = throttle.claim(key: key)
+        let second = throttle.claim(key: key)
+        let third = throttle.claim(key: key)
         #expect(first)
         #expect(!second)
         #expect(!third)
     }
 
-    /// 窗口边界：**恰好 `起点 + 30s` 时已经可以再弹**（闭开区间）。
+    /// 弹窗结束（`release`）后**立即**可以再弹 —— 去重不设时间窗口。
     ///
-    /// 这条专门防「`<` 写成 `<=`」—— 那种错会让窗口多出一个瞬时宽度，
-    /// 而它只在**刚好**卡在边界上的那一次请求里表现出来。
-    @Test func 窗口边界恰好三十秒时可以再弹() {
-        var throttle = EjectHookThrottle(window: 30)
-        let first = throttle.claim(key: key, now: t0)
+    /// 这条是本 bug 的**核心守卫**：早期版本的 `dedupWindow`（30s 时间窗口）会
+    /// 在 `release` 之后继续抑制同一块盘，导致「用户取消后再点推出」被静默吞掉
+    /// （直接 dissent → 访达弹系统框）。删掉时间窗口后，`release` 一解除就恢复可弹。
+    @Test func 弹窗结束后立即可再弹不去重() {
+        var throttle = EjectHookThrottle()
+        let first = throttle.claim(key: key)
         #expect(first)
-        throttle.release(key: key, at: t0)
+        throttle.release(key: key)
 
-        let at29 = throttle.claim(key: key, now: t0.addingTimeInterval(29))
-        #expect(!at29)
-        let at30 = throttle.claim(key: key, now: t0.addingTimeInterval(30))
-        #expect(at30)
-        throttle.release(key: key, at: t0.addingTimeInterval(30))
-
-        let at59 = throttle.claim(key: key, now: t0.addingTimeInterval(59))
-        #expect(!at59)
-        let at61 = throttle.claim(key: key, now: t0.addingTimeInterval(61))
-        #expect(at61)
+        let again = throttle.claim(key: key)
+        #expect(again)
     }
 
     /// 去重键必须是**挂载路径** —— 一块盘弹过窗，不该影响另一块盘。
     ///
     /// 用 `volumeName` 会让两块同名的盘互相去重；用 `bsdName` 会在拔插后复用。
     @Test func 去重按挂载路径互相隔离() {
-        var throttle = EjectHookThrottle(window: 30)
-        let a = throttle.claim(key: "/Volumes/A", now: t0)
+        var throttle = EjectHookThrottle()
+        let a = throttle.claim(key: "/Volumes/A")
         #expect(a)
-        throttle.release(key: "/Volumes/A", at: t0)
-        let b = throttle.claim(key: "/Volumes/B", now: t0)
+        let b = throttle.claim(key: "/Volumes/B")
         #expect(b)
     }
 
-    /// 窗口起点是**弹窗结束**的时刻，不是开始的时刻。
-    ///
-    /// 长决策（最长 60s）下，从「开始弹窗」起算的窗口在用户还没点按钮时就已经过期，
-    /// 访达的重试会立刻再弹一次。
-    @Test func 窗口起点是弹窗结束的时刻而不是开始的时刻() {
-        var throttle = EjectHookThrottle(window: 30)
-        let claimed = throttle.claim(key: key, now: t0)
-        #expect(claimed)
-        #expect(!throttle.isSuppressed(key: key, now: t0.addingTimeInterval(50)))
-        throttle.release(key: key, at: t0.addingTimeInterval(50))
-        #expect(throttle.isSuppressed(key: key, now: t0.addingTimeInterval(50)))
-        #expect(throttle.isSuppressed(key: key, now: t0.addingTimeInterval(79)))
-        #expect(!throttle.isSuppressed(key: key, now: t0.addingTimeInterval(80)))
+    /// 同一块盘弹窗挂起期间，其它盘**不受影响**（inFlight 是按盘隔离的）。
+    @Test func 一块盘弹窗期间另一块盘仍可弹() {
+        var throttle = EjectHookThrottle()
+        let a = throttle.claim(key: "/Volumes/A")
+        #expect(a)
+        let b = throttle.claim(key: "/Volumes/B")
+        #expect(b)
+        let aAgain = throttle.claim(key: "/Volumes/A")
+        #expect(!aAgain)
     }
 
     @Test func 线程安全外壳与值类型口径一致() {
-        let store = EjectHookThrottleStore(window: 30, now: { self.t0 })
+        let store = EjectHookThrottleStore()
         let first = store.claim(key: "/Volumes/A")
         #expect(first)
         let second = store.claim(key: "/Volumes/A")
         #expect(!second)
         store.release(key: "/Volumes/A")
         let third = store.claim(key: "/Volumes/A")
-        #expect(!third)
+        #expect(third)
     }
 }
 

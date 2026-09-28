@@ -117,7 +117,7 @@ FILTER_SWITCH = "开关关时一律放行即使盘被占用|开关关优先于�
 FILTER_SELF = "自排除时放行且不读占用缓存"
 FILTER_SWITCH_ORDER = "开关关优先于自排除"
 FILTER_VAGUE = "占用不明确时放行"
-FILTER_BOUNDARY = "窗口边界恰好三十秒时可以再弹"
+FILTER_BOUNDARY = "弹窗结束后立即可再弹不去重"
 FILTER_KEY = "明确列出占用进程时拦截并带上挂载路径"
 FILTER_RESOLVE = "只有关闭并推出才放行"
 FILTER_SIGKILL = "忽略SIGTERM的进程被升级SIGKILL|无权终止时计入并升级SIGKILL"
@@ -219,10 +219,11 @@ MUTATIONS = [
     ),
     (
         "M4",
-        "去重窗口比较 `<` 改 `<=`（窗口多出一个瞬时宽度，边界那刻弹不出第二窗）",
+        "`release` 忘记移除 `inFlight` ⇒ 弹窗结束后这块盘**永远不能再弹**"
+        "（正是「取消后再点推出弹系统框」那个 bug 的另一个侧面）",
         POLICY,
-        "        return now.timeIntervalSince(end) < window",
-        "        return now.timeIntervalSince(end) <= window",
+        "    mutating func release(key: String) {\n        inFlight.remove(key)\n    }",
+        "    mutating func release(key: String) {\n        // M4 变异：不再移除 inFlight\n    }",
         FILTER_BOUNDARY,
     ),
     (

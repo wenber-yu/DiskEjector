@@ -141,13 +141,15 @@ final class EjectHookService: @unchecked Sendable {
             return nil
 
         case .intercept(let diskInfo, let processes):
-            // ⑥ 去重：**只在「决定要拦」之后**才查。
+            // ⑥ 去重：**只在「决定要拦」之后**才查，且只防「同一块盘弹窗还挂着」。
             //    顺序不可交换：`unmountAndEjectDevice` 会触发两个回调，第二个是
             //    **整个盘**的 eject（没有挂载路径）。先去重（或对无挂载路径的请求也去重）
             //    就会在访达自己推出的第二阶段把它 dissent 掉 ⇒ 推出失败 + 访达报错框。
             //    `EjectHookRequest.make` 返回 nil 是第一道防线，「去重只在 intercept 之后」是第二道。
+            //    ⚠️ 只做 inFlight 去重、不做时间窗口：实测真实推出请求（NSWorkspace.unmountAndEjectDevice）
+            //    在 dissent 后只报一次 fBsyErr 就退出、绝不自动重试（「重试风暴」是 osascript 脚本自身的循环）。
             guard throttle.claim(key: diskInfo.id) else {
-                log(.dedupHit, mountPath: diskInfo.id)
+                log(.inFlight, mountPath: diskInfo.id)
                 return busyDissenter()  // 瞬时回话，**不阻塞**
             }
             defer { throttle.release(key: diskInfo.id) }
