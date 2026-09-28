@@ -624,9 +624,23 @@ create_dmg() {
 
     rm -f "$dmg_path"
     hdiutil create -fs HFS+ -format UDZO -volname "$APP_NAME" -srcfolder "$staging" "$dmg_path" >/dev/null
+    # ⚠️ **必须回读校验**（2026-09-28 实发 v2026.09.28.2 时踩到）：
+    # `hdiutil create` **退出码 0 不代表产物可用** —— 那一轮就产出过一份「破坏的映像」
+    # （文件头没有 GPT 保护分区，`hdiutil imageinfo` 直接说认不出），而这一行照样打
+    # 「✓ 已生成 dmg」。它有**两种**暴露方式，都比这里晚、都比这里难懂：
+    #   ① 走 `make_appcast.sh`：generate_appcast 解不开归档 ⇒
+    #      `No usable archives found` —— 看起来像 appcast 的错、像 feed 配置的错；
+    #   ② 直接 `PACKAGE=1` 出包就分发：**完全没人读**，要等用户下载后装不上才发现。
+    # 判据的分辨力做过双向对照（同一次会话）：好 dmg 通过、那份坏 dmg 判失败。
+    if ! hdiutil verify "$dmg_path" >/dev/null 2>&1; then
+        echo "❌ dmg 生成了但**校验不过**：$dmg_path" >&2
+        echo "   hdiutil create 会偶发产出损坏映像（2026-09-28 踩到过一次）。" >&2
+        echo "   重跑本脚本即可；若反复出现，先查磁盘空间与 $OUTPUT_DIR 所在的卷。" >&2
+        exit 1
+    fi
     rm -rf "$staging"
     trap - EXIT
-    echo "   ✓ 已生成 dmg：$dmg_path"
+    echo "   ✓ 已生成 dmg（已回读校验）：$dmg_path"
 }
 
 create_zip() {
