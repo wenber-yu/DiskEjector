@@ -555,6 +555,13 @@ struct SnapshotRenderTests {
         let updateRowStates: [(String, UpdateController.CheckRowState)] = [
             ("never-checked", UpdateController.rowState(phase: .idle, skippedVersion: nil, lastCheck: nil)),
             ("up-to-date", row(.idle)),
+            // 2026-09-28 加的那一态（用户报告）：「检查**失败**」与「已是最新」原先共用同一句话。
+            // ⚠️ 两态都在清单里 —— 只留一格就等于另一句话再也没人看过（§8.33 的老毛病）。
+            (
+                "check-failed",
+                UpdateController.rowState(
+                    phase: .idle, skippedVersion: nil, lastCheck: lastCheck, outcome: .failed)
+            ),
             ("skipped", row(.idle, skipped: "1.1.0")),
             // 2026-09-20 加的那一态（§8.93 / §8.97）：用户点了「检查更新」、
             // Sparkle 还没答的那 3~4.5 秒 —— 出图能看见它**有第二行**（否则会矮 14.8pt）。

@@ -376,6 +376,15 @@ struct SettingsLayoutTests {
         let states: [(String, UpdateController.CheckRowState)] = [
             ("尚未检查", UpdateController.rowState(phase: .idle, skippedVersion: nil, lastCheck: nil)),
             ("已是最新", row(.idle)),
+            // 2026-09-28 加的那一态（用户报告）：「检查**失败**」与「已是最新」原先共用同一句话。
+            // ⚠️ 它必须**与「已是最新」并列**，不能顶掉它 —— 两者是**相反**的两件事
+            // （`UpdateController.CheckOutcome` 有说明），合并等于那句谎原地复活。
+            // 文案是「上次检查：%@ · 检查失败」+「重试」按钮，也**必须有第二行**。
+            (
+                "检查失败",
+                UpdateController.rowState(
+                    phase: .idle, skippedVersion: nil, lastCheck: lastCheck, outcome: .failed)
+            ),
             ("已跳过", row(.idle, skipped: "1.1.0")),
             // 2026-09-20 加的那一态（§8.93 / §8.97）：用户点了「检查更新」、
             // Sparkle 还没答的那 3~4.5 秒。它**有第二行**（`updateCheckingHint`）——

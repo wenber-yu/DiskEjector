@@ -198,6 +198,19 @@ final class UpdateController: NSObject, ObservableObject {
     /// 上一次启动失败的原因（避免每次点按钮都重试一遍然后再次失败）。
     private var startError: String?
 
+    /// 本次运行是否已经做过那次「启动检查」。
+    ///
+    /// ⚠️ **它必须存在，否则会把 Sparkle 的定时排期一起掀掉**：
+    /// ``updater(_:willScheduleUpdateCheckAfterDelay:)`` 在**每一次**排期时都会到
+    /// （首启这次、以及每轮检查结束后的下一次），而那里会调
+    /// `checkForUpdatesInBackground()`。不设这个闸门的话，每次 Sparkle 说「等 N 秒」，
+    /// 我们都立刻替它查 —— `SUScheduledCheckInterval`（6 小时）会被压成
+    /// ``launchCheckDebounce``（5 分钟），常驻期间一天要打近 300 次请求。
+    /// ⇒ 只在**第一次**把 Sparkle 的排期决定覆盖掉。
+    ///
+    /// ⚠️ 它是**进程级**的：应用重启后重置 —— 那正是「每次启动查一次」的语义。
+    private var didRunLaunchCheck = false
+
     /// 更新进行到哪一步。**设置面板与弹窗都读它**，不各自维护一份。
     @Published private(set) var phase: UpdatePhase = .idle {
         didSet { syncStallWatch() }
@@ -462,12 +475,82 @@ final class UpdateController: NSObject, ObservableObject {
         updater.checkForUpdates()
     }
 
-    /// 启动后的静默检查（由「自动更新」开关决定是否真的会跑）。
+    /// 启动时发起一次静默检查的**防抖间隔**（秒）。
     ///
-    /// Sparkle 自己在 `start()` 之后就会按 `SUScheduledCheckInterval` 排期，
-    /// 这里**不额外调用** `checkForUpdatesInBackground()` ——
-    /// 那样每次启动都打一次网络请求，而「启动就联网」正是本应用不该有的行为
-    /// （它是一个本地磁盘工具，用户没理由在拔盘时被插网）。
+    /// ⚠️ 它是**具名常量**、不是内联字面量：这是一个产品决策（「打开应用就该看一眼有没有新版」
+    /// 与「别把本地工具变成联网软件」之间的取舍点），改一个数就能调。
+    ///
+    /// **为什么是 5 分钟而不是 0**：没有防抖的话，同一秒内被拉起两次
+    /// （`open -a` 与登录项同时触发、或调试期反复重启）会打出两个并发的 feed 请求，
+    /// 而其中一次必然撞上 Sparkle 的 `sessionInProgress` 被静默拒掉 —— 那是噪声，不是功能。
+    /// 5 分钟短到用户永远感知不到（他不可能在 5 分钟内「第一次打开」两次）。
+    nonisolated static let launchCheckDebounce: TimeInterval = 300
+
+    /// 启动的这一刻**该不该主动查一次**（纯函数，可逐条断言）。
+    ///
+    /// ## 为什么需要它（2026-09-28，用户报告的缺陷）
+    ///
+    /// 此前启动路径**只建 updater、不发起检查**，排期完全交给 Sparkle；
+    /// 而 Sparkle `start()` 之后算的是 `now − lastUpdateCheckDate`，**小于
+    /// `SUScheduledCheckInterval` 就只排一个未来的定时器**（`SPUUpdater.m:552-589`）。
+    /// 于是实测出来的现象是：10:03 查过一次、14:46 重新打开应用
+    /// （间隔 4.7h < 24h）⇒ **本次启动零网络请求**，设置行照旧显示 4.7 小时前的结论
+    /// 「上次检查：今天 10:03 · 已是最新版本」—— 而 13:22 已经发布了新版本。
+    ///
+    /// 更糟的是那个定时器排到**明天**：应用要是没活到那一刻（菜单栏工具被用户关掉、
+    /// 或机器睡了），它就**永远不 fire**。⇒ 用户「打开应用」这个动作**不会**带来检查，
+    /// 而这与所有人对「打开应用」的心智模型都相反。
+    ///
+    /// ## 判据
+    ///
+    /// - **自动检查关着** ⇒ 不查。用户明确关掉了它，启动时偷偷查一次是**违背偏好**，
+    ///   而且会让那个开关看起来是坏的。
+    /// - **从没查过** ⇒ 查。
+    /// - **时间戳在未来**（时钟回拨 / 被手改）⇒ 查。**这种值不能当「刚查过」用** ——
+    ///   拿它算差值会得到一个负数而永久静默（同 `SPUUpdater.m:558-563` 对同一件事的处理）。
+    /// - 其余按 ``launchCheckDebounce`` 分叉。
+    nonisolated static func shouldCheckOnLaunch(
+        lastCheck: Date?, automaticallyChecks: Bool, now: Date, debounce: TimeInterval
+    ) -> Bool {
+        guard automaticallyChecks else { return false }
+        guard let lastCheck else { return true }
+        guard lastCheck <= now else { return true }
+        return now.timeIntervalSince(lastCheck) >= debounce
+    }
+
+    /// 启动后的静默检查。
+    ///
+    /// ## ⚠️ 2026-09-28 改了行为：启动**现在真的会查**，但发起点不在这里
+    ///
+    /// 原注释写的是「这里**不额外调用** `checkForUpdatesInBackground()` ——
+    /// 那样每次启动都打一次网络请求，而『启动就联网』正是本应用不该有的行为」。
+    /// 那句话在**没有别的启动检查**时等于「启动永远不检查」：Sparkle 只在
+    /// 「距上次 ≥ `SUScheduledCheckInterval`」时才立刻查（`SPUUpdater.m:573-589`），
+    /// 否则**只排一个未来定时器**；应用没活到那一刻它就永远不 fire。
+    /// 实测后果见 ``shouldCheckOnLaunch(lastCheck:automaticallyChecks:now:debounce:)``。
+    ///
+    /// 取舍变了，理由三条（都是实测 / 代码事实，不是感觉）：
+    ///
+    /// 1. **成本被高估了**：一次 appcast 请求 3.3 KB，且被 ``launchCheckDebounce``
+    ///    与「自动更新开关」双重收口。
+    /// 2. **Sparkle 自己排的那次不可靠**：定时器要应用活到那一刻才 fire。
+    /// 3. **「不打扰」由别处保证**：自动下载关着时才弹窗，开着时完全静默 ——
+    ///    这是设计稿 A 段写死的判据（见 `UpdateUserDriver` 的说明），不是靠「不查」实现的。
+    ///
+    /// ## ⚠️ 为什么检查**不能**在这里直接发起（2026-09-28 读 Sparkle 源码发现）
+    ///
+    /// 一开始就是写成「`ensureUpdater()` 之后直接 `updater.checkForUpdatesInBackground()`」的，
+    /// 而**那会被静默丢掉**：`start()` 末尾会走一次排期，那条路在**同步**设好
+    /// `sessionInProgress = YES`（`SPUUpdater.m:542-543`）之后才去**异步**探测安装器
+    /// （`SPUProbeInstallStatus` 走 XPC + `dispatch_async`）。于是在 `start()` 返回后
+    /// 紧接着调它，命中的是头文件那句「This method does not do anything if there is a
+    /// `sessionInProgress`」（`SPUUpdater.m:664-667` **只打一条 error 日志**）。
+    /// ⇒ 界面上一切照旧，而「启动检查」四个字从未生效 —— 正是本仓库最忌的
+    /// 「有定义、没消费者」。
+    ///
+    /// ⇒ 真正的发起点挪到 ``updater(_:willScheduleUpdateCheckAfterDelay:)``：那个回调
+    /// 到达时 Sparkle **已经把会话让出来了**，而且它正好在说「我准备等 N 秒」——
+    /// 那就是我们要覆盖的那个决定。见那条的说明。
     func startIfNeeded() {
         _ = ensureUpdater()
     }
@@ -593,6 +676,38 @@ final class UpdateController: NSObject, ObservableObject {
 
     // MARK: - 「检查更新」这一行显示什么
 
+    /// 最近一次更新检查**到底怎么样了**。
+    ///
+    /// ## 为什么它必须存在（2026-09-28，用户报告）
+    ///
+    /// ``CheckRowState/upToDate(_:)`` 的文案是「上次检查：%@ · **已是最新版本**」——
+    /// 一句**断言**。而它此前的判据只有「`phase == .idle` 且 `lastUpdateCheckDate != nil`」，
+    /// 于是**两个相反的事实**被渲染成同一句话：
+    ///
+    /// | 真实发生的事 | Sparkle 回调 | 此前显示 |
+    /// |---|---|---|
+    /// | 查到了，没有可用更新 | `showUpdateNotFoundWithError`（`SUNoUpdateError`） | 已是最新版本 |
+    /// | **根本没查成**（feed 拿不到 / 超时 / 验签不过） | `showUpdaterError` | 已是最新版本 |
+    ///
+    /// ⚠️ 而 `SULastCheckTime` 是 Sparkle 在**发起**检查时就写的
+    /// （`SPUUpdater.m:789`，在任何网络请求之前），所以**失败也会把「上次检查」刷成当下**
+    /// ⇒ 用户看到的是「刚刚查过、是最新版」，而真相可能是「刚刚试过、没连上」。
+    /// 2026-09-28 用户报告里那条「上次检查：今天 10:03 · 已是最新版本」就是这么一次
+    /// **无法分辨的读数**：当时线上 appcast 是 build 277、盘上是 273，一次真的查成的检查
+    /// **不可能**得出「已是最新版本」。**维护者本人也分不清发生了什么** —— 这就是缺陷本身。
+    ///
+    /// ⇒ 把这个结论**单独记下来并落盘**，视图才有东西可区分（见 ``lastCheckOutcome``）。
+    ///
+    /// ⚠️ **它是「检查」的结论，不是「更新流程」的结论**：下载失败 / 安装失败都说明
+    /// **检查是成功的**（否则不会有包可下）—— 那两件事另有落点（`.failed` / `.installFailed`），
+    /// **不许**拿它们去把这里改成 `.failed`。
+    enum CheckOutcome: String {
+        /// Sparkle 明确回了「没有可用更新」（`SUNoUpdateError`）。
+        case succeeded
+        /// 检查**没能完成** —— feed 取不到 / 超时 / 验签不过 / 配置错误。
+        case failed
+    }
+
     /// 设置面板「检查更新」行的状态。
     ///
     /// **抽成枚举而不是在视图里拼字符串**：视图拼字符串就没法断言 ——
@@ -607,6 +722,16 @@ final class UpdateController: NSObject, ObservableObject {
         case neverChecked
         /// 检查过，已是最新。
         case upToDate(Date)
+        /// **检查没能完成**（feed 拿不到 / 超时 / 验签不过），带着上次尝试的时间。
+        ///
+        /// ⚠️ **它与 ``upToDate(_:)`` 是两件相反的事，不许合并**（2026-09-28 用户报告）：
+        /// 前者是「查到了，没有新版」，后者是「**根本没查成**」。
+        /// 合并的后果是界面**谎报** —— 而这条谎在真机上会持续存在，不是一闪而过：
+        /// 本机实测取 appcast **12.0 秒**（HTTP 200），慢到踩 Sparkle 超时不是理论风险。
+        ///
+        /// 判据见 ``UpdateController/lastCheckOutcome``；文案**必须带「检查失败」字样**，
+        /// 且**不得**出现「已是最新版本」——否则就是本轮在修的那句谎换个地方重来。
+        case checkFailed(Date)
         /// 用户点过「跳过此版本」，记着跳的是哪一版。
         case skipped(version: String)
         /// 正在检查（用户刚点了「检查更新」，Sparkle 还没回话）。
@@ -651,9 +776,38 @@ final class UpdateController: NSObject, ObservableObject {
         }
     }
 
+    /// 最近一次检查**给出过的明确结论**（`nil` = 还没有过结论），读写 `UserDefaults`。
+    ///
+    /// ⚠️ **必须落盘**：`phase` 只活在内存里，进程一退就没了；而「上次检查到底成没成」
+    /// 是一条要在**重启之后仍然为真**的事实。不落盘的话，
+    /// 应用一重启，「检查失败」就变回「已是最新版本」—— **那句谎会随重启复活**，
+    /// 而它恰恰是最需要被看见的一次（用户是被那句谎引到设置面板来的）。
+    ///
+    /// ⚠️ **不放在 `AppSettings` 的偏好区当「设置项」**：它不是用户的偏好，
+    /// 是运行结果（同类：`hasShownFDAOnboarding` 也是一种结果标记）。
+    /// 键仍然集中在 `AppSettings.Key` 里声明，避免字面量散落。
+    var lastCheckOutcome: CheckOutcome? {
+        get {
+            guard let raw = UserDefaults.standard.string(forKey: AppSettings.Key.lastCheckOutcome)
+            else { return nil }
+            // 读到不认识的值（降级 / 手改）⇒ 当「没有结论」，不去猜。
+            return CheckOutcome(rawValue: raw)
+        }
+        set {
+            if let newValue {
+                UserDefaults.standard.set(
+                    newValue.rawValue, forKey: AppSettings.Key.lastCheckOutcome)
+            } else {
+                UserDefaults.standard.removeObject(forKey: AppSettings.Key.lastCheckOutcome)
+            }
+        }
+    }
+
     /// 当前该显示哪一态。
     var rowState: CheckRowState {
-        Self.rowState(phase: phase, skippedVersion: skippedVersion, lastCheck: lastUpdateCheckDate)
+        Self.rowState(
+            phase: phase, skippedVersion: skippedVersion, lastCheck: lastUpdateCheckDate,
+            outcome: lastCheckOutcome)
     }
 
     /// 状态的判定逻辑（**纯函数**，与 `UserDefaults` / Sparkle 无关）。
@@ -669,14 +823,23 @@ final class UpdateController: NSObject, ObservableObject {
     /// 2. 跳过态**盖过**「已是最新」—— 用户跳过 1.1.0 之后界面上必须留着那条痕迹，
     ///    否则他无法分辨「跳过生效了」和「检查更新坏了」
     ///    （与登录项「等待系统批准」同一类判据：**第三态不画就等于没有**）。
-    /// 3. 「已是最新」盖过「尚未检查」—— 两者的区别只有 `lastCheck` 的有无，
+    /// 3. 「已是最新」/「检查失败」盖过「尚未检查」—— 前两者的区别只有 `lastCheck` 的有无，
     ///    而这正是设计稿点名要分开的两行（`已是最新版本` vs `尚未检查`）。
+    /// 4. 最后那一层由 ``outcome`` 分叉：「已是最新版本」是一句**断言**，
+    ///    只有明确收到过 `SUNoUpdateError` 才敢说（见 ``CheckOutcome``）。
     ///
-    /// ⚠️ **`nonisolated`**：它是纯函数（只看三个入参），不该被 `@MainActor` 绑住。
+    /// ⚠️ **`outcome` 有默认值**：`nil` = 「还没有任何一次检查给出过明确结论」，
+    /// 此时退回旧口径（说「已是最新版本」）。这是**移民兼容**，不是「无所谓」——
+    /// 老用户的 UserDefaults 里没有这个键，而他们的 `SULastCheckTime` 已经有了；
+    /// 不给默认值的话，所有老用户升级后第一眼看到的会是「检查失败」，
+    /// 而那时我们**并不知道**上一次到底怎么样。（下一次检查到达时会立刻纠正。）
+    ///
+    /// ⚠️ **`nonisolated`**：它是纯函数（只看四个入参），不该被 `@MainActor` 绑住。
     /// 不标的话，测试里从非主 actor 上下文调它要 `await` —— 一个纯逻辑却要异步，
     /// 会让人误以为它碰了运行时。
     nonisolated static func rowState(
-        phase: UpdatePhase, skippedVersion: String?, lastCheck: Date?
+        phase: UpdatePhase, skippedVersion: String?, lastCheck: Date?,
+        outcome: CheckOutcome? = nil
     ) -> CheckRowState {
         switch phase {
         case .checking:
@@ -697,8 +860,73 @@ final class UpdateController: NSObject, ObservableObject {
             break
         }
         if let skippedVersion { return .skipped(version: skippedVersion) }
-        if let lastCheck { return .upToDate(lastCheck) }
+        if let lastCheck {
+            // 「已是最新版本」是一句**断言**：只有明确收到过 `SUNoUpdateError` 才敢说。
+            // 其余（失败 / 还没有结论）一律不许替用户下这个结论（见 ``CheckOutcome``）。
+            return outcome == .failed ? .checkFailed(lastCheck) : .upToDate(lastCheck)
+        }
         return .neverChecked
+    }
+
+    /// **这一轮更新检查到底拿到了答案没有**（纯函数，可逐条断言）。
+    ///
+    /// ## 为什么它挂在 `didFinishUpdateCycleForUpdateCheck:error:` 上
+    ///
+    /// 2026-09-28 **真机实测发现的漏洞**：本轮的结论原先只由 user driver 的两个回调
+    /// 设置（`showUpdateNotFoundWithError` / `showUpdaterError` 的兜底支），
+    /// 而**后台 / 启动检查失败时那两个回调一个都不会到** ——
+    /// `SPUScheduledUpdateDriver.m:106` 传给 UI 层的是
+    /// `abortUpdateWithError:error showErrorToUser:_showedUpdate`，
+    /// 而 `_showedUpdate` 只在**已经展示过更新**之后才为真
+    /// （`:70-72` 的 `uiDriverDidShowUpdate`）。对照 `SPUUserInitiatedUpdateDriver.m:146`
+    /// 写死的 `showErrorToUser:YES` ⇒ **只有「用户点的检查」失败才会弹错误**。
+    ///
+    /// 真机复现（`.workbuddy/verify/updcheck/`，2026-09-28）：把 feed 指到一个关掉的
+    /// 本地端口，应用启动检查取 appcast **真的失败**（`kCFErrorDomainCFNetwork -1004`），
+    /// 而设置行的结论**一动不动** —— 界面于是继续沿用上一次的读数，
+    /// 也就是用户报的那句「已是最新版本」。
+    ///
+    /// ⇒ 换到 `SPUUpdater.m:810` 那个 delegate 回调：它由
+    /// `notifyDelegateOfDriverCompletion` 在**每一轮**收尾时发，与 user driver 无关，
+    /// 也与「有没有弹过 UI」无关（`SPUUpdater.m:800-812`）。
+    ///
+    /// ## 判据（三步，命中即停）
+    ///
+    /// 1. **已经落到下载 / 安装的终态** ⇒ 检查**必定成功**：appcast 取到了、
+    ///    也判出了有新版本（否则不会有包可下）。
+    ///    ⚠️ ``UpdatePhase/locationBlocked`` **不算** —— 只读卷上 Sparkle 连 appcast
+    ///    都不去取（`SPUBasicUpdateDriver.m:71`），那时说「检查成功」是**又一句谎**。
+    /// 2. **没有错误** ⇒ 正常结束（发现了更新、或用户关掉了弹窗，文档写明
+    ///    「dismissed or skipped … is the same as no error」）。
+    /// 3. **三个「不是错」的码** ⇒ 成功。这一组**照抄 Sparkle 自己**
+    ///    （`SPUUpdater.m:797-807` 明确不把它们当错误记录/上报）：
+    ///    `SUNoUpdateError(1001)` 没有新版本、`SUInstallationCanceledError(4007)`
+    ///    用户在授权时取消、`SUInstallationAuthorizeLaterError(4008)` 用户选了稍后。
+    ///    其余一律 **失败**。
+    ///
+    /// ⚠️ **必须带域判定**：`1001` 这种码在别的域里可能有别的含义
+    /// （同 ``isUpdateLocationBlocked(_:)`` 的理由）。真实的网络失败是
+    /// `NSURLErrorDomain -1004` 之类 ⇒ 域不对 ⇒ 落第三步的 `default` ⇒ 失败。
+    nonisolated static func checkOutcome(
+        error: (any Error)?, phase: UpdatePhase
+    ) -> CheckOutcome {
+        switch phase {
+        case .failed, .installFailed:
+            return .succeeded
+        default:
+            break
+        }
+        guard let error else { return .succeeded }
+        let nsError = error as NSError
+        guard nsError.domain == SUSparkleErrorDomain else { return .failed }
+        switch nsError.code {
+        case 1001,  // SUNoUpdateError —— 查到了，没有可用更新
+            4007,  // SUInstallationCanceledError
+            4008:  // SUInstallationAuthorizeLaterError
+            return .succeeded
+        default:
+            return .failed
+        }
     }
 
     /// 下载进度是否值得发一次通知。
@@ -1265,6 +1493,12 @@ extension UpdateController {
     }
 
     /// 回到「什么都没在进行」（检查完没有新版本、或用户关掉了错误提示）。
+    ///
+    /// ⚠️ **它不改 ``lastCheckOutcome``**：本方法是「收掉这一轮会话」的公共落点，
+    /// 会话被拆的原因有很多（用户关窗、Sparkle 收 UI），**大多数并不说明检查失败了**。
+    /// 结论**只有一个来源**：``updater(_:didFinishUpdateCycleForUpdateCheck:error:)``
+    /// —— 那是 Sparkle 在**每一轮**收尾时必然发的 delegate 回调（2026-09-28 真机实测
+    /// 之后从 user driver 那两条回调搬过来的，理由见 ``checkOutcome(error:phase:)``）。
     func driverDidReset() {
         downloadCancellation = nil
         phase = .idle
@@ -1364,6 +1598,133 @@ extension UpdateController: SPUUpdaterDelegate {
             既无进度也无回执 ⇒ 转「下载失败」，让那一行有「重试」这个出口（第 34 行兜底）
             """)
         phase = .failed(version: version)
+    }
+
+    /// Sparkle 决定「**现在不查，等 N 秒再说**」—— 启动检查的**唯一**发起点（2026-09-28）。
+    ///
+    /// ## 为什么是这里，而不是 `startIfNeeded()` 里那两行
+    ///
+    /// `start()` 末尾必然走一次排期，而 `SPUUpdater.m:542-543` 在**同步**设好
+    /// `sessionInProgress = YES` 之后才去**异步**探测安装器（XPC + `dispatch_async`）。
+    /// 于是在 `start()` 返回后紧接着调 `checkForUpdatesInBackground()` 会被
+    /// **静默拒掉** —— 头文件原话：「This method does not do anything if there is a
+    /// `sessionInProgress`」（`SPUUpdater.m:664-667` 只打一条 error 日志）。
+    /// 界面上看不出任何区别，而「启动检查」从未生效。
+    ///
+    /// 本回调到达时 Sparkle **已经把会话让出来了**：`SPUUpdater.m:546-547` 先
+    /// `setCanCheckForUpdates:YES` / `setSessionInProgress:NO`，之后（`:575-577`）
+    /// 才通知 delegate。⇒ 在这里发起是安全的。
+    ///
+    /// 而它**语义上**也正对：Sparkle 刚算完「距上次检查还没到 `SUScheduledCheckInterval`，
+    /// 所以我等 `delay` 秒」—— 我们要覆盖的就是这个决定（「打开应用就该看一眼」）。
+    ///
+    /// ## ⚠️ 三条边界
+    ///
+    /// - **只覆盖一次**（``didRunLaunchCheck``）：不设闸门的话，每轮检查结束后 Sparkle
+    ///   都会再问一次，6 小时的排期会被压成 5 分钟。
+    /// - **Sparkle 若判定「已过期」就自己查了**，本回调**不会**被调用
+    ///   （`SPUUpdater.m:586-588` 走的是立刻检查那一支）—— 那时不需要我们插手。
+    /// - **自动检查关着时本回调也不会到**（`:508-513` 走
+    ///   `updaterWillNotScheduleUpdateCheck`）—— 那正是我们要的：不违背用户的开关。
+    ///
+    /// ## ⚠️ 「不查」那一支**必须留话**（2026-09-28 实测补的）
+    ///
+    /// 不留的话，「这次启动没检查」在日志上有**两种读不出区别**的原因：
+    /// ① 本回调根本没到（Sparkle 自己查了 / 自动检查关着）；
+    /// ② 回调到了，但 ``shouldCheckOnLaunch(lastCheck:automaticallyChecks:now:debounce:)``
+    ///    判定「刚查过，不必再查」。
+    /// 二者的**外部表现逐字相同**（都没有请求、`SULastCheckTime` 都不动），
+    /// 而它偏偏是维护时最先要问的那个问题 —— 也是本仓库反复记过的形态
+    /// （「没有」与「有但没用」在输出上不许一样）。
+    /// ⇒ 这一句把**判据的三个输入**原样打出来，读日志就能自己算。
+    ///
+    /// 一个进程最多打一次（上面的 ``didRunLaunchCheck`` 闸门），不构成噪声。
+    func updater(_ updater: SPUUpdater, willScheduleUpdateCheckAfterDelay delay: TimeInterval) {
+        guard !didRunLaunchCheck else { return }
+        didRunLaunchCheck = true
+        let lastCheck = updater.lastUpdateCheckDate
+        let automaticallyChecks = automaticallyChecksForUpdates
+        guard
+            Self.shouldCheckOnLaunch(
+                lastCheck: lastCheck,
+                automaticallyChecks: automaticallyChecks,
+                now: Date(),
+                debounce: Self.launchCheckDebounce)
+        else {
+            let elapsed = lastCheck.map { String(Int(Date().timeIntervalSince($0))) } ?? "从未查过"
+            Self.logger.info(
+                """
+                启动检查：跳过 —— 自动检查开关 \(automaticallyChecks, privacy: .public)、\
+                距上次检查 \(elapsed, privacy: .public) 秒、\
+                防抖 \(Int(Self.launchCheckDebounce), privacy: .public) 秒 ⇒
+                沿用 Sparkle 的排期，等 \(Int(delay), privacy: .public) 秒后再查
+                """)
+            return
+        }
+        Self.logger.info(
+            """
+            启动检查：Sparkle 原本打算等 \(Int(delay), privacy: .public) 秒，\
+            距上次检查已超过 \(Int(Self.launchCheckDebounce), privacy: .public) 秒\
+            （或从未查过）⇒ 现在就查
+            """)
+        updater.checkForUpdatesInBackground()
+    }
+
+    /// **发现了一个有效更新** —— 「这一轮拿到了答案」的**最早**已知点。
+    ///
+    /// ## 为什么它也写 ``lastCheckOutcome``（2026-09-28 真机验证时发现的窄口子）
+    ///
+    /// 弹窗那条路**故意不结束会话**（Esc 攥住 reply，见 ``alertReply`` 的说明），
+    /// 于是 ``updater(_:didFinishUpdateCycleForUpdateCheck:error:)`` **不会发**。
+    /// 用户若在那之后 5 分钟内（``launchCheckDebounce``）重开应用：
+    /// 启动检查被防抖拦下 ⇒ `phase` 已被重置成 `.idle`、而结论还是 `nil`
+    /// ⇒ 设置行**倒退回「已是最新版本」** —— 与这一轮在修的那句谎同一个形态
+    /// （真机实测：15:42 启动检查发现 2026.09.28.1、Esc 关弹窗之后结论仍是空）。
+    ///
+    /// ⇒ 「发现了有效更新」本身就是铁证，写在**最早的已知点**上。
+    /// 这不违反「单一事实来源」：它记的是**同一个事实**（这一轮拿到答案了），
+    /// 只是比周期收尾更早；两处都在 `UpdateController.swift` 里，且判据一致
+    /// （见 ``checkOutcome(error:phase:)`` 第 1 步 —— 有包可下就说明检查成功了）。
+    ///
+    /// ⚠️ **它覆盖两条路**：`SPUBasicUpdateDriver.m:164-165` 是**基类**发的，
+    /// 弹窗路（`SPUUIBasedUpdateDriver`）与自动下载路（`SPUAutomaticUpdateDriver`）
+    /// 都从 `SPUCoreBasedUpdateDriver` 走它 —— 那两条路的收尾时机会差很多。
+    func updater(_ updater: SPUUpdater, didFindValidUpdate item: SUAppcastItem) {
+        lastCheckOutcome = .succeeded
+        Self.logger.info(
+            "发现有效更新 \(item.displayVersionString, privacy: .public) ⇒ 检查成功（结论先落，会话可能还开着）")
+    }
+
+    /// **每一轮更新周期的收尾**（`SPUUpdater.m:810`，由 `notifyDelegateOfDriverCompletion` 发）。
+    ///
+    /// ## 为什么结论挂在这里，而不是 user driver 的那两条回调上（2026-09-28 真机实测）
+    ///
+    /// 这是本轮**唯一**为「检查失败」找到的、**每轮必到**的落点。原先挂在
+    /// `showUpdateNotFoundWithError` / `showUpdaterError` 上时，**后台检查失败一个都不到**：
+    /// `SPUScheduledUpdateDriver.m:106` 交给 UI 层的是
+    /// `abortUpdateWithError:error showErrorToUser:_showedUpdate`，而 `_showedUpdate`
+    /// 只在已经展示过更新之后才为真 ⇒ 「启动时取 feed 失败」**没有 UI、没有回调**。
+    ///
+    /// 真机复现（把 feed 指到一个关掉的端口）：Sparkle 打了
+    /// `Error: 无法连接服务器（kCFErrorDomainCFNetwork错误-1004）`，
+    /// 而 `lastCheckOutcome` **一个字节都没写** —— 界面继续沿用上一次的读数。
+    ///
+    /// ⚠️ **它是唯一写入 ``lastCheckOutcome`` 的地方**：单一来源。
+    /// 判据全在 ``checkOutcome(error:phase:)``（纯函数 + 单测）。
+    ///
+    /// ⚠️ **`shouldShowUpdateImmediately` 时本回调不发**（`:809`）—— 那只发生在
+    /// 「立刻就要起下一轮检查」时，那一轮收尾时会补上。不会漏。
+    func updater(
+        _ updater: SPUUpdater, didFinishUpdateCycleFor updateCheck: SPUUpdateCheck, error: (any Error)?
+    ) {
+        let outcome = Self.checkOutcome(error: error, phase: phase)
+        Self.logger.info(
+            """
+            更新周期收尾（\(String(describing: updateCheck), privacy: .public)）：\
+            \(String(describing: outcome), privacy: .public)\
+            错误=\(error.map { String(describing: $0) } ?? "无", privacy: .public)
+            """)
+        lastCheckOutcome = outcome
     }
 
     /// 下载失败。**这是「下载失败」那一态在文档上写明的来源**

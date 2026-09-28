@@ -67,6 +67,17 @@ struct UpdateFeedTests {
     }
 
     /// 不给 Sparkle 抢先弹「要不要自动检查更新」的机会：本应用自己有开关。
+    ///
+    /// ⚠️ 第三条断言（heredoc 里不许有反引号）是 2026-09-28 补的，**它自己就是事故现场**：
+    /// 那一轮往 `SUScheduledCheckInterval` 的注释里写了反引号包起来的 Swift 方法名，
+    /// 于是**每次构建**都打一条
+    /// `command substitution: line N: …` 的告警（看着像噪音），
+    /// 而那段文字在产出的 `Info.plist` 注释里**被静默吃掉**（替换成空串）。
+    ///
+    /// 根因是 shell 语义而不是笔误：起始那行的 heredoc 标记是**裸的** `PLIST`（没带引号），
+    /// 未加引号的 heredoc 会先做参数展开 / 命令替换 ⇒ 反引号与「美元括号」都会被求值。
+    /// 所以这不是「注释里写错字无所谓」——**同一位置写一条破坏性命令就是真的执行**。
+    /// 本仓库对「静默失真」零容忍，因此用一条断言钉住，而不是靠记得。
     @Test func 脚本写明了自动检查的默认值() throws {
         let script = try contents("build_app.sh")
         #expect(
@@ -77,6 +88,40 @@ struct UpdateFeedTests {
             script.contains("<key>SUScheduledCheckInterval</key>"),
             "缺 SUScheduledCheckInterval：自动检查的周期应当显式写出来"
         )
+
+        // ---- 写 Info.plist 的那段 heredoc：标记必须是裸的，正文里不许有会被求值的语法 ----
+        let lines = script.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+        let open = try #require(
+            lines.firstIndex { $0.contains("<<PLIST") },
+            "build_app.sh 里找不到写入 Info.plist 的那个 heredoc（结束标记 PLIST）")
+        let opener = lines[open]
+        // 加了引号确实能关掉替换 —— 但那样 `${变量}` 也会原样写进 plist，整个文件就废了。
+        // 这条前置断言守的是「别人为了躲开反引号而顺手把它引起来」这个修法。
+        #expect(
+            !opener.contains("<<'PLIST") && !opener.contains("<<\"PLIST"),
+            """
+            Info.plist 的 heredoc 起始行被加上了引号 ⇒ 里面所有变量替换都会失效，
+            写进 plist 的会是字面量 `$APP_DISPLAY_NAME` 这种东西。
+            要躲开反引号，请把反引号删掉，不要给 heredoc 加引号。实得：\(opener)
+            """)
+        let close = try #require(
+            lines[(open + 1)...].firstIndex { $0.trimmingCharacters(in: .whitespaces) == "PLIST" },
+            "Info.plist 的 heredoc 没有结束标记（裸 PLIST 独占一行）")
+        let body = lines[(open + 1)..<close].joined(separator: "\n")
+        for (marker, why) in [
+            ("`", "反引号"),
+            ("$(", "「美元括号」命令替换"),
+        ] {
+            #expect(
+                !body.contains(marker),
+                """
+                Info.plist 的 heredoc 里出现了\(why)。那段的起始标记是**裸的** PLIST（没带引号），
+                而未加引号的 heredoc 会**先做命令替换** ⇒ 每次构建打一条
+                `command substitution: line N: …` 的告警（看着像噪音），而那段文字在产物里
+                **被静默吃掉**（2026-09-28 实测：SUScheduledCheckInterval 的注释整句消失）。
+                同一位置写破坏性命令就是**真的执行**。要引用代码请直接写名字。
+                """)
+        }
     }
 
     /// `--download-url-prefix` 必须以斜杠结尾。

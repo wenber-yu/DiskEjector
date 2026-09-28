@@ -141,6 +141,21 @@ final class UpdateUserDriver: NSObject, SPUUserDriver {
 
     func showUpdateReleaseNotesFailedToDownloadWithError(_ error: Error) {}
 
+    /// Sparkle 明确回了「**没有可用更新**」（`SUNoUpdateError`）。
+    ///
+    /// ⚠️ **这是唯一能说「已是最新版本」的入口**（2026-09-28 用户报告）：
+    /// 它与下面的 ``showUpdaterError(_:acknowledgement:)`` 是**两件相反的事**，
+    /// 而两条原先都被丢进 `driverDidReset()` ⇒ 设置行把「根本没查成」也写成
+    /// 「上次检查：… · 已是最新版本」。判据与后果见 ``UpdateController/CheckOutcome``。
+    ///
+    /// ⚠️ 只有 `SUNoUpdateError` 会到这儿（`SPUUIBasedUpdateDriver.m:464` 判了码），
+    /// 所以**不需要**再在这里判一次错误码 —— 加了就是一条永远为真的分支。
+    ///
+    /// ⚠️ **2026-09-28 起本方法不再写结论**：`didFinishUpdateCycle`（delegate，
+    /// 逐轮必到）是 ``UpdateController/lastCheckOutcome`` 的唯一来源 ——
+    /// 「**没有新版本**」这个结论会由它按 `SUNoUpdateError` 落成 `.succeeded`。
+    /// 这里写第二遍的话，就又出现了「两条路各写一份」的老病
+    /// （而其中一条——后台检查——**根本不发**这条回调）。
     func showUpdateNotFoundWithError(_ error: Error, acknowledgement: @escaping () -> Void) {
         controller?.driverDidReset()
         acknowledgement()
@@ -179,8 +194,16 @@ final class UpdateUserDriver: NSObject, SPUUserDriver {
         //   2026-09-18 实扫发现 `driverDidFailDownload` 当时**全仓库没有调用点**，
         //   不分流的话这一态永远画不出来，而表现是「进度条无声消失」：
         //   与「下载完成了」长得一模一样，用户既不知道失败了、也没有重试入口。
-        // - **其余**（feed 拿不到、签名不匹配、Sparkle 自己起不来…）→ 回到上一态 + 日志。
-        //   这是**有意行为**，不是漏掉的（见下）。
+        // - **其余**（feed 拿不到、签名不匹配、Sparkle 自己起不来…）→ 收掉会话 + 日志。
+        //   ⚠️ **2026-09-28 改口径**：这一支此前落 ``UpdateController/driverDidCheckFail()``
+        //   —— 那是**错的落点**，真机实测抓到：本方法的调用条件里有
+        //   `showErrorToUser: _showedUpdate`（`SPUScheduledUpdateDriver.m:106`），
+        //   而 `_showedUpdate` 只在**已经展示过更新**之后才为真
+        //   ⇒ 「启动 / 后台取 feed 失败」**根本到不了这里**（真机复现：Sparkle 打了
+        //   `kCFErrorDomainCFNetwork -1004`，而这一支一次都没跑）。
+        //   ⇒ 「检查的结论」现在**只有一个来源**：delegate 的
+        //   ``UpdateController/updater(_:didFinishUpdateCycleForUpdateCheck:error:)``
+        //   （`SPUUpdater.m:810`，逐轮必到）。这里只负责收会话。
         //
         // **不弹窗**：本应用的弹窗是给「要不要装」用的；错误另有落点
         // （设置行 + 日志）。给一个「更新失败」弹窗会打断用户拔盘，

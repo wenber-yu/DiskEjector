@@ -31,7 +31,7 @@
 - **import 目标脚本取 `MUTATIONS`，不用正则去抠**（K23：正则抠多行字面量会灾难性回溯，
   实测跑 2m43s 无输出，看着像「慢」，其实判据死了）。
 - 目标脚本都有 `if __name__ == "__main__"` 守卫，import 期不会跑变异。
-- 本仓库 5 个脚本的条目有**两种形态**，这里都认（见 ``anchor_hits``）：
+- 本仓库 6 个脚本的条目有**两种形态**，这里都认（见 ``anchor_hits``）：
   - `(name, edits, expect)`，`edits = [(path, old, new), …]`（`deployment_target_mutation.py`）；
   - `(name, why, path, old, new, filter)`，其中 `old is None` 表示「用模块级 `ANCHOR`」
     （`pixel_read_path_mutation.py`）。
@@ -52,6 +52,8 @@ SCRIPTS_TO_AUDIT = (
     "pixel_read_path_mutation",
     "integration_wait_mutation",
     "wait_outcome_mutation",
+    # 2026-09-28：启动即检查 + 「检查失败」不再冒充「已是最新」那一轮。
+    "update_check_mutation",
 )
 
 
@@ -130,7 +132,9 @@ def main() -> int:
         print("⚠️ 树上可能有残留变异体：先按上表核对，再决定是否 `cp` 还原；"
               "**不要**用 `git checkout`（会连未提交的改动一起清掉）。")
         return 1
-    print("===== 审计通过：五个变异脚本的锚点全部是正确形态 =====")
+    # ⚠️ 条数**不写死**：写死的那一刻起它就成了一句会过期的断言
+    # （加第 7 个脚本时很容易忘了改，而审计照样报「通过」）。
+    print(f"===== 审计通过：{len(SCRIPTS_TO_AUDIT)} 个变异脚本的锚点全部是正确形态 =====")
     return 0
 
 

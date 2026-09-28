@@ -575,6 +575,13 @@
         "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "按下「背景下載並重新啟動」後，應用程式會在背景下載並驗證簽章，完成後自動重新啟動以完成安裝。正在退出的磁碟不會被中斷。" } }
       }
     },
+    "updateCheckFailedFormat" : {
+      "localizations" : {
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "上次检查：%@ · 检查失败" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Last checked: %@ · Check failed" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "上次檢查：%@ · 檢查失敗" } }
+      }
+    },
     "updateChecking" : {
       "localizations" : {
         "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "正在检查更新…" } },

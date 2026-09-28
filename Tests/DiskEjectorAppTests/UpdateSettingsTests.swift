@@ -2261,4 +2261,425 @@ struct UpdateSettingsTests {
             两边从此分叉而没有任何东西会红（§8.82 实测过这个病：44 条守卫全绿）
             """)
     }
+
+    // MARK: - 启动即检查（2026-09-28 用户报告）
+
+    /// 启动那一刻**该不该查**。
+    ///
+    /// ## 这条在修什么
+    ///
+    /// 实测：10:03 查过一次、14:46 **重新打开应用**（间隔 4.7h）⇒ **本次启动零网络请求**，
+    /// 设置行照旧显示 4.7 小时前的结论「上次检查：今天 10:03 · 已是最新版本」，
+    /// 而 13:22 已经发布了新版本（appcast build 281 > 盘上 273）。
+    /// 根因是启动路径只建 updater、不发起检查，排期全交给 Sparkle ——
+    /// 而 Sparkle 只把「距上次 ≥ `SUScheduledCheckInterval`」那次**立刻**跑掉
+    /// （`SPUUpdater.m:552-589`），其余只排一个未来定时器；应用没活到那一刻它就**永远不 fire**。
+    /// ⇒ 「打开应用」这个动作**完全不产生检查**，与所有人对它的心智模型都相反。
+    @Test func 启动检查的判据() {
+        let now = Date(timeIntervalSince1970: 1_790_000_000)
+        let debounce: TimeInterval = 300
+        func decide(lastCheck: Date?, auto: Bool = true) -> Bool {
+            UpdateController.shouldCheckOnLaunch(
+                lastCheck: lastCheck, automaticallyChecks: auto, now: now, debounce: debounce)
+        }
+
+        #expect(decide(lastCheck: nil), "从没查过 ⇒ 必须查")
+        #expect(
+            decide(lastCheck: now.addingTimeInterval(-4.7 * 3600)),
+            "距上次 4.7 小时 —— 那正是用户报的间隔，必须查，否则「打开应用」不产生任何检查")
+        #expect(
+            decide(lastCheck: now.addingTimeInterval(-debounce)),
+            "正好等于防抖 ⇒ 查（边界取闭，与 `>=` 一致）")
+        #expect(
+            !decide(lastCheck: now.addingTimeInterval(-debounce + 1)),
+            "距上次不足防抖 ⇒ 不查。这条是防「同一秒被拉起两次」打两个并发 feed 请求的")
+        #expect(
+            decide(lastCheck: now.addingTimeInterval(3600)),
+            "时间戳在**未来**（时钟回拨 / 被手改）⇒ 必须查 —— 拿它算差值会得到负数而永久静默"
+        )
+        #expect(
+            !decide(lastCheck: nil, auto: false),
+            "用户关掉了自动检查 ⇒ 不查。启动时偷偷查一次是**违背偏好**，而且会让那个开关看起来是坏的")
+        #expect(
+            !decide(lastCheck: now.addingTimeInterval(-86400), auto: false),
+            "关掉之后间隔多久都不查 —— 判据里「自动检查关着」必须**先于**间隔判断")
+    }
+
+    /// **接线守卫**：启动检查真的接上了，而且接在**唯一能生效的那一处**。
+    ///
+    /// ⚠️ ## 这条的第一版是错的，值得记下来
+    ///
+    /// 最初实现写的是「`startIfNeeded()` 里 `ensureUpdater()` 之后直接
+    /// `updater.checkForUpdatesInBackground()`」，并配了一条「body 里必须有它」的断言。
+    /// **那条断言会绿，而功能完全不生效** —— `start()` 末尾必然走一次排期，
+    /// 而 `SPUUpdater.m:542-543` 在**同步**设好 `sessionInProgress = YES` 之后才去
+    /// **异步**探测安装器 ⇒ 紧接着那次调用命中头文件那句
+    /// 「This method does not do anything if there is a `sessionInProgress`」
+    /// （`SPUUpdater.m:664-667` 只打一条 error 日志）。
+    /// ⇒ 「代码里有这一行」与「这一行会生效」是**两件事** —— 这条守卫现在钉的是后者：
+    /// 调用点必须落在 `willScheduleUpdateCheckAfterDelay`（那时 Sparkle 已让出会话）。
+    @Test func 启动检查接在排期回调上() throws {
+        let source = try contents("Sources/Services/UpdateController.swift")
+
+        let startBody = codeOnly(try functionBody("func startIfNeeded(", in: source))
+        #expect(
+            startBody.contains("ensureUpdater()"),
+            "`startIfNeeded()` 不再建 updater 了 —— 后面那些回调也就无从谈起。实得：\n\(startBody)")
+        #expect(
+            !startBody.contains("checkForUpdatesInBackground()"),
+            """
+            `startIfNeeded()` 里直接发起了检查 —— 那一句会被 Sparkle **静默丢掉**：
+            `start()` 末尾的排期在同步设好 `sessionInProgress = YES` 之后才去异步探测安装器，
+            而 `checkForUpdatesInBackground()` 在会话进行中**什么都不做**
+            （头文件原话，`SPUUpdater.m:664-667` 只打一条 error 日志）。
+            发起点必须在 `willScheduleUpdateCheckAfterDelay` 里。实得：
+            \(startBody)
+            """)
+
+        let hook = codeOnly(
+            try functionBody(
+                "func updater(_ updater: SPUUpdater, willScheduleUpdateCheckAfterDelay delay: TimeInterval)",
+                in: source))
+        #expect(
+            hook.contains("shouldCheckOnLaunch("),
+            "排期回调里没走那个纯函数 —— 判据于是没人用（上面那条断言就白测了）。实得：\n\(hook)")
+        #expect(
+            hook.contains("checkForUpdatesInBackground()"),
+            """
+            排期回调里没有发起后台检查 —— 那正是用户报的那件事：
+            10:03 查过、14:46 重新打开（4.7h < 6h 的排期）⇒ 本次启动零网络请求，
+            而 13:22 已发布新版本。实得：
+            \(hook)
+            """)
+        #expect(
+            hook.contains("!didRunLaunchCheck"),
+            """
+            排期回调里没有那个「只覆盖一次」的闸门 —— 于是**每一次** Sparkle 说「等 N 秒」，
+            我们都立刻替它查：`SUScheduledCheckInterval`（6 小时）会被压成防抖的 5 分钟，
+            常驻期间一天要打近 300 次请求。实得：
+            \(hook)
+            """)
+        #expect(
+            !hook.contains("checkForUpdates()"),
+            """
+            用的是 `checkForUpdates()` —— 那是「用户按了检查更新」的语义：
+            它会让设置行闪一下「正在检查更新…」，updater 起不来时还会跳去 Releases 页。
+            启动时不该有可见动作。实得：
+            \(hook)
+            """)
+        // ⚠️ 「**不查**」那一支也必须留话（2026-09-28 真机验证补的）。
+        //
+        // 不留的话，「这次启动没检查」有两种**读不出区别**的原因：
+        // ① 这个回调根本没到（Sparkle 自己判过期查了 / 自动检查关着）；
+        // ② 回调到了，但判据说「刚查过，不必再查」。
+        // 两者的外部表现**逐字相同** —— 没有网络请求、`SULastCheckTime` 一动不动 ——
+        // 而真机上的负向对照（「防抖生效了没有」）只能靠这一句才判得出来。
+        // 这正是本仓库反复记过的形态：「没有」与「有但没用」在输出上不许一样。
+        #expect(
+            hook.contains("启动检查：跳过"),
+            """
+            「不查」那一支没有留日志 —— 于是「这次启动没检查」到底是回调没到、
+            还是判据说不用再查，读日志分不出来（两者都没请求、SULastCheckTime 都不动）。
+            实得：\n\(hook)
+            """)
+    }
+
+    /// **选择器要与 ObjC 侧逐字对上** —— 差一个词只出 warning、不会编译失败。
+    ///
+    /// 与 `退出时安装的delegate选择器真的被导出了` 同一条判据、同一个理由：
+    /// `@objc optional` 的方法拼错时，编译器只给一条
+    /// `nearly matches optional requirement` 的 warning，而 warning 在构建日志里
+    /// 与噪音没有区别。后果是方法还在、却**永远不会被调**：与「根本没写」逐字相同。
+    /// 而这一处尤其致命 —— 它是**启动检查唯一的发起点**，不导出就等于这一轮白改。
+    @MainActor
+    @Test func 启动检查的delegate选择器真的被导出了() {
+        #expect(
+            UpdateController.shared.responds(
+                to: NSSelectorFromString("updater:willScheduleUpdateCheckAfterDelay:")),
+            """
+            UpdateController 没有导出 updater:willScheduleUpdateCheckAfterDelay:。
+            多半是签名与 SPUUpdaterDelegate 对不上了（少一个词、参数类型不精确）——
+            这种错**不会编译失败**，只会让方法静默不被调用。
+            而它是启动检查**唯一**能生效的发起点（`startIfNeeded()` 里那次会被静默丢掉）：
+            不导出 ⇒ 「打开应用会检查更新」这件事从未发生，而界面上一切照旧。
+            """)
+    }
+
+    /// 「检查的结论」那个落点也必须**真的被导出**。
+    ///
+    /// 与上面那条同一条判据、同一个理由（拼错只出 warning ⇒ 方法静默不被调用）。
+    /// 这一处尤其致命：它是 ``UpdateController/lastCheckOutcome`` 的**唯一**来源，
+    /// 不导出 ⇒ 设置行永远停在旧读数上，而「取不到 feed」这件事**任何界面都不会显示** ——
+    /// 正是用户报的那句「已是最新版本」。
+    ///
+    /// ⚠️ 选择器名里的 `ForUpdateCheck` 不能省：头文件里是
+    /// `updater:didFinishUpdateCycleForUpdateCheck:error:`（`SPUUpdaterDelegate.h:475`）。
+    @MainActor
+    @Test func 检查结论的delegate选择器真的被导出了() {
+        #expect(
+            UpdateController.shared.responds(
+                to: NSSelectorFromString("updater:didFinishUpdateCycleForUpdateCheck:error:")),
+            """
+            UpdateController 没有导出 updater:didFinishUpdateCycleForUpdateCheck:error:。
+            多半是签名与 SPUUpdaterDelegate 对不上了 —— 这种错**不会编译失败**，
+            只会让方法静默不被调用。而它是「这次检查到底成没成」的**唯一**来源：
+            不导出 ⇒ 「取不到 feed」在界面上看不出来（跑的是后台检查，没有任何 user driver 回调）。
+            """)
+    }
+
+    // MARK: - 「检查失败」不许冒充「已是最新版本」（2026-09-28 用户报告）
+
+    /// 「检查失败」与「已是最新」是**两件相反的事**，不许落在同一态上。
+    ///
+    /// ## 这条在修什么
+    ///
+    /// 此前两者的判据只有「`phase == .idle` 且 `lastUpdateCheckDate != nil`」，
+    /// 于是设置行把「**根本没查成**」也写成「上次检查：… · **已是最新版本**」——
+    /// 一句界面**没有依据**的断言。而 Sparkle 的 `SULastCheckTime` 是在**发起**检查时
+    /// 就写的（`SPUUpdater.m:789`，在任何网络请求之前），失败也会把它刷成当下
+    /// ⇒ 用户看到的是「刚刚查过、是最新版」，真相可能是「刚刚试过、没连上」。
+    ///
+    /// ⚠️ 用户报告里那条读数就是这么一次**无法分辨**的读数：当时线上 appcast 是
+    /// build 277、盘上是 273 —— 一次真的查成的检查**不可能**得出「已是最新版本」。
+    /// **维护者本人也分不清发生了什么**，这就是缺陷本身。
+    @Test func 检查失败不许冒充已是最新版本() {
+        let checked = Date(timeIntervalSince1970: 1_760_000_000)
+        func row(
+            _ outcome: UpdateController.CheckOutcome?, skipped: String? = nil
+        ) -> UpdateController.CheckRowState {
+            UpdateController.rowState(
+                phase: .idle, skippedVersion: skipped, lastCheck: checked, outcome: outcome)
+        }
+
+        #expect(
+            row(.failed) == .checkFailed(checked),
+            "检查失败仍被说成「已是最新版本」—— 那就是本轮在修的那句断言")
+        #expect(
+            row(.succeeded) == .upToDate(checked),
+            "查成了、没有新版本 ⇒ 必须留在「已是最新版本」（这条是正向对照：证明上面那条不是因为「全都变成失败」而成立的）")
+        #expect(
+            row(nil) == .upToDate(checked),
+            """
+            没有结论时退回了别的态。这里是**移民兼容**：老用户的 UserDefaults 里还没有这个键，
+            而他们的 `SULastCheckTime` 已经有了 —— 不给默认值的话，所有人升级后第一眼
+            看到的会是「检查失败」，而那时我们**并不知道**上一次到底怎么样
+            """)
+        #expect(
+            row(.failed, skipped: "1.1.0") == .skipped(version: "1.1.0"),
+            "跳过标记没盖过「检查失败」—— 跳过是用户明确做过的一次选择，必须留着痕迹")
+        #expect(
+            UpdateController.rowState(
+                phase: .idle, skippedVersion: nil, lastCheck: nil, outcome: .failed)
+                == .neverChecked,
+            "没有时间戳就没有「上次检查」可言 ⇒ 仍是「尚未检查」（不能凭空说失败）")
+        #expect(
+            UpdateController.rowState(
+                phase: .found(version: "1.2.0"), skippedVersion: nil, lastCheck: checked,
+                outcome: .failed)
+                == .found(version: "1.2.0", lastCheck: checked),
+            "「发现新版本」没盖过「检查失败」—— 后者是上一轮的事，而这一轮明明发现了东西")
+    }
+
+    /// **接线守卫**：结论的来源**只有一个**，而且是那个「逐轮必到」的回调。
+    ///
+    /// ## 这一条为什么在 2026-09-28 重写过
+    ///
+    /// 初版把结论挂在 user driver 的两个方法上（`showUpdateNotFoundWithError`
+    /// → 成功、`showUpdaterError` 的兜底支 → 失败），理由看着很足：
+    /// `SPUUIBasedUpdateDriver.m:464-495` 正是按 `SUNoUpdateError` 分流这两个回调。
+    /// **但真机实测证明那条路对「启动/后台检查失败」根本不走**：
+    /// `SPUScheduledUpdateDriver.m:106` 传的是
+    /// `abortUpdateWithError:error showErrorToUser:_showedUpdate`，而 `_showedUpdate`
+    /// 只在已经展示过更新之后才为真 ⇒ feed 取不到时**没有任何 user driver 回调**。
+    /// 复现记录：把 feed 指到关掉的端口，Sparkle 打了 `kCFErrorDomainCFNetwork -1004`，
+    /// 而 `lastCheckOutcome` 一个字节都没写 —— 界面继续沿用上一次的读数
+    /// （就是用户报的那句「已是最新版本」）。
+    ///
+    /// ⇒ 换成 `SPUUpdater.m:810` 的 delegate 回调（`notifyDelegateOfDriverCompletion`
+    /// 在每一轮收尾时发，与 user driver、与「弹没弹过 UI」都无关）。
+    @Test func 检查成功与失败落在不同的结论上() throws {
+        let driver = try contents("Sources/Services/UpdateUserDriver.swift")
+        let controller = try contents("Sources/Services/UpdateController.swift")
+
+        // ① user driver 的**两条**回调都不许再写结论 —— 它们不是每轮必到的。
+        let notFound = codeOnly(try functionBody("func showUpdateNotFoundWithError(", in: driver))
+        let updaterError = codeOnly(try functionBody("func showUpdaterError(", in: driver))
+        for (name, body) in [("showUpdateNotFoundWithError", notFound), ("showUpdaterError", updaterError)] {
+            #expect(
+                !body.contains("driverDidCheckSucceed") && !body.contains("driverDidCheckFail"),
+                """
+                `\(name)` 又在写「检查的结论」了。这两个 user driver 回调**不是每轮必到**：
+                后台检查失败时 `showErrorToUser` 是 `_showedUpdate`（还没展示过更新 ⇒ false），
+                两个回调一个都不发 —— 结论于是不更新，界面继续沿用上一次的读数，
+                也就是本轮在修的那句「已是最新版本」。实得：\n\(body)
+                """)
+        }
+        #expect(
+            !notFound.isEmpty && !updaterError.isEmpty,
+            "取到的方法体是空的 —— 上面那两条断言于是测的是空气")
+
+        // ② 结论写在 delegate 的「周期收尾」回调里，而且走那个纯函数。
+        let hook = codeOnly(
+            try functionBody(
+                "func updater(\n        _ updater: SPUUpdater, didFinishUpdateCycleFor",
+                in: controller))
+        #expect(
+            hook.contains("checkOutcome("),
+            "「周期收尾」回调没走 `checkOutcome(error:phase:)` —— 判据于是没人用。实得：\n\(hook)")
+        #expect(
+            hook.contains("lastCheckOutcome ="),
+            "「周期收尾」回调没有把结论记下来 —— 那这一轮等于白改。实得：\n\(hook)")
+
+        // ②b **「发现有效更新」也要落结论**：弹窗那条路**故意不结束会话**
+        //     （Esc 攥住 reply），周期收尾回调于是**不发**；用户若在那之后 5 分钟内
+        //     （防抖窗口）重开应用，`phase` 已重置成 `.idle` 而结论还是 nil
+        //     ⇒ 设置行倒退回「已是最新版本」。真机实测到这一步（2026-09-28 15:42）。
+        let found = codeOnly(
+            try functionBody(
+                "func updater(_ updater: SPUUpdater, didFindValidUpdate item: SUAppcastItem)",
+                in: controller))
+        #expect(
+            found.contains("lastCheckOutcome = .succeeded"),
+            """
+            「发现有效更新」那一支没落结论。弹窗路上周期收尾回调**不会发**（Esc 攥住 reply），
+            于是「发现过新版本」这件事在重开应用后就没了 —— 设置行会说「已是最新版本」。
+            实得：\n\(found)
+            """)
+
+        // ③ **单一来源**：整棵 `Sources/` 里只有一处给 `lastCheckOutcome` 赋值。
+        //    两处 = 「两条路各写一份」，而其中一条（后台检查）的回调**根本不发** —— 本轮的病根。
+        //
+        //    ⚠️ **必须扫整棵树，不能只扫 `UpdateController.swift`**：初版就是只扫那一个文件，
+        //    于是「在 user driver 里也写一笔」这条变异**照样绿**
+        //    （2026-09-28 变异 M9f 当场抓到 —— 这正是变异测试存在的意义：
+        //    断言「看起来在守单一来源」，实际只守住了一个文件）。
+        var writers: [String] = []
+        let enumerator = FileManager.default.enumerator(
+            at: repoRoot.appendingPathComponent("Sources"), includingPropertiesForKeys: nil)
+        while let file = enumerator?.nextObject() as? URL {
+            guard file.pathExtension == "swift" else { continue }
+            let body = try String(contentsOf: file, encoding: .utf8)
+            for (index, line) in body.split(separator: "\n", omittingEmptySubsequences: false)
+                .enumerated()
+            {
+                guard line.contains("lastCheckOutcome =") else { continue }
+                // ⚠️ `AppSettings.Key` 里那条是**键名声明**（`static let lastCheckOutcome = "…"`），
+                // 不是「给结论赋值」，不算一个写入点。
+                guard !line.contains("static let ") else { continue }
+                writers.append("\(file.lastPathComponent):\(index + 1)")
+            }
+        }
+        let writerFiles = Set(writers.map { $0.split(separator: ":").first.map(String.init) ?? $0 })
+        #expect(
+            writerFiles == ["UpdateController.swift"],
+            """
+            给 `lastCheckOutcome`（= 检查的结论）赋值的文件是 \(writerFiles.sorted())，
+            应当**只有** `UpdateController.swift` 一个。写入点：\(writers.sorted())
+            多于一处 = 又出现了「两条路各写一份」：其中一条路上的回调**不保证会到**
+            （后台检查失败时没有任何 user driver 回调），于是「结论漏更新」那个洞会重新出现。
+            """)
+    }
+
+    /// **判据的边界**（纯函数，逐条钉）。
+    ///
+    /// 真机上「后台检查失败」只有一种：把 feed 指到关掉的端口。
+    /// 而**五种结局**（没有新版 / 正常结束 / 下载失败 / 只读卷 / 网络不通）
+    /// 在真机上都长得像「什么都没发生」—— 不抽成纯函数就只能靠"看起来对"。
+    @Test func 检查结论的判据() {
+        // ⚠️ 域**用字面量**，不引 `SUSparkleErrorDomain` 那个符号：本测试文件不 import Sparkle，
+        // 而且字面量才是这里要钉的东西（同 ``isUpdateLocationBlocked(_:)`` 单测那条口径）。
+        func sparkle(_ code: Int) -> NSError {
+            NSError(domain: "SUSparkleErrorDomain", code: code)
+        }
+        func decide(_ error: (any Error)?, _ phase: UpdatePhase) -> UpdateController.CheckOutcome {
+            UpdateController.checkOutcome(error: error, phase: phase)
+        }
+
+        // ① 没有错误 ⇒ 正常结束（发现了更新、或用户关掉了弹窗，文档写明与「无错」等价）。
+        #expect(
+            decide(nil, .idle) == .succeeded,
+            "「正常结束」被记成了检查失败 —— 那是**反向**的一句谎（查成了却说没查成）")
+        // ② SUNoUpdateError(1001) ⇒ 查成了、没有新版 —— 唯一能说「已是最新版本」的依据。
+        #expect(
+            decide(sparkle(1001), .idle) == .succeeded,
+            "`SUNoUpdateError` 被记成了失败 —— 界面会把「已是最新」说成「检查失败」")
+        // ③ 4007 / 4008：用户在授权时取消 / 选了稍后。**检查是成功的**
+        //    （否则不会有包可下），Sparkle 自己也不把它们当错误（`SPUUpdater.m:797-807`）。
+        for code in [4007, 4008] {
+            #expect(
+                decide(sparkle(code), .idle) == .succeeded,
+                "\(code)（用户取消 / 稍后授权）被记成了检查失败 —— 那是用户的选择，不是故障")
+        }
+        // ④ 已落在下载 / 安装终态 ⇒ 检查**必定**成功（appcast 取到了、也判出了有新版本）。
+        #expect(
+            decide(sparkle(2001), .failed(version: "1.2.0")) == .succeeded,
+            "下载失败被记成了「检查失败」—— 下载失败恰恰说明检查是成功的，否则不会有包可下")
+        #expect(
+            decide(sparkle(4005), .installFailed(version: "1.2.0")) == .succeeded,
+            "安装失败被记成了「检查失败」—— 同上，检查是成功的")
+        // ⑤ **用户报的那一次**：真实网络失败（域不是 Sparkle、码 -1004）⇒ 失败。
+        #expect(
+            decide(NSError(domain: NSURLErrorDomain, code: -1004), .idle) == .failed,
+            """
+            真实网络失败被记成了成功 —— 那正是用户报的病：取不到 appcast 却显示
+            「上次检查：… · 已是最新版本」。实机复现过（feed 指到关掉的端口）
+            """)
+        // ⑥ 只读卷 / App Translocation：Sparkle **连 appcast 都不去取** ⇒ 不许说成功。
+        #expect(
+            decide(sparkle(1003), .locationBlocked) == .failed,
+            "只读卷上「检查成功」是又一句谎 —— 那时 Sparkle 根本没发过 feed 请求")
+        // ⑦ 别的域里也可能有 1001，不能凭码认结论。
+        #expect(
+            decide(NSError(domain: "com.example.other", code: 1001), .idle) == .failed,
+            "没有判域：别的域里同样编号的错误被当成了「没有新版本」")
+        // ⑧ 其余 Sparkle 错误码（相位也不是终态）⇒ 失败。
+        #expect(
+            decide(sparkle(4005), .idle) == .failed,
+            "认不出来的 Sparkle 错误被记成了成功 —— 无法分类时应当落到**可操作的失败态**")
+    }
+
+    /// 「检查失败」那一行**必须有出口**，且三语文案里**不许再出现「已是最新版本」**。
+    ///
+    /// 两条都是这一轮的要害：
+    /// - 没出口 = 用户看到「上次检查失败」却没有任何可做的事
+    ///   （同「给一个点了没反应的按钮，与功能坏了长得一模一样」那条判据）；
+    /// - 文案里再写一次「已是最新版本」= 这句谎换了个地方重来 ——
+    ///   而它恰恰是本轮修掉的那句。
+    @Test func 检查失败那一行有出口且不说谎() throws {
+        let view = try contents("Sources/Views/SettingsView.swift")
+        let block = codeOnly(try caseBlock("case .checkFailed(let date):", in: view))
+        #expect(
+            block.contains("retryUpdateButton"),
+            "「检查失败」那一行没有出口 —— 用户看到失败却点不了任何东西。实得：\n\(block)")
+        #expect(
+            block.contains("updateCheckFailedFormat"),
+            "那一行没用 `updateCheckFailedFormat` —— 于是它可能挂着「已是最新版本」那句文案。实得：\n\(block)")
+
+        // 三语文案本身：不许出现「已是最新」/「Up to date」，且必须说清是「检查失败」。
+        let catalog = try contents("Sources/Localization/Localizable.xcstrings")
+        let entryStart = try #require(
+            catalog.range(of: "\"updateCheckFailedFormat\" : {"),
+            "本地化表里找不到 `updateCheckFailedFormat` —— 上面那条断言于是测的是一个不存在的键")
+        let rest = catalog[entryStart.upperBound...]
+        let entryEnd = rest.range(of: "\n    \"")?.lowerBound ?? rest.endIndex
+        let entry = String(rest[rest.startIndex..<entryEnd])
+
+        for forbidden in ["已是最新", "已是最新版本", "Up to date"] {
+            #expect(
+                !entry.contains(forbidden),
+                """
+                `updateCheckFailedFormat` 的三语文案里出现了「\(forbidden)」——
+                「检查失败」**不是**「已是最新版本」，本轮修的正是这句断言换个地方重来。实得：
+                \(entry)
+                """)
+        }
+        for (lang, phrase) in [("zh-Hans", "检查失败"), ("zh-Hant", "檢查失敗"), ("en", "Check failed")] {
+            #expect(
+                entry.contains(phrase),
+                "`\(lang)` 那档没写「\(phrase)」—— 用户看到的是「上次检查：…」后面一句没有断言的空白。实得：\n\(entry)")
+        }
+        #expect(
+            entry.contains("%@"),
+            "少了时间占位符 —— 这一行要显示「上次检查」的具体时刻（设计稿 C 段的写法）。实得：\n\(entry)")
+    }
 }

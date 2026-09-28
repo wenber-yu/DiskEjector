@@ -608,6 +608,27 @@ struct SettingsSectionsColumn: View {
                     Self.updateCheckDateFormatter.string(from: date))
             ) { checkForUpdatesButton }
 
+        case .checkFailed(let date):
+            // ⚠️ **这一态取代的是原先的一句谎**（2026-09-28 用户报告）。
+            // 此前「查到了、没有新版本」与「**根本没查成**（feed 取不到 / 超时）」
+            // 共用 `updateUpToDateFormat` 那句「上次检查：… · 已是最新版本」，
+            // 于是界面替用户下了一个它**没有依据**的结论（判据见 `UpdateController.CheckOutcome`）。
+            //
+            // ⚠️ **文案里不许出现「已是最新版本」** —— 那句断言只有在真正收到过
+            // 「没有可用更新」时才允许出现。这里说的是**发生了什么事**（这次没查成），
+            // 不是**结论**（有没有新版，此刻仍然未知）。
+            //
+            // ⚠️ **按钮用「重试」而不是「检查更新」**：`retryDownload()` 走的就是
+            // `checkForUpdates()`（同一条路），而「重试」这个词准确说出了用户此刻的意图
+            // —— 把上一次没成的那次重来一遍。两个词指同一个动作时，
+            // 用那个**与上下文对得上**的（同 `.failed` / `.installFailed` 两态的做法）。
+            line(
+                label: L10n.tr(.checkForUpdates),
+                description: String(
+                    format: L10n.tr(.updateCheckFailedFormat),
+                    Self.updateCheckDateFormatter.string(from: date))
+            ) { retryUpdateButton }
+
         case .skipped(let version):
             line(
                 label: L10n.tr(.checkForUpdates),

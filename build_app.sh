@@ -454,8 +454,21 @@ cat > "$APP_BUNDLE/Contents/Info.plist" <<PLIST
     <string>$SPARKLE_FEED_URL</string>
     <key>SUEnableAutomaticChecks</key>
     <true/>
+    <!-- SUScheduledCheckInterval —— 常驻期间的**后台定时检查**间隔（秒）。
+         2026-09-28 由 86400（1 天）改为 21600（6 小时）：本应用是菜单栏常驻工具，
+         能连着跑几周，一天只查一次太钝 —— 而它**只在应用活着时才有效**
+         （Sparkle 的定时器 fire 不了就等于没排），所以「启动时主动查一次」
+         （见 Sources/Services/UpdateController.swift 里那条启动检查）与它是**互补**的
+         两条路，不是替代。
+         成本：一次 appcast 请求 3.3 KB，最坏 4 次/天。
+         ⚠️ 改这里只对**新装的包**生效 —— 已装的老版本跑的还是它自己 Info.plist 里的值，
+         要等它们装上带这一版的新包才会跟上。
+         ⚠️ 本段 heredoc **没有加引号**（起始那行的标记是裸的 PLIST，没带引号）⇒
+         反引号与「美元括号」命令替换会被 shell **先求值**：写一个反引号就会在每次构建
+         打一条 command substitution 告警，而那段文字在产物里**被静默吃掉**
+         （2026-09-28 实测栽过，本条注释自己就是那次事故现场）。要引用代码请直接写名字。 -->
     <key>SUScheduledCheckInterval</key>
-    <integer>86400</integer>
+    <integer>21600</integer>
 $SPARKLE_PUBLIC_ED_KEY_PLIST
     <key>NSHumanReadableCopyright</key>
     <string>Copyright © 2026 wenber-yu. Licensed under MIT.</string>

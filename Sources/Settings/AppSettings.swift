@@ -185,6 +185,14 @@ enum AppSettings {
         /// 下个版本发布后那个布尔还是 `true`，用户会被永久静音。
         static let skippedVersion = "skippedVersion"
 
+        /// 最近一次更新检查的结论（``UpdateController/CheckOutcome`` 的 rawValue）。
+        ///
+        /// **为什么必须落盘**：Sparkle 的 `SULastCheckTime` 是在**发起**检查时就写的
+        /// （`SPUUpdater.m:789`，在任何网络请求之前），所以它只说明「查过」，
+        /// 不说明「查成了」。不把结论也存下来的话，应用一重启，
+        /// 「上次检查失败」就又变回「已是最新版本」—— 那句谎会随重启复活。
+        static let lastCheckOutcome = "lastCheckOutcome"
+
         /// 是否接管访达（Finder）的「推出」。详见 ``takeOverFinderEject``。
         static let takeOverFinderEject = "takeOverFinderEject"
     }

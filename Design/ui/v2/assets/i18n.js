@@ -5,7 +5,7 @@
    来源：Sources/Localization/Localizable.xcstrings
        + Design/ui/v2/assets/i18n-extra.json
    ----------------------------------------------------------------------------
-   源指纹 065ab223bfbb9d3446a804cc2fdc03173b5816769aba23b06a752f7b8d666279
+   源指纹 95e5d91e1eb5fe95db20e93da8d63e988c1c1e77a2c2382cebae75e8ccdce2cb
      = sha256(xcstrings + extra + 本脚本) —— 任一方变了它就是旧的，
        由 DesignDraftIntegrityTests 拦下「改了源忘了重跑」。
    ----------------------------------------------------------------------------
@@ -216,6 +216,7 @@ window.DS_L10N = {
       "updateCallout": "点「后台更新并重启」后，应用会在后台下载并校验签名，完成后自动重启完成安装。正在推出的磁盘不会被打断。",
       "updateChannelDevelopment": "开发版",
       "updateChannelDirect": "官网直发版",
+      "updateCheckFailedFormat": "上次检查：%@ · 检查失败",
       "updateChecking": "正在检查更新…",
       "updateCheckingHint": "通常只需要几秒钟。",
       "updateDownloadingFormat": "正在后台下载 %@",
@@ -432,6 +433,7 @@ window.DS_L10N = {
       "updateCallout": "After you choose “Update in Background & Restart”, the app downloads and verifies the update in the background, then restarts to finish installing. Disks that are being ejected are not interrupted.",
       "updateChannelDevelopment": "Development build",
       "updateChannelDirect": "Direct build",
+      "updateCheckFailedFormat": "Last checked: %@ · Check failed",
       "updateChecking": "Checking for updates…",
       "updateCheckingHint": "This usually takes a few seconds.",
       "updateDownloadingFormat": "Downloading %@ in the background",
@@ -648,6 +650,7 @@ window.DS_L10N = {
       "updateCallout": "按下「背景下載並重新啟動」後，應用程式會在背景下載並驗證簽章，完成後自動重新啟動以完成安裝。正在退出的磁碟不會被中斷。",
       "updateChannelDevelopment": "開發版",
       "updateChannelDirect": "官網直發版",
+      "updateCheckFailedFormat": "上次檢查：%@ · 檢查失敗",
       "updateChecking": "正在檢查更新…",
       "updateCheckingHint": "通常只需要幾秒鐘。",
       "updateDownloadingFormat": "正在背景下載 %@",
