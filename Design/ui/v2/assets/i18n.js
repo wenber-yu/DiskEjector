@@ -5,7 +5,7 @@
    来源：Sources/Localization/Localizable.xcstrings
        + Design/ui/v2/assets/i18n-extra.json
    ----------------------------------------------------------------------------
-   源指纹 05c85f4231b092d7058d1d237ee0a59caa5be9bc2afac809f87c26332e4e3124
+   源指纹 065ab223bfbb9d3446a804cc2fdc03173b5816769aba23b06a752f7b8d666279
      = sha256(xcstrings + extra + 本脚本) —— 任一方变了它就是旧的，
        由 DesignDraftIntegrityTests 拦下「改了源忘了重跑」。
    ----------------------------------------------------------------------------
@@ -200,6 +200,9 @@ window.DS_L10N = {
       "settingsGroupGeneral": "通用",
       "settingsGroupUpdates": "更新",
       "showDockIcon": "在 Dock 中显示图标",
+      "takeOverFinderEject": "接管访达的推出",
+      "takeOverFinderEjectFootnote": "在访达中点推出时，由本应用判定并列出占用者。判定期间访达会等待你的决定，此时其他磁盘的推出也会一并暂缓。",
+      "takeOverFinderEjectNeedsFDA": "需要「完全磁盘访问」才能列出占用者，否则接管不会生效。",
       "tintedMode": "色调模式（系统背景色）",
       "tintedModeShort": "色调",
       "transparentMode": "透明模式（Liquid Glass 毛玻璃）",
@@ -228,6 +231,7 @@ window.DS_L10N = {
       "updateLocationBlocked": "请把应用拷到「应用程序」文件夹",
       "updateLocationBlockedHint": "应用当前所在的磁盘位置不允许它更新自己。",
       "updateNeverChecked": "尚未检查",
+      "updateReadyAutoHint": "会自动重启完成安装；有磁盘正在推出时会等它结束。",
       "updateReadyFormat": "%@ 已下载完成",
       "updateReadyHint": "重启后完成安装；下次退出应用时也会自动安装。",
       "updateSkipVersion": "跳过此版本",
@@ -412,6 +416,9 @@ window.DS_L10N = {
       "settingsGroupGeneral": "General",
       "settingsGroupUpdates": "Updates",
       "showDockIcon": "Show icon in Dock",
+      "takeOverFinderEject": "Take over Finder's eject",
+      "takeOverFinderEjectFootnote": "Finder's eject goes through this app: it lists what holds the disk. Finder waits; other disks are deferred meanwhile.",
+      "takeOverFinderEjectNeedsFDA": "Takeover needs Full Disk Access to list what holds a disk.",
       "tintedMode": "Tinted (System Background)",
       "tintedModeShort": "Tinted",
       "transparentMode": "Transparent (Liquid Glass)",
@@ -440,6 +447,7 @@ window.DS_L10N = {
       "updateLocationBlocked": "Move the app to your Applications folder",
       "updateLocationBlockedHint": "The app can't update itself from where it is right now.",
       "updateNeverChecked": "Not checked yet",
+      "updateReadyAutoHint": "Restarts automatically to install; if a disk is being ejected, it waits.",
       "updateReadyFormat": "%@ downloaded",
       "updateReadyHint": "Installs after a restart; it also installs when you next quit the app.",
       "updateSkipVersion": "Skip This Version",
@@ -624,6 +632,9 @@ window.DS_L10N = {
       "settingsGroupGeneral": "一般",
       "settingsGroupUpdates": "更新",
       "showDockIcon": "在 Dock 中顯示圖示",
+      "takeOverFinderEject": "接管 Finder 的推出",
+      "takeOverFinderEjectFootnote": "在 Finder 中點推出時，由本應用程式判定並列出佔用者。判定時 Finder 會等待你的決定，此時其他磁碟的推出也會一併暫緩。",
+      "takeOverFinderEjectNeedsFDA": "需要「完全磁碟存取權」才能列出佔用者，否則接管不會生效。",
       "tintedMode": "色調模式（系統背景色）",
       "tintedModeShort": "色調",
       "transparentMode": "透明模式（Liquid Glass 毛玻璃）",
@@ -652,6 +663,7 @@ window.DS_L10N = {
       "updateLocationBlocked": "請把應用程式拷到「應用程式」資料夾",
       "updateLocationBlockedHint": "應用程式目前所在的磁碟位置不允許它更新自己。",
       "updateNeverChecked": "尚未檢查",
+      "updateReadyAutoHint": "會自動重新啟動完成安裝；有磁碟正在推出時會等它結束。",
       "updateReadyFormat": "%@ 已下載完成",
       "updateReadyHint": "重新啟動後完成安裝；下次結束應用程式時也會自動安裝。",
       "updateSkipVersion": "跳過此版本",

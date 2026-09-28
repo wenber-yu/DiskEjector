@@ -1,0 +1,137 @@
+%% 接管访达的推出（增量）—— 数据结构与接口
+%% 对应 Design/architecture/incremental-takeover-finder-eject.md §3
+classDiagram
+    direction TB
+
+    class EjectHookService {
+        <<singleton, @unchecked Sendable>>
+        -session: DASession?
+        -throttle: EjectHookThrottleStore
+        -static userDecisionTimeout: TimeInterval = 8
+        +register() void
+        -static handle(disk: DADisk) Unmanaged~DADissenter~?
+        -static waitForUserChoice(disk, processes) EjectAlertChoice
+        -static busyDissenter() Unmanaged~DADissenter~
+    }
+
+    class EjectHookPolicy {
+        <<enum, namespace>>
+        +static decide(request, isSelfInitiated, isTakeOverEnabled, occupancy) EjectHookDecision
+        +static resolve(choice) EjectHookResolution
+        +static shouldBlock(occupancy) [OccupyingProcess]?
+    }
+
+    class EjectHookRequest {
+        <<struct, Sendable, Equatable>>
+        +mountPath: String
+        +volumeName: String
+        +bsdName: String
+        +deviceModel: String?
+        +attributes: DiskClassifier.Attributes
+        +static make(description: [String: Any]) EjectHookRequest?
+    }
+
+    class EjectHookDecision {
+        <<enum, Sendable, Equatable>>
+        +passThrough(EjectHookPassReason)
+        +intercept(disk: DiskInfo, processes: [OccupyingProcess])
+    }
+
+    class EjectHookPassReason {
+        <<enum, Sendable, Equatable>>
+        +takeOverDisabled
+        +selfInitiated
+        +noVolumePath
+        +notExternalVolume
+        +occupancyNotBlocking
+        +dedupHit
+    }
+
+    class EjectHookResolution {
+        <<enum, Sendable, Equatable>>
+        +allow
+        +dissentBusy
+    }
+
+    class EjectHookThrottle {
+        <<struct, Sendable, Equatable>>
+        +window: TimeInterval
+        +lastPromptEnd: [String: Date]
+        +inFlight: Set~String~
+        +claim(key, now) Bool
+        +release(key, at) void
+        +isSuppressed(key, now) Bool
+    }
+
+    class EjectHookThrottleStore {
+        <<final class, @unchecked Sendable>>
+        -lock: NSLock
+        -value: EjectHookThrottle
+        -now: () -> Date
+        +claim(key) Bool
+        +release(key) void
+    }
+
+    class ProcessTerminator {
+        <<enum, namespace>>
+        +static termGrace: TimeInterval = 1.5
+        +static killGrace: TimeInterval = 0.8
+        +static clear(processes, termGrace, killGrace, kill, sleep) [OccupyingProcess]
+    }
+
+    class OccupancySnapshotStore {
+        <<enum, namespace, nonisolated>>
+        -static lock: NSLock
+        -static values: [String: OccupancyResult]
+        +static update(next) void
+        +static occupancy(for mountPath) OccupancyResult
+    }
+
+    class OccupancyStore {
+        <<@MainActor, ObservableObject>>
+        +results: [String: OccupancyResult]
+        -publish(next) void
+        +result(for disk) OccupancyResult
+    }
+
+    class DiskClassifier {
+        <<enum, namespace>>
+        +static isExternalVolume(Attributes) Bool
+    }
+
+    class DiskInfo {
+        <<struct>>
+        +id: String
+        +mountPath: String
+    }
+
+    class OccupancyResult {
+        <<enum>>
+        +none
+        +occupied([OccupyingProcess])
+        +unknown
+        +needsFullDiskAccess
+    }
+
+    class EjectAlertChoice {
+        <<enum>>
+        +cancel
+        +closeAndEject
+        +dismiss
+    }
+
+    EjectHookService ..> EjectHookPolicy : 调用
+    EjectHookService ..> EjectHookRequest : 解析
+    EjectHookService ..> EjectHookThrottleStore : 去重
+    EjectHookService ..> ProcessTerminator : 清场
+    EjectHookService ..> OccupancySnapshotStore : 读快照（非主线程）
+    OccupancyStore ..> OccupancySnapshotStore : 写快照（主线程）
+    EjectHookPolicy ..> EjectHookRequest : 入参
+    EjectHookPolicy ..> EjectHookDecision : 返回
+    EjectHookPolicy ..> EjectHookResolution : 返回
+    EjectHookPolicy ..> DiskClassifier : 复用
+    EjectHookPolicy ..> OccupancyResult : 入参
+    EjectHookPolicy ..> EjectAlertChoice : 入参
+    EjectHookDecision ..> DiskInfo : 携带
+    EjectHookThrottleStore *-- EjectHookThrottle : 持有
+    EjectHookRequest ..> DiskClassifier : 携带 Attributes

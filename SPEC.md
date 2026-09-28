@@ -32,6 +32,7 @@
 | F5 | 确认对话框 | 点击推出前，弹窗列出将被终止的进程名称，用户点确认后才执行。**沙盒下无进程信息，已改为推出前确认** |
 | F6 | 卸载失败告警 | 卸载失败时弹出系统告警（NSAlert），并记录错误日志 |
 | F7 | 错误日志记录 | 将卸载失败信息写入本地日志文件（含时间戳、磁盘名、错误原因） |
+| F8 | 接管访达的推出（可选，默认关） | 打开后，**访达里**的推出按钮（以及任何走 `NSWorkspace.unmountAndEjectDevice` 的请求）也先由本应用判定：无占用则照常放行；有占用则弹出本应用的占用窗。⚠️ 判定期间访达**静默等待**用户决定，**此时其它磁盘的推出请求会被系统一并排队**（DA 协议对 approval 回调的串行化）。⚠️ **但等待有上限**：系统对一次 unmount 的等待约 **12.5s**，超过之后访达就不等了 —— 清场再干净也没人接着推，**用户点了「关闭并推出」盘会纹丝不动**。所以本应用的决策窗口（`EjectHookPolicy.userDecisionTimeout`）必须留在那个上限之内（现为 **8 秒**，含清场宽限 2.3s）；到点未决定则按「取消」收场（访达弹它自己的「正在使用」提示、盘保持挂载），见 §8.149。默认关：它是系统级行为改动。开关在「设置 › 通用」，**改了即时生效、不需要重启**。**可用性闸门**：本功能依赖「完全磁盘访问」（要它才列得出占用者），未授权时该开关**不可点**、且那一行就地写明原因并给出直达系统设置的按钮（判定收敛在 `AppSettings.TakeOverAvailability` 这一个纯函数里，见 §8.147） |
 
 ### 2.2 交互形态
 
@@ -173,6 +174,10 @@ DiskEjector/
 │   │   ├── DiskListStore.swift      # 磁盘列表单一数据源
 │   │   ├── EjectService.swift       # 推出执行 + 错误分类
 │   │   ├── EjectFlowController.swift# 菜单栏/主窗口共用推出流程（EjectOutcome）
+│   │   ├── EjectHookService.swift   # 接管访达的推出（DiskArbitration approval 回调）
+│   │   ├── EjectHookPolicy.swift    # 接管的判定层（纯值：开关/自排除/外置/占用/去重）
+│   │   ├── ProcessTerminator.swift  # 同步清场（SIGTERM → 宽限 → SIGKILL）
+│   │   ├── OccupancySnapshotStore.swift # 占用结论的跨线程只读快照
 │   │   ├── EjectUI.swift            # 共享推出弹窗（占用提示 + 破坏性按钮）
 │   │   ├── OccupancyDetector.swift  # 占用检测（lsof 解析 / 沙盒降级 / FDA 探针）
 │   │   ├── LaunchAtLoginManager.swift # 开机启动（SMAppService）
@@ -348,7 +353,12 @@ CI 走 `SPARKLE_PRIVATE_KEY` 从 stdin 传入（不落盘）。
 - **「已就绪」那一态不显示「检查更新」按钮**：Sparkle 正在等我们回答 `.install`
   （`sessionInProgress` 为真），此时点「检查更新」没有反应
   （`SPUUpdater.h` 明写）。给一个点了没反应的按钮，与「功能坏了」长得一模一样。
-- **「重启」不自动做，只提供入口**：下载可以完全后台，重启会关掉用户手上的一切。
+- **「重启」两条路的承诺不一样**（2026-09-25 改判，完整推导见 `Design/ui/v2/DESIGN-SPEC.md` §8.146）：
+  - **自动更新那条路**（`SUAutomaticallyUpdate` 开着）：**不自动做，只提供入口** ——
+    下载可以完全后台，重启会关掉用户手上的一切；语义是「下次退出时静默装上」。
+  - **用户在弹窗里点过「后台更新并重启」**：**下载完自己重启** ——
+    弹窗的 `updateCallout` / `updateDownloadingHint` 两句都是这么承诺的；
+    只有此刻有卷正在推出时才推迟到推出结束（不打断正在推出的磁盘）。
 - **下载失败不染色**：琥珀只表示「磁盘被占用」、红只表示「破坏性动作」，失败两者都不是。
 - **用自定义 `SPUUserDriver`，不用 `SPUStandardUserDriver`**：① 设计稿的弹窗与标准弹窗
   不是一回事；② **下载进度只在 user driver 里给**（`showDownloadDidReceiveData` 等），

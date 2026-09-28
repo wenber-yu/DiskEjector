@@ -101,7 +101,7 @@
      2026-09-18 拍板：**两份文档用同一个数**，不再让 826 与 800 各说各话。
      宽不再加：480 → 560 只能再省 32pt 高，却要多给 80pt 宽 —— 不划算。
      ⚠️ 页面里的 .win 必须用 var(--h-settings)，不要另写数字 —— 两个真相迟早会打架。 */
-  --w-settings: 480px; --h-settings: 800px;
+  --w-settings: 480px; --h-settings: 876px;
   --h-titlebar: 52px;
   --sz-diskicon: 40px;
   --sz-chip-icon: 20px;

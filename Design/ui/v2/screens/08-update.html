@@ -294,9 +294,40 @@
           </div>
         </div>
         <p class="spec-note" style="max-width:400px" data-page-node-id="UFaSzfuUY233vBsOxF6rfT">
-          <b data-page-node-id="NHvUCEhKcHebIHAEYw0rHW">「重启」不自动做，只提供入口。</b>下载可以完全后台，但重启会关掉用户手上的一切 ——
-          所以「后台更新并重启」的真实语义是<b data-page-node-id="FI8hBXHM0aYFjiZQhlRdpH">「后台下载，重启时安装」</b>：
+          <b data-page-node-id="NHvUCEhKcHebIHAEYw0rHW">这一帧是「自动更新开着」那条路：重启不自动做，只提供入口。</b>下载可以完全后台，
+          但重启会关掉用户手上的一切 —— 那条路的语义是<b data-page-node-id="FI8hBXHM0aYFjiZQhlRdpH">「后台下载，退出时安装」</b>：
           下次退出时静默装上，用户想立刻用新版本再点「立即重启」。
+          <b>点过「后台更新并重启」那条路不一样</b> —— 见下一帧 4b。
+        </p>
+      </div>
+
+      <!-- B4b 已就绪（用户点过「后台更新并重启」）-->
+      <div class="frame">
+        <div class="frame__label">4b · 已就绪 · 点过「后台更新并重启」</div>
+        <div class="setmock">
+          <div class="sgroup">
+            <div class="sgroup__title" data-i18n="settingsGroupUpdates">更新</div>
+            <div class="scard">
+              <div class="sline">
+                <div class="sline__text">
+                  <div class="sline__label" data-i18n="ds.update.ready">1.1.0 已下载完成</div>
+                  <div class="sline__desc" data-i18n="updateReadyAutoHint">会自动重启完成安装；有磁盘正在推出时会等它结束。</div>
+                </div>
+                <div class="sline__control">
+                  <button class="btn btn--primary btn--sm" data-i18n="restartNow">立即重启</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <p class="spec-note" style="max-width:400px">
+          <b>点过「后台更新并重启」⇒ 应用会自己重启完成安装。</b>弹窗的提示块
+          （「完成后<b>自动重启完成安装</b>」）与下载中那一行（「下载完成后会自动安装，
+          无需你再操作」）都这么承诺过 —— 这一帧就是兑现那句话的样子。
+          <br><b>唯一会推迟的情况是「有磁盘正在推出」</b>：那一刻回答安装会立刻退出应用、
+          把用户的推出打断（而提示块也承诺了「正在推出的磁盘不会被打断」），
+          所以推迟到推出结束再重启。<b>是推迟，不是取消</b> —— 用户什么都不点它也会重启；
+          不想等就点「立即重启」。
         </p>
       </div>
 
@@ -435,10 +466,14 @@
           </tr>
           <tr data-page-node-id="vZtJqCbuJaV9GKDgLGhpsK">
             <td data-page-node-id="eDewAlHYokjQ5HxyB5k2BI"><b data-page-node-id="JtH6Tc2vYLl0atvZdqLTXH">已就绪</b></td>
-            <td data-page-node-id="ZbcqPEYZdHiiGt8pHxd1oO">下载并校验签名完成（自动那条路由 delegate 的
-              <code data-page-node-id="nMGHalGyIayiOubxtKkHHt">willInstallUpdateOnQuit</code> 送达 —— 它一到达就已经是这一步了）</td>
+            <td data-page-node-id="ZbcqPEYZdHiiGt8pHxd1oO">下载并校验签名完成。<b>两条路都会到这里</b>：
+              自动那条路由 delegate 的
+              <code data-page-node-id="nMGHalGyIayiOubxtKkHHt">willInstallUpdateOnQuit</code> 送达 —— 它一到达就已经是这一步了；
+              弹窗那条路（点过「后台更新并重启」）由
+              <code>showReadyToInstallAndRelaunch</code> 送达 ⇒ <b>会自己重启</b>（见 B 段 4b）</td>
             <td data-page-node-id="fszOJEwmLYMx4gcINQtwrs">不弹</td>
-            <td data-page-node-id="YTzWC4anE3qr9XN0WqLryG"><code data-page-node-id="inJSuQWc3SiYAa1zf9jzDp">1.1.0 已下载完成</code> + 「立即重启」</td>
+            <td data-page-node-id="YTzWC4anE3qr9XN0WqLryG"><code data-page-node-id="inJSuQWc3SiYAa1zf9jzDp">1.1.0 已下载完成</code> + 「立即重启」
+              <br>说明行两句：自动那条路 <code>updateReadyHint</code>、弹窗那条路 <code>updateReadyAutoHint</code></td>
           </tr>
           <tr data-page-node-id="QV3aKMn32VxYLAiJ12VHoM">
             <td data-page-node-id="ga6IPzy730MHfOhCOsqs7m"><b data-page-node-id="4r6eOKK07Ne8RSQQbNf7fA">下载失败</b></td>

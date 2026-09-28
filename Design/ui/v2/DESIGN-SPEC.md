@@ -4804,6 +4804,37 @@ Swift 侧一行未动 —— 实现仍是 `440×566`、「语言」行与「更�
 > 而「两份文档各写一个数」这种状态**不会自己收敛** ——
 > 加一条守卫（§8.43.3）比在两边各写一句「待同步」有用。
 
+### §8.40.2b 面板 800 → 876（2026-09-27，「接管访达的推出」行）
+
+上一节的 800 已被 **876** 取代。数字的**唯一真相**是 `DesignTokens.Size.settingsPanel`
+与 `ds.css` 的 `--h-settings`（两份由 `DesignSizeParityTests` 钉住），本节只记**为什么**、
+以及一条**可复用**的推导，不重复抄数（抄两处必漂）。
+
+新增一行「接管访达的推出」（标签 + **一行说明**）之后，三条断言的公式不变：
+
+| 断言 | 公式 | 容差 |
+|---|---|---|
+| 面板高度放得下 | `en' ≤ H` | 0 |
+| 面板不留大片空白 | `0 ≤ H − zh' ≤ 40` | 40 |
+| 中文与设计稿逐点相同 | `abs(zh' − 设计稿) ≤ 2` | 2 |
+
+前两条联立 ⇒ **`Δen − Δzh ≤ 8`**。而一行说明文字约 **15pt** ⇒
+
+> ⚠️ **硬结论：新行的说明文案，中英折行数必须相同** —— 英文比中文每多折一行，
+> **不存在任何 H 成立**（不是「偏紧」，是**无解**）。
+
+本次实测正是这条：加行后 `Δzh = 74.8`、`Δen = 90.8`（差 16 ≈ 一行），无解。
+⇒ 两件事一起做才成立：
+1. **把英文 footnote 从 158 字符压到 116**（`takeOverFinderEjectFootnote`）——
+   压缩文案是**必要**的，但不**充分**；
+2. **面板同步增高**（最小一行 `min-height: 44pt` 也远超原来 1.4pt 的余量）。
+
+**可复用判据：** 固定高度的面板加行时，先量 `Δen − Δzh`；`> 8` 就先回去压文案，
+**不要**去放宽那 40pt 的容差（放宽容差 = 把「结构变了」这件事永久藏起来）。
+设计稿那侧**必须用无头 Chrome 探针重量、不许手抄**，量法是
+「`.shead` 高 + `.settings__body` 关掉 `flex: 1 1 auto` 后的自然高」——
+这个量法在**旧稿**上复现出 766.44（与当时的期望值逐点相同），所以它是被自证过的口径，不是新编的。
+
 ### §8.40.3 下拉控件：`Menu` 的两条路都走不通（实测）
 
 设计稿 `.popup` 是「`--bg-subtle` 底 + 内缩发丝描边 + 右侧 11pt chevron」。SwiftUI 侧试了两种写法：
@@ -4993,6 +5024,13 @@ rowState(phase:skippedVersion:lastCheck:) → neverChecked / upToDate / skipped
 ⚠️ **代价（已核实，不是猜的）**：攥着 reply 等于会话没结束，
 于是「检查更新」在此期间点了没反应（见 §8.41.3 那条）。这个代价被**显式画进了界面**，
 不是留着一个沉默的按钮。
+
+⚠️ **2026-09-25 改判**：上面「不自动做、只提供入口」这句**只对「自动更新那条路」成立**。
+用户在弹窗里点过「后台更新并重启」时，``UpdateController/driverIsReady(version:reply:)``
+会**当场**答 `.install`（自己重启），只有「此刻有卷正在推出」才推迟到推出结束 ——
+三态判据是纯函数 ``UpdateController/readyHandling(userChoseInstallAndRestart:activeEjections:)``。
+理由与完整推导见 §8.146：用户报的是「下载完不自动重启」，而弹窗那两句提示
+（`updateCallout` / `updateDownloadingHint`）**都在承诺自动重启** —— 以那两句为准。
 
 ⚠️ **未核实的假设**（如实记录）：用户既不点「立即重启」也不点别的、直接退出应用时，
 Sparkle 会不会装上这次更新 —— 依据是 `showUpdateFound` 的文档那句
@@ -17487,6 +17525,982 @@ git mv scripts .rename-tmp-scripts && git mv .rename-tmp-scripts Scripts
 
 ⇒ 合并句：**备份内容本身也可能是错的，而且自检会替它说谎** —— 校验必须拿备份去和
 **当前文件**比一次，而不是和「我以为它是什么」比。
+
+## 8.146 用户报的三个 bug：Esc「稍后」说谎 / 「后台更新并重启」不重启 / 占用弹窗要等 12.5 秒（2026-09-25）
+
+> ⚠️ **编号说明**：本轮原定用 `8.145`（**故意不带那个 `§` 前缀**：这个号在本文件里
+> **不存在** —— 这条注释第一次写成带 `§` 的时候，`DocCrossReferenceTests.文档引用的章节必须存在`
+> 当场报「`8.145` 指向不存在的章节」，**正是它该干的事**；改成不带前缀才写得住）。
+> 核对时发现 `8.145` 已被 `ENGINEERING-NOTES.md` 占用
+> （「`set -e` 的调用方 source 环境脚本 ⇒ **零输出 + 退出码 69**」）——
+> 两份文档**共用同一套 `8.1xx` 编号**（`§8.141` 在两边都是「部署目标统一到 14」）。
+> ⇒ 本轮取**下一个空号 §8.146**，**不去改别人的历史流水**
+> （§8.141.1 那条规矩：`§8.x` 是流水，改了就是伪造历史）。
+> 提一句是因为：**「编号撞车」不会有任何东西报错**，而按错号翻过去的人只会以为自己看漏了。
+
+三条都是**用户直接报的界面症状**，属同一档：**界面写着的和实际发生的不是一回事**。
+三条的修法各有一个「**为什么不是那样修**」—— 那部分比修法本身值钱，所以逐条记。
+
+### 8.146.1 Bug 1：按 Esc「稍后」⇒ 设置行谎报「已是最新版本」
+
+**现象**（用户原文）：老版本 → 点「检查更新」→ 新版弹窗出现 → 按 Esc（弹窗左下角写着
+「Esc 稍后再提醒」）→ 弹窗关了 → 设置行变成 `上次检查：今天 22:50 · 已是最新版本`。
+
+**设计稿说的是什么**（`08-update.html` A 段 spec-note 第 122–126 行 + C 段状态表）：
+「Esc / 关窗 = 稍后再提醒」⇒ **状态留在界面上**，即停在
+`发现 1.1.0 · 上次检查：…` + 主按钮「查看更新」。
+
+**根因链**（逐跳在 Sparkle 源码里核对过，路径 `.build/checkouts/Sparkle/`）：
+
+| # | 位置 | 发生了什么 |
+|---|---|---|
+| 1 | `UpdateController.showUpdateAlertIfNeeded()` 的 `default:` 支 | `reply(.dismiss)` —— 而紧挨着的注释写着「状态留在 `.found`」，**与代码相反** |
+| 2 | `SPUUIBasedUpdateDriver.m:304` `case SPUUserUpdateChoiceDismiss:` | `uiDriverIsRequestingAbortUpdateWithError:nil` |
+| 3 | `SPUUIBasedUpdateDriver.m:456` | **无条件** `[_userDriver dismissUpdateInstallation]`（`:452-457` 那个 block） |
+| 4 | `UpdateUserDriver.dismissUpdateInstallation()` 的 `isTerminalPhase` 闸门 | `.found` **不在**终态集 ⇒ 落到 `controller.driverDidReset()` |
+| 5 | `driverDidReset()` | `phase = .idle` |
+| 6 | `rowState` | 落到 `if let lastCheck { return .upToDate(lastCheck) }` ⇒ **谎报** |
+
+**修法**：Esc / 关窗**不回答** reply —— 与 `readyReply` 同一种**攥法**：会话留着，
+「查看更新」真的能把弹窗**重新打开**，**且不额外发一次网络请求**。
+
+⚠️ **代价必须写明**：会话还活着 ⇒ `.found` 期间 `checkForUpdates()` 是**无效**的
+（`sessionInProgress`）。**这个代价可以付**，因为 `SettingsView.swift:568` 的
+`case .found` 走的是 `viewUpdateButton`（「查看更新」）—— **那一格上没有「检查更新」按钮**。
+
+⚠️ **为什么不是「把 `.found` 加进 `isTerminalPhase`」**：那道闸门**同时**装在
+`showUpdaterError` 上（§8.122 立的）。`.found` 一旦成了终态，「检查过程中出错」那条路
+就会被闸门挡掉、错误再也刷不回 `.idle` ⇒ 设置行会**永远停在「发现 1.1.0」** ——
+**把 bug 1 换成一个更坏的 bug**。
+
+### 8.146.1.1 追这条代价追出来的**阴性结果**：那个入口不存在（以及一次「加了又撤」）
+
+上面那句代价说明**只证明了「设置行那一格没有按钮」**，证明不了「没有入口」——
+同一个动作往往还有菜单栏 / 快捷键几条路。于是本轮把入口**实扫了一遍**
+（`grep -rn "UpdateController.shared\." Sources/`），先假设有一条真路：
+
+> `.found` 在修完 Bug 1 之后**第一次成了会长期停留的状态**（以前 Esc 会把会话拆掉、
+> 界面回 `.idle`）。若用户在此时点「检查更新」，`UpdateController.checkForUpdates()`
+> 会**在调 Sparkle 之前**先把界面清成 `.idle`（`pendingUpdate = nil` / `phase = .idle`），
+> 而 `SPUUpdater.m:713` 明写会话进行中那次调用**只打一条日志、什么都不做** ⇒
+> **界面谎报「已是最新版本」，而 appcast 里明明有个新版本** —— 与本轮 Bug 1 逐字相同的谎。
+
+**结论：这条路没有入口。** 实扫结果：
+
+| 入口 | 出现的行态 | 可能是会话进行中吗 |
+|---|---|---|
+| `checkForUpdatesButton`（设置行的「检查更新」） | `.neverChecked` / `.upToDate` / `.skipped` | **不可能** —— 那三态的 `phase` 都不是 `.found` / `.downloading` / `.ready` |
+| `retryDownload()`（`.failed` / `.installFailed` 那一行的「重试」） | `.failed` / `.installFailed` | **不可能** —— 那两态是终态，会话已经结束（§8.122） |
+| `presentFoundUpdate()` 的兜底（`UpdateController` 内部） | 只在 `.found` 且 reply 残留时 | **不可能** —— 那需要「清了 `pendingUpdate` 却不清 `alertReply`」，全仓没有这种写法 |
+| 菜单栏 | —— | **不存在** —— `MainMenu.swift` 里搜 `checkForUpdates` **零命中**（本应用主菜单没有这一项） |
+
+⇒ **本轮一度在这里加了一道 `if sessionInProgress` 闸门 + 1 条纯函数 + 2 条守卫 + 2 条变异，
+实扫之后自己撤掉了。** 撤的理由不是「闸门写错了」，是**那条分支永远走不到** ——
+而本仓库对「有定义、没消费者」判得很重（§8.47.6：它在界面上与「已经支持了」长得一模一样）。
+留下一个带单测、零调用的判据函数，只会让下一个人以为「这条路已经被处理过了」。
+
+⚠️ **但「没有入口」这个结论本身必须钉住** —— 否则它只活在注释里，而注释拦不住
+「顺手加一个菜单栏『检查更新』」这种看起来人畜无害的改动。改成守卫：
+`UpdateSettingsTests.检查更新只有那几个入口且都不在会话进行中`，三条轴 ——
+
+| 轴 | 判据 | 变异 |
+|---|---|---|
+| 菜单栏没有这一项 | `MainMenu.swift` 里不许出现 `checkForUpdates()` | M5c |
+| 三个会话态的行上**没有**那个按钮 | `.found` / `.downloading` / `.ready` 三支里不许出现 `checkForUpdatesButton` | M5a / M5b |
+| 正向对照 | `.neverChecked` / `.upToDate` / `.skipped` 三支里**必须**有它 | （M5a/M5b 反证它不是「按钮根本没被用」） |
+| 调用点集合 | `Sources/` 里 `.checkForUpdates()` 的调用点**恰好**只有 `SettingsView.swift` 那一处 | 新增入口即红 |
+
+⚠️ **边界（如实记）**：这是**文本级**判据 —— `MainMenu.swift` 里**注释**提到
+`checkForUpdates()` 也会变红（M5c 就是这么构造的，因为「真加一个菜单项」要连带写
+selector 与 delegate 方法，变异装置造不出可编译的那一版）。precision 偏低、recall 够；
+而假红只会在「有人真的在那份文件里写这句」时出现，代价是看一眼注释。
+
+⇒ 合并句：**「那一格上没有这个按钮」只能证明那一格没有入口，证明不了「没有入口」**；
+而**「没有入口」这种阴性结论也得有落点** —— 否则它和「没查过」长得一模一样。
+另外：**「顺手补一道闸门」也可能是在造假支持** —— 判据要么有人走、要么有人读，
+两样都没有的那一种是负担。
+
+### 8.146.2 Bug 2：点了「后台更新并重启」，下载完不重启
+
+**用户拍板（2026-09-24）**：**改成自动重启**。依据是弹窗自己那两句话 ——
+`updateCallout`「…完成后**自动重启完成安装**。正在推出的磁盘不会被打断。」与
+`updateDownloadingHint`「下载完成后会自动安装，无需你再操作。」
+⇒ 设计稿 B4 那段 spec-note（「『重启』不自动做，只提供入口」）**与这两句直接矛盾**。
+以用户拍板为准：**改行为**，并**把 B4 那段 spec-note 与 `updateReadyHint` 一起订正**
+（B4 现在说的是「这一态是**推迟**那一档，不是放弃」）。
+
+**根因链**：
+
+| # | 位置 | 发生了什么 |
+|---|---|---|
+| 1 | `UpdateAlertBuilder` 主按钮 `.installAndRestart` | `reply(.install)` |
+| 2 | `SPUUIBasedUpdateDriver.m:268` `case SPUUserUpdateChoiceInstall:`（`stage == NotDownloaded`） | `:277` `downloadUpdateFromAppcastItem:… inBackground:NO` |
+| 3 | `SPUUIBasedUpdateDriver.m:418` `installerDidFinishPreparationAndWillInstallImmediately:` | `:420` 只在 `if (!willInstallImmediately)` 时才调 `showReadyToInstallAndRelaunch:` ⇒ 手动这条路**会**调 |
+| 4 | `showReady` → `driverIsReady(...)` | 攥住 reply（`readyReply`）⇒ `phase = .ready`，**然后就没有然后了** |
+| 5 | 只有 `installReadyUpdate()` 才回答 `.install` | 而它只被「立即重启」按钮调到 |
+
+⇒ 合并句：**弹窗承诺自动重启，实现却在等用户再点一次「立即重启」。**
+
+**修法**：记住「用户点过安装并重启」这个**意图**，`driverIsReady` 时直接回答 `.install`。
+
+⚠️ **意图必须是「用户输入」，不能从 `phase` 派生**：`.ready` 这个相位在**自动那条路**
+（`willInstallUpdateOnQuit`）上**一模一样**，从相位派生会把那条路也拖下水 ——
+而那条路上用户**从没点过任何按钮**，弹窗根本没出现过（§8.80 那轮刚把这条路接通）。
+所以留一个 `userChoseInstallAndRestart` 手动位，并**在四个出口逐一复位**
+（`checkForUpdates` / `driverDidFindUpdate` / `driverDidReset` / `installReadyUpdate`）。
+⇒ 「能派生就别用手动开关」这条纪律在这里**派不出来**，于是改成
+**把开关的生命周期钉死在会话上**（会话一结束就作废）。
+
+**⚠️ 用户点名要的那道闸**：**有卷正在推出时不许自动重启**（弹窗承诺「正在推出的磁盘不会被打断」）。
+判据取 `EjectFlowController.activeEjectionCount` —— **派生量**，不是再立一个
+「正在推出」布尔（后者一定会和真推出流程漂开）。三态分流（纯函数
+`readyHandling(userChoseInstallAndRestart:activeEjections:)`）：
+
+| 用户意图 | 在跑的推出 | 结果 |
+|---|---|---|
+| 没点过 | 任意 | `.waitForUser` —— 与改动前**逐字相同** |
+| 点过 | 0 | `.autoRestart` |
+| 点过 | 大于 0 | `.deferUntilIdle` —— `await waitUntilIdle()` 之后再 `installReadyUpdate()` |
+
+⇒ `.deferUntilIdle` 是「**推迟**」不是「**放弃**」：用户等得到那次重启，而不是停在一个
+**永远不重启**的 `.ready` 上。`waitUntilIdle()` 的唤醒由 `EjectFlowController.endEjection()`
+负责 —— 变异 **M3e** 专门守它（少了唤醒，那条路就永远停着）。
+
+⚠️ **不可逆点**：`showReady` 里回答 `.install` 会走 `SPUUIBasedUpdateDriver.m:422` 的
+`finishInstallationWithResponse:` ⇒ `installWithToolAndRelaunch:YES`（`SPUInstallerDriver.m:509`）
+⇒ 进度代理给宿主发**真实 Apple quit 事件**（`InstallerProgressAppController.m:371` `sendTerminationSignal`）
+⇒ 装完 `relaunchApplication` 再拉起来。所以这条路上必须有单测：
+三态分流 + 接线（`readyHandling(` 的调用点、两个实参、以及**结论记进相位**四处**逐字锚定**）。
+
+### 8.146.2.1 顺带查出来的一件事：`updateReadyHint` **不是 B4 那一帧专属的**
+
+「订正 `updateReadyHint`」这条要求**建立在一个不成立的前提上**，值得单独记：
+
+`.ready` 那一行的说明文案**两条路共用** —— 自动那条路（`willInstallUpdateOnQuit`）与
+弹窗那条路都会落到 `SettingsView` 的 `case .ready`。所以：
+
+| 想写的话 | 自动那条路 | 弹窗那条路 |
+|---|---|---|
+| 「重启后完成安装；下次退出应用时也会自动安装。」（原文案） | ✅ 真 | ✅ 真（但**不说**它会自己重启） |
+| 「会自动重启完成安装…」（想改成的话） | ❌ **假**（那条路只在退出时装） | ✅ 真 |
+
+⇒ **没有任何一句短话能同时成立**。而且**更要紧的是**：这一行**恰恰在自动那条路上
+待得最久** —— 弹窗那条路一进 `.ready` 就回答 `.install`（应用随即退出），
+只有「有卷正在推出」那一段会停住。**把「会自动重启」写死进那行的文案，
+会在唯一真正看得见它的那条路上变成一句新谎话** —— 正是本轮在修的那一类。
+
+⇒ 修法：**把「会不会自己重启」做成状态的一部分**（`UpdatePhase.ready(version:autoRestart:)`
+→ `CheckRowState.ready(version:autoRestart:)`），文案随之二选一：
+
+| 状态 | 文案键 | 简体中文 |
+|---|---|---|
+| `autoRestart == false`（自动那条路） | `updateReadyHint`（**原键不动**） | 重启后完成安装；下次退出应用时也会自动安装。 |
+| `autoRestart == true`（点过「后台更新并重启」） | `updateReadyAutoHint`（**新增**） | 会自动重启完成安装；有磁盘正在推出时会等它结束。 |
+
+⚠️ **为什么不给视图一个「读开关」的口子**：那个开关是
+`userChoseInstallAndRestart`，而 `installReadyUpdate()` 会在回答前把它清掉
+（§8.146.2）⇒ 视图若读它，这一行会在**应用退出的那 100ms 里把话改回去**。
+记进相位里不会翻 —— 它是 `readyHandling` 当场算出来的**结论**。
+
+⚠️ **设计稿侧**：B 段原来只有一帧「4 · 已就绪」，而它其实是**自动那条路**那一帧
+（C 段那张表自己写着「已就绪 ← 自动那条路由 `willInstallUpdateOnQuit` 送达」）。
+⇒ 新增 **4b** 一帧承载弹窗那条路，并把 B4 那段 spec-note（「『重启』不自动做，只提供入口」）
+**收窄到自动那条路** —— 它作为自动那条路的描述仍然成立，作为「『后台更新并重启』的真实语义」
+已经**不成立**（那正是本轮改掉的行为）。
+
+⚠️ **B4 的键故意不动**：让 4b 用新键、B4 继续用 `updateReadyHint`，
+两个键就**各有设计稿消费者**。反过来（B4 换成新键）会让 `updateReadyHint` 变成
+「声明了但没有页面在用」，得登记进 `DesignDraftIntegrityTests.unusedI18nKeys` ——
+而那张表 §8.68.4 刚清空，**不该为了省一帧又把它开回来**。
+
+### 8.146.3 Bug 3：占用弹窗要等十几秒才出来
+
+**现象**（用户原文）：推出一个**有占用**的磁盘，「关闭并推出」弹窗**很久**才出现；
+而主窗口里那行占用信息**立刻**就有。用户怀疑「弹窗那条路查占用的方式和窗口不一样」。
+
+**实测证据**（`/usr/bin/log show --predicate 'subsystem == "com.diskejector.app"'`）：
+
+```
+22:53:30.884 Df [EjectService] 请求推出卷: /Volumes/wenbo-data
+22:53:43.377 E  [EjectService] 推出失败: inUse(fBsyErr)      ← 12.5 秒
+22:53:47.472 Df [EjectService] 请求推出卷: /Volumes/wenbo-data
+22:53:50.392 E  [EjectService] 推出失败: inUse(fBsyErr)      ← 2.9 秒
+```
+
+**根因**：**不是两条不同的检测逻辑**（用户这个猜测可以否掉）—— 两边都是
+`OccupancyDetector.detect`。差的是**时机**：
+
+| | 窗口那行 | 弹窗 |
+|---|---|---|
+| 谁在查 | `OccupancyStore` 每 15s 后台轮询 `lsof`，结论缓存在 `results` | `EjectFlowController.checkOccupancy` 现场查 |
+| 什么时候 | 随时（结论早就在那儿了） | **必须等 `unmountAndEjectDevice` 返回之后** |
+
+而 `NSWorkspace.unmountAndEjectDevice(at:)` 在卷**真被占用**时要 **12.5 秒**才返回
+`fBsyErr` ⇒ 弹窗被一个**和它无关**的系统调用卡住。调用链：
+`ContentView.eject(_:)` → `EjectFlowController.eject(disk:)` → 回到 `ContentView`：
+`await refreshDisks()`（整盘列表 + **所有卷**的 `lsof`）→ 才 `await EjectUI.handle(outcome, disk:)`。
+
+**修法（用户拍板）**：**检测到占用就立刻弹**。
+
+- 判据用**已有的缓存结论** `OccupancyStore.result(for:)`（**一次性取值**，不新建订阅）；
+- 系统那次推出**照旧在后台跑**（它仍是「能不能推出」的唯一权威）；
+- **它要是真成功了** ⇒ 把弹窗收掉（`EjectAlertPresenter.respond(.cancel)`）+ 刷新列表 ——
+  **不许留一个说谎的「被占用」弹窗**；
+- 用户点「关闭并推出」时，`terminateAndEject` 会**等那次在跑的推出**（`awaiting: inFlight`）：
+  占用进程一退，系统那次推出往往**自己就成功了** ⇒ **直接记成功、不再重发一次**
+  （重发会撞上「卷已经没了」这种**假失败**）。
+
+⚠️ **为什么不是「lsof 说忙 ⇒ 直接判失败 / 直接推」**：现有注释写着检测是**只读展示**、
+**不参与决策** —— `lsof` 会把 `mds` / `fseventsd` 这些**不阻止卸载**的进程也列出来。
+本轮**只把「什么时候弹」提前**，**不动「谁说了算」**。
+
+⚠️ **缓存的代价要写明**：`result(for:)` 最多可能**旧 15 秒**。本轮**接受**：缓存**偏保守**
+（旧结论是「占用」而实际已空闲）时，用户看到的是一个「关闭并推出」弹窗，点下去**照样走
+系统推出**，最坏结果只是**多弹一次窗**；反过来若改成现场查，就等于把 12.5 秒又加回用户身上 ——
+**那正是本轮要修的 bug**。
+
+### 8.146.4 变异：把每个修复逐条改回去
+
+装置：`.build/probe/round-bugfix/mutation.py`（**手动跑、不进门槛**，照 §8.141.4 的体例）。
+纪律照 §8.141.5：备份按**相对路径**、备份后与还原后各 `cmp` 一次、每条打印 **diff** 当
+「变异真的落地了」的证据、判退出码**不接 `| tail`**、装置里**没有任何删除调用**。
+
+⚠️ **装置自己踩到一个新坑（K4 家族）**：M3e 让被测测试**永远挂住**
+（`withCheckedContinuation` **不响应取消**），而无超时的 `subprocess.run` 就**一直等** ⇒
+**装置挂死**（实测：8 分钟没动静）。两处都修：① 装置加 **420s 超时**，超时按红记但
+**单独标注「⏱ 超时」** —— 「挂死」与「断言失败」**不是同一种证据**；
+② 测试本身改成**只轮询标志位、绝不 `await waiter.value`** ⇒ 最坏是**红**，不是挂。
+
+| 变异 | 改回什么 / 加了什么 | 结果 |
+|---|---|---|
+| M1a | `alertReplyChoice` 里 `.holdForLater` → `.skip` | ✅ 红 |
+| M1b | `.holdForLater` 支里补一句 `reply(.dismiss)` | ✅ 红 |
+| M2a | 闸门阈值 `activeEjections > 0` → `> 100` | ✅ 红 |
+| M2b | 弹窗那条路不再置 `userChoseInstallAndRestart = true` | ✅ 红 |
+| M2c | `readyHandling` 的实参写死 `false` | ✅ 红 |
+| M3a | 空进程列表也算「被占用」 | ✅ 红 |
+| M3b | `terminateAndEject` 不再传 `awaiting: inFlight` | ✅ 红 |
+| M3c | 系统成功时不再收窗（删 `respond(.cancel)`） | ✅ 红 |
+| M3d | `terminateAndEject` 里不等那次在跑的推出 | ✅ 红 |
+| M3e | `endEjection()` 不唤醒等待者 | ✅ 红 |
+| M4a | 相位里的 `autoRestart` 写死 `false` | ✅ 红 |
+| M4b | `rowState` 把 `autoRestart` 吃掉（写死 `false`） | ✅ 红 |
+| M4c | 视图只用一句话（三元退化成 `updateReadyHint`） | ✅ 红 |
+| M4d | 设计稿 4b 那一帧换回另一个键 | ✅ 红 |
+| M5a | 给「已就绪」那一行**补一个**「检查更新」按钮 | ✅ 红 |
+| M5b | 「发现新版本」那一行的按钮换成「检查更新」 | ✅ 红 |
+| M5c | `MainMenu.swift` 里提一句 `checkForUpdates()`（**注释**，见边界） | ✅ 红 |
+
+逐条原始输出（含每条变异的 diff 与被测命令的原始尾部）落在
+`.build/probe/round-bugfix/*.log`。
+
+⚠️ **M4 这一族守的是「文案轴」**，而它的两头都是**源码文本**：
+一头在 Swift（三元表达式）、一头在 HTML（`data-i18n`）。这一类守卫的边界要写明 ——
+它抓的是「**改的时候忘了同步**」，**不抓**「这句话本身对不对」。
+文案内容的对错只能靠人读（同 §8.82 那条 `M239 绿 ⇒ 如实登记「文案内容守不了」`）。
+
+⚠️ **M5 这一族的方向与别的相反**：它守的是一条**阴性结论**
+（「那几个入口都不可能在会话进行中」），所以变异不是「改回去」而是「**加一个入口**」。
+⚠️ 边界：M5c 是**文本级**的 —— 往 `MainMenu.swift` 里塞一句**注释**就能让它红，
+而「真加一个菜单项」要连带写 selector 与 delegate 方法，变异装置造不出可编译的那一版
+（同 §8.141.4 的 M1/M2：那两条也是**编译器自己**报，进不了「红/绿」表）。
+
+### 8.146.5 门槛与「本轮没做的」（**第一轮**的记录）
+
+⚠️ 这一节是**第一轮**（三个 bug 的修复）复跑完之后的记录。第二轮（§8.146.6）又动了
+`EjectUI.swift` 与 `DiskListStore.swift` 的守卫 ⇒ **最后一次复跑记在 §8.146.6**，
+这里保留第一轮的数字，不改历史。
+
+**复跑记录（2026-09-25，第一轮最后一次改动之后）**：
+
+| 项 | 结果 |
+|---|---|
+| `DISABLE_SANDBOX=1 ./Scripts/preflight.sh --with-tests` | ✅ **13 道门槛全部通过**（EXIT=0） |
+| 其中门槛 13（测试 + 覆盖率 ≥40%） | ✅ **507 条测试全过**，行覆盖率 **65.73%** |
+| `xcrun swift-format format -i -r --configuration .swift-format Sources Tests Package.swift Plugins Tools` | ✅ 已跑（门槛 2 就是它的 lint） |
+| 变异（`.build/probe/round-bugfix/mutation.py`，手动跑） | ✅ **17/17 全部变红** |
+
+- ⚠️ **真机复验没做** —— 这是本轮**最大的缺口**，如实记：三条的判据都落在
+  **纯函数 + 源码接线**上，而「Sparkle 三个回调 30ms 内到达」「系统调用要 12.5 秒」
+  在测试进程里**造不出来**（这也是本仓库抽纯函数那一惯例的由来）。
+  真机要看的是四件事：① 按 Esc 之后设置行**留在**「发现 1.1.0」而不是「已是最新版本」；
+  ② 点「后台更新并重启」之后**不点任何按钮**，它会自己重启；③ 有占用的卷上弹窗**立刻**出来；
+  ④ **有卷正在推出时点「后台更新并重启」** ⇒ 界面停在「已就绪 · 会自动重启」，
+  推出结束后**自己重启**（这一条是 `.deferUntilIdle` 的唯一真机出口）。
+  ⇒ **这四条都还没在真机上跑过。**
+- ⚠️ **账本表（`⬜ 仍开着`）没动**：三条都是用户本轮**新报**、当轮即关，
+  表里**没有对应行** —— 按纪律**不硬造**。
+
+### 8.146.6 预弹窗的闸门漏了 Esc 那一支：用户按了按钮却什么都没发生（2026-09-25，第二轮）
+
+**怎么冒出来的**：§8.146.3 那条修法（缓存说被占用 ⇒ **先弹窗**、系统那次推出在后台跑）
+里，`gate.isSettled = true` 写在 `guard choice == .closeAndEject else { return }` **之后**。
+第一轮的守卫全都盯着「系统成功时收窗」那一半，**没有一条看落闸的位置**。
+
+**现象（可达路径，四步）**：
+
+| # | 谁 | 发生了什么 |
+|---|---|---|
+| 1 | 用户 | 推出盘 A（缓存说被占用）⇒ 弹窗 A 上屏，系统那次推出在后台跑（可能几十秒） |
+| 2 | 用户 | 在 A 上按 **Esc** ⇒ `present` 返回 `.cancel` ⇒ 闸门 A **不落**（那一行在 `guard` 之后，这一支永远走不到） |
+| 3 | 用户 | 推出盘 B ⇒ 弹窗 B 上屏（``EjectAlertPresenter`` 同一时刻只留一个窗） |
+| 4 | 系统 | A 的那次推出**成功**了 ⇒ watcher A 看到「闸门 A 未落」⇒ `respond(.cancel)` ⇒ **把弹窗 B 收了** |
+| 5 | —— | B 的 ``EjectUI/eject(disk:cachedOccupancy:)`` 拿到 `.cancel` ⇒ 直接 `return` ⇒ **一个进程都没碰** |
+
+第 5 步就是本仓库最不能接受的那种结果：**用户按了按钮，什么都没发生**。
+⚠️ 而它**不会有任何报错** —— 没有崩溃、没有日志、界面只是「关了」。
+
+**根因**：闸门的判据本来是「**这个预弹窗还在不在等用户**」，但落闸那一句只挂在
+「用户点了『关闭并推出』」这一支上。Esc 那一支**提前 return** ⇒ 闸门永远不落。
+⚠️ Esc **不取消**系统那次推出（它只是「不做激进动作」），所以那次推出照样会返回，
+也就照样会去动 watcher。
+
+**修法**：把「落闸」从 `eject` 本体里抽出来，交给
+``EjectUI/awaitPreemptiveChoice(gate:present:)`` —— `present` **一返回**就落闸，
+**与 choice 无关**；`eject` 里那个 `guard` 只剩「要不要动进程」的分流。
+收窗那一半也抽成 ``EjectUI/dismissPreemptivePopupIfNeeded(gate:outcome:dismiss:refresh:)``
+（判据仍是 ``EjectUI/shouldDismissPreemptivePopup(gate:outcome:)``）——
+抽的理由是**判据本身可被真正跑一遍**：`eject` 本体要真弹窗（`makeKeyAndOrderFront`），
+测试进程里跑不了；而判据写反（漏掉 `!gate.isSettled`）**不会有任何编译错**。
+
+⚠️ **为什么不是「把 `gate` 换成 `EjectAlertPresenter.isPresenting`」**：
+`isPresenting` 答的是「**有没有**窗在等用户」，不是「**是不是我这个**窗」——
+弹窗 B 正在等用户时它同样是 `true`，按它判照样会收错窗
+（``EjectAlertPresenter/respond(_:)`` 只认「当前那个 continuation」，它**分不清是谁的**）。
+判据必须是**每个预弹窗自己**的那一份。
+
+⚠️ **为什么不是「按 Esc 时把那次在跑的推出取消掉」**：那次 `unmountAndEjectDevice`
+在 `Task.detached` 里跑、**不可取消**；而且 Esc 的语义只是「不做激进动作」——
+用户并没有说「别推出这块盘」。
+
+**判断①：按 Esc 而系统推出其实成功时，`refresh()` 还会不会被跑到？要不要与 `respond` 拆开？**
+
+- **不会被跑到**：落闸之后 watcher 整个 `return`，`respond` 与 `refresh` 一起不跑。
+- **不需要拆开**。刷新由产品自己那条链负责：卷被卸载 ⇒ `NSWorkspace.didUnmountNotification`
+  ⇒ ``DiskListStore/setupMonitoring()`` 的观察者 ⇒ `refresh()`。本轮**核实过它成立**：
+  - 观察者是**同一个** `for name in [didMountNotification, didUnmountNotification]` 循环
+    （不是只挂挂载）⇒ 守卫：`EjectFlowControllerTests.卸载通知必须能自己刷新列表`；
+  - 这条链**别处也在依赖**：产品对「盘可见」的判定时点就是「挂载通知之后那次 `refresh()`」
+    （`IntegrationEjectTests` 文件头 + §8.117）—— 挂载与卸载走的是**同一个** `object:` 过滤，
+    而挂载那条路在生产里天天在用 ⇒ 过滤条件是对的（**这是推论，不是本轮实测**）。
+  - ⇒ 拆开只是给同一个结果多加一条路径；而拆开之后「什么时候刷新」会有两个答案
+    （`respond` 受闸门管、`refresh` 不受），下一个人无从判断该信哪个。
+
+**判断②：按 Esc 而系统返回 `.failure(.notPermitted)` 时，这条失败没有落点，可接受吗？**
+
+**结论：可接受，本轮不改。** 三条理由：
+
+1. **Esc 是一次明确的「稍后」**：用户按下它时那个窗已经不在屏上了 ——
+   此时**没有任何「站着的谎」**要收。watcher 要收的是另一种：
+   「盘已经推出去了、窗还写着被占用」，那是**留在屏上**的错。
+2. **失败没有丢**：``EjectFlowController/record(_:disk:)`` 在**那次 in-flight 任务里**被调用
+   （与 UI 走哪条支路无关），`.failed` 照样写进用户可见的 `error.log` ——
+   设置面板「诊断」分组那句「记录每次推出失败的时间、磁盘与原因」仍然成立。
+3. **反过来的代价更大**：用户按了 Esc 之后（可能几十秒）再弹一个**抢焦点**的失败窗
+   （``EjectAlertPresenter/present(_:)`` 会 `NSApp.activate(ignoringOtherApps: true)`），
+   是「用户按了东西、却冒出别的」那一类。
+
+⚠️ **但同一族里还有一格没处理，如实记**：闸门**未落**（用户还没表态、窗还在屏上）时，
+系统返回 `.failed(.notPermitted)` ⇒ 现在**也不收**，屏上留着一个说「被 IINA 占用」的窗，
+而真相是「系统不允许推出」。用户点「关闭并推出」能走到真相（重试拿到 `.failed` ⇒ 失败窗），
+代价是**杀了几个其实不是拦路者的进程**。本轮**判为不改**（范围 + 换窗的时序风险），
+但它是「预弹窗」这个设计的**已知残留代价**，与 §8.146.3 那句「缓存偏保守 ⇒
+最坏多弹一次窗」是同一族 —— 只是那次算的是「缓存说占用、实际已空闲」，
+**没算**「缓存说占用、实际不允许」。
+
+**这一处漏判为什么第一轮没被抓住**（值得记下来）：第一轮的守卫全是「判据函数 +
+源码接线」，而**落闸那一行的位置**既不是判据、也不是接线 —— 它是一条**顺序**。
+⇒ 顺序类的不变量只能靠「抽出来之后让测试真正跑一遍」，或者靠人读。
+本轮选的是前者：`awaitPreemptiveChoice` / `dismissPreemptivePopupIfNeeded` 两个函数
+把顺序收进**可被调用**的地方，测试直接驱动它们。
+
+**新增的守卫**（都在 `Tests/DiskEjectorAppTests/EjectFlowControllerTests.swift`）：
+
+| 名字 | 守什么 |
+|---|---|
+| `预弹窗一返回就落闸_按Esc也一样` | 对**四个** choice 各跑一遍 ``EjectUI/awaitPreemptiveChoice(gate:present:)``，断言闸门**都**落了 —— 行为级，不是判据级 |
+| `闸门落了之后系统成功也不许去收窗` | 判据的全矩阵：闸门（未落 / 已落）× 结果（成功 / 忙 / 失败）六格，只有「未落 + 成功」该收；另有一条**自证**断言（矩阵里必须真有「该收」那一格，否则六条断言全在验 false） |
+| `按Esc之后那次推出成功不许去收窗也不许刷新` | 把 watcher 那段**真正跑一遍**：闸门已落 + 成功 ⇒ 收窗与刷新**各 0 次**；**阳性对照**：未落 + 成功 ⇒ 各 1 次 |
+| `提前弹窗的五条接线`（原「三条接线」） | 源码级五条：系统调用照常发起 / 成功时收窗 / `awaiting: inFlight` / 落闸走 `awaitPreemptiveChoice` / 收窗走 `dismissPreemptivePopupIfNeeded` |
+| `卸载通知必须能自己刷新列表` | `DiskListStore` 的监听里**必须同时**有 `didMountNotification` 与 `didUnmountNotification`，且回调里真的 `refresh()` |
+
+**变异（`.build/probe/round-bugfix/mutation.py`，24 条，手动跑、不进门槛）**：
+
+| 变异 | 改回什么 | 结果 |
+|---|---|---|
+| M6a | 落闸挪回 `guard` 之后（**旧位置**） | ✅ 红（`预弹窗一返回就落闸` 连报 3 条 `gate.isSettled`） |
+| M6b | 收窗判据漏掉 `!gate.isSettled` | ✅ 红 |
+| M6c | 收窗不看判据、直接 `dismiss()` | ✅ 红（反例与阳性对照同时报） |
+| M6d | `DiskListStore` 不再监听卸载通知 | ✅ 红 |
+| M6e | 落闸就地写回 `eject`（不抽函数） | ✅ 红（接线守卫） |
+| M6f | 收窗就地写回 `eject` | ✅ 红（接线守卫） |
+| M6g | 收窗之后不再 `refresh()` | ✅ 红（阳性对照） |
+
+⚠️ **M3c 这一条本轮被实测逼着改过两次**（两次都写进装置注释）：
+① 那句 `respond(.cancel)` 从 `eject` 本体挪进了 `dismiss` 闭包 ⇒ 旧锚点命中 **0** 次
+（装置会**报错停下**，不是静默跳过 —— 这是锚点必须「恰好 1 次」那条纪律的用处）；
+② 判据一开始指向**行为**测试，结果**仍绿**：行为测试自己注入 `dismiss` 闭包，
+「`eject` 忘了把 `respond` 接上」它**看不见** ⇒ 改指接线守卫才红。
+⇒ 这条实测坐实了「**接线守卫不是冗余**」：行为测试与源码守卫**各有各的盲区**。
+
+**门槛（第二轮，2026-09-25，最后一次改动之后）**：
+
+| 项 | 结果 |
+|---|---|
+| `DISABLE_SANDBOX=1 ./Scripts/preflight.sh --with-tests` | ✅ **13 道门槛全部通过**（EXIT=0；日志 `.build/probe/round-bugfix/preflight-final4.log`） |
+| 其中门槛 13（测试 + 覆盖率 ≥40%） | ✅ **511 条测试全过**（第一轮 507 + 本轮 4 条），行覆盖率 **65.56% / 65.74%**（两次复跑，抖动 ≤0.2pp，见下） |
+| `xcrun swift-format format -i -r --configuration .swift-format Sources Tests Package.swift Plugins Tools` | ✅ 已跑（门槛 2 就是它的 lint） |
+| 变异（`.build/probe/round-bugfix/mutation.py`，手动跑） | ✅ **24/24 全部变红**（第一轮 17 条 + 本轮 7 条） |
+
+⚠️ **覆盖率比第一轮略降（65.73% → 65.56/65.74%）是预期的**：本轮往 `EjectUI.swift` 里加了
+**大量注释**，而 `llvm-cov` 把**注释行也算进分母** —— 不是「测试变弱了」：
+本轮测试条数是 **+4**，新抽出来的两个函数都有行为测试直接驱动。
+⚠️ 两次复跑给出 **65.56% 与 65.74%** 两个数（同一份代码、同一台机器）——
+这是**并发调度**带来的抖动，不是改动；`0.2pp` 量级不影响任何判据（门槛是 40%）。
+⇒ 记两个数而不是挑一个，免得下一个读到的人以为「数字对不上就是有人改过代码」。
+
+- ⚠️ **真机复验仍然没做**（§8.146.5 那条缺口照旧）。本轮这条路径的真机形态是：
+  「盘 A 按 Esc → 推出盘 B → A 那次推出成功 ⇒ B 的弹窗**不许**被收掉、B 的推出照常动手」——
+  四步里有三步要真实卷与真实占用进程 ⇒ 测试进程里造不出来。
+- ⚠️ **账本表（`⬜ 仍开着`）仍然没动**：这一处漏判是**本轮自查/复核**发现的、当轮即关，
+  同样没有对应行 —— 按纪律**不硬造**。
+
+### 8.146.7 QA 复验的 5 条欠账 + 一次「并发变异撞车」事故（2026-09-25，第三轮）
+
+**怎么冒出来的**：第二轮门槛与变异全绿之后，QA 独立复验**没有跟着看「绿不绿」，
+而是看「绿底下有没有没被守住的」** —— 自己写变异去戳新代码的每一条分支，
+戳出 5 条欠账，其中 3 条是「**全量测试仍绿**」的静默缺口。
+（另有一处是主理人复核时自己抓的 —— §8.146.6 的闸门漏判，已在那一节记过。）
+
+#### 五条欠账与处置
+
+| # | 欠账 | 为什么它「全绿」 | 处置 |
+|---|---|---|---|
+| 1 | 三处注释因本轮改行为而**变假**：`UpdateUserDriver.swift` 那句「重启不自动做…」、`showInstallingUpdate` 那句「走到这里说明用户点了『立即重启』」、`ContentView.swift` 那句「系统返回『忙』才弹确认窗」 | 门槛 3 的 `scan_stale_comments.sh` 只扫**锚点 / 格式**，扫不出**语义过期** | 逐条改成与实现一致的说法，并**全仓扫同轮下游注释**（不只改被点名的三处） |
+| 2 | `EjectUI.eject` 的「缓存没占用」主干里那句 `handle(...)` **删掉全量测试仍绿**（Q10）；`waitUntilIdle` 的 `while` 改成 `if` **也仍绿**（Q9） | 两条都只在**源码**里成立，测试全在验别处 | 各补一条源码接线守卫 + 变异（`M7b` / `M7c`） |
+| 3 | 判据漏格：`.needsFullDiskAccess` 没测；`readyHandling` 的负数 / 大数边界没测 | 已有测试只覆盖正样本 | 补两格断言（`UpdateSettingsTests.swift`：`-1 ⇒ .autoRestart`、`Int.max ⇒ .deferUntilIdle`）；变异 `M7e` / `M7f` |
+| 4 | `.deferUntilIdle` 醒来之后那句重判（`readyReply != nil` 且 `case .ready = phase`）**没有任何守卫**（Q8） | 它写在 `Task` 闭包里，整句删掉不红 | 抽成 ``UpdateController/canStillAnswerReadyReply(hasReadyReply:phase:)`` + 接线守卫 + 变异 `M7d` |
+| 5 | 「设备已不在」时**不收**预弹窗（QA 与工程师分歧） | —— 不是测试问题，是**判据**分歧 | 见下面判断① |
+
+#### 判断①：`.failed(.notFound)` 要不要收掉预弹窗 —— **要收**
+
+工程师第一轮写的是「只有 `.ejected` 才收」，理由是「换窗有时序风险」。
+QA 不同意：**设备已经不在了 ⇒ 这个窗没有任何可问的事。**
+⇒ 主理人采纳 QA 一方的理由：这是**纯逻辑**，不牵扯换窗时序 ——
+窗上问的是「要不要关掉占用这块盘的进程并推出」，而盘**已经消失**
+（`didUnmountNotification` 已经把列表刷过一次）。
+
+- 判据收在 ``EjectUI/shouldDismissPreemptivePopup(gate:outcome:)``，用 `switch`
+  **而不是** `if case`：`EjectOutcome` 将来加 case ⇒ 这里**编译不过** ⇒
+  「哪些结果算站不住」失效是**红**的，不是静默的。
+- ⚠️ 闸门那一半（``!gate.isSettled``）**没有跟着改** ⇒ 收错窗的风险**不变**
+  （§8.146.6 那条漏判仍然只由「无条件落闸」守住）。
+- 函数名没改：它问的本来就是「要不要收掉这个预弹窗」，从来没说「成功时」；
+  改的是判据与文档（原来那句「结果必须是 `.ejected`」已不成立）。
+- 变异：`M7a`（`.notFound` 改回留窗）必须红。
+
+#### 判断②：`.busy` 与 `.notPermitted` / `.other` 刻意**留窗**
+
+- `.busy`：窗上那句话**是对的**（盘真的还忙着）⇒ 收掉它就是把正确的线索拿掉。
+- `.notPermitted` / `.other`：用户点「关闭并推出」会让重试撞到真相 ⇒
+  收窗反而把「用户正看着的那条线索」拿掉。
+- ⇒ 与 §8.146.6 判断②那一格是**同一族**，本轮仍**判为不改**。
+
+#### 判断③：三处过期注释 —— 门槛 3 抓不到这一类
+
+`Scripts/scan_stale_comments.sh`（门槛 3）查的是「注释里提到的符号还在不在」这类
+**可静态判定**的东西；「注释说的行为与代码现在的行为**相反**」它**一条也抓不到**
+—— 符号还在、格式还在，只有**语义**过期了。
+⇒ **这一类只能靠人读**（本轮是 QA 读出来的）。纪律：
+**改行为时，同轮的注释订正要当成改动的一部分，不是可选的打扫。**
+
+#### 事故：两路变异装置在同一棵工作树里并发跑 ⇒ 备份被污染（实测）
+
+**现象**：主理人复核时发现 `UpdateController.swift` 的推出闸门阈值是
+`activeEjections > 100` —— 那是变异 **M2a 的变异体**，被**留在了工作树里**。
+
+**链**（每一步都是实测，不是推的）：
+
+| # | 发生了什么 |
+|---|---|
+| 1 | 两路 `mutation.py` 在同一棵工作树里**并发**跑（一路是补跑，一路是上一轮被中断的那次），**共用** `.build/probe/round-bugfix/backup/` |
+| 2 | 后起那一路开跑时**一次性备份全量文件**，而此刻另一路刚把 M2a 的变异体写进源码 ⇒ **备份抓到的是变异体** |
+| 3 | 它跑完 M2a 之后「还原」：从那个被污染的备份 `cp` 回去 ⇒ `> 100` **永久留在源码里** |
+| 4 | 装置收尾的自证是 `cmp 备份 vs 当前` ⇒ **两者都带着同一个变异体，cmp 说「一致」** |
+
+⇒ ⚠️ **「还原后 `cmp` 与备份一致」这条自证，在「备份本身可能是抓到变异体的那一版」时是假的。**
+本仓库一直把「备份后 / 还原后各 `cmp` 一次」当成硬要求
+（见技能 `swift-mutation-testing-practices`），这次它**没有救到人** ——
+`cmp` 比的是**两个文件**，谁都不比「**正确形态**」。
+
+**处置与后续判据**：
+
+1. 修回 `> 0`，并**回读那一行**确认（不是只看编辑返回「成功」）。
+2. 新增审计装置 `.build/probe/round-bugfix/audit_leftover.py`：**不依赖备份**，
+   直接判「源码里躺的是不是**正确形态**」—— 判据用**变异脚本自己的前提**：
+   锚点 `old` 必须**恰好命中 1 次**（31/31 ✅ 才说明树里没有残留变异体）。
+3. ⚠️ 第一版审计拿「变异形态 `new` 在不在」当判据，**错的**：`new` 常常是 `old`
+   的**子串**（`M2b` / `M6c` / `M6g`），或者别处本来就有同样的**合法**代码
+   （`M1a` 的 `return .skip` 是 `.skipVersion` 那一支自己的正确写法；`M3b` / `M5b` 同理）
+   ⇒ 31 条里**误报 6 条**。要判「形态」，只能判「当前**是不是正确形态**」。
+4. ⚠️ 装置解析 `mutation.py` 别用正则去匹配多行字面量（第一版**灾难性回溯**，
+   跑了 2m43s 没有任何输出）⇒ 直接 `importlib` 把它当模块 import
+   （`mutation.py` 有 `if __name__ == "__main__"` 守卫，安全）。
+
+**纪律（新）**：同一棵工作树里**同一时刻只能有一路变异装置**；开工前先
+`pgrep -fl mutation.py`。备份目录要按**轮次**分开 ——
+`.build/probe/round-bugfix/backup/` 是共享的，正是这次的病灶。
+
+#### 门槛（第三轮，2026-09-25，最后一次改动之后）
+
+| 项 | 结果 |
+|---|---|
+| `DISABLE_SANDBOX=1 ./Scripts/preflight.sh --with-tests` | ✅ **13 道门槛全部通过**（EXIT=0；最后两轮日志 `.build/probe/round-bugfix/preflight-final9.log` 与 `preflight-final10.log`，后者是**最后一次改动之后**的那一轮） |
+| 其中门槛 13（测试 + 覆盖率 ≥40%） | ✅ **514 条测试全过**（数 `@Test` 声明，不问 `swift test list` —— §8.133.8）；第二轮 511 + 本轮 3；行覆盖率 **65.30 / 65.39%** |
+| 变异：本轮新增的 `M7a`–`M7g` | ✅ **7/7**（6 条本该红的**全部断言红** + 1 条绿对照 `M7g` **仍绿**；日志 `.build/probe/round-bugfix/mutation-M7.log`） |
+| 残留审计 `audit_leftover.py` | ✅ **31/31** 正确形态在位（修回那个 `> 100` 之后） |
+
+⚠️ **覆盖率 65.56 / 65.74% → 65.30 / 65.39%**：本轮继续往 `EjectUI.swift` /
+`UpdateController.swift` 里加注释，而 `llvm-cov` 把**注释行也算进分母**
+（§8.146.6 已记过同一条）。测试条数是 **+3**，不是变弱了。
+⚠️ **同一份代码连跑三轮给出 65.30 / 65.39 / 65.30**（同一台机器）—— 记全部三个数
+而不是挑一个，免得下一个读到的人以为「数字对不上就是有人改过代码」。
+
+- ⚠️ **真机端到端仍然一条都没做**（§8.146.5 那四条照旧，本轮没补上）。
+  本轮新增的 `.deferUntilIdle` 那一条尤其需要真机 —— 它要「下载完成的那一刻
+  恰好有卷在推出」，测试进程里造不出来。
+- ⚠️ **账本表（`⬜ 仍开着`）仍然没动**：5 条欠账都是**本轮复验**发现的、当轮即关，
+  没有对应行 —— 按纪律**不硬造**。
+- ⚠️ **§8.41.4 与 `SPEC.md` 里那两处「重启不自动做」也一并订正了** —— 它们是同一轮的
+  **下游**注释，QA 只点名了三处。判据：全仓扫 `重启不自动|只提供入口|系统返回.*才弹`，
+  逐条判断它说的是**哪条路**：
+  - `08-update.html` B4 那一帧 **不用改** —— 它自己写了「这一帧是『自动更新开着』那条路」
+    +「**点过『后台更新并重启』那条路不一样** —— 见下一帧 4b」；
+  - `DESIGN-SPEC.md` §8.41.4 与 `SPEC.md` 那两条是**无条件**的 ⇒ 改成按两条路分开说。
+
+## 8.147 「接管访达的推出」的可用性闸门：一个开关骗不了人，除非它旁边什么都不写（2026-09-28）
+
+### 8.147.1 症状：开着，什么都不做
+
+「接管访达的推出」（§8.146 那一轮从 PoC 升级为正式功能）在设置里是个普通开关，默认关。
+但它的效果依赖一条**不显眼的**前提：整个链路的价值是「把占着盘的进程列出来」，
+而列进程要 `lsof`，`lsof` 要**「完全磁盘访问」**。
+
+没授权时这条链路**每一环都还是好的**，只是永远走不进弹窗：
+
+| 环节 | 未授权时的行为 |
+|---|---|
+| DA approval 回调 | 照常触发（注册与授权无关） |
+| 占用检测 | 返回 `.needsFullDiskAccess`（``OccupancyResult`` 的第三态） |
+| 判定层 | `shouldBlock` 为假 ⇒ `.passThrough(.occupancyNotBlocking)` ⇒ 放行 |
+| 用户看到 | **开关是开的，访达点推出也没弹我们的窗** |
+
+⇒ 「开关打开着」与「开关真的在管事」是**两件事**，而旧版把它们画成了同一个开关。
+用户打开它、然后什么都不会发生，**界面上也没有一个字说得出原因** ——
+这是最难自查的一类缺陷（它不报错、不崩溃，只是静默）。
+
+### 8.147.2 判据：不可用 ⇒ disabled + 就地说明「缺什么、去哪补」
+
+项目在别处已经立过这条规矩（「允许点击 → 弹窗报错 → 开关回弹」是自相矛盾；
+「设了没生效」与「没设」不能长得一样）。这里落地成三件事，**同屏同时发生**：
+
+| # | 落地 | 为什么 |
+|---|---|---|
+| 1 | 开关**画成关**、整行不可点 | 画成「开」而实际什么都不做，是界面在撒谎 |
+| 2 | 说明文字换成「需要『完全磁盘访问』才能列出占用者，否则接管不会生效」 | 用户得知道**缺什么** |
+| 3 | 行尾补一个「打开系统设置」（`x-apple.systempreferences:` 直达该子面板） | 说明说得出「缺什么」，说不出「在哪开」—— 而最后这一步正是绝大多数人卡住的地方 |
+
+⚠️ **开关仍然画出来**（不是整行换成按钮）：它是「本应用有这么一个设置项」的锚点，
+整行消失会让用户以为功能被拿掉了。未授权时它画成**关**，于是也不存在
+「关不掉的开关」那种锁死形态（§8.113.14）。
+
+### 8.147.3 实现：一处推导，四处消费
+
+判定收成一个纯函数 —— ``AppSettings/TakeOverAvailability``：
+
+```swift
+static func resolve(isSandboxed: Bool, isFullDiskAccessAuthorized: Bool) -> Self
+static func effectiveIsOn(userWants: Bool, availability: Self) -> Bool
+```
+
+- **`resolve` 是唯一的推导处**：只吃两个布尔、不碰系统 API ⇒ 四种组合可以穷举断言。
+  判据与主窗口横幅**同源**（`isSandboxed || isFullDiskAccessAuthorized()`）——
+  沙盒构建里没有 TCC 拦截，也就不存在「去授权」这条路，一律算可用。
+- **`effectiveIsOn` 是唯一「画什么」的定义**：不可用时一律「关」。
+- **探测入口只有一处**（`AppSettings.takeOverAvailability()`）：它要真的去列举 10 条
+  TCC 受保护目录，所以不能散落在判定层里，也不能每个视图各探一次。
+
+视图侧（``SettingsSectionsColumn``）四个消费点**全部读同一个结论**：
+说明文字 / 点击动作 / 无障碍值 / 行尾控件各读一次，视图自己**不判断**。
+
+### 8.147.4 显示层与存储层的**唯一一处**分叉（有意为之）
+
+不可用时存的是**用户意愿**（`takeOverFinderEject` 保持 `true`），画的是**关**。
+
+| 选择 | 代价 |
+|---|---|
+| 画「生效值」（本次采用） | 存储与显示在这一态分叉。换来两件事：① 看不到一个自己关不了的「开」；② 授权之后自动恢复用户的意愿，不需要他重拨一次 |
+| 顺手把偏好清零 | 自签构建**每次更新都会掉 FDA**（TCC 按签名记账）⇒ 用户每更一版都得重开一次开关 |
+| 画「意愿值」+ 禁用 | 一个画着「开」却什么都不会发生的开关 —— 正是本次要消灭的那件事 |
+
+⇒ 分叉只在「未授权」这一个窗口内并存，且那一行的说明文字正在解释它。
+
+### 8.147.5 尺寸：**未授权那一版不许比可用版更高**
+
+可用版才是设计稿画的版本（`05-settings.html` 那一行是开关），
+面板高度 876 与全部绝对值断言（841.40 / 874.60）都是按它定的。
+
+判据落在 `SettingsLayoutTests.接管未授权态不得比可用态更高()`：三语各量两态，
+要求 `未授权 ≤ 可用`。**第一版就是红的**：
+
+| 语言 | 可用 | 未授权（初版） |
+|---|---|---|
+| zh-Hans | 773.40 | 773.40 |
+| **en** | 805.40 | **821.40**（+16pt ⇒ 面板需要 889.4 > 876） |
+| zh-Hant | 773.40 | 773.40 |
+
+原因：未授权态的行尾多了那个按钮 ⇒ 文本列从 374pt 窄到约 220pt ⇒ 英文说明多折一行。
+**修法不是加高面板**，而是压短英文文案（与 §8.40.2b 把英文 footnote 从 158 压到 116 字符同一手法）：
+
+> ~~Listing what holds a disk needs Full Disk Access — takeover can't work without it.~~
+> → **Takeover needs Full Disk Access to list what holds a disk.**
+
+改完三语两态**逐点相同**（773.40 / 805.40）。⇒ 面板高度契约对两态同时成立，
+不需要第二次调整面板（这条正是「断言有牙」的价值：宽出来的 16pt 是真会吃掉「关于」的）。
+
+### 8.147.6 真机验证：这一态本机未必画得出来
+
+「未授权」这一态由**本机的 TCC 状态**决定 —— 任何一台机器都只能处于其中一半，
+所以它**未必能靠真机操作画出来**（已授权的机器上永远看不到）。
+
+⇒ 与 `--preview-alerts-*`、`updateStateOverride` 同一手法：给一个**注入接口**，
+外加两个预览旗标（`--preview-settings-no-fda` / `--preview-settings-has-fda`），
+让两态在任何机器上都画得出来、看得见、截得下来。
+
+⚠️ 同时**所有量高度 / 出图 / 断言玻璃铺满的测试调用点都必须显式注入**：
+这个值的真值取决于**跑测试的那个进程**（xctest 的责任方是拉起它的终端），
+不注入 ⇒ 同一份契约在有授权的机器上绿、没授权的机器上红，**红绿都与被测代码无关**。
+
+#### 实测记录（2026-09-28，真机构建产物）
+
+```bash
+OUTPUT_DIR=<一个全新目录> ./build_app.sh          # 见坑 ①
+open -n <那个目录>/DiskEjector.app --args --preview-settings-no-fda
+swift Tools/probe/windowid.swift 磁盘推出助手       # 见坑 ②
+screencapture -x -o -l<窗口号> settings-no-fda.png
+```
+
+| 态 | 产物 | 实测 |
+|---|---|---|
+| 未授权（`--preview-settings-no-fda`） | `settings-no-fda.png` | 960×1752 px = **480×876 pt**；说明换成了「需要『完全磁盘访问』…」；开关画成关；行尾是「打开系统设置」 |
+| 可用（`--preview-settings-has-fda`） | `settings-has-fda.png` | 960×1752 px = **480×876 pt**；说明是原 footnote；开关画成关；行尾无按钮 |
+
+⇒ **两态在真实窗口上逐点同高**，§8.147.5 那条「未授权 ≤ 可用」的契约不是只在测试里成立。
+另外两态除「说明文字」与「行尾控件」外**完全一致**（同一张玻璃、同一个标题栏、同一组行）。
+
+三个这轮新踩的坑：
+
+1. **`build_app.sh` 会被 safe-delete 守卫挡下**（它要先删旧 `Dist/DiskEjector.app`，
+   里面 105 个文件 > 阈值 5 ⇒ `SAFE_DELETE_BULK_CONFIRM_REQUIRED`，脚本在 `[2/5]` 就停）。
+   ⇒ 截图这类「只要一个能跑的包」的场合，`OUTPUT_DIR=<全新目录>` 最省事（那里没有东西要删）。
+   ⚠️ 别把它当成「构建失败」——`Dist/` 里那份 `.app` 会是**旧日期的**，很容易拿去验错版本。
+2. **窗口的拥有者名是本地化后的「磁盘推出助手」，不是 `DiskEjector`**
+   （与「菜单栏 App 菜单标题读 `CFBundleName`」同源）。
+   按英文名去 `CGWindowList` 里找 ⇒ 一条都匹配不到，看着像「窗口没建起来」。
+   ⇒ 新收了个探针 `Tools/probe/windowid.swift`；它顺手记下另一个坑：
+   `kCGWindowIsOnscreen` 是 **`NSNumber`**，`as? Bool` **恒失败** —— 那样写会把在屏窗口判成不在屏。
+3. **未授权态的开关与可用态长得一样**（都是灰色关闭）—— 这是 §8.147.2 的**有意**选择
+   （开关是「本应用有这么一个设置项」的锚点，不换成按钮、也不消失）。
+   于是「不可点」这件事**只能靠结构**保证，不能靠长相：
+   - `line(...)` 在 `onTap == nil` 时**根本不包 `SettingsLineButton`** ⇒ 无 hover、无按下反馈；
+   - `SettingsSwitch` 是**纯视觉**（文件里那句「不含点击行为 —— 点击由所在设置行承担」）
+     ⇒ 点开关本体也不会绕过闸门。
+   ⇒ 这三条合起来才排除「有反应但什么也不发生」那种自相矛盾；
+   若哪天给开关加了自带手势，这一态立刻会退化成那个陷阱。
+
+### 8.147.7 守卫与变异
+
+| 守卫 | 变异体 | 杀掉它的断言 |
+|---|---|---|
+| `resolve` 只由两个布尔决定 | M11 恒 `.usable` | `可用性只由沙盒与授权两个布尔决定` |
+| 同上 | M12 恒 `.needsFullDiskAccess` | 同上（另一向） |
+| `effectiveIsOn` 不许忽略可用性 | M13 退回 `userWants` | `不可用时不许画成开` |
+| `effectiveIsOn` 不许忽略意愿 | M14 恒关 | `可用时等于用户意愿` |
+| 接线（扫源码） | M15 写回 `onTap: toggleTakeOverFinderEject` | `接管行三处都过闸门` |
+| 接线（扫源码） | M16 无障碍值读回用户偏好 | 同上 |
+
+⇒ **M15 / M16 是这一轮唯一「纯函数全绿、只有扫源码那条会红」的证据**：
+「视图有没有真的用它」这类缺陷，单测**结构上抓不到**（它测的是推导，不是接线）。
+
+⚠️ 另外触发了 `DisabledConditionInventoryTests`（「不可点判据清单」）——
+`takeOverTapAction` 属于第四类写法，**必须去账本上登记理由**。这正好是那条守卫在干活：
+它拦的不是「你写错了」，而是「你新加了一处禁用判据，却没说清它为什么不会变成单向陷阱」。
+
+#### 实测结果（2026-09-28）
+
+```
+$ python3 Scripts/test/eject_hook_mutation.py
+===== 基线自检（未变异，七个 suite 全跑）=====
+基线跑到 38 条测试；七个 suite 展示名核对：全在
+…
+变异 17 条，未通过 0 条          （退出码 0，M11–M16 全部「被抓住」）
+```
+
+`M15` 判红 **2 个 issue**（`onTap` 那条 + 「不许出现 `toggleTakeOverFinderEject`」那条），
+`M16` 判红 **1 个 issue**（`EjectHookPolicyTests.swift:693:9`，无障碍值那条）。
+
+#### ⚠️ 两条「装置自己」的坑（不修的话，这次的两条证据会被判成「没验到」）
+
+这一轮真正的意外出在**证明「M15 / M16 被抓住」的那个判据自己**：
+
+| 坑 | 症状 | 修法 |
+|---|---|---|
+| 判据用 `"error:" in raw` 认「编译不过」 | **扫源码型守卫**的失败操作数是**整份被扫文件**，swift-testing 失败时整份回显，而 `SettingsView.swift` 里就有 `prompt(for error: LaunchAtLoginError)` ⇒ 真的跑起来并失败的两条变异被判成 `invalid`（**不算通过**）。**被扫文件越大越容易中招**，是系统性误判 | 改用**正向证据**：`Test run with N tests`（N ≥ 1）才配谈红，见 `Scripts/test/*_mutation.py` 的 `classify` |
+| 基线自检**空转** | 基线过滤器用的是 `@Suite("…")` 的**展示名**，而 `--filter` 只认**类型标识符 / 测试函数名** ⇒ `warning: No matching test cases were run` 且 **`swift test` 返回 0** ⇒ **一条测试都没跑**却报绿（旧判据同时还漏了这一形态） | 过滤器写**类型名**；自检改**三重自证**：绿 + 条数下限（≥30，实测 38）+ 七个展示名逐个核对 |
+
+⚠️ 第二条的教训比第一条更值得记：**「退出码 0」在 `swift test` 里同时表示
+「全部通过」与「一条都没匹配上」** —— 这两件事对装置来说意义相反。
+⇒ 已按同一口径修正 `deployment_target_mutation.py`（9 条「全部符合预期」）
+与 `pixel_read_path_mutation.py`（6 条「未通过 0 条」），
+同类坑的明细记进技能 `swift-mutation-testing-practices` 的 **K15 / K24**（本轮又新增 **K25**）。
+
+⚠️ 当时同目录另两个脚本（`integration_wait_mutation.py` / `wait_outcome_mutation.py`）
+仍是旧判据，只写了句「它们这次踩不到 ⇒ 未动」——**这句已作废，见 §8.148**
+（「这次恰好没踩到」不能当地基，而且回填时又踩出一个新假阴性）。
+
+---
+
+## 8.148 五个变异脚本的判据统一：装置自己也要有牙（2026-09-28，接 §8.147.7）
+
+§8.147.7 结账时留了一句「另两个脚本本次未动」。本轮回填，顺带又踩出**一个新的假阴性**。
+
+### 8.148.1 统一后的口径（五个脚本一致）
+
+| 判据 | 旧写法 | 现写法 |
+|---|---|---|
+| 「被抓住（red）」 | 退出码非 0 | `Test run with N tests` 且 **N ≥ 1**，**且**退出码非 0 |
+| 「编译不过」 | `"error:" in raw` | **构建没成**（无 `Build complete!`）**或**编译诊断（`:行:列: error:` / 构建期 `error: Build failed`） |
+| 「过滤器没跑到」 | 字面量 `Test run with 0 tests` | 没有那一行、或 **N == 0**（⚠️ 这一种 `swift test` **返回 0**） |
+| 基线自检 | 两个脚本**都没有** | **三重自证**：绿 + 条数下限 + 名字逐个核对 |
+
+实测（全部本轮真跑）：
+
+| 脚本 | 变异 | 结果 |
+|---|---|---|
+| `eject_hook_mutation.py` | 17 | 未通过 **0** 条 |
+| `deployment_target_mutation.py` | 9 | 全部符合预期 |
+| `pixel_read_path_mutation.py` | 6 | 未通过 **0** 条 |
+| `integration_wait_mutation.py` | 7 | 未通过 **0** 条（基线 5 条全在） |
+| `wait_outcome_mutation.py` | 8 | 未通过 **0** 条（基线 4 条全在） |
+
+残留审计（`Scripts/test/mutation_residue_audit.py`）：**49 条锚点全部恰好命中 1 次**。
+
+### 8.148.2 新踩的坑：核对测试名时，「函数名」与「显示名」不同形
+
+`wait_outcome_mutation.py` 的基线自检**第一次跑就判红**：
+
+```
+基线跑到 4 条测试；四条测试名核对：缺 等事件的装置必须分开报事件到了与接线断了
+```
+
+而那条测试**明明跑到了**（4 条里就有它）。真因是两边名字不同形：
+
+```
+源码   func 等事件的装置必须分开报事件到了与接线断了() async
+输出   ◇ Test "等事件的装置必须分开报「事件到了」与「接线断了」" started.
+```
+
+`--filter` 匹配**函数名**（所以 4 条都跑到了），而输出里打的是 `@Test("…")` 的
+**显示名**（含 `「」` 时还会被**引号包裹**）⇒ 拿函数名去 `raw` 里找是**假阴性**。
+⇒ 修法：**归一化后比较**（去掉引号 / 书名号 / 括号 / 空白）。
+
+⚠️ 值得记的是**发现方式**：这一次是**新加的核对步骤自己抓出了自己的假阴性** ——
+换掉旧判据后，「名字都在」这一重立刻报出不一致。这正是「装置要有牙」该有的样子：
+它拦的不是「写错了」，而是「口径不一致」。已记进技能 **K25**。
+
+⚠️ 两条推论：
+① **不是所有 suite 都有展示名** —— `IntegrationEjectTests` / `ProcessAppResolverTests`
+是 `struct X {` 直接开头（无 `@Suite("…")`）；§8.147.7 的「核对展示名」对这类**不适用**，
+要落到**测试函数名**上（再归一化）。
+② **「过滤器写对了名字」不能靠退出码自证**（匹配 0 条返回 0），
+只能靠「跑到 ≥ N 条」+「名字（归一化后）都在」这两条正面判据。
+
+### 8.148.3 顺带盘清：「接管访达的推出」现在验到哪一层
+
+| 层 | 状态 | 可复现的证据 |
+|---|---|---|
+| 判定层（`EjectHookPolicy.decide`，纯值） | ✅ | `EjectHookPolicyTests`：判定 11 / 同盘去重 5 / 清场器 7 / 跨线程快照 3 / 单一写入点 2 / 开关偏好 2 / 可用性闸门 7 |
+| 编排层（`EjectHookService.handle` 八段） | ✅ 实现 + 单测 | `Sources/Services/EjectHookService.swift` |
+| **DA 回调机制**（真机，spike） | ✅ 09-25 | `.build/probe/da_approval_spike/`：真实 Finder 发起（`osascript … Finder eject`）→ `log-finder-dissent-busy.txt` 记 **7 次** UNMOUNT-APPROVAL 到达；`log-block15.txt` 阻塞 15s → 放行；`log-delay3.txt` **两级 approval（unmount + whole-disk eject）都到达** → 推出成功 6.1s |
+| **产品版拦截 + 弹窗**（真机） | ✅ **09-28 本轮实测** | `.workbuddy/verify/e2e-product.log` / `e2e-popup.log` / `popup-3141.png`：产品 app 启动 → `已注册 unmount/eject approval`；**真实访达推出** → `拦截 mount=/Volumes/SpikeVol 占用=1`（另一轮 `占用=2` ⇒ 占用列表是**活的**，实时跟着 `tail` 个数走）；`windowid.swift` 查到 `3141 磁盘推出助手 400x300 onscreen=1 即将推出「SpikeVol」`；截图里占用者行是 `tail` + 正确 PID；盘仍在 ⇒ **拦下了** |
+| 应用自身推出链路（真机 e2e） | ✅ | `IntegrationEjectTests.真实占用时关闭进程并推出` 实测 **4.97s 真跑**（真实 dmg + 真实 `tail -f` 占用 + 真实关闭）——不是 `guard … else { return }` 的静默跳过 |
+| **在弹窗上点「关闭并推出」那一次真机点击** | ✅ **09-28 本轮实测** | `Scripts/e2e_click_takeover.sh`（**全自动**）+ `Tools/probe/{axdump,clickbutton}.swift`：AX 读到 `AXButton desc=「关闭并推出」@(956,472) 88x30` → `CGEvent` 坐标注入真实鼠标点击 → 日志 `弹窗结束 choice=closeAndEject` → 占用进程被 `SIGTERM` → **盘真的推出**。⚠️ 这也**推翻**了原来那句「SwiftUI 的按钮没暴露给辅助功能」——真相是 `System Events` 的**桥接**读不到，`AXUIElement` 原生 API 读得到（见 §8.149.2） |
+| 功能提交 | ❌ **未提交** | `git status`：`EjectHookService.swift` / `EjectHookPolicy.swift` / `EjectHookPolicyTests.swift` / `eject_hook_mutation.py` / `poc_e2e.sh` 全是 `??` |
+
+⚠️ 倒数第二行（点击）此前是**唯一没验的一环**，本轮补上了 —— 而且**不需要人工**。
+补验的过程顺带测出一个**真 bug**（用户决策太久 ⇒ 点了没反应），见 §8.149。
+⚠️ 本轮顺带修掉 `Scripts/poc_e2e.sh` 的两个**会让人白跑**的缺陷：
+
+1. **它硬编码 `Dist/DiskEjector.app`** —— 而 `Dist/` 会被 safe-delete 守卫挡住（停在 `[2/5]`），
+   里面是**旧日期**的包。现支持 `APP=…` 覆盖；
+2. **它从没打开 `takeOverFinderEject`** —— 开关默认**关**，而判定层第一关就是
+   「开关关 ⇒ 放行」⇒ 不打开它，脚本**永远看不到弹窗**，输出却与「hook 坏了」逐字相同。
+   现改为「跑前打开、跑完还原」，并补一步「截屏弹窗」（日志的「拦截」只证明**进了那段**，
+   不证明窗口真的在屏上）+ **退出时还原开关**（别留一个「开着」的残留）。
+
+⚠️ 另一件事：**功能实现完了 ≠ 发出去了**（发布纪律见 §6 / README）。
+
+---
+
+## 8.149 「关闭并推出」的决策窗口：点了没反应，是因为访达已经不等了（2026-09-28，接 §8.148.3）
+
+这一章记两件事：**把「那一次点击」补上**（§8.148.3 表的倒数第二行），
+以及**因此测出来的一个真 bug**。
+
+### 8.149.1 补那一刀：AX 能读到按钮，所以不必人工
+
+补验需要的三件东西（都在仓库里，可重复跑）：
+
+| 件 | 路径 | 干什么 |
+|---|---|---|
+| 探针 | `Tools/probe/axdump.swift` | 递归 dump 一个进程的 AX 元素树（role / title / desc / 位置 / 尺寸） |
+| 探针 | `Tools/probe/clickbutton.swift` | 按标题找 AX 按钮 → `AXPress`（语义点击）**或** `CGEvent` 坐标注入（真实鼠标事件） |
+| 脚本 | `Scripts/e2e_click_takeover.sh` | **全自动**端到端：挂盘 → 起真实占用 → 开开关 → 启 app → 真实访达推出 → 轮询等弹窗 → **真实鼠标点击** → 断言盘推出 |
+
+跑法与结果（真机，产品版 app）：
+
+```
+✅ 弹窗已出现（距触发 0s）
+✅ 盘仍在 ⇒ 推出被拦截
+✅ 日志记下了拦截
+      AXButton desc=「取消」      @(898,472) 50x30
+      AXButton desc=「关闭并推出」 @(956,472) 88x30
+✅ 找到按钮「关闭并推出」→ 点击中心 (1000,488)，已注入鼠标点击
+✅ 盘已推出 ⇒ 整条链路走通
+✅ 占用进程已终止
+```
+
+应用日志（决定性）：
+
+```
+[EjectHook] 拦截 mount=/Volumes/SpikeVol 占用=1
+[EjectHook] 弹窗结束 choice=closeAndEject 阻塞=3.1s mount=/Volumes/SpikeVol
+[EjectHook] 清场 mount=/Volumes/SpikeVol 关不掉=0
+```
+
+⇒ 「button → action」这一段接线**真的通**，而且**不必人工**。
+
+### 8.149.2 顺带推翻一条昨天的结论
+
+§8.148.3 原来那一行写着「三种 AX 路径都拿不到 SwiftUI 的 button」，
+并据此推断「SwiftUI 窗口的 AX 元素在这个 app 里没暴露给 System Events」。
+
+**前半句对，后半句错**。`axdump.swift` 用 `AXUIElementCopyAttributeValue` 直接读同一个窗口，
+两个按钮都在（见上）。所以差别在**桥接层**：
+
+| 路径 | 结果 |
+|---|---|
+| `System Events`（AppleScript）：`click button … of window 1` | `-1728` |
+| `System Events`：`repeat with e in (entire contents of window 1)` | **返回空**（不报错） |
+| **`AXUIElement` 原生 API**：`kAXChildrenAttribute` 递归 | **两个按钮都在，带坐标** |
+
+⚠️ 这个区分很关键：**「桥接读不到」换条 API 就能拿到（所以这一环能自动化）；
+「真的没暴露」才是没救**。差一点就把「能验」写成了「不能验」。
+
+### 8.149.3 于是测出一个真 bug：用户想太久，点了没反应
+
+`e2e_click_takeover.sh` 留了一个**自变量** `CLICK_DELAY`（弹窗出现后等几秒再点）。
+扫一遍就出了这张表（同一台机器、同一块盘，只改这一个变量）：
+
+| 阻塞（日志里的 `阻塞=X.Xs`） | 放行时刻（清场完成） | 结果 |
+|---|---|---|
+| 3.1s | ~5.4s | ✅ 盘已推出 |
+| 9.8s | **12.07s** | ✅ 盘已推出 |
+| 12.2s | **14.45s** | ❌ 盘还在 |
+| 12.5s | **14.78s** | ❌ 盘还在（**可复现**） |
+
+**症状**：用户在弹窗上多看了十几秒，然后点「关闭并推出」——
+占用进程**真的被杀了**（`清场 … 关不掉=0`）、弹窗**真的关了**（`choice=closeAndEject`），
+**但盘纹丝不动**。用户看到的信息是「我点了，什么也没发生」。
+
+⚠️ 失败的那两次，日志里清场之后**再没有任何请求到达**（成功那两次有 `放行 reason=noVolumePath`）
+—— 「没人接着推」这件事是**看得到的**。
+
+### 8.149.4 机制：12.5s 是系统的等待上限，不是访达的脾气
+
+产品在 `.allow` 分支里是**故意**不自己推的：
+
+```
+清场（ProcessTerminator.clear，同步 2.3s） → return nil   ← 把 unmount 交回给访达
+```
+
+理由是「并发调 `unmountAndEjectDevice` 会把一次成功写成 `notFound`」（§8.146）。
+这本身没错 —— **前提是访达愿意接着推**。
+
+而系统对一次 unmount 的等待上限 ≈ **12.5s**。这不是新数：
+**§8.146.3 独立实测**过——卷被占用时 `NSWorkspace.unmountAndEjectDevice` **12.5s** 才返回 `fBsyErr`。
+两条**互相独立**的证据（一条在应用自身的链路、一条在接管链路）给出同一个量级。
+
+所以红线是：
+
+```
+userDecisionTimeout + (termGrace + killGrace)  <  12.5s
+         ↑ 用户想多久          ↑ 清场宽限 2.3s
+```
+
+⚠️ 而当时 `userDecisionTimeout = 60`。**产品允许用户想 60 秒，但只有前 ~10 秒点下去才有效。**
+
+⚠️ 架构文档 §6-Q3 早就把这条列成**待复核**，判据写的是
+「若在 `T_patience < 60s` 处访达自己放弃**并弹框** ⇒ 下调到 `T_patience − 5`」。
+复核结果是：访达**不弹框**，但**放弃 unmount** —— 同样触发下调（`12.5 − 5 = 7.5 ≈ 8`）。
+
+⚠️ 还有一句**没有证据支撑**的注释被这次实测推翻：`EjectHookService` 里原写
+「spike 已实证（`block_case.sh`）… **放行后推出成功完成**」。
+spike 的 `block15` 只看了「访达有没有弹它自己的错框」，`out-block15.txt` 是**空的**，
+**从没查过盘有没有被推出** —— 而它阻塞的 15s 恰好已经越过窗口。
+
+### 8.149.5 修法：把决策窗口压回窗口之内（60 → 8）
+
+`EjectHookPolicy.userDecisionTimeout` **60 → 8**（`12.5 − 2.3 = 10.2` 取 8，留 2.2s 余量）。
+
+超时的收场**沿用原逻辑**（返回 `.cancel` → dissent → 访达弹它自己的「占用中」框，
+盘保持挂载）—— 这是自洽的：**用户没确认强推，就该像没接管一样**。
+所以这次是「把窗口调进红线内」，**不是**「改成失败也硬推」。
+
+新增一个常量把红线写进类型里：
+`EjectHookPolicy.systemUnmountPatience = 12.5`（带两条实测出处，专供守卫与推导读）。
+
+### 8.149.6 守卫与变异对照
+
+守卫：`Tests/DiskEjectorAppTests/EjectHookPolicyTests.swift` 的
+`@Suite("接管访达推出的用户决策窗口")`（4 条）。
+
+| 守卫 | 守什么 |
+|---|---|
+| `系统等待上限是实测值不是旋钮` | 12.5 有实测出处，不能为了让不等式成立而随手改大 |
+| `用户决策超时必须留在系统等待上限之内` | 放行时刻 < 12.5s |
+| `决策窗口要留出余量不能贴边` | 余量 ≥ 1.5s（12.07s 那次只剩 0.43s，太险） |
+| `决策窗口不能短到看不清占用者` | ≥ 5s（反向：压到 1s 等于「弹一下就没了」） |
+
+| 变异（`Scripts/test/eject_hook_mutation.py`） | 改什么 | 被谁抓住 |
+|---|---|---|
+| **M17** | `userDecisionTimeout` 8 → 60（真 bug 复现） | `…留在系统等待上限之内` + `…留出余量` |
+| **M18** | `userDecisionTimeout` 8 → 4 | `决策窗口不能短到看不清占用者` |
+| **M19** | `systemUnmountPatience` 12.5 → 60（**假修法**） | `系统等待上限是实测值不是旋钮` |
+
+⚠️ M19 是这张表里最值得留的一条：**「修 M17」最省事的做法就是把上限也一起改大** ——
+不等式照样成立、bug 原封不动。没有那条守卫，这种假修法**不会被任何测试拦下**。
+
+### 8.149.7 遗留
+
+1. **功能仍未提交**（§8.148.3 最后一行）—— 实现完了、验到真机了，但 `git status` 里还是 `??`。
+2. `Scripts/poc_e2e.sh`（人工点一版）与 `Scripts/e2e_click_takeover.sh`（全自动版）**并存**：
+   前者留着手动核对的余地，后者可当门槛跑。
+3. **8s 够不够**由用户实测反馈决定 —— 弹窗上通常只列 1~3 个进程，8s 有余量；
+   若将来遇到「占用者很多、用户要细看」的场景，唯一的方向是**换掉「同步阻塞 DA 回调」这个前提**
+   （那会牵动「访达弹不弹它自己的错框」这条核心价值），**不是**把 timeout 调大。
+
+---
 
 ## 9. 文件清单
 

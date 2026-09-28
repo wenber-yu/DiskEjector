@@ -1,0 +1,63 @@
+%% 接管访达的推出（增量）—— 程序调用流程
+%% 对应 Design/architecture/incremental-takeover-finder-eject.md §4
+sequenceDiagram
+    autonumber
+    actor U as 用户
+    participant F as Finder
+    participant DA as DiskArbitration
+    participant H as EjectHookService.handle
+    participant P as EjectHookPolicy
+    participant T as EjectHookThrottleStore
+    participant M as EjectAlertPresenter (MainActor)
+    participant K as ProcessTerminator
+    participant S as OccupancySnapshotStore (nonisolated)
+
+    U->>F: 点「推出」
+    F->>DA: unmountAndEjectDevice(/Volumes/X)
+    Note over DA: 回调被 DA 串行化<br/>（阻塞期间其它盘排队）
+    DA->>H: unmountApproval(disk)
+    H->>H: DADiskCopyDescription
+    H->>P: EjectHookRequest.make(desc)
+    alt 无挂载路径（整个盘的 eject 第二阶段）
+        P-->>H: nil
+        H-->>DA: nil（放行）
+    else 有挂载路径
+        P-->>H: request
+        H->>S: occupancy(for: mountPath)
+        Note over S: 非隔离快照（NSLock）<br/>绝不能在 DA 线程上读 @MainActor 单例<br/>—— 实测会 SIGTRAP 崩掉整个进程
+        S-->>H: OccupancyResult（读不到 ⇒ .unknown）
+        H->>P: decide(request, selfInitiated, enabled, occupancy)
+        alt 开关关 / 自排除 / 非外置盘 / 占用不明
+            P-->>H: .passThrough(reason)
+            H-->>DA: nil（放行，不阻塞）
+        else 明确列出占用进程
+            P-->>H: .intercept(disk, processes)
+            H->>T: claim(key: mountPath)
+            alt 去重命中（窗口期内已弹过）
+                T-->>H: false
+                H-->>DA: dissenter(kDAReturnBusy)（瞬时，不阻塞）
+            else 可弹
+                T-->>H: true
+                H->>M: present(.busy(disk, processes))
+                M->>U: 弹占用窗（图标 + 名称）
+                Note over H: DispatchSemaphore.wait(timeout: 60s)<br/>DA 回调线程阻塞，访达静默等待
+                U->>M: 点「关闭并推出」/「取消」/ 超时
+                M-->>H: choice（signal 唤醒）
+                H->>T: release(key)（窗口起点 = 此刻）
+                alt closeAndEject
+                    H->>K: clear(processes)
+                    K->>K: SIGTERM → 1.5s → SIGKILL → 0.8s
+                    K-->>H: unkillable
+                    H-->>DA: nil（放行）
+                    DA->>F: 继续 unmount（进程已死）
+                    F->>U: 盘消失，无报错框
+                else cancel / 超时
+                    H-->>DA: dissenter(kDAReturnBusy)
+                    DA->>F: fBsyErr
+                    F->>U: 访达弹它自己的报错框（= 现状）
+                end
+            end
+        end
+    end
+    DA->>H: ejectApproval(disk, whole=true, mount=-)
+    H-->>DA: nil（noVolumePath，放行）
