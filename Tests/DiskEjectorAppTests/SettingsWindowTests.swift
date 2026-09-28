@@ -17,7 +17,7 @@ import Testing
 ///
 /// | 缺的东西 | 后果 |
 /// |---|---|
-/// | `safeAreaRegions = []` | **上屏前 480×800 → 上屏后 480×832**（多 32pt） |
+/// | `safeAreaRegions = []` | **上屏前 480×920 → 上屏后 480×952**（多 32pt） |
 /// | `backgroundColor = .clear` + `isOpaque = false` | 窗口不透明 → 毛玻璃**糊不到桌面**，看着是平色块 |
 /// | `titleVisibility = .hidden` | 系统标题栏的「设置」与面板头部的「设置」**重复** |
 /// | `contentView.layer.cornerRadius` | 玻璃卡片 12pt 圆角、窗口底角却是直角，两者不重合 |
@@ -131,7 +131,7 @@ struct SettingsWindowTests {
         }
     }
 
-    /// 玻璃必须铺满宿主，而不是「刚好等于内容的 480×800」。
+    /// 玻璃必须铺满宿主，而不是「刚好等于内容的 480×920」。
     ///
     /// 用一个**比设计稿高 32pt 的宿主**来问 —— 这正是真机上窗口被撑到 598 时的样子。
     @Test func 玻璃必须铺满比设计稿高的宿主() {

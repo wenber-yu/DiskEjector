@@ -326,22 +326,30 @@ struct UpdateSettingsTests {
 
     // MARK: - 「自动更新」开关
 
-    /// 一个开关必须同时驱动 Sparkle 的**检查**与**下载**两级。
+    /// 「关掉检查时顺手关掉下载」这一步的**写入顺序**（§8.113.15 唯一还活着的那一半）。
     ///
-    /// Sparkle 把两者分成 `SUEnableAutomaticChecks` / `SUAutomaticallyUpdate`，
-    /// 而设计稿只有一个开关。只开检查不开下载的话，用户开了「自动更新」
-    /// 却发现从没自动下载过 —— 那不是他要的。
-    @Test func 自动更新开关同时驱动检查与下载() throws {
+    /// ## 这条断言的前身与它为什么缩小了
+    ///
+    /// 2026-09-28 之前它叫 `自动更新开关同时驱动检查与下载`：那时设计稿只有**一个**开关，
+    /// 却要驱动 Sparkle 的两级（`SUEnableAutomaticChecks` / `SUAutomaticallyUpdate`），
+    /// 于是**开**与**关**两支都要靠写入顺序绕开 Sparkle 的空操作。
+    ///
+    /// 用户拍板把那一行拆成「自动检查更新」+「自动下载更新」之后：
+    /// - 「开」那一支只剩**一个**标志要写 ⇒ 顺序无从谈起（那半条断言随之退休）；
+    /// - 「关检查时顺手关下载」仍在 ⇒ **那一步的顺序必须原样保留**。
+    ///
+    /// ⚠️ **别把它删成「没什么可测的了」**：删掉之后，下一个重写
+    /// `toggleAutoCheckUpdate` 的人把两行对调，`SUAutomaticallyUpdate` 就会停在旧值 ——
+    /// 而**有效行为完全正常**（getter 与 `allowsAutomaticUpdates` 相与，把它掩盖成「没生效」），
+    /// 既不报错也没有任何用户抱怨，只有读 UserDefaults 的人会中招。
+    /// 这正是本仓库反复记的那类缺陷：**存储与意图不一致，而断言是唯一的眼睛**。
+    @Test func 关掉检查时先关下载再关检查() throws {
         let source = try contents("Sources/Views/SettingsView.swift")
-        let code = codeOnly(try functionBody("func toggleAutoUpdate()", in: source))
-        for flag in ["automaticallyChecksForUpdates", "automaticallyDownloadsUpdates"] {
-            #expect(code.contains("\(flag) = true"), "开的时候没写 \(flag) —— 只开一半等于没开")
-            #expect(code.contains("\(flag) = false"), "关的时候没写 \(flag) —— 只关一半会留下半开状态")
-        }
+        let code = codeOnly(try functionBody("private func toggleAutoCheckUpdate()", in: source))
 
         // ⚠️ **顺序也是判据**（2026-09-21 真机实测，§8.113.15）：
         // Sparkle 的 downloads setter 在 `allowsAutomaticUpdates` 为假时**空操作**，
-        // 而它跟着 checks 走 ⇒ **关的时候必须先写 downloads**（此时 allows 还为真），
+        // 而它跟着 checks 走 ⇒ **必须先写 downloads**（此时 allows 还为真），
         // 否则 `SUAutomaticallyUpdate` 停在旧值，读 defaults 的人会被骗。
         let downloadsOff = try #require(
             code.range(of: "automaticallyDownloadsUpdates = false")?.lowerBound,
@@ -355,6 +363,7 @@ struct UpdateSettingsTests {
             关的分支里 downloads 必须写在 checks **之前** —— 反过来的话
             `SUAutomaticallyUpdate` 根本写不进去（setter 在 allows 为假时空操作），
             存下来的仍是旧值（2026-09-21 真机实测）。
+            现状：\(code)
             """)
     }
 
@@ -433,6 +442,131 @@ struct UpdateSettingsTests {
         #expect(
             !source.contains("static let autoUpdate ="),
             "AppSettings.Key 里不该有 autoUpdate —— 真相在 Sparkle 那边，另存一份会与它脱节")
+    }
+
+    // MARK: - 「更新」组的两个开关（2026-09-28 拆行）
+
+    /// 取一个成员的**完整花括号体**（签名所在的那一对 `{ … }`，按计数配对）。
+    ///
+    /// **为什么不复用 `functionBody`**：它的边界表里**没有 `private var`**，
+    /// 于是对 `var` 成员会一路切到下一个 `private func` —— 中间夹进来的成员
+    /// 会让「这一段里有什么」退化成「后面几百行里有什么」（假绿）。
+    ///
+    /// ⚠️ **先 `codeOnly` 去掉整行注释再数花括号**：本仓库的注释里带 `{` 与 `}` 是常态
+    /// （示例代码、`\\{` 转义），直接对原文计数会**提前收尾或永远收不了尾**。
+    ///
+    /// ⚠️ 传进来的 `signature` **不要带结尾的 `{`** —— 本函数自己找第一个 `{`，
+    /// 签名里再带一个的话，计数会从函数体**内部**那个 `{`（比如 `else {`）开始。
+    private func bracedBody(_ signature: String, in source: String) throws -> String {
+        let code = codeOnly(source)
+        let start = try #require(
+            code.range(of: signature),
+            "找不到 \(signature) —— 改名了就要同步这条断言")
+        let rest = code[start.upperBound...]
+        let open = try #require(rest.firstIndex(of: "{"), "\(signature) 后面找不到 `{`")
+
+        var depth = 0
+        var index = open
+        while index < code.endIndex {
+            switch code[index] {
+            case "{": depth += 1
+            case "}":
+                depth -= 1
+                if depth == 0 { return String(rest[rest.startIndex...index]) }
+            default: break
+            }
+            index = code.index(after: index)
+        }
+        Issue.record("\(signature) 的花括号不配对 —— 这条断言不能算通过")
+        return String(rest)
+    }
+
+    /// 每一行**只驱动它自己那一个 Sparkle 标志**。
+    ///
+    /// 拆行之前那**一个**开关要写**两个**标志，还得靠**写入顺序**绕开 Sparkle 的空操作
+    /// （§8.113.15）。拆开之后顺序问题本该自然消失 —— 但只有「各自只写自己那个」
+    /// 才真的消失：谁顺手把另一个也写了，两件事就又绑回去，
+    /// 而**界面上完全看不出来**（两行各自显示自己的值，却互相偷改对方的存储）。
+    @Test func 两个开关各自只驱动自己那个标志() throws {
+        let source = try contents("Sources/Views/SettingsView.swift")
+
+        let check = codeOnly(try bracedBody("private func toggleAutoCheckUpdate()", in: source))
+        #expect(
+            check.contains("automaticallyChecksForUpdates ="),
+            "toggleAutoCheckUpdate 没写「自动检查」那个标志 —— 这一行拨了等于没拨")
+        #expect(
+            !check.contains("automaticallyDownloadsUpdates = true"),
+            "「自动检查更新」把「自动下载」也打开了 —— 两行又绑回一起了")
+        #expect(
+            check.contains("automaticallyDownloadsUpdates = false"),
+            """
+            「自动检查更新」关掉时没有顺手把「自动下载」也关掉。
+            Sparkle 的 getter 会把它掩盖成「没生效」（allows 跟着 checks 走），有效行为是对的，
+            但 UserDefaults 里会留下一个停在 1 的 SUAutomaticallyUpdate —— 读它的人会被骗（§8.113.15）。
+            现状：\(check)
+            """)
+
+        let download = codeOnly(try bracedBody("private func toggleAutoDownloadUpdate()", in: source))
+        #expect(
+            download.contains("automaticallyDownloadsUpdates ="),
+            "toggleAutoDownloadUpdate 没写「自动下载」那个标志 —— 这一行拨了等于没拨")
+        #expect(
+            !download.contains("automaticallyChecksForUpdates"),
+            "「自动下载更新」去改「自动检查」那个标志了 —— 那一行显示的东西会与它实际做的事不一致")
+    }
+
+    /// 「自动下载更新」在「自动检查更新」关着时**不可点**，而且**说明文字说得出原因**。
+    ///
+    /// ## 判据为什么必须同时包含 `canAutoUpdate` 与 `autoCheckUpdateOn`
+    ///
+    /// Sparkle 的 `automaticallyDownloadsUpdates` setter 在 `allowsAutomaticUpdates`
+    /// 为假时**是空操作**（连键都不写），而后者跟着「检查」走
+    /// ⇒ 检查关着时允许点，就是「点一下、开关动一下、实际什么都没发生」。
+    ///
+    /// ⚠️ **这条同时钉可点性与文案，因为它们是「一对」**：只钉可点性的话，
+    /// 下一个改文案的人会把「缺什么」那句删掉，用户看到的是一个拨不动、
+    /// 也不说为什么的开关 —— 处置方式换了，症状与 §8.113.14 那个单向开关逐字相同。
+    @Test func 下载行的可点性与说明必须同源() throws {
+        let source = try contents("Sources/Views/SettingsView.swift")
+
+        let tap = codeOnly(try bracedBody("private var autoDownloadTapAction: (() -> Void)?", in: source))
+        #expect(
+            tap.contains("canAutoUpdate") && tap.contains("autoCheckUpdateOn"),
+            """
+            下载行的可点性判据变了 —— 它必须同时要求「updater 建起来了」与「检查开着」。
+            现状：\(tap)
+            """)
+
+        let desc = codeOnly(
+            try bracedBody("private var autoDownloadUpdateDescription: String", in: source))
+        #expect(
+            desc.contains(".autoUpdateUnavailableHint") && desc.contains(".autoDownloadNeedsCheckHint"),
+            """
+            下载行的说明不再是「三态」（组件没起来 / 检查没开 / 正常）。
+            两种禁用原因必须用**两句话**说出去 —— 合成一句会让「检查没开」的用户读到
+            「组件没起来」，而**编一个具体原因比不写原因更糟**（§8.113.14 的教训）。
+            现状：\(desc)
+            """)
+    }
+
+    /// `AutoUpdateRowsState` **只有三个布尔**，不许再存一份「能不能点」。
+    ///
+    /// 存了就有两个真相：注入的出图态与视图推出来的可点性可以互相矛盾 ——
+    /// 而出图正是用来「看有没有矛盾」的，那等于把尺子做成了橡皮筋。
+    @Test func 出图注入态不许再存一份可点性() throws {
+        let source = try contents("Sources/Views/SettingsView.swift")
+        let body = codeOnly(try bracedBody("struct AutoUpdateRowsState: Equatable", in: source))
+        let fields = body.split(separator: "\n").filter { $0.contains("var ") }
+        #expect(
+            fields.count == 3,
+            """
+            AutoUpdateRowsState 的字段数是 \(fields.count)，期望 3 —— 多出来的那个多半是
+            「能不能点下载」的别名（它必须从 canAutoUpdate && checksIsOn 推出来）。
+            现有字段：\(fields.map { $0.trimmingCharacters(in: .whitespaces) })
+            """)
+        for name in ["canAutoUpdate", "checksIsOn", "downloadsIsOn"] {
+            #expect(fields.contains { $0.contains(name) }, "AutoUpdateRowsState 少了字段 \(name)")
+        }
     }
 
     // MARK: - updater 的启动时机

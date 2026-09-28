@@ -85,6 +85,11 @@ FILTER_TEXT = "检查失败那一行有出口且不说谎"
 # ⚠️ 这条在 `UpdateFeedTests` 里（**不属于**更新检查那个 suite）：它守的是
 # `build_app.sh` 写进 Info.plist 的那段 shell。见模块说明里「第三个守卫」。
 FILTER_PLIST = "脚本写明了自动检查的默认值"
+# 「更新」组拆成两行（2026-09-28）之后的四条。
+FILTER_ROWS_OWN = "两个开关各自只驱动自己那个标志"
+FILTER_ROWS_ORDER = "关掉检查时先关下载再关检查"
+FILTER_ROWS_TAP = "下载行的可点性与说明必须同源"
+FILTER_ROWS_STATE = "出图注入态不许再存一份可点性"
 
 # 「测试真的跑过」的**正向证据**：swift-testing 无论成败都会打这一行（见 ``classify``）。
 TEST_RUN_RE = re.compile(r"Test run with (\d+) tests?")
@@ -93,10 +98,11 @@ BUILD_OK_RE = re.compile(r"^\s*Build complete!", re.M)
 # 编译诊断的**两种**形态：① swiftc `<file>:<行>:<列>: error:`；② 构建期无行号。
 COMPILE_DIAG_RE = re.compile(r":\d+:\d+: error:|^\s*error: (?:Build failed|fatalError)", re.M)
 
-# 基线自检：本脚本的变异散在**九条**测试上（八条同一 suite + 一条 UpdateFeedTests），必须全跑。
+# 基线自检：本脚本的变异散在**十三**条测试上（十二条同一 suite + 一条 UpdateFeedTests），必须全跑。
 BASELINE_FILTER = "|".join(
     [FILTER_LAUNCH, FILTER_WIRING, FILTER_SELECTOR, FILTER_OUTCOME, FILTER_OUTCOME_PURE,
-     FILTER_OUTCOME_SELECTOR, FILTER_ROWSTATE, FILTER_TEXT, FILTER_PLIST])
+     FILTER_OUTCOME_SELECTOR, FILTER_ROWSTATE, FILTER_TEXT, FILTER_PLIST,
+     FILTER_ROWS_OWN, FILTER_ROWS_ORDER, FILTER_ROWS_TAP, FILTER_ROWS_STATE])
 BASELINE_TESTS = (
     "启动检查的判据",
     "启动检查接在排期回调上",
@@ -107,9 +113,13 @@ BASELINE_TESTS = (
     "检查失败不许冒充已是最新版本",
     "检查失败那一行有出口且不说谎",
     "脚本写明了自动检查的默认值",
+    "两个开关各自只驱动自己那个标志",
+    "关掉检查时先关下载再关检查",
+    "下载行的可点性与说明必须同源",
+    "出图注入态不许再存一份可点性",
 )
 # 基线里**至少**要跑到多少条。防的是「过滤器只匹配上一部分」。
-BASELINE_MIN_TESTS = 9
+BASELINE_MIN_TESTS = 13
 
 
 def _normalize_name(s: str) -> str:
@@ -324,6 +334,80 @@ MUTATIONS = [
         "         成本：一次 appcast 请求 3.3 KB，最坏 4 次/天。",
         "         成本：一次 appcast 请求 3.3 KB（用 `curl` 量的），最坏 4 次/天。",
         FILTER_PLIST,
+    ),
+    # ---- 「更新」组拆成两行（2026-09-28）之后新增的七条 ----
+    #
+    # 这一组的共同点：**改坏了界面上完全看不出来**。
+    # 两行各自显示自己的值，互相偷改对方的存储时，两边的开关位置都还是对的。
+    (
+        "M16",
+        "「自动检查更新」开的时候顺手把「自动下载」也打开 —— 两行又绑回一起（"
+        "界面上看不出来：那一行的说明仍写着「退出时安装」，而下载其实已经开了）",
+        VIEW,
+        "            UpdateController.shared.automaticallyChecksForUpdates = true",
+        "            UpdateController.shared.automaticallyChecksForUpdates = true\n"
+        "            UpdateController.shared.automaticallyDownloadsUpdates = true",
+        FILTER_ROWS_OWN,
+    ),
+    (
+        "M17",
+        "关掉「自动检查更新」时**不管**「自动下载」—— UserDefaults 里留下一个停在 1 的 "
+        "SUAutomaticallyUpdate（有效行为被 getter 与 allows 相与掩盖，只有读 defaults 的人会中招）",
+        VIEW,
+        "            UpdateController.shared.automaticallyDownloadsUpdates = false\n"
+        "            UpdateController.shared.automaticallyChecksForUpdates = false",
+        "            UpdateController.shared.automaticallyChecksForUpdates = false",
+        FILTER_ROWS_ORDER,
+    ),
+    (
+        "M18",
+        "把「关检查时顺手关下载」的**写入顺序对调** —— downloads 写不进去（setter 在 "
+        "allows 为假时空操作），存下来的仍是旧值；而界面与行为**都正常**",
+        VIEW,
+        "            UpdateController.shared.automaticallyDownloadsUpdates = false\n"
+        "            UpdateController.shared.automaticallyChecksForUpdates = false",
+        "            UpdateController.shared.automaticallyChecksForUpdates = false\n"
+        "            UpdateController.shared.automaticallyDownloadsUpdates = false",
+        FILTER_ROWS_ORDER,
+    ),
+    (
+        "M19",
+        "「自动下载更新」那一行去改「自动检查」的标志 —— 显示的东西与它实际做的事不一致",
+        VIEW,
+        "        UpdateController.shared.automaticallyDownloadsUpdates = newValue",
+        "        UpdateController.shared.automaticallyDownloadsUpdates = newValue\n"
+        "        UpdateController.shared.automaticallyChecksForUpdates = newValue",
+        FILTER_ROWS_OWN,
+    ),
+    (
+        "M20",
+        "下载行的可点性判据丢掉「检查开着」这一半 —— 于是「点一下、开关动一下、"
+        "实际什么都没发生」（Sparkle 的 setter 在 allows 为假时空操作）",
+        VIEW,
+        "        guard canAutoUpdate, autoCheckUpdateOn else { return nil }",
+        "        guard canAutoUpdate else { return nil }",
+        FILTER_ROWS_TAP,
+    ),
+    (
+        "M21",
+        "下载行的说明从「三态」压成「两态」—— 「检查没开」那批用户读到的会是"
+        "「组件没起来」：**编一个具体原因比不写原因更糟**（§8.113.14 的教训）",
+        VIEW,
+        "        if !canAutoUpdate { return L10n.tr(.autoUpdateUnavailableHint) }\n"
+        "        return autoCheckUpdateOn ? L10n.tr(.autoDownloadUpdateHint) "
+        ": L10n.tr(.autoDownloadNeedsCheckHint)",
+        "        return canAutoUpdate ? L10n.tr(.autoDownloadUpdateHint) "
+        ": L10n.tr(.autoUpdateUnavailableHint)",
+        FILTER_ROWS_TAP,
+    ),
+    (
+        "M22",
+        "往出图注入态里再存一份「能不能点」—— 出图与视图推出来的可点性从此可以互相矛盾，"
+        "而**出图正是用来「看有没有矛盾」的**（尺子做成了橡皮筋）",
+        VIEW,
+        "    var downloadsIsOn: Bool",
+        "    var downloadsIsOn: Bool\n    var downloadIsTappable: Bool = true",
+        FILTER_ROWS_STATE,
     ),
 ]
 

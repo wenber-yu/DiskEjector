@@ -22,25 +22,46 @@
         "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "磁碟推出助手" } }
       }
     },
-    "autoUpdate" : {
+    "autoCheckUpdate" : {
       "localizations" : {
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "自动更新" } },
-        "en" : { "stringUnit" : { "state" : "translated", "value" : "Automatically Update" } },
-        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "自動更新" } }
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "自动检查更新" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Check for Updates Automatically" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "自動檢查更新" } }
       }
     },
-    "autoUpdateHint" : {
+    "autoCheckUpdateHint" : {
       "localizations" : {
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "有新版本时自动下载，并在下次启动时安装。" } },
-        "en" : { "stringUnit" : { "state" : "translated", "value" : "Downloads new versions in the background and installs them on the next launch." } },
-        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "有新版本時自動下載，並在下次啟動時安裝。" } }
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "启动时和后台定期检查新版本。" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Checks at launch and in the background." } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "啟動時和背景定期檢查新版本。" } }
+      }
+    },
+    "autoDownloadNeedsCheckHint" : {
+      "localizations" : {
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "需先打开上面的「自动检查更新」。" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Turn on “Check for Updates Automatically” first." } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "需先開啟上面的「自動檢查更新」。" } }
+      }
+    },
+    "autoDownloadUpdate" : {
+      "localizations" : {
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "自动下载更新" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Download Updates Automatically" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "自動下載更新" } }
+      }
+    },
+    "autoDownloadUpdateHint" : {
+      "localizations" : {
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "发现新版本后自动下载，退出时安装。" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Downloads in the background and installs on quit." } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "發現新版本後自動下載，結束時安裝。" } }
       }
     },
     "autoUpdateUnavailableHint" : {
       "localizations" : {
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "自动更新组件未能启动，暂不可用；仍可手动检查更新。" } },
-        "en" : { "stringUnit" : { "state" : "translated", "value" : "The update component failed to start; you can still check for updates manually." } },
-        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "自動更新元件未能啟動，暫不可用；仍可手動檢查更新。" } }
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "更新组件未能启动；仍可手动检查。" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "The update component didn't start; check manually." } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "更新元件未能啟動；仍可手動檢查。" } }
       }
     },
     "cancel" : {

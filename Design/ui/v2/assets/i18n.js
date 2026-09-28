@@ -5,7 +5,7 @@
    来源：Sources/Localization/Localizable.xcstrings
        + Design/ui/v2/assets/i18n-extra.json
    ----------------------------------------------------------------------------
-   源指纹 95e5d91e1eb5fe95db20e93da8d63e988c1c1e77a2c2382cebae75e8ccdce2cb
+   源指纹 98c2e1ec7b5d2cb19d08f14a1180b2a6166682e14d04439058167917c070dc96
      = sha256(xcstrings + extra + 本脚本) —— 任一方变了它就是旧的，
        由 DesignDraftIntegrityTests 拦下「改了源忘了重跑」。
    ----------------------------------------------------------------------------
@@ -36,9 +36,12 @@ window.DS_L10N = {
       "accentColor": "强调色",
       "appLanguage": "语言",
       "appName": "磁盘推出助手",
-      "autoUpdate": "自动更新",
-      "autoUpdateHint": "有新版本时自动下载，并在下次启动时安装。",
-      "autoUpdateUnavailableHint": "自动更新组件未能启动，暂不可用；仍可手动检查更新。",
+      "autoCheckUpdate": "自动检查更新",
+      "autoCheckUpdateHint": "启动时和后台定期检查新版本。",
+      "autoDownloadNeedsCheckHint": "需先打开上面的「自动检查更新」。",
+      "autoDownloadUpdate": "自动下载更新",
+      "autoDownloadUpdateHint": "发现新版本后自动下载，退出时安装。",
+      "autoUpdateUnavailableHint": "更新组件未能启动；仍可手动检查。",
       "busyEvidenceTitleFallback": "有程序正在占用",
       "busyEvidenceTitleFormat": "%d 个程序正在占用",
       "cancel": "取消",
@@ -253,9 +256,12 @@ window.DS_L10N = {
       "accentColor": "Accent Color",
       "appLanguage": "Language",
       "appName": "DiskEjector",
-      "autoUpdate": "Automatically Update",
-      "autoUpdateHint": "Downloads new versions in the background and installs them on the next launch.",
-      "autoUpdateUnavailableHint": "The update component failed to start; you can still check for updates manually.",
+      "autoCheckUpdate": "Check for Updates Automatically",
+      "autoCheckUpdateHint": "Checks at launch and in the background.",
+      "autoDownloadNeedsCheckHint": "Turn on “Check for Updates Automatically” first.",
+      "autoDownloadUpdate": "Download Updates Automatically",
+      "autoDownloadUpdateHint": "Downloads in the background and installs on quit.",
+      "autoUpdateUnavailableHint": "The update component didn't start; check manually.",
       "busyEvidenceTitleFallback": "This disk is in use",
       "busyEvidenceTitleFormat": "%d apps are using this disk",
       "cancel": "Cancel",
@@ -470,9 +476,12 @@ window.DS_L10N = {
       "accentColor": "強調色",
       "appLanguage": "語言",
       "appName": "磁碟推出助手",
-      "autoUpdate": "自動更新",
-      "autoUpdateHint": "有新版本時自動下載，並在下次啟動時安裝。",
-      "autoUpdateUnavailableHint": "自動更新元件未能啟動，暫不可用；仍可手動檢查更新。",
+      "autoCheckUpdate": "自動檢查更新",
+      "autoCheckUpdateHint": "啟動時和背景定期檢查新版本。",
+      "autoDownloadNeedsCheckHint": "需先開啟上面的「自動檢查更新」。",
+      "autoDownloadUpdate": "自動下載更新",
+      "autoDownloadUpdateHint": "發現新版本後自動下載，結束時安裝。",
+      "autoUpdateUnavailableHint": "更新元件未能啟動；仍可手動檢查。",
       "busyEvidenceTitleFallback": "有程式正在使用",
       "busyEvidenceTitleFormat": "%d 個程式正在使用",
       "cancel": "取消",

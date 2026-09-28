@@ -546,9 +546,11 @@ struct SnapshotRenderTests {
         // ⚠️ **样本值与设计稿同源**（版本 1.1.0、上次检查 2026-09-17 14:30）。
         let lastCheck = Self.designLastCheck
 
-        // 「自动更新」那一行**按设计稿假设的环境**（允许 + 开）——
-        // 出图进程未签名，真实值恒为「不允许」，不注入的话这些图会全带着一个对不上的行。
-        let designAutoUpdate = AutoUpdateRowState(isOn: true, isAllowed: true)
+        // 「自动更新」那两行**按设计稿假设的环境**（具备能力 + 检查开 + 下载关）——
+        // 出图进程里 updater 建不起来，真实值恒为「不具备能力」，不注入的话这些图会全带着
+        // 一个对不上的行。
+        let designAutoUpdate = AutoUpdateRowsState(
+            canAutoUpdate: true, checksIsOn: true, downloadsIsOn: false)
         func row(_ phase: UpdatePhase, skipped: String? = nil) -> UpdateController.CheckRowState {
             UpdateController.rowState(phase: phase, skippedVersion: skipped, lastCheck: lastCheck)
         }
@@ -582,27 +584,30 @@ struct SnapshotRenderTests {
         for (slug, state) in updateRowStates {
             try dump(
                 SettingsView(
-                    updateStateOverride: state, autoUpdateRowOverride: designAutoUpdate,
+                    updateStateOverride: state, autoUpdateRowsOverride: designAutoUpdate,
                     takeOverAvailabilityOverride: .usable),
                 width: DesignTokens.Size.settingsPanel.width,
                 height: DesignTokens.Size.settingsPanel.height,
                 name: "settings-update-\(slug)-light")
         }
 
-        // ---- 「自动更新」那一行的三种形态（设计稿 08-update.html B 段）----
+        // ---- 「更新」组那两个开关的形态（2026-09-28 拆成两行；设计稿 08-update.html B 段）----
         //
-        // ⚠️ **各态图里那一行按设计稿假设的环境渲染**（允许 + 开）：出图跑在未签名的
-        // xctest 进程里 → 真实值恒为「不允许」→ 每张图会带着一个与设计稿对不上的行。
-        // 「不允许」那一态由下面的 `blocked` 单独覆盖，所以**不会因为「统一按设计稿口径」
-        // 就把它丢掉** —— 那一态正是本机真实应用的样子（未授权 / 未签名时用户看到的）。
-        let autoUpdateRows: [(String, AutoUpdateRowState)] = [
-            ("on", designAutoUpdate),
-            ("off", AutoUpdateRowState(isOn: false, isAllowed: true)),
-            ("blocked", AutoUpdateRowState(isOn: false, isAllowed: false)),
+        // ⚠️ **各态图里那两行按设计稿假设的环境渲染**（具备能力 + 检查开）：出图跑在
+        // updater 建不起来的 xctest 进程里 → 真实值恒为「不具备能力」→ 每张图会带着
+        // 一个与设计稿对不上的行。
+        // 「不具备能力」与「检查关」两态由下面的 `blocked` / `checks-off` 单独覆盖，
+        // 所以**不会因为「统一按设计稿口径」就把它丢掉** —— 「不具备能力」正是
+        // 本机预览模式下真实应用的样子。
+        let autoUpdateRows: [(String, AutoUpdateRowsState)] = [
+            ("default", designAutoUpdate),
+            ("downloads-on", AutoUpdateRowsState(canAutoUpdate: true, checksIsOn: true, downloadsIsOn: true)),
+            ("checks-off", AutoUpdateRowsState(canAutoUpdate: true, checksIsOn: false, downloadsIsOn: false)),
+            ("blocked", AutoUpdateRowsState(canAutoUpdate: false, checksIsOn: false, downloadsIsOn: false)),
         ]
         for (slug, state) in autoUpdateRows {
             try dump(
-                SettingsView(autoUpdateRowOverride: state, takeOverAvailabilityOverride: .usable),
+                SettingsView(autoUpdateRowsOverride: state, takeOverAvailabilityOverride: .usable),
                 width: DesignTokens.Size.settingsPanel.width,
                 height: DesignTokens.Size.settingsPanel.height,
                 name: "settings-auto-update-\(slug)-light")

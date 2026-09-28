@@ -63,7 +63,7 @@
   <h1 class="doc__title" data-page-node-id="o9zF0pgTvrYVav32Wd2SoW">版本更新</h1>
   <p class="doc__lede" data-page-node-id="nnwzDCcwsQ72DOOdX5D4xI">
     更新只有两个问题：<strong data-page-node-id="TvYu0DlIfo1OGK4c34gdZ1">「会不会自己更新」</strong>（设置里的一个开关）和
-    <strong data-page-node-id="rBymZxUJu49fTO3Lg2puhW">「现在要不要装」</strong>（一个弹窗）。弹窗<strong data-page-node-id="DmsqeUoGjz4QiY07YovGTH">只在自动更新关掉时才会出现</strong>——
+    <strong data-page-node-id="rBymZxUJu49fTO3Lg2puhW">「现在要不要装」</strong>（一个弹窗）。弹窗<strong data-page-node-id="DmsqeUoGjz4QiY07YovGTH">只在自动检查关掉时才会出现</strong>——
     开着的时候用户什么都不用做，这正是「后台更新」这个词的含义。
     因此这一页里，弹窗和设置行是同一个状态机的两个出口，不是两件独立的事。
   </p>
@@ -99,7 +99,7 @@
               <div class="alert__section" data-page-node-id="s8IVCBFvfD5KJiGV2f296P">
                 <div class="alert__label" data-i18n="updateWhatsNew" data-page-node-id="3E4vGeF5iLBHbyUXzzZJht">本次更新</div>
                 <div class="changelog" data-page-node-id="WoC4ku2BqGJb4Teyf9dHEO">
-                  <div data-page-node-id="Rmz2nOHSymy70JskAsju6W"><span data-page-node-id="HsC5ZRGtU6KYnLNHfaEe6m">·</span><span data-i18n="ds.alert.change1" data-page-node-id="rrktKT8hlTuqaBQ5xO1Tmd">设置里新增<b data-page-node-id="nBG4bObQ3CMWIjyqoCMKed">「自动更新」</b>开关，可后台下载并在重启后安装</span></div>
+                  <div data-page-node-id="Rmz2nOHSymy70JskAsju6W"><span data-page-node-id="HsC5ZRGtU6KYnLNHfaEe6m">·</span><span data-i18n="ds.alert.change1" data-page-node-id="rrktKT8hlTuqaBQ5xO1Tmd">设置里新增<b data-page-node-id="nBG4bObQ3CMWIjyqoCMKed">「自动检查更新」</b>开关，可后台下载并在重启后安装</span></div>
                   <div data-page-node-id="0DeqSCBH9AxxYggSMjQ0lb"><span data-page-node-id="Z00YcpmfSmgzfSmeXfPJBL">·</span><span data-i18n="ds.alert.change2" data-page-node-id="NzFCcPTf4mDtwcvLSg9GG2">修复未插入磁盘时骨架层一直不消失的问题</span></div>
                   <div data-page-node-id="AF0NGJ6q7ozI5FzFwFebmg"><span data-page-node-id="DoJzCPmTlYAdDjLnRJHuB7">·</span><span data-i18n="ds.alert.change3" data-page-node-id="8YbC8GCrzqrjAp129h3SVQ">推出失败弹窗新增<b data-page-node-id="y3Y4nOfBqpKnTJBPcstktc">「查看日志」</b>直达入口</span></div>
                 </div>
@@ -142,18 +142,27 @@
 
       <!-- B1 data-page-node-id="H8VwGwCqRxCduk2HzEM48Z" 默认 -->
       <div class="frame" data-page-node-id="OWK5cGFKy2mM3AGUqGwJ6R">
-        <div class="frame__label" data-page-node-id="2MIgRjZhsu67woXru82JmM">1 · 默认 · 自动更新开 · 已是最新</div>
+        <div class="frame__label" data-page-node-id="2MIgRjZhsu67woXru82JmM">1 · 默认 · 自动检查开 · 已是最新</div>
         <div class="setmock" data-page-node-id="yuE0KkdwOwxOq45D67f9Gz">
           <div class="sgroup" data-page-node-id="E1tUGAdtBFyFJ5fUPIjiEw">
             <div class="sgroup__title" data-i18n="settingsGroupUpdates" data-page-node-id="Q3L8Lp2d3NhjEAfchsRFFd">更新</div>
             <div class="scard" data-page-node-id="uyvFMTaAeLIDvWrccp3jLk">
               <div class="sline" data-page-node-id="1JmFw7HGMcEUjwC7br4Ux3">
                 <div class="sline__text" data-page-node-id="8LD7SmRso1LGE7LGek4fds">
-                  <div class="sline__label" data-i18n="autoUpdate" data-page-node-id="VN8vl6fWygBBrOiBECzxOE">自动更新</div>
-                  <div class="sline__desc" data-i18n="autoUpdateHint" data-page-node-id="I2tYc2UfHANBPNHoBaBoFp">有新版本时自动下载，并在下次启动时安装。</div>
+                  <div class="sline__label" data-i18n="autoCheckUpdate" data-page-node-id="VN8vl6fWygBBrOiBECzxOE">自动检查更新</div>
+                  <div class="sline__desc" data-i18n="autoCheckUpdateHint" data-page-node-id="I2tYc2UfHANBPNHoBaBoFp">启动时和后台定期检查新版本。</div>
                 </div>
                 <div class="sline__control" data-page-node-id="yFNMPAXFdIM6JDKct6iG3x">
-                  <button class="switch" role="switch" aria-checked="true" aria-label="自动更新" data-i18n-attr="aria-label:autoUpdate" data-page-node-id="kQpxSYGB6zlHuyFh1v184i"></button>
+                  <button class="switch" role="switch" aria-checked="true" aria-label="自动检查更新" data-i18n-attr="aria-label:autoCheckUpdate" data-page-node-id="kQpxSYGB6zlHuyFh1v184i"></button>
+                </div>
+              </div>
+              <div class="sline">
+                <div class="sline__text">
+                  <div class="sline__label" data-i18n="autoDownloadUpdate">自动下载更新</div>
+                  <div class="sline__desc" data-i18n="autoDownloadUpdateHint">发现新版本后自动下载，退出时安装。</div>
+                </div>
+                <div class="sline__control">
+                  <button class="switch" role="switch" aria-checked="false" aria-label="自动下载更新" data-i18n-attr="aria-label:autoDownloadUpdate"></button>
                 </div>
               </div>
               <div class="sline" data-page-node-id="ebvxmn9me6IZ6uwtt3DiMy">
@@ -176,18 +185,27 @@
 
       <!-- B2 data-page-node-id="Lg7cUKfv8SlRrbV2KFnZih" 有新版本 -->
       <div class="frame" data-page-node-id="QN1BCFSuyu30GDyQ67FK1W">
-        <div class="frame__label" data-page-node-id="kG1ASBQCPqaKCByQipMvHC">2 · 自动更新关 · 发现新版本（Esc 之后）</div>
+        <div class="frame__label" data-page-node-id="kG1ASBQCPqaKCByQipMvHC">2 · 自动检查关 · 发现新版本（Esc 之后）</div>
         <div class="setmock" data-page-node-id="51ce5ZKypQK7G7MHfVetAs">
           <div class="sgroup" data-page-node-id="hgh0Adxja90gB6BEPxA7Ti">
             <div class="sgroup__title" data-i18n="settingsGroupUpdates" data-page-node-id="LLBDQBDiiKewKfjE3NjfRz">更新</div>
             <div class="scard" data-page-node-id="FTee8DJc1HYbKK1JFsDXnK">
               <div class="sline" data-page-node-id="8Sqhp0RVKmjiW8t5ld3HZi">
                 <div class="sline__text" data-page-node-id="S0YaWjzKyC88hm2ndQP4ep">
-                  <div class="sline__label" data-i18n="autoUpdate" data-page-node-id="sRgyiDdfdFzKGJffpA823N">自动更新</div>
-                  <div class="sline__desc" data-i18n="autoUpdateHint" data-page-node-id="NwNKc5qi7jyKiYSe5xp924">有新版本时自动下载，并在下次启动时安装。</div>
+                  <div class="sline__label" data-i18n="autoCheckUpdate" data-page-node-id="sRgyiDdfdFzKGJffpA823N">自动检查更新</div>
+                  <div class="sline__desc" data-i18n="autoCheckUpdateHint" data-page-node-id="NwNKc5qi7jyKiYSe5xp924">启动时和后台定期检查新版本。</div>
                 </div>
                 <div class="sline__control" data-page-node-id="a95YLXZjOcMzCxdPpM98Ew">
-                  <button class="switch" role="switch" aria-checked="false" aria-label="自动更新" data-i18n-attr="aria-label:autoUpdate" data-page-node-id="yEDNebkIPJAzdHkSxpZOlW"></button>
+                  <button class="switch" role="switch" aria-checked="false" aria-label="自动检查更新" data-i18n-attr="aria-label:autoCheckUpdate" data-page-node-id="yEDNebkIPJAzdHkSxpZOlW"></button>
+                </div>
+              </div>
+              <div class="sline">
+                <div class="sline__text">
+                  <div class="sline__label" data-i18n="autoDownloadUpdate">自动下载更新</div>
+                  <div class="sline__desc" data-i18n="autoDownloadUpdateHint">发现新版本后自动下载，退出时安装。</div>
+                </div>
+                <div class="sline__control">
+                  <button class="switch" role="switch" aria-checked="false" aria-label="自动下载更新" data-i18n-attr="aria-label:autoDownloadUpdate"></button>
                 </div>
               </div>
               <div class="sline" data-page-node-id="zcYONyLoc8m7yGV2GJS3w2">
@@ -258,7 +276,7 @@
         </div>
         <p class="spec-note" data-page-node-id="Ru1xsSNo3p1I7gtLeZlDmB" style="max-width:400px">
           <b data-page-node-id="fQzSysedDdMUJpLfYHU6kK">与 3 说的是同一句话，但没有进度条、也没有「取消」。</b>
-          「自动更新」开着时 Sparkle 走的是另一条路，那一条路<u data-page-node-id="tiCW5Zk0wgAyNg3yGkeY2I">不提供任何进度回调</u>，
+          「自动检查更新」开着时 Sparkle 走的是另一条路，那一条路<u data-page-node-id="tiCW5Zk0wgAyNg3yGkeY2I">不提供任何进度回调</u>，
           所以百分比无从得知 —— 画一条停在 <code data-page-node-id="qjyEhTsiwBhU50EJaZjpwb">0%</code> 的进度条，
           用户会盯着它判断「是不是卡住了」（这正是 3 那条「百分比是真的，ETA 是编的」的另一面：
           <b data-page-node-id="IYlcEfwK0DgEPlrPGnfeOB">不知道就别猜</b>）。同理，那条路也不给取消入口，于是这一态<b data-page-node-id="OsmqGLRhGopI6EwCZspRqv">右侧不放任何按钮</b>
@@ -294,7 +312,7 @@
           </div>
         </div>
         <p class="spec-note" style="max-width:400px" data-page-node-id="UFaSzfuUY233vBsOxF6rfT">
-          <b data-page-node-id="NHvUCEhKcHebIHAEYw0rHW">这一帧是「自动更新开着」那条路：重启不自动做，只提供入口。</b>下载可以完全后台，
+          <b data-page-node-id="NHvUCEhKcHebIHAEYw0rHW">这一帧是「自动检查开着」那条路：重启不自动做，只提供入口。</b>下载可以完全后台，
           但重启会关掉用户手上的一切 —— 那条路的语义是<b data-page-node-id="FI8hBXHM0aYFjiZQhlRdpH">「后台下载，退出时安装」</b>：
           下次退出时静默装上，用户想立刻用新版本再点「立即重启」。
           <b>点过「后台更新并重启」那条路不一样</b> —— 见下一帧 4b。
@@ -340,11 +358,20 @@
             <div class="scard" data-page-node-id="wsbVCYNtTrmjk4WizFSg0Q">
               <div class="sline" data-page-node-id="YBBRWwETQHPramg5DvlNeh">
                 <div class="sline__text" data-page-node-id="iHTQwONE8OLvylBb2MCCjI">
-                  <div class="sline__label" data-i18n="autoUpdate" data-page-node-id="61HlV3EcGV8w05qP30tg40">自动更新</div>
-                  <div class="sline__desc" data-i18n="autoUpdateHint" data-page-node-id="tOnIgliAKQFMBZqq8MbVlO">有新版本时自动下载，并在下次启动时安装。</div>
+                  <div class="sline__label" data-i18n="autoCheckUpdate" data-page-node-id="61HlV3EcGV8w05qP30tg40">自动检查更新</div>
+                  <div class="sline__desc" data-i18n="autoCheckUpdateHint" data-page-node-id="tOnIgliAKQFMBZqq8MbVlO">启动时和后台定期检查新版本。</div>
                 </div>
                 <div class="sline__control" data-page-node-id="QtPJjRSHE0r63IQ396ElGv">
-                  <button class="switch" role="switch" aria-checked="false" aria-label="自动更新" data-i18n-attr="aria-label:autoUpdate" data-page-node-id="8iLsuoljVKQ0XYm7lHwrVQ"></button>
+                  <button class="switch" role="switch" aria-checked="false" aria-label="自动检查更新" data-i18n-attr="aria-label:autoCheckUpdate" data-page-node-id="8iLsuoljVKQ0XYm7lHwrVQ"></button>
+                </div>
+              </div>
+              <div class="sline">
+                <div class="sline__text">
+                  <div class="sline__label" data-i18n="autoDownloadUpdate">自动下载更新</div>
+                  <div class="sline__desc" data-i18n="autoDownloadUpdateHint">发现新版本后自动下载，退出时安装。</div>
+                </div>
+                <div class="sline__control">
+                  <button class="switch" role="switch" aria-checked="false" aria-label="自动下载更新" data-i18n-attr="aria-label:autoDownloadUpdate"></button>
                 </div>
               </div>
               <div class="sline" data-page-node-id="dcAwehsWplF9MiRs6MnzWl">
@@ -429,7 +456,7 @@
             <td data-page-node-id="fhnu2fTD0VPR6llTlXYcHG">检查更新行：<code data-page-node-id="LekFUPlppLX4XJoAXNrmMh">上次检查：今天 14:30 · 已是最新版本</code></td>
           </tr>
           <tr data-page-node-id="Pff8oAneFeAFpvEGQGaXBZ">
-            <td data-page-node-id="okAgWN4xaoDmhNEd3iTmJq"><b data-page-node-id="BDVHX5DvL6JHKuQkwOa11S">有新版本 · 自动更新开</b></td>
+            <td data-page-node-id="okAgWN4xaoDmhNEd3iTmJq"><b data-page-node-id="BDVHX5DvL6JHKuQkwOa11S">有新版本 · 自动检查开</b></td>
             <td data-page-node-id="pKX217kBgOR0g84ETJo9mE">检查到更高版本</td>
             <td data-page-node-id="bDZDdN5qykpndnacMJQzZn"><b data-page-node-id="czD9q767ee4bEZWgETHDBX">不弹</b>（这就是开关的意义）</td>
             <td data-page-node-id="Lo6tvW3EraeGKHk42oQoQr">user driver <b data-page-node-id="CwBfiDlcOH7acTaOKKfGLA">一个回调都不收</b> —— 这条走 <code data-page-node-id="uC48FXknGIxoewlW0AOMu9">SPUAutomaticUpdateDriver</code>。
@@ -439,7 +466,7 @@
               <b data-page-node-id="NhT1YIx2vk2DhelD7UFoDJ">进入「已就绪」</b>（见下方说明）</td>
           </tr>
           <tr data-page-node-id="7C5mjgVppTAozp764wET0G">
-            <td data-page-node-id="UcKfuaz0xCBkg5Ug7xzDUa"><b data-page-node-id="LT9TCICqd5tKdkoGDVBEya">有新版本 · 自动更新关</b></td>
+            <td data-page-node-id="UcKfuaz0xCBkg5Ug7xzDUa"><b data-page-node-id="LT9TCICqd5tKdkoGDVBEya">有新版本 · 自动检查关</b></td>
             <td data-page-node-id="XL1KkFIMC83VGN3n6EQf7D">检查到更高版本</td>
             <td data-page-node-id="FA26UGVDYfSGoS2WpXqNP5"><b data-page-node-id="R9nx04Qd6giWWLVsSpqBFG">弹窗 A</b></td>
             <td data-page-node-id="gMKkH9ws17JKkeCAmekLmp">检查更新行：<code data-page-node-id="F8b042V5W9jGbXn52AsK1k">发现 1.1.0</code> + 主按钮「查看更新」</td>
@@ -459,7 +486,7 @@
           <tr data-page-node-id="QSgxUGjcsKIyJADAPOCEIJ">
             <td data-page-node-id="eGsd7uBM6JcpHbhTC1Crl4"><b data-page-node-id="Jxb44P5gQr241pG7XccTpA">后台下载中</b></td>
             <td data-page-node-id="a0rwio8FOd3jLjbPWCejQq">点了「后台更新并重启」，或<b data-page-node-id="XRCSfwhLFzY4vIj1Cy18CW">开着开关时手动点「检查更新」</b>
-              <br data-page-node-id="G5CP1nRJ7sYTZfS7HGYBWL">（<b data-page-node-id="JZLj0zr92NGqPQUjJGluRs">第三种</b>：「自动更新开」时的后台检查 —— 那一态<b data-page-node-id="xODJTOtAuMHHSKuVMfEk1Y">没有百分比</b>，见 B 段 3b）</td>
+              <br data-page-node-id="G5CP1nRJ7sYTZfS7HGYBWL">（<b data-page-node-id="JZLj0zr92NGqPQUjJGluRs">第三种</b>：「自动检查开」时的后台检查 —— 那一态<b data-page-node-id="xODJTOtAuMHHSKuVMfEk1Y">没有百分比</b>，见 B 段 3b）</td>
             <td data-page-node-id="vHtQC6xX5ZOQFaTi7TsUkh">不弹（弹窗已关）</td>
             <td data-page-node-id="sO0PJl1RPuABMmc8oJJIL1">行内进度条 + 百分比 + 「取消」
               <br data-page-node-id="zXk2QpVb7nRd4LmWcJ8fTa">（<b data-page-node-id="Qn7wYsKp2vBj9HtRgMf4Ld">上面第三种改成：只有那句话，<u data-page-node-id="Wm3yTzNq6kLp8XvCdRb5Hs">没有进度条、没有按钮</u></b> —— 见 B 段 3b）</td>
@@ -513,7 +540,7 @@
           <li data-page-node-id="TpeFJx0FfaDHCFzRGwpHAp">提示块沿用 <code data-page-node-id="mtESTGzsF2aj60MPsHf2lH">.callout--info</code>：圆角 <code data-page-node-id="CmfwbQEWpfpBgUIZxoJBr5">6</code>、内边距 <code data-page-node-id="V74bdi2Zq2EbfPPCYW9bbM">9 / 11</code></li>
           <li data-page-node-id="kn344rwvNkALr9t0Eyh2fM">操作区：提示文案 <code data-page-node-id="DWKzGdpMPFR4AeRBsNFne2">11 / --text-3</code> 靠左，按钮靠右、间距 <code data-page-node-id="6CHDYFkzrj2mvGvhfVOONU">8</code></li>
           <li data-page-node-id="7b4A10bmIImaXdBcXx6Tx7">设置行内进度条：外层固定 <code data-page-node-id="iODYMgdhPWWoOBlbSjWeqj">16</code> 高，轨道 <code data-page-node-id="HRvreD0bJdds6poHKBiZFA">5</code>、圆角 <code data-page-node-id="iOO2kJ6rWKiZoGaM8pA8hh">999</code>，与磁盘行共用 <code data-page-node-id="VbW74L4BjhcyfxNdcCOQt5">.meter</code></li>
-          <li data-page-node-id="NMpNEzfUqreiDFwVSGsCQ4">更新组在设置面板中排第 4 组（诊断之后、关于之前），面板 <code data-page-node-id="HTBgX7H4AehhyOmvh0xSPq">480 × 800</code></li>
+          <li data-page-node-id="NMpNEzfUqreiDFwVSGsCQ4">更新组在设置面板中排第 4 组（诊断之后、关于之前），面板 <code data-page-node-id="HTBgX7H4AehhyOmvh0xSPq">480 × 920</code></li>
         </ul>
       </div>
     </div>
@@ -547,7 +574,7 @@
             <code data-page-node-id="xn1unG1KSgK99BVpYGjRcX">LocalizationCatalogTests/已删除的AppStore渠道文案不再存在</code> 反查两条文案键 ——
             谁加回来谁红。删掉而不是「留作防御」的理由：防御的前提是那条路<b data-page-node-id="WYwfAMDV0fNccxPjhDBiqw">可能存在</b>，
             而 MAS 渠道已经不存在了。</li>
-          <li data-page-node-id="SYqdUnNJo2fdnBwSJ8DVFC"><b data-page-node-id="OIZYmmf3ukOxAf3euW7BNQ">「自动更新」开着时，中间那一段「后台下载中」<u data-page-node-id="kZzRubQXkGwUsb2JwI1ocS">画得出来</u>，但<u data-page-node-id="u1gvWEVLMklAzlW44HzEvs">不带百分比</u>（2026-09-19 <b data-page-node-id="xPyKYqSWWy7q94wRwKRsNH">订正</b>）。</b>
+          <li data-page-node-id="SYqdUnNJo2fdnBwSJ8DVFC"><b data-page-node-id="OIZYmmf3ukOxAf3euW7BNQ">「自动检查更新」开着时，中间那一段「后台下载中」<u data-page-node-id="kZzRubQXkGwUsb2JwI1ocS">画得出来</u>，但<u data-page-node-id="u1gvWEVLMklAzlW44HzEvs">不带百分比</u>（2026-09-19 <b data-page-node-id="xPyKYqSWWy7q94wRwKRsNH">订正</b>）。</b>
             Sparkle 在自动下载那条路上选的是 <code data-page-node-id="DQ8ibs4yaCFR1MlvKaBr3R">SPUAutomaticUpdateDriver</code>，而它
             <b data-page-node-id="WTB3D7Wmymrvol40FaZYsZ">一个 user driver 回调都不发</b>：<code data-page-node-id="tygJrfRzGZMLg0ehCxaUyY">showUpdateFound</code> /
             <code data-page-node-id="0yN7gV5tNLb8AUZb7E6c2O">showDownloadInitiated</code> / <code data-page-node-id="tYdK65QDxEvLteytLz4LJv">showDownloadDidReceiveData</code> /

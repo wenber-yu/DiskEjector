@@ -18502,6 +18502,132 @@ spike 的 `block15` 只看了「访达有没有弹它自己的错框」，`out-b
 
 ---
 
+## 8.150 「重新打开也不检查」的三条根因，与「自动更新」那一行的拆分（2026-09-28，用户报告）
+
+### 8.150.1 现象与三条互相独立的根因
+
+用户原话：应用在 `/Applications` 里**重新打开**后，明明已有新版本，设置行却显示
+「上次检查：今天 10:03 · **已是最新版本**」；而且「有新版本也应该主动弹窗提醒」。
+
+现象是**一句话**，根因是**三条**，各自独立、各自够用：
+
+| # | 根因 | 判据位置 |
+|---|---|---|
+| ① | 启动时**根本没发起检查** | `UpdateController.startIfNeeded()` 只 `ensureUpdater()`；Sparkle 只在「距上次检查 ≥ `SUScheduledCheckInterval`」时才立即查（`SPUUpdater.m:540-592`），其余情况只排一个未来定时器 ⇒ **重新打开应用对它毫无意义** |
+| ② | 「没查成」被渲染成「刚查过、是最新版」 | `SULastCheckTime` 是 Sparkle 在**发起**检查时就写的（`SPUUpdater.m:789`，在任何网络请求之前）⇒ 失败也会把时间戳刷成当下；而行的判据只有「`phase == .idle` 且 `lastUpdateCheckDate != nil`」 |
+| ③ | 后台/启动检查**失败时结论根本不落盘** | `SPUScheduledUpdateDriver.m:106` 传 `abortUpdateWithError:error showErrorToUser:_showedUpdate`，而 `_showedUpdate` 只在**已经展示过更新**之后才为真 ⇒ 没有任何 user driver 回调 |
+
+⚠️ **③ 才是这一轮最贵的一课**：它的初版实现把结论挂在 `showUpdateNotFoundWithError` /
+`showUpdaterError` 上，判据看着很硬（`SPUUIBasedUpdateDriver.m:452-495` 正是按码分流那两个回调），
+**单测全绿、24 条变异全被抓住** —— 真机一跑就穿。
+⇒ **「代码里有这一行」≠「这一行真的会被调到」；后者只有真机能答。**
+用户报的那一次正好就是后台检查，也就是唯一**没有**任何回调的那条路。
+
+### 8.150.2 修法（四处，缺一不可）
+
+1. **发起点接在 `updater(_:willScheduleUpdateCheckAfterDelay:)`**：该回调之前 Sparkle 已把
+   `canCheckForUpdates` 置真、`sessionInProgress` 置假（`SPUUpdater.m:546-547`），此处发起才安全
+   —— 直接在 `startIfNeeded()` 里紧接着调 `checkForUpdatesInBackground()` 会被**静默丢弃**
+   （`sessionInProgress` 为真时它只打一条 error 日志，见 `SPUUpdater.m:664-667`）。
+   判据是纯函数 `shouldCheckOnLaunch(lastCheck:automaticallyChecks:now:debounce:)`，防抖 **300 秒**，
+   由 `didRunLaunchCheck` 保证一次启动只覆盖一次。
+2. **结论落点换到 `updater(_:didFinishUpdateCycleForUpdateCheck:error:)`**
+   （`SPUUpdater.m:810`，`notifyDelegateOfDriverCompletion` 在每轮收尾必发，与 user driver 无关），
+   判据是纯函数 `checkOutcome(error:phase:)`：`SUNoUpdateError(1001)` /
+   `SUInstallationCanceledError(4007)` / `SUInstallationAuthorizeLaterError(4008)` **不是错误**。
+3. **再补一个 `updater(_:didFindValidUpdate:)`**（`SPUBasicUpdateDriver.m:164-165`，基类发，
+   弹窗路与自动下载路都走）：真机发现按 Esc 关弹窗时 `alertReply` **攥住不回答** ⇒
+   会话不结束、周期不收尾 ⇒ 5 分钟内重开应用会**倒退回「已是最新版本」**。
+4. **`SUScheduledCheckInterval` 86400 → 21600**（`build_app.sh`），并按用户拍板在启动时也查一次。
+
+`CheckRowState` 随之加一态 `.checkFailed(Date)`（文案 `updateCheckFailedFormat`，行尾给「重试」入口）。
+
+### 8.150.3 真机验证（装置与四阶段，证据在 `.workbuddy/verify/updcheck/`）
+
+装置 = `Tools/probe/make_broken_appcast.py`（`<sparkle:version>` 改 999）+ `Tools/probe/feedsrv.py 8899`
+（请求日志带 UA，是**硬判据**，界面看不出来）+ `defaults write SUFeedURL http://127.0.0.1:8899/appcast.xml`
+（`SPUUpdater.m:179` / `:1155` 证明 user defaults 会覆盖 Info.plist）。
+产物 = `VERSION=2026.09.24.1 BUILD_NUMBER=273 OUTPUT_DIR=<新目录> ./build_app.sh`（模拟盘上那份）。
+
+| 阶段 | 做了什么 | 结果 |
+|---|---|---|
+| 1 | 启动 | ~1s 就打 `GET /appcast.xml UA=…/2026.09.24.1 Sparkle/2.10.0`；日志「启动检查：Sparkle 原本打算等 19798 秒…⇒ 现在就查」；弹窗 400×879「…2026.09.28.1 已发布」 |
+| 1b | 按 Esc 关弹窗（周期**没有**收尾） | `lastCheckOutcome = succeeded` ⇒ 第 3 处修法有效 |
+| 2（负向对照） | 42 秒后重启 | **零请求、零弹窗**，日志「跳过 —— 距上次检查 42 秒、防抖 300 秒」 |
+| 3 | 关掉 feed 服务器 | 日志「周期收尾：failed（2001 ← -1004）」、`lastCheckOutcome = failed`；设置窗口显示「上次检查：今天 15:49 · **检查失败**」+「重试」 |
+
+⚠️ 装置纪律两条（这次各踩一次）：① 起 `open` 前**先确认没有同名实例在跑**（`open` 会复用旧实例，
+白测一轮）；② 别在启动前 `defaults delete lastCheckOutcome` —— 那会把上一次启动留下的证据擦掉。
+
+### 8.150.4 顺带拆掉的那一行：一个开关驱动**两个**标志
+
+修 ② 时发现「更新」组那一行本身就是一处**同事实三写法**：
+
+- 行**显示**读的是 `automaticallyChecksForUpdates`；
+- 行的**点击动作**驱动的是 **Sparkle 的两个标志**（`SUEnableAutomaticChecks` / `SUAutomaticallyUpdate`，
+  且开/关两支还要靠**写入顺序**绕开空操作，§8.113.15）；
+- 行的**说明**写的是「有新版本时自动下载，并在下次启动时安装」。
+
+⇒ 默认态（Info.plist 有 `SUEnableAutomaticChecks=true`、**没有** `SUAutomaticallyUpdate`）下：
+**开关显示为「开」、说明承诺「自动下载」、实际走的是弹窗路**。三句话各说各的，
+而用户看不出「开着为什么没自动下载」。
+
+**用户拍板拆成两行**：「自动检查更新」+「自动下载更新」。拆开后每行的显示 / 可点性 / 说明**同源**：
+
+- 检查行：`canAutoUpdate ? hint : 组件没起来`，可点性只看 `canAutoUpdate`；
+- 下载行：说明**三态**（组件没起来 / 检查没开 / 正常），可点性要 `canAutoUpdate && autoCheckUpdateOn`
+  —— 后者不是「又读了开关自己的值」（那正是 §8.113.14 的坑），而是**真实因果**：
+  Sparkle 的 `automaticallyDownloadsUpdates` setter 在 `allowsAutomaticUpdates` 为假时是**空操作**，
+  检查不做，下载根本写不进去；且**不是死路**（检查行永远可点）。
+- 出图注入态 `AutoUpdateRowsState` **只有三个布尔**，可点性一律从它们**推**出来，不许再存一份
+  （存了就有两个真相，而出图正是用来「看有没有矛盾」的）。
+
+### 8.150.5 面板高度 876 → 920（含一处**必须**做的文案压缩）
+
+| | 中文 | 英文 |
+|---|---|---|
+| 拆之前（876 时量） | 841.40 | 874.60 |
+| 拆之后 | **900.20** | **916.20** |
+| 设计稿同期实测（`Tools/measure_settings_panel.py`） | **899.94** | （未量） |
+
+两条断言把高度夹在 `[en', zh' + 40]` 之间 ⇒ 这次要 `[916.20, 940.20]`，取 **920**。
+
+⚠️ **中文涨 58.8、英文只涨 41.6，不是巧合**：新加的一行带说明 ⇒ 中英各多一行，本该都涨约 59；
+但同时把 `autoUpdateUnavailableHint` 英文从 79 字符压到 49 字符（它原本折**两行**）⇒ 英文净少一行。
+**这一步是必须的**：那句文案要在两行上**各出现一次**（两行同时禁用时），
+各折两行的话英文比中文多两行、`Δen − Δzh` 就顶到上限 —— 再多一条**无解**（不是「偏紧」，是没有任何 H 成立）。
+
+⚠️ **920 已接近小屏上限**：面板是固定尺寸、不可缩放的窗口，全仓搜不到任何 `visibleFrame` 夹取
+（876 在 1440×900 的机器上就已贴边）。要再往里加内容，得先解决「窗口比屏幕高」。
+
+顺带修掉一处**过时注释**：README/Swift 注释里多处仍写「理想尺寸 480×800」（876 之后就没跟），
+本轮统一成当前值。以及 `build_app.sh` 的 Info.plist heredoc **没加引号**，注释里的反引号会被
+shell 当命令替换执行 ⇒ 每次构建打一条告警、那段文字在产物里被**静默吃掉**（已去掉反引号并加守卫）。
+
+### 8.150.6 新增的守卫与脚本
+
+- `Tools/measure_settings_panel.py`（新）：设计稿面板自然高的**可复跑**度量 ——
+  量法 = `.shead` 高 + `.settings__body` 关掉 `flex` 后的自然高（同一量法在旧稿上复现出
+  766.44 / 841.16，两次都对上）。自证 `svg>0` 且 `readyState` 已离开 `loading`，选择器没命中就退出码 1。
+  ⚠️ 判据**不能**写 `readyState == complete`：探针挂在 `DOMContentLoaded` 上，那一刻正是 `interactive`
+  —— 第一版这么写，当场红。
+- `UpdateSettingsTests` 四条：两行各自只写自己的标志 / 关检查时先关下载再关检查（§8.113.15 唯一还活着的一半）/
+  下载行的可点性与说明必须同源 / 出图注入态只有三个布尔。
+- `SettingsLayoutTests` 两条：更新两行各态等高、**不可用态不得比可用态更高**（同接管行那条）。
+- `Scripts/test/update_check_mutation.py` 24 → **31 条**（新增 M16–M22 针对拆行），
+  基线自检从 9 条测试升到 13 条。
+
+### 8.150.7 限定（如实写）
+
+- **未发版**。这次修复有**自举问题**：盘上在用那份（`.24.1` / `.28.1`）跑的都是旧逻辑 ⇒
+  必须先手动装一次带修复的版本，之后的版本才享受「启动即查 + 主动弹窗」。
+- 「下载行禁用时说明原因」这一条**只有源码结构断言**，没有真机截图 ——
+  禁用态在真机上要造出来得先让 updater 建不起来（预览模式），**本轮没做**。
+- 拆行后的**走查图**（`settings-auto-update-*.png`）只在 `DE_SNAPSHOTS=1` 时产出，本轮**没跑**；
+  进不了 CI 的那部分见 §8.33 那条老规矩。
+
+---
+
 ## 9. 文件清单
 
 ```

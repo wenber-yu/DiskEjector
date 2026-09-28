@@ -66,9 +66,19 @@ struct DisabledConditionInventoryTests {
     private static let inventory: [Entry] = [
         Entry(
             file: "Sources/Views/SettingsView.swift",
-            snippet: "private var autoUpdateTapAction: (() -> Void)? {",
+            snippet: "private var autoCheckUpdateTapAction: (() -> Void)? {",
             reason:
                 "宿主能力判据（`updater != nil`），与开关自己的值**无关** —— §8.113.14 修的就是这里"),
+        Entry(
+            file: "Sources/Views/SettingsView.swift",
+            snippet: "private var autoDownloadTapAction: (() -> Void)? {",
+            reason:
+                "⚠️ **这一条确实读了另一个开关的值**（`autoCheckUpdateOn`），但与 §8.113.14 不冲突："
+                + "那里禁止的是「拿开关自己的值当『有没有这个能力』」（关一次就锁死，因为能力其实与它无关）；"
+                + "这里表达的是**真实因果** —— Sparkle 的 `automaticallyDownloadsUpdates` setter 在"
+                + "`allowsAutomaticUpdates` 为假时是空操作，检查不做，下载根本写不进去。"
+                + "**且不是死路**：检查行永远可点，用户的出口一直在（2026-09-28 拆行时定，"
+                + "并由 `UpdateSettingsTests.下载行的可点性与说明必须同源` 钉住「禁用时必须说明原因」）"),
         Entry(
             file: "Sources/Views/SettingsView.swift",
             snippet: "private var takeOverTapAction: (() -> Void)? {",

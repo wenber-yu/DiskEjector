@@ -3,7 +3,7 @@ import SwiftUI
 
 /// 设置面板（设计稿 `05-settings.html` / `.win--settings`）。
 ///
-/// **设计稿规格**：480 × 800，圆角 **12**（与主窗口同一个 `--r-window`），毛玻璃
+/// **设计稿规格**：480 × 920，圆角 **12**（与主窗口同一个 `--r-window`），毛玻璃
 /// （`.win` 规则：`--bg-glass` + `blur(30) saturate(180%)` + `0.5px var(--border-strong)`）；
 /// 头部 52（「设置」+「完成」）；四组内容：外观 / 通用 / 诊断 / 关于。
 ///
@@ -37,12 +37,12 @@ struct SettingsView: View {
     /// 统一打开同一个独立窗口（见 ``ContentView/openSettings()``）。
     var onDone: (() -> Void)?
 
-    /// 是否让**玻璃铺满宿主**（而不是刚好等于设计稿的 480×800）。
+    /// 是否让**玻璃铺满宿主**（而不是刚好等于设计稿的 480×920）。
     ///
     /// - `true`：**独立窗口**用（`AppDelegate.makeSettingsWindow()`）。窗口可能因为
     ///   标题栏安全区被撑高，玻璃必须跟着铺满 —— 否则多出来的那一条会露出桌面。
     ///   实测（2026-09-16，补齐前）：窗口 598、玻璃只有 566（当时的尺寸），**上下各露 16pt**。
-    /// - `false`（默认）：离屏出图与单测用。这时要的正是**理想尺寸 480×800**。
+    /// - `false`（默认）：离屏出图与单测用。这时要的正是**理想尺寸 480×920**。
     ///   ⚠️ 这条路径**不能**开 `true` —— `.frame(maxHeight: .infinity)` 会让
     ///   `sizeThatFits(in: …greatestFiniteMagnitude)` 量出**无穷高**，
     ///   `writePNG` 里 `Int(∞ * 2)` 直接 SIGTRAP（快照那套代码的注释里记着这个坑）。
@@ -54,8 +54,8 @@ struct SettingsView: View {
     /// 真实入口（`AppDelegate.makeSettingsWindow()`）不传 → 走真实状态。
     var updateStateOverride: UpdateController.CheckRowState?
 
-    /// ⚠️ **仅供离屏出图**：见 ``SettingsSectionsColumn/autoUpdateRowOverride``。
-    var autoUpdateRowOverride: AutoUpdateRowState?
+    /// ⚠️ **仅供离屏出图**：见 ``SettingsSectionsColumn/autoUpdateRowsOverride``。
+    var autoUpdateRowsOverride: AutoUpdateRowsState?
 
     /// ⚠️ **仅供离屏出图 / 单测**：见 ``SettingsSectionsColumn/takeOverAvailabilityOverride``。
     ///
@@ -85,7 +85,7 @@ struct SettingsView: View {
             ScrollView {
                 SettingsSectionsColumn(
                     updateStateOverride: updateStateOverride,
-                    autoUpdateRowOverride: autoUpdateRowOverride,
+                    autoUpdateRowsOverride: autoUpdateRowsOverride,
                     takeOverAvailabilityOverride: takeOverAvailabilityOverride,
                     onLaunchAtLoginError: { error in
                         launchAtLoginPrompt = prompt(for: error)
@@ -97,13 +97,13 @@ struct SettingsView: View {
         }
         // **两层 frame 分工不同，别合并成一层**（与 ``ContentView`` 同一处理，
         // 主窗口的「标题栏露底」就是这么来的）：
-        // - 内层 = **设计稿尺寸** 480×800，内容按它排版；
+        // - 内层 = **设计稿尺寸** 480×920，内容按它排版；
         // - 外层 = **填满宿主**（窗口），``GlassSurface`` 铺在这一层上。
         //   少了外层，「玻璃铺满整窗」就退化成依赖「窗口高恰好等于内容高」这个巧合 ——
         //   巧合一破（窗口被安全区撑到 598）就上下各露 16pt。
         //
         // 外层只在独立窗口里加：`maxWidth/maxHeight` 传 `nil` 是 no-op，
-        // 于是离屏出图与单测拿到的仍是理想尺寸 480×800（理由见 ``fillsHost``）。
+        // 于是离屏出图与单测拿到的仍是理想尺寸 480×920（理由见 ``fillsHost``）。
         .frame(
             width: DesignTokens.Size.settingsPanel.width,
             height: DesignTokens.Size.settingsPanel.height
@@ -257,27 +257,36 @@ struct SettingsHeaderBar: View {
 
 // MARK: - 四组内容
 
-/// 「自动更新」那一行的展示状态 —— **仅供离屏出图 / 预览**。
+/// 「更新」组那两个开关的展示状态 —— **仅供离屏出图 / 预览**。
 ///
-/// **为什么需要它**：这一行有两个输入是**跑出图那个进程的环境**决定的 ——
-/// 开关值来自 Sparkle 的 `SPUUpdaterSettings`，而「宿主是否允许自动更新」
+/// **为什么需要它**：这两行有三个输入是**跑出图那个进程的环境**决定的 ——
+/// 两个开关值来自 Sparkle 的 `SPUUpdaterSettings`，而「宿主是否具备自动更新能力」
 /// 由 **updater 建没建起来** 决定（``UpdateController/canAutoUpdate`` = `updater != nil`，
 /// **与签名无关** —— 早先记成「由签名决定」是错的，dist 产物其实是签了的，§8.113.14）。
 /// 走查图跑在 xctest 进程里 ⇒ `Bundle.main` 不是合规的 app bundle ⇒ updater 建不起来 ⇒
-/// 这一行**永远画成禁用态**，
+/// 这两行**永远画成禁用态**，
 /// 与设计稿 `08-update.html` 里开关打开的画法对不上（§8.44.4）。
 ///
-/// 出图时按**设计稿假设的环境**（允许 + 开）渲染，这一行才能与设计稿并排比；
-/// 「不允许」那一态另有单独一张图，不会被丢掉。
+/// 出图时按**设计稿假设的环境**（具备能力 + 检查开）渲染，这两行才能与设计稿并排比；
+/// 「不具备能力」「检查没开」两态另有单独出图，不会被丢掉。
 ///
-/// ⚠️ 与 ``SettingsSectionsColumn/autoUpdateOverride`` **不是一回事**：
-/// 那个是「用户本次拨动后的覆盖值」（运行时会变，生产路径在用），
+/// ⚠️ **为什么是三个布尔，不是四个**（2026-09-28 拆分时定的）：下载行**能不能点**
+/// 由 `canAutoUpdate && checksIsOn` 推出来，**不在这里再存一份** ——
+/// 存了就有两个真相，而「可点性」与「说明文字」必须同源
+/// （否则会出现「文案说缺 A、实际因为缺 B 而点不动」，见 ``AutoUpdateRowsState`` 的消费者）。
+/// 这里只提供**输入**，判定收敛在 ``SettingsSectionsColumn/autoDownloadTapAction``
+/// 与 ``SettingsSectionsColumn/autoDownloadUpdateDescription`` 上，两处读同一个输入。
+///
+/// ⚠️ 与 ``SettingsSectionsColumn/autoCheckUpdateOverride`` **不是一回事**：
+/// 那是「用户本次拨动后的覆盖值」（运行时会变，生产路径在用），
 /// 这个是**只在出图时**注入的静态值。别把两者合并。
-struct AutoUpdateRowState: Equatable {
-    /// 开关是不是开着的。
-    var isOn: Bool
-    /// 宿主是否允许自动更新（真实环境下由 **updater 建没建起来** 决定，不是签名状态）。
-    var isAllowed: Bool
+struct AutoUpdateRowsState: Equatable {
+    /// 宿主是否具备自动更新能力（真实环境下由 **updater 建没建起来** 决定，不是签名状态）。
+    var canAutoUpdate: Bool
+    /// 「自动检查更新」开关是不是开着的。
+    var checksIsOn: Bool
+    /// 「自动下载更新」开关是不是开着的（检查关着时它必然是关的，见 ``UpdateController/automaticallyDownloadsUpdates``）。
+    var downloadsIsOn: Bool
 }
 
 /// 设置面板的四组内容（不含头部与滚动容器）。
@@ -307,9 +316,9 @@ struct SettingsSectionsColumn: View {
     /// 那会连带编出假的进度、假的「可以取消」，与 §8.30 记的「夹具保真度」是同一个坑。
     var updateStateOverride: UpdateController.CheckRowState?
 
-    /// ⚠️ **仅供离屏出图 / 预览**：`nil` 时走真实值（Sparkle + 宿主签名状态）。
-    /// 理由见 ``AutoUpdateRowState``。
-    var autoUpdateRowOverride: AutoUpdateRowState?
+    /// ⚠️ **仅供离屏出图 / 预览**：`nil` 时走真实值（Sparkle + updater 建没建起来）。
+    /// 理由见 ``AutoUpdateRowsState``。
+    var autoUpdateRowsOverride: AutoUpdateRowsState?
 
     /// ⚠️ **仅供离屏出图 / 单测**：`nil` 时走实时探测 ``AppSettings/takeOverAvailability()``。
     ///
@@ -345,12 +354,19 @@ struct SettingsSectionsColumn: View {
 
     @State private var launchAtLogin = LaunchAtLoginManager.isEnabled
 
-    /// 用户本次拨动「自动更新」后的值；`nil` = 还没拨过，直接读 Sparkle。
+    /// 用户本次拨动「自动检查更新」后的值；`nil` = 还没拨过，直接读 Sparkle。
     ///
     /// **为什么是「覆盖值」而不是一个镜像布尔**：镜像需要一个「加载完了吗」的位，
     /// 否则首帧会把 Sparkle 的默认值（开）显示成关。这里反过来 —— 没拨过就读真值，
     /// 永远不可能显示错的初始状态，也不需要那个位。
-    @State private var autoUpdateOverride: Bool?
+    @State private var autoCheckUpdateOverride: Bool?
+
+    /// 用户本次拨动「自动下载更新」后的值；`nil` = 还没拨过，直接读 Sparkle。
+    ///
+    /// 与上面那条同源。**它必须单独存在**：两个开关写的是**两个** Sparkle 标志
+    /// （`SUEnableAutomaticChecks` / `SUAutomaticallyUpdate`），共用一个覆盖值
+    /// 就等于把刚拆开的两件事又绑回去。
+    @State private var autoDownloadUpdateOverride: Bool?
 
     /// 「更新」组要跟着 ``UpdateController/phase`` 变 —— 下载进度、已就绪、失败
     /// 三个状态都是**别人推着走**的（Sparkle 的回调），不订阅就永远停在首帧那一态。
@@ -369,12 +385,12 @@ struct SettingsSectionsColumn: View {
     /// —— 单测里有 7 处是「只关心高度、别的都走默认」的调用，让它们少写一个标签是有意义的。
     init(
         updateStateOverride: UpdateController.CheckRowState? = nil,
-        autoUpdateRowOverride: AutoUpdateRowState? = nil,
+        autoUpdateRowsOverride: AutoUpdateRowsState? = nil,
         takeOverAvailabilityOverride: AppSettings.TakeOverAvailability? = nil,
         onLaunchAtLoginError: @escaping (LaunchAtLoginError) -> Void = { _ in }
     ) {
         self.updateStateOverride = updateStateOverride
-        self.autoUpdateRowOverride = autoUpdateRowOverride
+        self.autoUpdateRowsOverride = autoUpdateRowsOverride
         self.takeOverAvailabilityOverride = takeOverAvailabilityOverride
         self.onLaunchAtLoginError = onLaunchAtLoginError
         // **打开面板的那一刻就要说实话**：首帧先画「可用」、下一帧再翻成「不可用」，
@@ -503,26 +519,36 @@ struct SettingsSectionsColumn: View {
 
     // MARK: 「更新」组
 
-    /// 自动更新开关的当前值。
+    /// 「自动检查更新」开关的当前值。
     ///
     /// **真值在 Sparkle 那边**（`SPUUpdaterSettings`，写进同一份 UserDefaults），
     /// 这里不另存偏好 —— 见 ``AppSettings`` 顶部那段说明。
-    private var autoUpdateOn: Bool {
-        autoUpdateRowOverride?.isOn ?? autoUpdateOverride
+    private var autoCheckUpdateOn: Bool {
+        autoUpdateRowsOverride?.checksIsOn ?? autoCheckUpdateOverride
             ?? UpdateController.shared.automaticallyChecksForUpdates
     }
 
-    /// 宿主是否允许自动更新。
+    /// 「自动下载更新」开关的当前值。
     ///
-    /// ⚠️ **判据不看这个开关自己的值**（2026-09-21 真机修的 bug，§8.113.14）：
+    /// ⚠️ 读 `automaticallyDownloadsUpdates`（Sparkle 算出来的**有效值**：
+    /// `allowsAutomaticUpdates && SUAutomaticallyUpdate`），而不是那个键本身 ——
+    /// 「自动检查更新」关着时它必然为假，**正是这一行该显示的样子**。
+    private var autoDownloadUpdateOn: Bool {
+        autoUpdateRowsOverride?.downloadsIsOn ?? autoDownloadUpdateOverride
+            ?? UpdateController.shared.automaticallyDownloadsUpdates
+    }
+
+    /// 宿主是否**具备**自动更新的能力 —— 两个开关共用的前置条件。
+    ///
+    /// ⚠️ **判据不看任何一个开关自己的值**（2026-09-21 真机修的 bug，§8.113.14）：
     /// 旧实现读 Sparkle 的 `allowsAutomaticUpdates`，而它在本应用里**恒等于
     /// 「自动检查」这个开关的当前值** ⇒ 用户关一次 ⇒ 整行 `onTap` 变 `nil`
     /// ⇒ **再也打不开**（重启也没用）。⇒ 判据是「updater 建没建起来」。
     private var canAutoUpdate: Bool {
-        autoUpdateRowOverride?.isAllowed ?? UpdateController.shared.canAutoUpdate
+        autoUpdateRowsOverride?.canAutoUpdate ?? UpdateController.shared.canAutoUpdate
     }
 
-    /// 「自动更新」行的说明。不允许自动更新时**必须说明原因** ——
+    /// 「自动检查更新」行的说明。不允许自动更新时**必须说明原因** ——
     /// 否则用户看到的是一个拨不动的开关，却不知道为什么。
     ///
     /// ⚠️ **说的原因必须是 `canAutoUpdate` 真的代表的那件事**：它现在只表示
@@ -530,48 +556,80 @@ struct SettingsSectionsColumn: View {
     /// Sparkle 配置不合规），**与签名无关**。
     /// 2026-09-21 前这里写的是「当前构建未签名」，而 dist 产物其实**是签了的**
     /// （§8.113.14）—— **编一个具体原因比不写原因更糟**：用户会照着错的原因去修。
-    private var autoUpdateDescription: String {
-        canAutoUpdate ? L10n.tr(.autoUpdateHint) : L10n.tr(.autoUpdateUnavailableHint)
+    private var autoCheckUpdateDescription: String {
+        canAutoUpdate ? L10n.tr(.autoCheckUpdateHint) : L10n.tr(.autoUpdateUnavailableHint)
     }
 
-    /// 拨动「自动更新」。
+    /// 「自动下载更新」行的说明 —— **三态，每一态都要回答「为什么现在是这个样子」**。
     ///
-    /// **一个开关驱动 Sparkle 的两个标志**：Sparkle 把「检查」与「下载」分成两级
-    /// （`SUEnableAutomaticChecks` / `SUAutomaticallyUpdate`），而设计稿只有一个开关
-    /// —— 只开检查不开下载的话，用户开了「自动更新」却发现从没自动下载过，
-    /// 那不是他要的。关的时候两级一起关，避免留下一个半开的状态。
+    /// ⚠️ 这一行比别的行**多一个禁用原因**：它不只是「updater 没建起来」时不可点，
+    /// **「自动检查更新」关着时也不可点** —— 此时 Sparkle 的
+    /// `automaticallyDownloadsUpdates` setter 是**空操作**（连键都不写，
+    /// 见 ``UpdateController/automaticallyDownloadsUpdates`` 里的实测），
+    /// 允许点就等于「点一下、开关动一下、实际什么都没发生」。
+    /// ⇒ 文案必须把这一条说出来（``autoDownloadNeedsCheckHint``），
+    /// 否则用户看到的就是一个拨不动、也不说为什么的开关 ——
+    /// 与本文件反复出现的那条纪律（「设了没生效」与「没设」不能长得一样）同源。
     ///
-    /// ⚠️ **不碰 `SUAutomaticallyUpdate` 的「静默强装」语义**：Sparkle 只在应用**退出时**
-    /// 安装，不会在用户干活时重启（设计稿那句「并在下次启动时安装」说的就是这件事）。
+    /// ⚠️ **不许把 `autoCheckUpdateOn` 与 `canAutoUpdate` 合成一个布尔**：
+    /// 两种原因必须以**两句话**说出去（「组件没起来」≠「检查没开」），
+    /// 合成一个的话，用户在「检查没开」时读到的会是「组件没起来」——
+    /// **编一个具体原因比不写原因更糟**。
+    private var autoDownloadUpdateDescription: String {
+        if !canAutoUpdate { return L10n.tr(.autoUpdateUnavailableHint) }
+        return autoCheckUpdateOn ? L10n.tr(.autoDownloadUpdateHint) : L10n.tr(.autoDownloadNeedsCheckHint)
+    }
+
+    /// 拨动「自动检查更新」。
     ///
-    /// ⚠️ **两级都要写，且顺序见函数体**（2026-09-21）：早先这里写的是「两级一起关」，
-    /// 实测**只关掉了一级**（`SUAutomaticallyUpdate` 的 setter 在 allows 为假时空操作）。
-    private func toggleAutoUpdate() {
-        let newValue = !autoUpdateOn
-        // ⚠️ **两个标志的写入顺序有讲究**（2026-09-21 真机实测，§8.113.15）：
-        // Sparkle 的 `automaticallyDownloadsUpdates` setter 在 `allowsAutomaticUpdates`
-        // 为假时是**空操作**（连键都不写）—— 而它算的是
-        // `SUAllowsAutomaticUpdates ?? automaticallyChecksForUpdates`，本应用没写前者
-        // ⇒ 它**跟着 checks 走**。于是：
-        //   - **开**：先写 checks（让 allows 变真）再写 downloads ⇒ 两个键都写得进去；
-        //   - **关**：**反过来**，先写 downloads（此时 allows 还为真）再写 checks。
-        // 顺序写反 ⇒ 关掉之后 `SUAutomaticallyUpdate` 停在旧值 1（实测：干净的关
-        // 只写了 `SUEnableAutomaticChecks = 0`）。有效行为目前被 getter 与 allows
-        // 相与掩盖，但**存储与意图不一致**，读 defaults 的人会被它骗（我自己就中过）。
+    /// ⚠️ **只驱动它自己那一个标志**（`SUEnableAutomaticChecks`）。
+    /// 2026-09-28 拆成两行之前，这一个开关要写两个标志、还得靠**写入顺序**绕开
+    /// Sparkle 的空操作（§8.113.15）；拆开之后那个顺序问题**自然消失** ——
+    /// 因为「下载」有自己的开关，且它在检查关着时本来就不可点。
+    ///
+    /// **关的时候顺手把下载也关掉**：不写的话 `SUAutomaticallyUpdate` 可能停在 1，
+    /// 而 getter 与 `allowsAutomaticUpdates` 相与会把它掩盖成「没生效」——
+    /// 有效行为是对的，但**存储与意图不一致**，读 defaults 的人会被它骗
+    /// （§8.113.15 记的就是这件事，我自己中过一次）。
+    private func toggleAutoCheckUpdate() {
+        let newValue = !autoCheckUpdateOn
         if newValue {
             UpdateController.shared.automaticallyChecksForUpdates = true
-            UpdateController.shared.automaticallyDownloadsUpdates = true
         } else {
+            // ⚠️ **顺序不能反**：`automaticallyDownloadsUpdates` 的 setter 在
+            // `allowsAutomaticUpdates` 为假时是空操作，而后者跟着 checks 走
+            // ⇒ 必须先写 downloads（此刻 allows 还为真）、再写 checks。
             UpdateController.shared.automaticallyDownloadsUpdates = false
             UpdateController.shared.automaticallyChecksForUpdates = false
+            autoDownloadUpdateOverride = false
         }
-        autoUpdateOverride = newValue
+        autoCheckUpdateOverride = newValue
     }
 
-    /// 「自动更新」那一行的点击动作；不允许自动更新时为 `nil`（整行不可点）。
-    private var autoUpdateTapAction: (() -> Void)? {
+    /// 拨动「自动下载更新」。**只在检查开着时可达**（见 ``autoDownloadTapAction``）。
+    private func toggleAutoDownloadUpdate() {
+        let newValue = !autoDownloadUpdateOn
+        UpdateController.shared.automaticallyDownloadsUpdates = newValue
+        autoDownloadUpdateOverride = newValue
+    }
+
+    /// 「自动检查更新」那一行的点击动作；updater 没建起来时为 `nil`（整行不可点）。
+    private var autoCheckUpdateTapAction: (() -> Void)? {
         guard canAutoUpdate else { return nil }
-        return { toggleAutoUpdate() }
+        return { toggleAutoCheckUpdate() }
+    }
+
+    /// 「自动下载更新」那一行的点击动作。
+    ///
+    /// ⚠️ **这里的判据确实读了开关自己的值**（`autoCheckUpdateOn`），而 §8.113.14
+    /// 立的是「判据不许读开关自己的值」—— 两条**不冲突**：那条禁止的是
+    /// 「拿开关自己的值当『有没有这个能力』」（关一次就锁死，因为能力其实与它无关）；
+    /// 而这里表达的是一个**真实的因果**：检查不做，下载根本写不进去
+    /// （见 ``toggleAutoCheckUpdate``）。锁死的风险不存在 ——
+    /// 检查行**永远可点**，用户的出口一直在。
+    private var autoDownloadTapAction: (() -> Void)? {
+        guard canAutoUpdate, autoCheckUpdateOn else { return nil }
+        return { toggleAutoDownloadUpdate() }
     }
 
     /// 「更新」组的第二行 —— **一个状态机，七种画法**（设计稿 `08-update.html` B 段 + C 段矩阵）。
@@ -915,13 +973,20 @@ struct SettingsSectionsColumn: View {
             }
             group(title: L10n.tr(.settingsGroupUpdates)) {
                 settingsCard {
+                    // **两个开关，不是一个**（2026-09-28 用户拍板）。
+                    //
+                    // 拆之前这里只有一行「自动更新」，它一个开关驱动 Sparkle 的**两个**
+                    // 标志（`SUEnableAutomaticChecks` / `SUAutomaticallyUpdate`），
+                    // 而行的**显示**只读前者 —— 于是默认态下「开关显示为开、说明写着
+                    // 『有新版本时自动下载』、实际走弹窗路」，三句话各说各的。
+                    // 拆开后每一行的显示、可点性、说明三者同源，不需要解释「开关开着
+                    // 为什么没自动下载」。
                     line(
-                        label: L10n.tr(.autoUpdate),
-                        description: autoUpdateDescription,
+                        label: L10n.tr(.autoCheckUpdate),
+                        description: autoCheckUpdateDescription,
                         divider: false,
-                        // 宿主不具备能力时**整行不可点** —— 否则用户点一下、
-                        // 开关动一下、实际什么都没发生（updater 没建起来，没人会去写那两个标志）。
-                        // 「设了没生效」与「没设」不能长得一样。
+                        // updater 没起来时**整行不可点** —— 否则用户点一下、
+                        // 开关动一下、实际什么都没发生（没人会去写那两个标志）。
                         //
                         // ⚠️ **这个条件不许读开关自己的值**（2026-09-21 真机修的 bug）：
                         // 读了就变成单向开关 —— 关一次就再也打不开（§8.113.14）。
@@ -930,12 +995,23 @@ struct SettingsSectionsColumn: View {
                         // 三元的两个分支是「方法引用」与 `nil`，编译器推不出那个可选闭包的
                         // 类型，于是整段 `body` 报 `failed to produce diagnostic for expression`
                         // —— 错误位置指在 `var body` 上，与真正的病根隔着 200 行。
-                        onTap: autoUpdateTapAction,
-                        accessibilityValue: L10n.tr(autoUpdateOn ? .on : .off)
+                        onTap: autoCheckUpdateTapAction,
+                        accessibilityValue: L10n.tr(autoCheckUpdateOn ? .on : .off)
                     ) {
-                        SettingsSwitch(isOn: autoUpdateOn, accent: accentColor)
+                        SettingsSwitch(isOn: autoCheckUpdateOn, accent: accentColor)
                     }
-                    // 第二行是**一个状态机**（七种画法），见 ``updateCheckLine``。
+                    line(
+                        label: L10n.tr(.autoDownloadUpdate),
+                        description: autoDownloadUpdateDescription,
+                        // ⚠️ 不可点的第二个原因见 ``autoDownloadTapAction``：
+                        // 「自动检查更新」关着时 Sparkle 会**静默丢弃**这次写入，
+                        // 所以这时整行不可点，且说明文字会换成「需先打开上面的…」。
+                        onTap: autoDownloadTapAction,
+                        accessibilityValue: L10n.tr(autoDownloadUpdateOn ? .on : .off)
+                    ) {
+                        SettingsSwitch(isOn: autoDownloadUpdateOn, accent: accentColor)
+                    }
+                    // 第三行是**一个状态机**（七种画法），见 ``updateCheckLine``。
                     updateCheckLine
                 }
             }
@@ -1116,7 +1192,7 @@ struct SettingsSectionsColumn: View {
     /// 接管那一行的说明：**不可用时换成「缺什么」**。
     ///
     /// **就地说明**是这一行不可用时的全部交代 —— 把它删掉，用户看到的就是一个
-    /// 拨不动、也不说为什么的开关（同 ``autoUpdateDescription`` 的教训：
+    /// 拨不动、也不说为什么的开关（同 ``autoCheckUpdateDescription`` 的教训：
     /// 「设了没生效」与「没设」不能长得一样，而**说不出原因**等于两者都不成立）。
     private var takeOverDescription: String {
         takeOverAvailability.isUsable

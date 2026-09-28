@@ -2062,7 +2062,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     ///
     /// | 缺的东西 | 后果 |
     /// |---|---|
-    /// | `safeAreaRegions = []` | **上屏前 480×800 → 上屏后 480×832**（多 32pt） |
+    /// | `safeAreaRegions = []` | **上屏前 480×920 → 上屏后 480×952**（多 32pt） |
     /// | `backgroundColor = .clear` + `isOpaque = false` | 窗口不透明 → `.underWindowBackground` 的毛玻璃**糊不到桌面**，看起来是平色块 |
     /// | `titleVisibility = .hidden` | 系统标题栏的「设置」与面板自己头部的「设置」**重复** |
     /// | `contentView.layer.cornerRadius` | 玻璃卡片是 12pt 圆角、窗口底角却是直角，两者不重合 |
@@ -2105,7 +2105,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // 独立窗口没有 SwiftUI 的 presentation 上下文，`@Environment(\.dismiss)`
         // 在这里是空操作 —— 必须由宿主把「完成」接到关窗上，否则按钮点了没反应。
         // `fillsHost: true` —— 独立窗口要「玻璃铺满整窗」。`false` 是给 `.sheet`
-        // 与离屏出图用的（它们要的是理想尺寸 480×800），详见 ``SettingsView/fillsHost``。
+        // 与离屏出图用的（它们要的是理想尺寸 480×920），详见 ``SettingsView/fillsHost``。
         let hosting = NSHostingView(
             rootView: SettingsView(
                 onDone: { [weak win] in win?.close() },

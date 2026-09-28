@@ -65,7 +65,7 @@
 
     <!-- ============ 设置面板 ============ -->
     <div class="frame" data-page-node-id="IRbUW2f4WrY5IVqh8CQSDG">
-      <div class="frame__label" data-page-node-id="QzG1X6DuUzyB28aRcm2EYM">480 × 800 · 五组内容全部可见（与产品侧同数；浏览器切英文时底部留白被吃掉，见 §8.43）</div>
+      <div class="frame__label" data-page-node-id="QzG1X6DuUzyB28aRcm2EYM">480 × 920 · 五组内容全部可见（与产品侧同数；浏览器切英文时底部留白被吃掉，见 §8.43）</div>
 
       <div class="win win--settings" data-page-node-id="9rdqMgyeX5rGq8fy7HlgUX">
         <div class="shead" data-page-node-id="ZD25WhZGodQHWFbYl6ZFTs">
@@ -180,11 +180,20 @@
             <div class="scard" data-page-node-id="H4nu6LchEPBtVuhEP2zqaf">
               <div class="sline" data-page-node-id="TAqqICKH16IH7rvxV79Qv7">
                 <div class="sline__text" data-page-node-id="crgNEyMbun7ykSuY024hk0">
-                  <div class="sline__label" data-page-node-id="Eh3vAyddq6IfVLUmpAXAVq" data-i18n="autoUpdate">自动更新</div>
-                  <div class="sline__desc" data-page-node-id="LDVDtEiXWUaJw2B3wlPcnT" data-i18n="autoUpdateHint">有新版本时自动下载，并在下次启动时安装。</div>
+                  <div class="sline__label" data-page-node-id="Eh3vAyddq6IfVLUmpAXAVq" data-i18n="autoCheckUpdate">自动检查更新</div>
+                  <div class="sline__desc" data-page-node-id="LDVDtEiXWUaJw2B3wlPcnT" data-i18n="autoCheckUpdateHint">启动时和后台定期检查新版本。</div>
                 </div>
                 <div class="sline__control" data-page-node-id="fAcbdpbz1vBrVcMaTaYWhI">
-                  <button class="switch" role="switch" aria-checked="true" aria-label="自动更新" data-page-node-id="FFXUflDtto6QzW0gDN2Wwd" data-i18n-attr="aria-label:autoUpdate"></button>
+                  <button class="switch" role="switch" aria-checked="true" aria-label="自动检查更新" data-page-node-id="FFXUflDtto6QzW0gDN2Wwd" data-i18n-attr="aria-label:autoCheckUpdate"></button>
+                </div>
+              </div>
+              <div class="sline">
+                <div class="sline__text">
+                  <div class="sline__label" data-i18n="autoDownloadUpdate">自动下载更新</div>
+                  <div class="sline__desc" data-i18n="autoDownloadUpdateHint">发现新版本后自动下载，退出时安装。</div>
+                </div>
+                <div class="sline__control">
+                  <button class="switch" role="switch" aria-checked="false" aria-label="自动下载更新" data-i18n-attr="aria-label:autoDownloadUpdate"></button>
                 </div>
               </div>
 
@@ -366,16 +375,30 @@
             分段控件超过 3 项就放不下，而语言列表以后还会加 —— 只有下拉能长。
             默认项是<b>「跟随系统」</b>：macOS 应用的默认行为本来就应该是跟随系统，
             显式覆盖是给少数人的出口，不该反过来让用户每次都选一次语言。</li>
-          <li data-page-node-id="520OwQucZNF4c6LrHz0Tpq"><b data-page-node-id="gY4GXeksNXkbuNxMIPVp4v">「自动更新」的说明要回答「什么时候装」。</b>写成「有新版本时自动下载，并在下次启动时安装」——
-            用户真正怕的是「它会不会在我干活的时候突然重启」，所以「<u data-page-node-id="pZNyZ8RplCmC0t6TvmZ3yp">下次启动时</u>」这四个字不能省。
-            应用只走 Developer ID 直发、不上架，所以这条文案没有渠道分叉，只有一套。</li>
+          <li data-page-node-id="520OwQucZNF4c6LrHz0Tpq"><b data-page-node-id="gY4GXeksNXkbuNxMIPVp4v">更新组是两个开关，不是一个。</b>
+            <b>2026-09-28 拆的</b>：原来一行「自动更新」用<b>一个</b>开关驱动 Sparkle 的<b>两个</b>标志
+            （<code>SUEnableAutomaticChecks</code> / <code>SUAutomaticallyUpdate</code>），
+            而行上显示的只是前者 —— 于是默认态下「开关显示为开、说明写着『有新版本时自动下载』、实际走弹窗路」，
+            三句话各说各的，用户看不出为什么没自动下载。拆成「自动检查更新」「自动下载更新」之后，
+            每一行的<b>显示 / 可点性 / 说明三者同源</b>，不需要再解释「开着为什么没下」。</li>
+          <li><b>「自动下载更新」在「自动检查更新」关掉时必须禁用，并就地说明。</b>
+            不是风格问题，是 <b>Sparkle 的写入契约</b>：<code>automaticallyDownloadsUpdates</code> 的 setter
+            在 <code>allowsAutomaticUpdates</code> 为假时是<b>空操作</b>（连键都不写），而后者跟着「检查」走 ——
+            允许点就等于「点一下、开关动一下、实际什么都没发生」。所以那一行的说明要换成
+            「需先打开上面的『自动检查更新』」（<code>autoDownloadNeedsCheckHint</code>）。
+            同一条纪律也管着「更新组件没起来」那一态（<code>autoUpdateUnavailableHint</code>）——
+            <b>两种原因必须是两句话</b>，合成一句会让用户在「检查没开」时读到「组件没起来」，那是编原因。</li>
+          <li><b>下载行的说明要回答「什么时候装」。</b>写成「发现新版本后自动下载，退出时安装」——
+            用户真正怕的是「它会不会在我干活的时候突然重启」。应用只走 Developer ID 直发、不上架，
+            所以这条文案没有渠道分叉，只有一套。</li>
           <li data-page-node-id="avxb4UtsX7mR3cnCCcwzuS"><b data-page-node-id="mY3Mrg3K9054wVkY17GIDq">面板尺寸是量出来的，而且按<b>最长的那门语言</b>量。</b>
-            本轮 <code data-page-node-id="clSKiGnUKfzp6DEK2matDF">480 × 826 → 480 × 800</code>：<b>与产品侧统一成一个数</b>。
-            产品侧（SwiftUI / CoreText）英文实测 <b>782.60</b>、中文 <b>766.60</b>，取 800 留 17.4pt 余量。
-            ⚠️ 本页面跑在 Chrome 里，英文**内容区**需要 <b>726.25</b> 而可用只有 <b>710</b> —— 差 16.25pt
-            恰好被底部 16pt 内边距吸收，最后一行只有 <b>0.25pt</b> 溢出窗口下边缘。
-            所以症状不是「末行被裁一截」，而是**「英文下底部留白没了」**（实测见 DESIGN-SPEC §8.43）。
-            <b>宽度不加</b>：480 → 560 只能再省 32pt 高，却要多给 80pt 宽，不划算。
+            演变：<code>480 × 826 → 480 × 800 → 480 × 876 → 480 × 920</code>，<b>每次都与产品侧统一成一个数</b>。
+            最近一次 <code>876 → 920</code> 是本轮拆「自动更新」为两行带来的：设计稿实测内容自然高
+            <b>899.94</b>（量法 = <code>.shead</code> 高 + <code>.settings__body</code> 关掉 <code>flex</code> 后的自然高，
+            有脚本 <code>Tools/measure_settings_panel.py</code>），产品侧中文 <b>900.20</b>、英文 <b>916.20</b> ——
+            取 920 时英文余量只剩 <b>3.8pt</b>。
+            ⚠️ 顺带压短了一句文案：<code>autoUpdateUnavailableHint</code> 英文从 79 字符压到 49 字符 ——
+            它要在两行上各出现一次，各折两行的话英文比中文多两行、<b>高度无解</b>（不是偏紧）。
             改任何一段文案后需同步复测，否则底部会被折叠到滚动区外——这正是旧版「设置排版不好看」的真实原因。</li>
         </ul>
       </div>
@@ -383,7 +406,7 @@
       <div class="panel" data-page-node-id="dvUD95H4BBlcFmP8C77eSG">
         <h3 class="doc__h3" style="margin-top:0" data-page-node-id="I1VxqYS3Fc6O2PuD3g5IAD">规格 Handoff</h3>
         <ul class="note-list" data-page-node-id="6KdQZfh6M7irEUfbnmrfyW">
-          <li data-page-node-id="UljFWAj04qlJajxblzf6yl">面板 <code data-page-node-id="vEUpV8EaKwBwBGyv3HjIfP">480 × 800</code>（与产品侧同数，见 DESIGN-SPEC §8.43），独立窗口弹出（不再作为主窗口的 sheet）</li>
+          <li data-page-node-id="UljFWAj04qlJajxblzf6yl">面板 <code data-page-node-id="vEUpV8EaKwBwBGyv3HjIfP">480 × 920</code>（与产品侧同数，见 DESIGN-SPEC §8.43），独立窗口弹出（不再作为主窗口的 sheet）</li>
           <li data-page-node-id="HKeawko04yFSP3gtyAy0Wq">头部高 <code data-page-node-id="u77C92svz5qL25nvZ7RvGB">52</code>；内容内边距 <code data-page-node-id="GbRsVYq7L7xj0GEW0ueEA3">20 / 20 / 16</code></li>
           <li data-page-node-id="yGFxELPjIGvagCWKFnN1ow">分组标题 <code data-page-node-id="wsvU52wXQYU157s94V6bIQ">11 / 600</code> + 字距 <code data-page-node-id="pi0W7beB4rmlRx9jPfle0d">0.05em</code>，距卡片 <code data-page-node-id="v6n3PQWNOvWCxkv9JWxgzF">6</code>；组间距 <code data-page-node-id="8WEoPN24pSbCtGYRws5fUk">20</code></li>
           <li data-page-node-id="j0f01Q0CetS3H8Vu27KgtR">设置行最小高 <code data-page-node-id="7kfuCFDXCH02mRPm6VGiYj">44</code>，内边距 <code data-page-node-id="3O6qZOCR5rdxI3H8XWeLAA">11 / 12</code>；行间 <code data-page-node-id="EIX8J27qqWy4jvxdJ0xFye">0.5px</code> 内嵌分隔线</li>
@@ -392,7 +415,7 @@
           <li data-page-node-id="OjMo06P5mfwAfDGpm7icdL">色板 <code data-page-node-id="BtBNP0I3FjVPUQRLhNYfa8">22 × 22</code>，选中态外描边 <code data-page-node-id="Cx1SbQvje6ZWpXIBPyFegU">2px</code>、偏移 <code data-page-node-id="KmigccdC6NNllCsxTqWvvv">4</code></li>
           <li data-page-node-id="nzpF9IJJZXsosomGWfIE5z">关于行内边距 <code data-page-node-id="uSawsoX5jcQPP2hhpSmBbL">13 / 16</code>；应用图标 <code data-page-node-id="TSVCdZBzwWmiC71UChKhhd">44 × 44</code>，圆角 <code data-page-node-id="CzuGpNkB1uMnYfLQs6Zi4Y">12</code></li>
           <li data-page-node-id="rR3QVH0qxvEDCxycO2BdRk">更新组两行与其它组同规格：行最小高 <code data-page-node-id="3a7R6bSkjT2Eo7y63NjrQc">44</code>、带说明行实测 <code data-page-node-id="aXHAoqA7GMl2ZuNIjEAlcw">59</code></li>
-          <li data-page-node-id="FppujE156unYZyUs8t7HLy">「自动更新」复用通用组的开关组件（<code data-page-node-id="HNXYFjT5cm5Ae00pGpMB6C">38 × 22</code>），不为它另画一套</li>
+          <li data-page-node-id="FppujE156unYZyUs8t7HLy">「自动检查更新」「自动下载更新」各行复用通用组的开关组件（<code data-page-node-id="HNXYFjT5cm5Ae00pGpMB6C">38 × 22</code>），不为它们另画一套；只有<b>更新</b>组会因状态把控件置灰（下载行在检查关掉时），置灰时说明文字必须换成「缺什么」</li>
         </ul>
       </div>
     </div>
