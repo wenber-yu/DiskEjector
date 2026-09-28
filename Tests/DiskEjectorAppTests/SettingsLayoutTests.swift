@@ -86,48 +86,45 @@ struct SettingsLayoutTests {
     /// - 文字行 → 横向亮度方差很大（黑字 + 白底），被方差条件排除；
     /// - 卡片自身的圆角描边行 → 上下相邻行里有一行落在卡片外（覆盖率不足），被邻居条件排除。
     private func horizontalDividerCount(_ view: some View, width: CGFloat) -> Int {
-        // ⚠️ 诊断用：`DIAG_RENDER_LOCALE=en` 可把出图语言钉到英文（复现 CI）。
-        let locale = ProcessInfo.processInfo.environment["DIAG_RENDER_LOCALE"] ?? TestLanguage.design
-        return TestLanguage.with(locale) { countDividers(in: view, width: width) }
+        // ⚠️ **出图必须与「量高度」钉在同一种语言下**（2026-09-28 修，CI 红）。
+        //
+        // `renderedSize` 内部已经 `TestLanguage.with(TestLanguage.design)`（理由见它的注释：
+        // 设计稿数字全按中文实测）。但**出图这一半当时漏了**，于是成了
+        // 「量高度按中文、画图跟随 `Locale.current`」的错配：
+        //   - 本地开发机 `Locale.current` 就是 `zh-Hans` ⇒ 两者一致 ⇒ 一直绿；
+        //   - CI（runner 系统语言英文）画出来的是英文版 ⇒ 行高不同 ⇒ 少判一条线。
+        // 实测（2026-09-28，CI run `36382577179`）：不钉 → `count=4`；钉住 → `count=5`（期望值正好 5）。
+        // ⇒ 与 `renderedSize` 同源，别让「量一半、画一半」再分家。
+        return TestLanguage.with(TestLanguage.design) {
+            // 高度取 `sizeThatFits` 的**真实**高度（理由见 `renderedSize` 注释）：
+            // 用 `fittingSize` 会拿到偏小的理想高度，把内容底部裁掉，
+            // 万一分隔线正好落在被裁区域就会漏数。
+            let realHeight = renderedSize(view, width: width).height
+            // ⚠️ **高度向上取整**：`OffscreenRender.bitmap` 按 `Int(size.height * 2)` **截断**，
+            // 传 773.4 只拿到 1546px（差 0.8pt 不足），底部那条线有被裁的风险。
+            guard
+                let rep = OffscreenRender.bitmap(
+                    view,
+                    size: CGSize(width: width, height: realHeight.rounded(.up)),
+                    // ⚠️ **背景必须 `.clear`，不能垫白**：判据靠「卡片外那一行覆盖率不足」
+                    // 排除卡片自身的圆角描边（见上面那段注释）。垫白底会让卡片之间也变成
+                    // 不透明 ⇒ 描边行的上下邻居覆盖率也过线 ⇒ 多判出线。
+                    background: .clear)
+            else { return -1 }
+            return dividerCount(in: rep, width: width)
+        }
     }
 
-    private func countDividers(in view: some View, width: CGFloat) -> Int {
-        _ = NSApplication.shared
-        // 高度取 `sizeThatFits` 的**真实**高度（理由见 `renderedSize` 注释）：
-        // 用 `fittingSize` 会拿到偏小的理想高度，把内容底部裁掉，
-        // 万一分隔线正好落在被裁区域就会漏数。
-        let realHeight = renderedSize(view, width: width).height
-        let hosting = NSHostingView(rootView: view)
-        hosting.appearance = NSAppearance(named: .aqua)
-        hosting.frame = CGRect(x: 0, y: 0, width: width, height: 10)
-        hosting.layoutSubtreeIfNeeded()
-        hosting.frame = CGRect(x: 0, y: 0, width: width, height: max(realHeight, 10))
-        hosting.layoutSubtreeIfNeeded()
-        let rep: NSBitmapImageRep
-        if let forced = ProcessInfo.processInfo.environment["DIAG_SCALE"].flatMap({ Double($0) }), forced > 0 {
-            let pw = Int((CGFloat(width) * forced).rounded())
-            let ph = Int((realHeight * forced).rounded())
-            guard
-                let explicit = NSBitmapImageRep(
-                    bitmapDataPlanes: nil, pixelsWide: pw, pixelsHigh: ph,
-                    bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
-                    colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0)
-            else { return -1 }
-            explicit.size = CGSize(width: width, height: realHeight)
-            rep = explicit
-        } else {
-            guard let implicit = hosting.bitmapImageRepForCachingDisplay(in: hosting.bounds) else { return -1 }
-            rep = implicit
-        }
+    /// 从一张已画好的位图里数分隔线。**只判读、不出图** ——
+    /// 出图一律走 ``OffscreenRender/bitmap(_:size:appearance:background:)``（SPEC §8.131，
+    /// 自建位图会被 `PixelReadPathTests` 拦）。
+    private func dividerCount(in rep: NSBitmapImageRep, width: CGFloat) -> Int {
         guard let data = rep.bitmapData else { return -1 }
-        hosting.cacheDisplay(in: hosting.bounds, to: rep)
 
         let w = rep.pixelsWide
         let h = rep.pixelsHigh
         let bpr = rep.bytesPerRow
         let spp = rep.samplesPerPixel
-        FileHandle.standardError.write(
-            Data("[diag] realHeight=\(realHeight) w=\(w) h=\(h) spp=\(spp)\n".utf8))
 
         /// 逐行统计：覆盖率（alpha > 8 的像素占比）与不透明像素的亮度均值/标准差。
         func rowStats(_ y: Int) -> (coverage: Double, luma: Double, std: Double) {
@@ -155,26 +152,19 @@ struct SettingsLayoutTests {
 
         let stats = (0..<h).map(rowStats)
         let gap = 4
-        // 诊断：同一套判据，只把「比上下暗多少」参数化。严格 1.0 是生产判据；
-        // 宽松 0.2 用来区分「线根本没画出来」与「线画了但太淡」。
-        func pickDividers(darkerThan threshold: Double) -> [Int] {
-            var out: [Int] = []
-            for y in gap..<(h - gap) {
-                guard stats[y].coverage > 0.85,
-                    stats[y - gap].coverage > 0.85,
-                    stats[y + gap].coverage > 0.85
-                else { continue }
-                // 横向必须均匀（排除文字行），且比上下都暗（排除填充行）。
-                guard stats[y].std < 2.5,
-                    stats[y].luma < stats[y - gap].luma - threshold,
-                    stats[y].luma < stats[y + gap].luma - threshold
-                else { continue }
-                out.append(y)
-            }
-            return out
+        var dividerRows: [Int] = []
+        for y in gap..<(h - gap) {
+            guard stats[y].coverage > 0.85,
+                stats[y - gap].coverage > 0.85,
+                stats[y + gap].coverage > 0.85
+            else { continue }
+            // 横向必须均匀（排除文字行），且比上下都暗（排除填充行）。
+            guard stats[y].std < 2.5,
+                stats[y].luma < stats[y - gap].luma - 1,
+                stats[y].luma < stats[y + gap].luma - 1
+            else { continue }
+            dividerRows.append(y)
         }
-        let dividerRows = pickDividers(darkerThan: 1)
-        let looseRows = pickDividers(darkerThan: 0.2)
         // 相邻像素行合并成一条线。
         //
         // ⚠️ **不能用 `y != previous + 1` 这种「严格相邻」判据**（2026-09-15 修正）。
@@ -196,25 +186,6 @@ struct SettingsLayoutTests {
             if y - previous > mergeGap { count += 1 }
             previous = y
         }
-        // 诊断：把宽松判据也按同一套合并规则分组，用来对照严格判据漏掉了哪一条。
-        func groupStarts(_ rows: [Int]) -> [Int] {
-            var starts: [Int] = []
-            var previous = -1_000
-            for y in rows {
-                if y - previous > mergeGap { starts.append(y) }
-                previous = y
-            }
-            return starts
-        }
-        let looseStarts = groupStarts(looseRows)
-        FileHandle.standardError.write(
-            Data(
-                """
-                [diag] scale=\(scale) mergeGap=\(mergeGap) h=\(h) strictCount=\(count) strictRows=\(dividerRows)
-                [diag] looseCount=\(looseStarts.count) looseStarts=\(looseStarts)
-                [diag] screenScale=\(NSScreen.main?.backingScaleFactor ?? -1) appearance=\(NSApp.effectiveAppearance.name.rawValue)
-
-                """.utf8))
         return count
     }
 
