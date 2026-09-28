@@ -6,7 +6,11 @@
 Release-notes/2026.09.18.3.html     ← 对应 tag v2026.09.18.3
 ```
 
-生成 appcast 时传进去：
+⚠️ **通常不用手写文件名** —— `./run.sh release` 会自己找 `Release-notes/<版本>.html`；
+找不到时它会**从上一个 tag 到 HEAD 的 commit 标题生成一份草稿**并停下等你改
+（草稿内容还是开发者语言，不能直接发）。草稿也必须过下面四条。
+
+生成 appcast 时传进去（走脚本的话这一步也是自动的）：
 
 ```bash
 RELEASE_NOTES_FILE=Release-notes/2026.09.18.3.html ./Scripts/make_appcast.sh

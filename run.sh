@@ -8,6 +8,8 @@
 #   ./run.sh check --with-tests   # 再追加最贵的那道：测试与覆盖率
 #   ./run.sh ci             # 推送**之后**看 CI 结论（等它跑完；--no-wait 只看状态）
 #                           #   退出码 0=绿 / 1=红 / 2=没拿到结论（2 ≠ 绿）
+#   ./run.sh release        # 发版一条命令（门槛 → 提交 → tag → 构建 → push → Release → appcast）
+#                           #   先 `./run.sh release --dry-run` 预演；详见 Scripts/release.sh 头部
 # 说明：在源码目录编译并启动 DiskEjector（菜单栏 App）。
 # =============================================================
 set -euo pipefail
@@ -29,6 +31,14 @@ fi
 if [ "${1:-}" = "ci" ]; then
     shift
     exec "$SCRIPT_DIR/Scripts/ci_status.sh" "$@"
+fi
+
+# 子命令 release：发版一条命令（与 check / ci 同一写法 —— 都是转发到 Scripts/ 下的脚本，
+# 这样本地与「照着文档敲」用的是同一个入口）。**默认先跑 dry-run 看一眼**：
+#   ./run.sh release --dry-run
+if [ "${1:-}" = "release" ]; then
+    shift
+    exec "$SCRIPT_DIR/Scripts/release.sh" "$@"
 fi
 
 if [ ! -f "$PACKAGE_DIR/Package.swift" ]; then
