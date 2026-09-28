@@ -3,24 +3,19 @@
     <channel>
         <title>DiskEjector</title>
         <item>
-            <title>2026.09.28.2</title>
-            <pubDate>Mon, 28 Sep 2026 16:40:33 +0800</pubDate>
+            <title>2026.09.29</title>
+            <pubDate>Tue, 29 Sep 2026 07:25:07 +0800</pubDate>
             <link>https://github.com/wenber-yu/DiskEjector</link>
-            <sparkle:version>286</sparkle:version>
-            <sparkle:shortVersionString>2026.09.28.2</sparkle:shortVersionString>
+            <sparkle:version>293</sparkle:version>
+            <sparkle:shortVersionString>2026.09.29</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
             <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
             <description><![CDATA[<ul>
-<li><strong>重新打开应用时现在会真的检查更新</strong>：此前重新打开 DiskEjector，它只按上次的排期默默等定时器到点 —— 哪怕已经有新版本发布，设置里也一直显示「已是最新版本」。现在每次启动都会查一次（五分钟内重开不重复查），查到新版本就主动弹窗提醒</li>
-<li><strong>「检查失败」不再谎报成「已是最新版本」</strong>：此前检查更新若是网络不通等原因没查成，设置里那行照样写「上次检查：刚才 · 已是最新版本」—— 因为时间戳是发起时就写的，失败也一样刷。现在失败会如实显示「检查失败」，并就地给一个「重试」按钮；查到了新版本也会正确停在「发现新版本」</li>
-<li>后台自动检查的间隔从每 24 小时缩短到每 6 小时：常驻菜单栏期间也能更早发现新版本</li>
-<li>设置里的「自动更新」拆成了两行 ——「自动检查更新」和「自动下载更新」。此前一个开关同时管两件事，而显示的只是「检查」那一半：默认状态下开关写着「开」、说明承诺「有新版本时自动下载」，实际却只是弹窗提醒、并不自动下载。拆开后每一行说的就是它做的事</li>
-<li>「自动下载更新」在「自动检查更新」关着时会变成不可点，并就地写明「需先打开上面的自动检查更新」—— 因为检查不做的话，下载开了也不会生效，允许点就等于点了没反应</li>
-<li>设置面板因更新组多了一行而变高，以免最后一行被折叠线藏到滚动区外</li>
-<li>其余改动落在测试守卫、变异装置与设计文档上，没有界面上的其它可见变化</li>
+<li><strong>接管系统推出不再「点一次就失效」</strong>：此前开启「接管系统推出」后，第一次点推出能正确弹出 DiskEjector 自己的弹窗，但点「取消」之后再点推出，弹出来的却是系统自带的弹窗而不是 DiskEjector 的 —— 看起来就像接管功能只生效了一次。原因是内部有一个 30 秒的去重窗口，把你第二次点击误当成了系统的自动重试而直接放走。现在去掉了这个错误机制，只要开关开着，每次点系统推出都会由 DiskEjector 接管弹窗</li>
+<li>其余改动落在测试守卫与变异装置上，没有界面上的其它可见变化</li>
 </ul>
 ]]></description>
-            <enclosure url="https://github.com/wenber-yu/DiskEjector/releases/download/v2026.09.28.2/DiskEjector-2026.09.28.2.dmg" length="2814129" type="application/octet-stream" sparkle:edSignature="DadIHYeRDH/T17rxyYzHbHD5d89lk2y2I3HiFvwnm8AqmWCxSoTqRpLDvc84Bg3U8lkoYcAtkue6Wd/DlqKBAw=="/>
+            <enclosure url="https://github.com/wenber-yu/DiskEjector/releases/download/v2026.09.29/DiskEjector-2026.09.29.dmg" length="2812367" type="application/octet-stream" sparkle:edSignature="JNX88kWPn4KZ7NbVzttweMv5Ts8AB3NKHjWKDWC9+Pb4gn8XNsSjauqwg48ViX8BKiooxdiW7ivPNfKnf+I0DA=="/>
         </item>
     </channel>
 </rss>
