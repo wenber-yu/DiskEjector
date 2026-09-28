@@ -86,6 +86,12 @@ struct SettingsLayoutTests {
     /// - 文字行 → 横向亮度方差很大（黑字 + 白底），被方差条件排除；
     /// - 卡片自身的圆角描边行 → 上下相邻行里有一行落在卡片外（覆盖率不足），被邻居条件排除。
     private func horizontalDividerCount(_ view: some View, width: CGFloat) -> Int {
+        // ⚠️ 诊断用：`DIAG_RENDER_LOCALE=en` 可把出图语言钉到英文（复现 CI）。
+        let locale = ProcessInfo.processInfo.environment["DIAG_RENDER_LOCALE"] ?? TestLanguage.design
+        return TestLanguage.with(locale) { countDividers(in: view, width: width) }
+    }
+
+    private func countDividers(in view: some View, width: CGFloat) -> Int {
         _ = NSApplication.shared
         // 高度取 `sizeThatFits` 的**真实**高度（理由见 `renderedSize` 注释）：
         // 用 `fittingSize` 会拿到偏小的理想高度，把内容底部裁掉，
@@ -97,15 +103,31 @@ struct SettingsLayoutTests {
         hosting.layoutSubtreeIfNeeded()
         hosting.frame = CGRect(x: 0, y: 0, width: width, height: max(realHeight, 10))
         hosting.layoutSubtreeIfNeeded()
-        guard let rep = hosting.bitmapImageRepForCachingDisplay(in: hosting.bounds),
-            let data = rep.bitmapData
-        else { return -1 }
+        let rep: NSBitmapImageRep
+        if let forced = ProcessInfo.processInfo.environment["DIAG_SCALE"].flatMap({ Double($0) }), forced > 0 {
+            let pw = Int((CGFloat(width) * forced).rounded())
+            let ph = Int((realHeight * forced).rounded())
+            guard
+                let explicit = NSBitmapImageRep(
+                    bitmapDataPlanes: nil, pixelsWide: pw, pixelsHigh: ph,
+                    bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+                    colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0)
+            else { return -1 }
+            explicit.size = CGSize(width: width, height: realHeight)
+            rep = explicit
+        } else {
+            guard let implicit = hosting.bitmapImageRepForCachingDisplay(in: hosting.bounds) else { return -1 }
+            rep = implicit
+        }
+        guard let data = rep.bitmapData else { return -1 }
         hosting.cacheDisplay(in: hosting.bounds, to: rep)
 
         let w = rep.pixelsWide
         let h = rep.pixelsHigh
         let bpr = rep.bytesPerRow
         let spp = rep.samplesPerPixel
+        FileHandle.standardError.write(
+            Data("[diag] realHeight=\(realHeight) w=\(w) h=\(h) spp=\(spp)\n".utf8))
 
         /// 逐行统计：覆盖率（alpha > 8 的像素占比）与不透明像素的亮度均值/标准差。
         func rowStats(_ y: Int) -> (coverage: Double, luma: Double, std: Double) {
@@ -133,19 +155,26 @@ struct SettingsLayoutTests {
 
         let stats = (0..<h).map(rowStats)
         let gap = 4
-        var dividerRows: [Int] = []
-        for y in gap..<(h - gap) {
-            guard stats[y].coverage > 0.85,
-                stats[y - gap].coverage > 0.85,
-                stats[y + gap].coverage > 0.85
-            else { continue }
-            // 横向必须均匀（排除文字行），且比上下都暗（排除填充行）。
-            guard stats[y].std < 2.5,
-                stats[y].luma < stats[y - gap].luma - 1,
-                stats[y].luma < stats[y + gap].luma - 1
-            else { continue }
-            dividerRows.append(y)
+        // 诊断：同一套判据，只把「比上下暗多少」参数化。严格 1.0 是生产判据；
+        // 宽松 0.2 用来区分「线根本没画出来」与「线画了但太淡」。
+        func pickDividers(darkerThan threshold: Double) -> [Int] {
+            var out: [Int] = []
+            for y in gap..<(h - gap) {
+                guard stats[y].coverage > 0.85,
+                    stats[y - gap].coverage > 0.85,
+                    stats[y + gap].coverage > 0.85
+                else { continue }
+                // 横向必须均匀（排除文字行），且比上下都暗（排除填充行）。
+                guard stats[y].std < 2.5,
+                    stats[y].luma < stats[y - gap].luma - threshold,
+                    stats[y].luma < stats[y + gap].luma - threshold
+                else { continue }
+                out.append(y)
+            }
+            return out
         }
+        let dividerRows = pickDividers(darkerThan: 1)
+        let looseRows = pickDividers(darkerThan: 0.2)
         // 相邻像素行合并成一条线。
         //
         // ⚠️ **不能用 `y != previous + 1` 这种「严格相邻」判据**（2026-09-15 修正）。
@@ -167,6 +196,25 @@ struct SettingsLayoutTests {
             if y - previous > mergeGap { count += 1 }
             previous = y
         }
+        // 诊断：把宽松判据也按同一套合并规则分组，用来对照严格判据漏掉了哪一条。
+        func groupStarts(_ rows: [Int]) -> [Int] {
+            var starts: [Int] = []
+            var previous = -1_000
+            for y in rows {
+                if y - previous > mergeGap { starts.append(y) }
+                previous = y
+            }
+            return starts
+        }
+        let looseStarts = groupStarts(looseRows)
+        FileHandle.standardError.write(
+            Data(
+                """
+                [diag] scale=\(scale) mergeGap=\(mergeGap) h=\(h) strictCount=\(count) strictRows=\(dividerRows)
+                [diag] looseCount=\(looseStarts.count) looseStarts=\(looseStarts)
+                [diag] screenScale=\(NSScreen.main?.backingScaleFactor ?? -1) appearance=\(NSApp.effectiveAppearance.name.rawValue)
+
+                """.utf8))
         return count
     }
 
