@@ -60,7 +60,10 @@ pick_python() {
 
 if ! PY="$(pick_python)"; then
     echo "   ✗ 找不到**能跑的** python3（试过 \${PYTHON}、/usr/bin/python3、CLT、PATH）——"
-    echo "     本次冒烟**未执行**。⚠️ 注意 `[ -x ]` 为真不等于跑得起来：本机上"
+    # ⚠️ 这里的反引号**必须转义**（\`）：双引号里的裸反引号会被 bash 当命令替换执行
+    #    ⇒ 这条自证信息会少掉「`[ -x ]`」那一段，而它讲的正是这条坑（2026-09-28 被
+    #    `ToolingClaimTests.活文件里双引号内不得有反引号` 抓出来）。
+    echo "     本次冒烟**未执行**。⚠️ 注意 \`[ -x ]\` 为真不等于跑得起来：本机上"
     echo "     /usr/bin/python3 就是被 Xcode 许可桩挡住的（只打印许可警告）。"
     exit 1
 fi

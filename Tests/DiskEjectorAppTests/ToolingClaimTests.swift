@@ -171,6 +171,78 @@ import Testing
         return out
     }
 
+    // MARK: 第四轴：双引号里的**反引号**
+
+    /// ⚠️ 双引号里的反引号会被 bash 当**命令替换**执行 —— 与上一轴同源（都是静默错），
+    /// 但症状不同：上一轴是「静默换一个变量名」，这一轴是「静默跑一条命令」。
+    ///
+    /// 2026-09-28 实发 v2026.09.28.2 当天踩的（两处）：
+    /// ```
+    /// say "  版本号将由 build_app.sh 从 `git describe` 派生"   # ← 会真的跑一次 git describe
+    /// printf '…' "say '  从 `git describe` 派生'"              # ← 同上
+    /// ```
+    /// 后果是**回显里那一块变成空**（`set -u` 下若那条命令不存在则报
+    /// `line N: xxx: command not found`，而 `echo` 照常输出 ⇒ 信息是错的但不报错）。
+    /// 本仓库 `Scripts/preflight.sh` 里也踩过一次（症状是 `line N: ✗: command not found`）。
+    ///
+    /// ⚠️ **`bash -n` 查不出来**：语法完全合法。只能静态扫。
+    ///
+    /// 判据：剥掉单引号段（单引号里的反引号是安全的，不会被展开）之后，
+    /// 若同一行**同时**含反引号与双引号 ⇒ 报。
+    /// ⚠️ 转义过的 `` \` `` 不算 —— 它在双引号里是字面量。
+    ///
+    /// ⚠️ **必须认得 heredoc**（2026-09-28 第一版没认 ⇒ 5 处假阳性全在
+    /// `Scripts/test/dmg_layout_smoke.sh` 里，一处理都没有）：
+    /// 那个 `.sh` 是 bash 包着一段 **Python**（`"$PY" - … <<'PY'`），
+    /// 而定界符**带引号** ⇒ heredoc 正文 bash **一字不展开** ⇒ 里面的反引号是安全的。
+    /// （定界符**不带引号**的 heredoc 会展开 ⇒ 那种正文照扫。）
+    static func backtickInsideDoubleQuotes(in text: String) -> [Claim] {
+        let heredocRe = try? NSRegularExpression(
+            pattern: #"<<-?[ \t]*(?:'([^']+)'|"([^"]+)"|([A-Za-z_][A-Za-z0-9_]*))"#)
+        var out: [Claim] = []
+        var skipUntil: String?
+
+        for (i, line) in text.split(separator: "\n", omittingEmptySubsequences: false).enumerated() {
+            let s = String(line)
+            if let delim = skipUntil {
+                if s.trimmingCharacters(in: .whitespaces) == delim { skipUntil = nil }
+                continue
+            }
+
+            var scan = s
+            if let re = heredocRe,
+                let m = re.firstMatch(in: s, range: NSRange(s.startIndex..<s.endIndex, in: s))
+            {
+                // 只有**带引号**的定界符才让正文免于展开（第 1/2 组）
+                var quotedDelim: String?
+                for g in 1...2 where m.range(at: g).location != NSNotFound {
+                    if let r = Range(m.range(at: g), in: s) {
+                        quotedDelim = String(s[r])
+                        break
+                    }
+                }
+                if let d = quotedDelim {
+                    skipUntil = d
+                    // heredoc **之前**的那一截仍是 bash，照扫
+                    if let r = Range(m.range, in: s) { scan = String(s[s.startIndex..<r.lowerBound]) }
+                }
+            }
+
+            if scan.trimmingCharacters(in: .whitespaces).hasPrefix("#") { continue }
+            // 先去掉转义的反引号（字面量，安全）
+            let escaped = scan.replacingOccurrences(of: "\\`", with: "")
+            // 再剥单引号段：单引号内不做任何展开
+            let stripped =
+                (try? NSRegularExpression(pattern: "'[^']*'"))?
+                .stringByReplacingMatches(
+                    in: escaped, range: NSRange(escaped.startIndex..<escaped.endIndex, in: escaped),
+                    withTemplate: "") ?? escaped
+            guard stripped.contains("`"), stripped.contains("\"") else { continue }
+            out.append(Claim(line: i + 1, hit: "双引号里有反引号（会被当命令替换执行）"))
+        }
+        return out
+    }
+
     // MARK: 范围
 
     /// `git ls-files --cached --others --exclude-standard <patterns…>`；拿不到输出返回 `nil`。
@@ -247,6 +319,21 @@ import Testing
         else { return false }
         if ["yml", "yaml"].contains(url.pathExtension) { return true }
         return firstLine(of: url)?.hasPrefix("#!") == true
+    }
+
+    /// 只挑 **bash** 脚本：`.sh`，或 shebang 里含 `bash`。
+    ///
+    /// ⚠️ **为什么必须筛**：反引号陷阱是 **bash 专属**（Python 不展开反引号），
+    /// 而「活文件」里有一批 `.py`（`Scripts/test/*.py`、`Tools/*.py`）—— 它们拿反引号
+    /// 当 Markdown 引用符与 `repr` 用，一抓一大把 ⇒ **假红** ⇒ 会逼人关掉守卫。
+    /// 2026-09-28 第一版没筛，当场报出 11 处全部在 `.py` 里，一条真的都没有。
+    ///
+    /// ⚠️ 判据用 shebang **而不是**只看 `.sh`：仓库里有**无扩展名**的 bash 脚本
+    /// （`run.sh` 有扩展名，但 `isLiveToolingFile` 的存在理由正是「不能只认扩展名」）。
+    static func isBashScript(_ rel: String) -> Bool {
+        let url = repoRoot.appendingPathComponent(rel)
+        if url.pathExtension == "sh" { return true }
+        return (firstLine(of: url) ?? "").contains("bash")
     }
 
     /// 「活文件」清单：**入库的与未入库的都要**（只要没被 `.gitignore` 排掉），
@@ -394,6 +481,35 @@ import Testing
             "位置参数 `$1` 被误报")
     }
 
+    /// bash 3.2 那条**反引号**陷阱：活文件里不许在双引号字符串里写反引号。
+    ///
+    /// 与「变量紧跟多字节」同一类病（静默、且 `bash -n` 查不出），但症状不同，
+    /// 所以是**独立一轴**：那条守「变量名被延长」，这条守「字符串里跑了条命令」。
+    @Test func 活文件里双引号内不得有反引号() async throws {
+        let listed = await Self.liveToolingFiles()
+        let all = try #require(
+            listed, "拿不到 `git ls-files` 的输出 —— 装置没跑起来（**不等于**「没有这个坑」）")
+        let live = all.filter { Self.isBashScript($0) }
+        // 正向锚：bash 脚本数不能塌 —— 否则下面那句「没有」只是「没扫到」（假绿）
+        #expect(live.count >= 8, "只枚举到 \(live.count) 个 bash 脚本 —— 范围口径失效了（假绿）")
+
+        var claims: [String] = []
+        for rel in live {
+            claims += Self.backtickInsideDoubleQuotes(in: try read(rel)).map { "\(rel) \($0)" }
+        }
+
+        #expect(
+            claims.isEmpty,
+            """
+            这些**活文件**的双引号里写了反引号（\(claims.count) 处）：
+            \(claims.joined(separator: "\n"))
+            bash 会把它当**命令替换**执行 ⇒ 那一块输出变成那条命令的输出（通常是空），
+            而 `bash -n` 完全查不出来（语法合法）。2026-09-28 实发当天踩到两次。
+            改法：① 真要执行就写 `$(…)`；② 只是想在文案里写一个反引号 ⇒ 挪进单引号，
+            或改成转义形式。
+            """)
+    }
+
     /// 第三轴的双向对照。
     @Test func grep方言判据的双向对照() {
         // 该报 ①：BRE 里写 `\|`（本仓库踩过 8 次的那一条）
@@ -418,6 +534,37 @@ import Testing
         #expect(
             Self.grepDialectTraps(in: #"grep -q -e A -e B file"#).isEmpty,
             "`-e A -e B` 被误报")
+    }
+
+    /// 第四轴的双向对照。
+    @Test func 反引号判据的双向对照() {
+        // 该报 ①：双引号里写反引号（2026-09-28 实发踩的那一行）
+        #expect(
+            !Self.backtickInsideDoubleQuotes(in: #"say "…从 `git describe` 派生…""#).isEmpty,
+            "双引号里的反引号没被报出来 —— 判据在这一轴上是瞎的")
+        // 该报 ②：行内注释之后还有双引号 + 反引号（**整行**注释才跳过，不是「含 # 就跳过」）
+        #expect(
+            !Self.backtickInsideDoubleQuotes(in: #"echo "$x" # 注意 `date` 这里"#).isEmpty,
+            "行内注释里的反引号没被报出来 —— 那条反引号会被真的执行")
+
+        // 不该报 ①：单引号里是安全的（bash 不做展开）
+        #expect(
+            Self.backtickInsideDoubleQuotes(in: #"printf '%s\n' 'say "从 `git describe` 派生"'"#)
+                .isEmpty,
+            "单引号里的反引号被误报 —— 那是安全写法，误报会逼人关掉守卫")
+        // 不该报 ②：转义过的反引号是字面量
+        #expect(
+            Self.backtickInsideDoubleQuotes(in: #"echo "用 \` 包起来""#).isEmpty,
+            "转义的反引号被误报")
+        // 不该报 ③：整行注释（仓库里正有一条注释在讲这个坑，不能逼人删掉它）
+        #expect(
+            Self.backtickInsideDoubleQuotes(in: "# ⚠️ 别写 `\"…`git describe`…\"` 这种写法")
+                .isEmpty,
+            "警示注释被当成违规 —— 会逼人删掉那条警示，比没守卫更糟")
+        // 不该报 ④：只含反引号但没有双引号（不在双引号字符串里就不会被这条规则命中）
+        #expect(
+            Self.backtickInsideDoubleQuotes(in: "echo `date`").isEmpty,
+            "裸反引号（无双引号）被误报")
     }
 
     /// ⚠️ **范围本身是判据**（§8.75 / §8.105 / §8.106）。

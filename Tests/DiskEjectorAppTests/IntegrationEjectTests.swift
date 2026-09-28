@@ -127,7 +127,19 @@ struct IntegrationEjectTests {
             let second = await EjectFlowController.shared.terminateAndEject(
                 disk: disk, processes: occupying)
             guard case .ejected = second else {
-                Issue.record("期望 ejected，实际 \(second)")
+                // ⚠️ **`.busy` 且占用列表为空时，必须把「另一个 dissenter」这件事说出来**
+                //    （2026-09-28 实测：本条连红 5 次，输出的 `期望 ejected，实际
+                //    .busy(occupying: [])` 一个字都没提是谁占着，查了很久）。
+                //    列表为空 = lsof 里已经没人持锁，而系统仍说忙 ⇒ 忙的是**审批会话
+                //    dissenter**，不是进程。最常见的那个 dissenter 正是**本应用自己**：
+                //    开着「接管访达的推出」的实例会 dissent 每一次 unmount。
+                //    它的名字只在 `diskutil unmount` 的 stderr 里出现（`-69888` 那条
+                //    `Dissenter parent PPID 1 (…)`），产品侧拿不到 ⇒ 只能在这里提示。
+                var hint = ""
+                if case .busy(let procs) = second, procs.isEmpty {
+                    hint = await Self.dissenterHint(vol: vol)
+                }
+                Issue.record("期望 ejected，实际 \(second)\(hint)")
                 return
             }
 
@@ -242,6 +254,56 @@ struct IntegrationEjectTests {
     }
 
     // MARK: - 失败诊断：把「三种可能」逐条分开
+
+    /// `.busy` 且占用列表为空时补的那段提示 —— 把**真正的 dissenter**说出来。
+    ///
+    /// ⚠️ **为什么必须单独跑一次 `diskutil unmount`**：dissenter 的名字只写在它的
+    /// stderr 里（`Volume … failed to unmount: '<名字>: disk busy' (PID …)`），
+    /// 产品侧（`DADiskUnmountAndEject` 的回调）拿不到 ⇒ 只有这里能问出来。
+    ///
+    /// 2026-09-28 实测那条 stderr 是：
+    /// ```
+    /// Volume … failed to unmount: 'DiskEjector: disk busy' (PID 62210)
+    /// Dissenter parent PPID 1 (/sbin/launchd)
+    /// ```
+    /// ⇒ **dissenter 正是本应用自己**（开着「接管访达的推出」的实例会 dissent 每一次
+    /// unmount）。症状是这条测试连红 5 次，而输出里一个字都没提是谁占着。
+    ///
+    /// ⚠️ **等子进程用 `runAndAwaitExit`**（等 `terminationHandler` 回调），**不用**
+    /// `waitUntilExit()` —— 本套件不标 `@MainActor` 的理由就是这个（§8.99 / §8.114 第 6 节），
+    /// 而 `MainActorBlockingTests.测试代码里不许同步等子进程` 会盯这一处。
+    ///
+    /// ⚠️ **stderr 走临时文件而不是 `Pipe`**：`readDataToEndOfFile()` 是同步阻塞读，
+    /// 会占住协作线程池的一根线程 —— 与上面同一条理由。进程已终止后再读文件没有这个问题。
+    private static func dissenterHint(vol: String) async -> String {
+        let tmp = NSTemporaryDirectory() + "de-dissent-\(UUID().uuidString).txt"
+        FileManager.default.createFile(atPath: tmp, contents: nil)
+        defer { try? FileManager.default.removeItem(atPath: tmp) }
+
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/usr/sbin/diskutil")
+        task.arguments = ["unmount", vol]
+        task.standardOutput = FileHandle.nullDevice
+        let errFile = FileHandle(forWritingAtPath: tmp)
+        task.standardError = errFile
+        let status = await runAndAwaitExit(task)
+        try? errFile?.close()
+        // 退出码 0 = 居然卸掉了（那上面的 .busy 另有原因）⇒ 这条提示没用，别打
+        guard status != 0,
+            let text = try? String(contentsOfFile: tmp, encoding: .utf8)
+                .trimmingCharacters(in: .whitespacesAndNewlines),
+            !text.isEmpty
+        else { return "" }
+
+        return """
+
+            占用列表是空的但系统仍说忙 ⇒ 忙的是**审批会话 dissenter**（不是进程）。
+            最常见的 dissenter 是**本应用自己**：开着「接管访达的推出」的实例会 dissent
+            每一次 unmount ⇒ 跑这条测试前请先退出 /Applications/DiskEjector.app
+            （或关掉那个开关）。`diskutil unmount` 的原话：
+            \(text)
+            """
+    }
 
     /// 未找到测试盘时那段失败文本。
     ///
