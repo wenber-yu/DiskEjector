@@ -86,21 +86,40 @@ struct SettingsLayoutTests {
     /// - 文字行 → 横向亮度方差很大（黑字 + 白底），被方差条件排除；
     /// - 卡片自身的圆角描边行 → 上下相邻行里有一行落在卡片外（覆盖率不足），被邻居条件排除。
     private func horizontalDividerCount(_ view: some View, width: CGFloat) -> Int {
-        _ = NSApplication.shared
-        // 高度取 `sizeThatFits` 的**真实**高度（理由见 `renderedSize` 注释）：
-        // 用 `fittingSize` 会拿到偏小的理想高度，把内容底部裁掉，
-        // 万一分隔线正好落在被裁区域就会漏数。
-        let realHeight = renderedSize(view, width: width).height
-        let hosting = NSHostingView(rootView: view)
-        hosting.appearance = NSAppearance(named: .aqua)
-        hosting.frame = CGRect(x: 0, y: 0, width: width, height: 10)
-        hosting.layoutSubtreeIfNeeded()
-        hosting.frame = CGRect(x: 0, y: 0, width: width, height: max(realHeight, 10))
-        hosting.layoutSubtreeIfNeeded()
-        guard let rep = hosting.bitmapImageRepForCachingDisplay(in: hosting.bounds),
-            let data = rep.bitmapData
-        else { return -1 }
-        hosting.cacheDisplay(in: hosting.bounds, to: rep)
+        // ⚠️ **出图必须与「量高度」钉在同一种语言下**（2026-09-28 修，CI 红）。
+        //
+        // `renderedSize` 内部已经 `TestLanguage.with(TestLanguage.design)`（理由见它的注释：
+        // 设计稿数字全按中文实测）。但**出图这一半当时漏了**，于是成了
+        // 「量高度按中文、画图跟随 `Locale.current`」的错配：
+        //   - 本地开发机 `Locale.current` 就是 `zh-Hans` ⇒ 两者一致 ⇒ 一直绿；
+        //   - CI（runner 系统语言英文）画出来的是英文版 ⇒ 行高不同 ⇒ 少判一条线。
+        // 实测（2026-09-28，CI run `36382577179`）：不钉 → `count=4`；钉住 → `count=5`（期望值正好 5）。
+        // ⇒ 与 `renderedSize` 同源，别让「量一半、画一半」再分家。
+        return TestLanguage.with(TestLanguage.design) {
+            // 高度取 `sizeThatFits` 的**真实**高度（理由见 `renderedSize` 注释）：
+            // 用 `fittingSize` 会拿到偏小的理想高度，把内容底部裁掉，
+            // 万一分隔线正好落在被裁区域就会漏数。
+            let realHeight = renderedSize(view, width: width).height
+            // ⚠️ **高度向上取整**：`OffscreenRender.bitmap` 按 `Int(size.height * 2)` **截断**，
+            // 传 773.4 只拿到 1546px（差 0.8pt 不足），底部那条线有被裁的风险。
+            guard
+                let rep = OffscreenRender.bitmap(
+                    view,
+                    size: CGSize(width: width, height: realHeight.rounded(.up)),
+                    // ⚠️ **背景必须 `.clear`，不能垫白**：判据靠「卡片外那一行覆盖率不足」
+                    // 排除卡片自身的圆角描边（见上面那段注释）。垫白底会让卡片之间也变成
+                    // 不透明 ⇒ 描边行的上下邻居覆盖率也过线 ⇒ 多判出线。
+                    background: .clear)
+            else { return -1 }
+            return dividerCount(in: rep, width: width)
+        }
+    }
+
+    /// 从一张已画好的位图里数分隔线。**只判读、不出图** ——
+    /// 出图一律走 ``OffscreenRender/bitmap(_:size:appearance:background:)``（SPEC §8.131，
+    /// 自建位图会被 `PixelReadPathTests` 拦）。
+    private func dividerCount(in rep: NSBitmapImageRep, width: CGFloat) -> Int {
+        guard let data = rep.bitmapData else { return -1 }
 
         let w = rep.pixelsWide
         let h = rep.pixelsHigh
