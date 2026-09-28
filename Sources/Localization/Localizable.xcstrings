@@ -491,6 +491,27 @@
         "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "在 Dock 中顯示圖示" } }
       }
     },
+    "takeOverFinderEject" : {
+      "localizations" : {
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "接管访达的推出" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Take over Finder's eject" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "接管 Finder 的推出" } }
+      }
+    },
+    "takeOverFinderEjectFootnote" : {
+      "localizations" : {
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "在访达中点推出时，由本应用判定并列出占用者。判定期间访达会等待你的决定，此时其他磁盘的推出也会一并暂缓。" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Finder's eject goes through this app: it lists what holds the disk. Finder waits; other disks are deferred meanwhile." } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "在 Finder 中點推出時，由本應用程式判定並列出佔用者。判定時 Finder 會等待你的決定，此時其他磁碟的推出也會一併暫緩。" } }
+      }
+    },
+    "takeOverFinderEjectNeedsFDA" : {
+      "localizations" : {
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "需要「完全磁盘访问」才能列出占用者，否则接管不会生效。" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Takeover needs Full Disk Access to list what holds a disk." } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "需要「完全磁碟存取權」才能列出佔用者，否則接管不會生效。" } }
+      }
+    },
     "tintedMode" : {
       "localizations" : {
         "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "色调模式（系统背景色）" } },
@@ -657,6 +678,13 @@
         "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "尚未检查" } },
         "en" : { "stringUnit" : { "state" : "translated", "value" : "Not checked yet" } },
         "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "尚未檢查" } }
+      }
+    },
+    "updateReadyAutoHint" : {
+      "localizations" : {
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "会自动重启完成安装；有磁盘正在推出时会等它结束。" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Restarts automatically to install; if a disk is being ejected, it waits." } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "會自動重新啟動完成安裝；有磁碟正在推出時會等它結束。" } }
       }
     },
     "updateReadyFormat" : {

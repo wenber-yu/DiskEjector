@@ -54,6 +54,11 @@ struct ContentView: View {
     /// （`refreshDisks()` 与「回到前台」那一次 refresh），**界面上不读它的任何属性** ——
     /// 读的地方全在 ``DiskListRegion`` 里。
     ///
+    /// ℹ️ **2026-09-25 补**：``eject(_:)`` 里多了一处 `result(for:)` ——
+    /// 那是**一次性方法调用**（取缓存结论用于提前弹窗，§8.146），
+    /// **不建立订阅**，所以「每 15s 轮询让整个窗口重算」这件事不会发生。
+    /// 判据不是「有没有出现 `occupancyStore`」，而是「有没有挂 `@ObservedObject`」。
+    ///
     /// 而 `@ObservedObject` 订阅的是 `objectWillChange` **整条**，不是「读到的那几个属性」：
     /// 只要挂上它，``OccupancyStore`` 每 15s 跑完 `lsof` 就会让**整个窗口重算**
     /// （标题栏、横幅、滚动区一起重建），而这些地方一个字节都没变。
@@ -502,16 +507,34 @@ struct ContentView: View {
 
     /// 发起推出。
     ///
-    /// **检测只用于展示，不干预决策**：被占用时按钮已经写成红色的「关闭并推出」，
-    /// 点击后仍走系统接口——系统返回「忙」才弹确认窗。这样既兑现了「破坏性前置」的
-    /// 设计意图，又保留了「有进程占用就失败」这层系统保护（绝不强制卸载）。
+    /// **检测只决定「什么时候弹窗」，不决定「能不能推出」**：被占用时按钮已经写成红色的
+    /// 「关闭并推出」，点击后**照常**走系统接口 —— `fBsyErr` 仍是「忙」的唯一权威判据，
+    /// 弹窗则在缓存已经说「被占用」时**立刻**弹（见下面 2026-09-25 那段）。
+    /// 这样既兑现了「破坏性前置」的设计意图，又保留了「有进程占用就失败」这层系统保护
+    /// （绝不强制卸载）。
+    ///
+    /// ## 2026-09-25 改：把「弹窗」与「等系统」解耦（§8.146）
+    ///
+    /// 用户报「点有占用的盘的『关闭并推出』之后，占用弹窗很长时间才出现」。
+    /// 真机日志坐实是系统那 12.5 秒（`unmountAndEjectDevice` 要十几秒才返回 `fBsyErr`），
+    /// 而弹窗原先**必须等它返回**。现在把**窗口上已经显示的那份占用结论**
+    /// （``OccupancyStore/result(for:)`` 的缓存）交给 ``EjectUI/eject(disk:cachedOccupancy:)``：
+    /// 它已经说了「被占用」，就**立刻**弹窗，系统调用照常在后台跑
+    /// （它仍是「能不能推出」的权威）。
+    ///
+    /// ⚠️ **顺带把 `await refreshDisks()` 从弹窗之前挪走了**：它对弹窗内容没有任何贡献，
+    /// 却会**串行**跑一遍「全量刷新磁盘列表 + **所有卷**的 `lsof`」——
+    /// 纯粹在弹窗前面再叠一段等待。刷新现在由 ``EjectUI`` 在真正需要时做
+    /// （推出成功、或系统其实成功了而收掉预弹窗那一刻）。
     private func eject(_ disk: DiskInfo) {
         ejectingDiskId = disk.id
         Task {
-            let outcome = await EjectFlowController.shared.eject(disk: disk)
+            await EjectUI.eject(
+                disk: disk,
+                // 缓存 = **窗口上此刻显示的那一份**，用它才能保证
+                // 「用户看到的」与「弹出的」是同一个结论。
+                cachedOccupancy: occupancyStore.result(for: disk))
             ejectingDiskId = nil
-            await refreshDisks()
-            await EjectUI.handle(outcome, disk: disk)
         }
     }
 }

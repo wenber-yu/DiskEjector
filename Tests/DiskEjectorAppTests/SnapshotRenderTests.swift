@@ -564,7 +564,8 @@ struct SnapshotRenderTests {
             // 2026-09-19 加的那一态（§8.81 / §8.82）：自动那条路的「后台下载中」。
             // 与设计稿 B 段「3b」那一帧对应 —— 百分比无从得知 ⇒ 无进度条、无「取消」。
             ("downloading-unknown", row(.downloading(version: "1.1.0", fraction: nil))),
-            ("ready", row(.ready(version: "1.1.0"))),
+            ("ready", row(.ready(version: "1.1.0", autoRestart: false))),
+            ("readyAuto", row(.ready(version: "1.1.0", autoRestart: true))),
             ("failed", row(.failed(version: "1.1.0"))),
             // 2026-09-22 加的那一态（账本第 43 行）：下载成功、但没装上。
             ("install-failed", row(.installFailed(version: "1.1.0"))),
@@ -573,7 +574,9 @@ struct SnapshotRenderTests {
         ]
         for (slug, state) in updateRowStates {
             try dump(
-                SettingsView(updateStateOverride: state, autoUpdateRowOverride: designAutoUpdate),
+                SettingsView(
+                    updateStateOverride: state, autoUpdateRowOverride: designAutoUpdate,
+                    takeOverAvailabilityOverride: .usable),
                 width: DesignTokens.Size.settingsPanel.width,
                 height: DesignTokens.Size.settingsPanel.height,
                 name: "settings-update-\(slug)-light")
@@ -592,11 +595,23 @@ struct SnapshotRenderTests {
         ]
         for (slug, state) in autoUpdateRows {
             try dump(
-                SettingsView(autoUpdateRowOverride: state),
+                SettingsView(autoUpdateRowOverride: state, takeOverAvailabilityOverride: .usable),
                 width: DesignTokens.Size.settingsPanel.width,
                 height: DesignTokens.Size.settingsPanel.height,
                 name: "settings-auto-update-\(slug)-light")
         }
+
+        // ---- 「接管访达的推出」那一行的**未授权**态（2026-09-28）----
+        //
+        // ⚠️ 这一态由**本机给没给完全磁盘访问**决定 —— 任何一台机器都只能处于其中一半，
+        // 所以它在真机上**未必画得出来**（授权过的机器上永远看不到）。
+        // ⇒ 必须显式注入 + 单独出图，否则它的排版与文案永远没人看过。
+        // 同源理由见 ``SettingsSectionsColumn/updateStateOverride``。
+        try dump(
+            SettingsView(takeOverAvailabilityOverride: .needsFullDiskAccess),
+            width: DesignTokens.Size.settingsPanel.width,
+            height: DesignTokens.Size.settingsPanel.height,
+            name: "settings-take-over-needs-fda-light")
 
         // ---- 深色对照（设计稿 07-dark.html）----
         try dump(
@@ -605,8 +620,13 @@ struct SnapshotRenderTests {
         try dump(
             MenuBarDiskRow(disk: disk, occupancy: .occupied(procs), accent: .default, onEject: {}),
             width: menuW, name: "menurow-busy-dark", dark: true)
-        try dump(SettingsView(), width: DesignTokens.Size.settingsPanel.width, name: "settings-light")
+        // 上面两张深色图与这两张设置面板图都要**显式注入接管可用性**：
+        // 走查图要与设计稿并排看，而设计稿画的是「开关可用」的那一版。
         try dump(
-            SettingsView(), width: DesignTokens.Size.settingsPanel.width, name: "settings-dark", dark: true)
+            SettingsView(takeOverAvailabilityOverride: .usable),
+            width: DesignTokens.Size.settingsPanel.width, name: "settings-light")
+        try dump(
+            SettingsView(takeOverAvailabilityOverride: .usable),
+            width: DesignTokens.Size.settingsPanel.width, name: "settings-dark", dark: true)
     }
 }

@@ -75,6 +75,11 @@ import Testing
     /// 所以「写错的数字」能在它这里活下来。
     private static let docs = [
         "Design/ui/v2/DESIGN-SPEC.md",
+        // 本次「接管访达的推出」的两份增量文档（PM 的 PRD + 架构师的设计）。
+        // 它们都是**会被提交**的 `.md`，因此必须在范围内 —— 否则里面的表格
+        // 永远没人守（§8.105 实测漏了 `README.md` 就是这个后果）。
+        "Design/prd/incremental-takeover-finder-eject.md",
+        "Design/architecture/incremental-takeover-finder-eject.md",
         "SPEC.md",
         "README.md",
         "Release-notes/README.md",

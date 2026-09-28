@@ -256,8 +256,11 @@ final class UpdateUserDriver: NSObject, SPUUserDriver {
             reply(.dismiss)
             return
         }
-        // **攥着 reply 不马上回答**：见 `UpdateController.readyReply` 的说明 ——
-        // 重启不自动做，用户点「立即重启」时才给出 `.install`。
+        // **攥着 reply 不马上回答**：见 `UpdateController.readyReply` 的说明。
+        // 什么时候回答由 ``UpdateController/driverIsReady(version:reply:)`` 按三态分流决定：
+        // 用户点过「后台更新并重启」且无推出在进行 ⇒ **当场**答 `.install`（自己重启）；
+        // 有卷正在推出 ⇒ 攥着，等推出结束再答 `.install`（§8.146）；
+        // 其余 ⇒ 攥着，等用户点「立即重启」。
         controller.driverIsReady(
             version: controller.pendingUpdate?.version ?? L10n.tr(.updateUnknownVersion),
             reply: reply)
@@ -267,8 +270,10 @@ final class UpdateUserDriver: NSObject, SPUUserDriver {
         withApplicationTerminated applicationTerminated: Bool,
         retryTerminatingApplication: @escaping () -> Void
     ) {
-        // 走到这里说明用户点了「立即重启」，Sparkle 正在替换 bundle。
-        // 不需要额外 UI —— 应用马上会被关掉并重新拉起，画什么都来不及看。
+        // 走到这里说明 reply 已经答了 `.install` —— 可能是用户点了「立即重启」，
+        // 也可能是「后台更新并重启」那条路**自己**答的（§8.146），两者都会走到这里。
+        // Sparkle 正在替换 bundle。不需要额外 UI —— 应用马上会被关掉并重新拉起，
+        // 画什么都来不及看。
     }
 
     func showUpdateInstalledAndRelaunched(_ relaunched: Bool, acknowledgement: @escaping () -> Void) {

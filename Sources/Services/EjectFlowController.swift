@@ -56,6 +56,60 @@ final class EjectFlowController {
         self.log = log
     }
 
+    // MARK: - 「此刻有没有卷正在推出」
+
+    /// 此刻正在进行的推出操作数（`> 0` = 有卷正在推出）。
+    ///
+    /// ## 为什么需要它
+    ///
+    /// 更新弹窗的提示块（`updateCallout`）向用户承诺「**正在推出的磁盘不会被打断**」——
+    /// 而「后台更新并重启」那条路下载完之后会**自动重启**（§8.146），
+    /// 重启 = 立刻退出 app，把正在跑的 `unmountAndEjectDevice` 腰斩。
+    /// ⇒ 自动重启前必须能问出「现在有没有推出在进行」。
+    ///
+    /// ## 为什么是「计数器」而不是一个布尔开关
+    ///
+    /// 它**派生自真实操作的进出**（``eject(disk:)`` / ``terminateAndEject(disk:processes:awaiting:)``
+    /// 的 `defer` 里减），不是「用户点过按钮没有」—— 后者会与真实情况脱节：
+    /// 点了按钮但操作早已结束、或操作由别的入口发起，布尔开关都会答错
+    /// （同「能派生就别用『手动开关』」那条纪律）。
+    ///
+    /// ⚠️ **它是 `private(set)`**：别的类型只能读。写入口只有下面两个操作自己的进出。
+    private(set) var activeEjectionCount = 0
+
+    /// 等所有进行中的推出结束；当前没有推出时**立即返回**。
+    ///
+    /// **为什么要它**：``UpdateController/driverIsReady(version:reply:)`` 遇到
+    /// 「有卷正在推出」时**推迟**自动重启（否则会打断推出）。推迟的出口就是这里 ——
+    /// 推出结束的那一刻唤醒等待者，把自动重启补上。
+    /// 没有它的话那个分支会留下一个「**永远不自动重启**」的态
+    /// （而弹窗已经向用户承诺过会自动重启）。
+    ///
+    /// ⚠️ **用 `while` 而不是 `if`**：被唤醒之后可能又有一轮推出进来了
+    /// （`activeEjectionCount` 重新 `> 0`）⇒ 必须再等一次，
+    /// 否则会在一轮推出刚起步时就把 app 重启掉。
+    func waitUntilIdle() async {
+        while activeEjectionCount > 0 {
+            await withCheckedContinuation { idleWaiters.append($0) }
+        }
+    }
+
+    /// 一次推出操作结束：计数减一；归零时唤醒所有等待者。
+    ///
+    /// ⚠️ **`activeEjectionCount = 0` 与唤醒之间不许有 `await`**
+    /// （与 ``OccupancyStore/refresh(disks:)`` 同一个坑）：否则这个窗口里进来的
+    /// 新操作会看到计数为 0、自己开一轮，同时它的 continuation 又被我们取走 —— 唤醒就丢了。
+    private func endEjection() {
+        activeEjectionCount -= 1
+        guard activeEjectionCount == 0 else { return }
+        let resuming = idleWaiters
+        idleWaiters = []
+        for continuation in resuming { continuation.resume() }
+    }
+
+    /// 正在等「推出全部结束」的调用方。
+    private var idleWaiters: [CheckedContinuation<Void, Never>] = []
+
     /// 检测访问该卷的进程。
     ///
     /// 沙盒环境下返回 ``OccupancyResult/unknown``，调用方必须显式处理该状态，
@@ -71,8 +125,16 @@ final class EjectFlowController {
     /// 「忙」的权威信号，检测缺失也绝不会绕过它。这既兑现了「弹出时显示是谁占用」，
     /// 又保留了 Finder 式的安全兜底。
     ///
+    /// ⚠️ **它也是「此刻有卷正在推出」的登记处**（``activeEjectionCount``）——
+    /// 更新那条路靠这个信号决定「能不能现在自动重启」（§8.146）。
+    /// 计数放在**整个函数**上（而不是只包住 `ejectService.eject`）：`detect` 那一段
+    /// 也是这次推出的组成部分，而它同样不该被一次重启腰斩。
+    ///
     /// - Returns: ``EjectOutcome``，调用方据此决定弹窗内容与「关闭并推出」可用性。
     func eject(disk: DiskInfo) async -> EjectOutcome {
+        activeEjectionCount += 1
+        defer { endEjection() }
+
         // 捕获占用进程用于弹窗展示；检测失败（沙盒/.needsFullDiskAccess）时为 []。
         let occupancy = await occupancyDetector.detect(mountPath: disk.mountPath)
         let processes = occupancy.processes
@@ -98,15 +160,46 @@ final class EjectFlowController {
     /// 返回 `.busy(remaining)` 把「关不掉」的进程交回 UI，而不是强行卸载。
     /// 自身 PID 会被跳过；`EPERM`（无权终止，如系统进程）算作「无法关闭」如实返回。
     ///
+    /// ⚠️ **中间那一步（1.5s 之后）多了一个「等上一次系统推出结束」**（2026-09-25，§8.146）：
+    /// 调用方可能已经先发起过一次 ``eject(disk:)``（「先弹窗、系统在后台跑」那条路），
+    /// 此时不能与它并发调 `unmountAndEjectDevice`（理由见 ``inFlight`` 那一段的注释）。
+    /// 若那次推出在 `SIGTERM` 之后成功了，这里直接返回 `.ejected`。
+    ///
     /// - Parameters:
     ///   - disk: 目标卷。
     ///   - processes: 来自上次 `.busy` 的占用进程列表。
-    func terminateAndEject(disk: DiskInfo, processes: [OccupyingProcess]) async -> EjectOutcome {
+    ///   - inFlight: 若调用方**已经**发起过一次 ``eject(disk:)``（「先弹窗、系统在后台跑」
+    ///     那条路，见 ``EjectUI/eject(disk:cachedOccupancy:)``），把它传进来。
+    ///     `SIGTERM` 之后会先等它 —— 理由见下。
+    func terminateAndEject(
+        disk: DiskInfo, processes: [OccupyingProcess],
+        awaiting inFlight: Task<EjectOutcome, Never>? = nil
+    ) async -> EjectOutcome {
+        activeEjectionCount += 1
+        defer { endEjection() }
+
         // 第 1 步：SIGTERM 礼貌退出。
         let unkillableAfterTerm = terminate(processes, signal: SIGTERM)
+
+        // 第 2 步：等约 1.5s 让 SIGTERM 生效（应用有机会存盘），再复检。
         try? await Task.sleep(nanoseconds: 1_500_000_000)
 
-        // 第 2 步：复检，仍占用则对残留升级 SIGKILL。
+        // ⚠️ **若有一次系统推出正在跑，等它结束再往下走 —— 不能与它并发**（2026-09-25，§8.146）：
+        // 两次 `unmountAndEjectDevice` 对同一个卷并发调用行为未定义，而第二次会因
+        // 「设备已不在」报 `notFound` —— **把一次成功写成失败**，用户看到的是
+        // 「设备已不在，可能已被拔除」这种误导文案。
+        //
+        // 为什么排在上面那 1.5s **之后**：SIGTERM 一发出去，卡在 `unmountAndEjectDevice`
+        // 里的那次调用就会随占用进程退出而返回 —— 等完 1.5s 再来看它，几乎总是「已成功」，
+        // 于是这里不会真的再等一轮十几秒（反过来先等它、再等 SIGTERM，用户会白等一整轮）。
+        if let inFlight {
+            if case .ejected = await inFlight.value {
+                // 占用进程退出之后系统那次推出自己成功了 —— 已经推出去了，别再动它。
+                return record(.ejected, disk: disk)
+            }
+        }
+
+        // 第 3 步：复检，仍占用则对残留升级 SIGKILL。
         let recheck = await occupancyDetector.detect(mountPath: disk.mountPath)
         var remaining = unkillableAfterTerm
         if case .occupied(let stillBusy) = recheck, !stillBusy.isEmpty {
@@ -164,28 +257,18 @@ final class EjectFlowController {
         return outcome
     }
 
-    /// 向给定进程发送信号，返回「无法终止」的进程（非 EPERM 之外的成功/已消失不计入）。
+    /// 向给定进程发送信号，返回「无法终止」的进程。
+    ///
+    /// **实现已下沉到 ``ProcessTerminator/signal(_:signal:selfPid:kill:)``**（2026-09-27）：
+    /// 同一套信号语义现在有两个消费方 —— 本类（主窗口 / 菜单栏那条路，`@MainActor` 编排）
+    /// 与 ``EjectHookService``（DA approval 回调线程，**不能 await**，走
+    /// ``ProcessTerminator/clear(_:termGrace:killGrace:kill:isAlive:sleep:)``）。
+    /// 留两份实现必然分叉，而分叉的那一份会在「`EPERM` 该不该计入」这类细节上
+    /// 让两个入口对同一块盘给出不同说法。
+    ///
+    /// **行为逐字不变**（纯重构）：`ESRCH` 不计入、`EPERM` 计入、自身 PID 不发信号且计入。
     private func terminate(_ processes: [OccupyingProcess], signal: Int32) -> [OccupyingProcess] {
-        var unkillable: [OccupyingProcess] = []
-        let selfPid = Int32(ProcessInfo.processInfo.processIdentifier)
-        for process in processes {
-            guard process.pid != selfPid else {
-                // 不自杀：自身 PID 算作「无法关闭」，交回 UI 提示。
-                unkillable.append(process)
-                continue
-            }
-            errno = 0
-            let rc = kill(process.pid, signal)
-            if rc != 0 {
-                if errno == ESRCH {
-                    // 进程已不存在：视为成功，不计入无法关闭。
-                    continue
-                }
-                // EPERM（无权）或其他：如实计入，UI 会告知用户哪些关不掉。
-                unkillable.append(process)
-            }
-        }
-        return unkillable
+        ProcessTerminator.signal(processes, signal: signal)
     }
 
     /// 占用弹窗的说明文案（两处 UI 复用，避免文案分叉）。

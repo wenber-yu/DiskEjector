@@ -57,6 +57,11 @@ struct SettingsView: View {
     /// ⚠️ **仅供离屏出图**：见 ``SettingsSectionsColumn/autoUpdateRowOverride``。
     var autoUpdateRowOverride: AutoUpdateRowState?
 
+    /// ⚠️ **仅供离屏出图 / 单测**：见 ``SettingsSectionsColumn/takeOverAvailabilityOverride``。
+    ///
+    /// 真实入口（`AppDelegate.makeSettingsWindow()`）不传 → 打开面板那一刻实时探测 FDA。
+    var takeOverAvailabilityOverride: AppSettings.TakeOverAvailability?
+
     @Environment(\.dismiss) private var dismiss
     @State private var launchAtLoginPrompt: LaunchAtLoginPrompt?
 
@@ -79,11 +84,12 @@ struct SettingsView: View {
             }
             ScrollView {
                 SettingsSectionsColumn(
+                    updateStateOverride: updateStateOverride,
+                    autoUpdateRowOverride: autoUpdateRowOverride,
+                    takeOverAvailabilityOverride: takeOverAvailabilityOverride,
                     onLaunchAtLoginError: { error in
                         launchAtLoginPrompt = prompt(for: error)
-                    },
-                    updateStateOverride: updateStateOverride,
-                    autoUpdateRowOverride: autoUpdateRowOverride
+                    }
                 )
                 .padding(.bottom, SettingsMetrics.bottomInset)
             }
@@ -305,10 +311,38 @@ struct SettingsSectionsColumn: View {
     /// 理由见 ``AutoUpdateRowState``。
     var autoUpdateRowOverride: AutoUpdateRowState?
 
+    /// ⚠️ **仅供离屏出图 / 单测**：`nil` 时走实时探测 ``AppSettings/takeOverAvailability()``。
+    ///
+    /// ## 为什么这个口子非有不可
+    ///
+    /// 它来自「本机给没给完全磁盘访问」，而这个问题的答案**取决于跑测试的那个进程**：
+    /// xctest 的 FDA 责任方是拉起它的终端（本机实测：终端有、被测 app 没有）。
+    /// 不注入的话，同一份高度契约会在这台机器上绿、换台机器红，**红绿都与被测代码无关** ——
+    /// 同 ``AutoUpdateRowState`` 那条的理由。
+    ///
+    /// 注入的是**可用性结论**（``AppSettings/TakeOverAvailability``）而不是「两个布尔」：
+    /// 推导仍然只有 ``AppSettings/TakeOverAvailability/resolve(isSandboxed:isFullDiskAccessAuthorized:)``
+    /// 一处，注入口不会长成第二套判据。
+    var takeOverAvailabilityOverride: AppSettings.TakeOverAvailability?
+
     @AppStorage(AppSettings.Key.visualStyle) private var visualStyleRaw = VisualStyle.default.rawValue
     @AppStorage(AppSettings.Key.accentColor) private var accentColorRaw = AccentColor.default.rawValue
     @AppStorage(AppSettings.Key.appLanguage) private var appLanguageRaw = AppLanguage.default.rawValue
     @AppStorage(AppSettings.Key.showDockIcon) private var showDockIcon = false
+
+    /// 「接管访达的推出」开关（默认关）。
+    ///
+    /// **默认关的理由**见 ``AppSettings/takeOverFinderEject``：接管是系统级改动，
+    /// 一次性推给老用户风险太高 —— 万一出 bug，用户会以为「盘推不出来了」。
+    @AppStorage(AppSettings.Key.takeOverFinderEject) private var takeOverFinderEject = false
+
+    /// 「接管访达的推出」此刻**能不能用** —— 见 ``AppSettings/TakeOverAvailability``。
+    ///
+    /// 存的是**结论**而不是「授权与否」：视图不自己推「有没有授权」（那是
+    /// ``AppSettings/TakeOverAvailability/resolve(isSandboxed:isFullDiskAccessAuthorized:)`` 的事），
+    /// 也不自己判「该画成什么」—— 一处推导，三处消费（画法 / 能否点击 / 说明文字）。
+    @State private var takeOverAvailability: AppSettings.TakeOverAvailability
+
     @State private var launchAtLogin = LaunchAtLoginManager.isEnabled
 
     /// 用户本次拨动「自动更新」后的值；`nil` = 还没拨过，直接读 Sparkle。
@@ -321,6 +355,36 @@ struct SettingsSectionsColumn: View {
     /// 「更新」组要跟着 ``UpdateController/phase`` 变 —— 下载进度、已就绪、失败
     /// 三个状态都是**别人推着走**的（Sparkle 的回调），不订阅就永远停在首帧那一态。
     @ObservedObject private var updateController = UpdateController.shared
+
+    // MARK: 构造
+
+    /// **显式 init 存在的唯一理由**：给 `takeOverAvailability` 这个 `@State` 一个
+    /// **打开面板那一刻算出来**的初值。
+    ///
+    /// 合成出来的逐个成员 init 只能给属性写默认表达式，而默认表达式**没法区分**
+    /// 「调用方注入了结论」与「要现探真机」——那正是这里唯一需要判断的事。
+    ///
+    /// ⚠️ **参数顺序：回调在后**。`onLaunchAtLoginError` 是唯一的回调，
+    /// 排在最后才能让测试写成 `SettingsSectionsColumn(takeOverAvailabilityOverride: .usable) { _ in }`
+    /// —— 单测里有 7 处是「只关心高度、别的都走默认」的调用，让它们少写一个标签是有意义的。
+    init(
+        updateStateOverride: UpdateController.CheckRowState? = nil,
+        autoUpdateRowOverride: AutoUpdateRowState? = nil,
+        takeOverAvailabilityOverride: AppSettings.TakeOverAvailability? = nil,
+        onLaunchAtLoginError: @escaping (LaunchAtLoginError) -> Void = { _ in }
+    ) {
+        self.updateStateOverride = updateStateOverride
+        self.autoUpdateRowOverride = autoUpdateRowOverride
+        self.takeOverAvailabilityOverride = takeOverAvailabilityOverride
+        self.onLaunchAtLoginError = onLaunchAtLoginError
+        // **打开面板的那一刻就要说实话**：首帧先画「可用」、下一帧再翻成「不可用」，
+        // 用户看到的是一个**任何时刻都不存在的状态**（同 ``appVersion`` 那条「别显示假值」）。
+        //
+        // ⚠️ **注入口不为空时不探真机**：出图与单测要的正是「与这台机器的权限状态无关」，
+        // 真机探测会把注入值覆盖掉。
+        _takeOverAvailability = State(
+            initialValue: takeOverAvailabilityOverride ?? AppSettings.takeOverAvailability())
+    }
 
     private var accentColor: AccentColor { AccentColor(rawValue: accentColorRaw) ?? .default }
 
@@ -606,10 +670,15 @@ struct SettingsSectionsColumn: View {
                 }
             }
 
-        case .ready(let version):
+        case .ready(let version, let autoRestart):
+            // ⚠️ **两句话不能合成一句**（2026-09-25，§8.146.2）：「会自动重启」对
+            // **自动那条路**（`willInstallUpdateOnQuit`）是假的 —— 那条路上用户没点过
+            // 任何东西，语义是「下次退出时静默装上」。而这一行**恰恰在自动那条路上
+            // 待得最久**（弹窗那条路一进 `.ready` 就回答 `.install`，只有「有卷正在推出」
+            // 那一段会停住）⇒ 写死「会自动重启」等于在唯一看得见它的路上说谎。
             line(
                 label: String(format: L10n.tr(.updateReadyFormat), version),
-                description: L10n.tr(.updateReadyHint)
+                description: L10n.tr(autoRestart ? .updateReadyAutoHint : .updateReadyHint)
             ) { restartUpdateButton }
 
         case .failed(let version):
@@ -783,6 +852,22 @@ struct SettingsSectionsColumn: View {
                     ) {
                         SettingsSwitch(isOn: launchAtLogin, accent: accentColor)
                     }
+                    // 「接管访达的推出」：默认关。放在「通用」组**最后一行** ——
+                    // 它是本组里唯一会改变**系统行为**（拦截别人的推出请求）的一项，
+                    // 前面几项都只影响本应用自己。
+                    //
+                    // ⚠️ **这一行有三态，判定全在 `takeOverAvailability` 一处**
+                    // （2026-09-28）：没授「完全磁盘访问」时，它画成「不可用 + 去授权引导」。
+                    // 那是本功能唯一会「开着却什么都不做」的情形 ——
+                    // 见 ``AppSettings/TakeOverAvailability`` 与 ``takeOverDescription``。
+                    line(
+                        label: L10n.tr(.takeOverFinderEject),
+                        description: takeOverDescription,
+                        onTap: takeOverTapAction,
+                        accessibilityValue: L10n.tr(takeOverOn ? .on : .off)
+                    ) {
+                        takeOverControl
+                    }
                 }
             }
             group(title: L10n.tr(.settingsGroupDiagnostics)) {
@@ -838,6 +923,16 @@ struct SettingsSectionsColumn: View {
         .padding(.horizontal, SettingsMetrics.sectionPaddingH)
         .padding(.top, SettingsMetrics.sectionPaddingH)
         .frame(maxWidth: .infinity, alignment: .leading)
+        // 回到前台时重探一次接管闸门。
+        //
+        // **为什么必须重探**：授「完全磁盘访问」这件事**只能在系统设置里做**，
+        // 而用户走这一趟时本面板通常一直开着 —— 不重探的话，那一行会停在
+        // 「去授权」的样子，而用户刚刚才把权限给了（同 ``ContentView/refreshFDAStatus()``
+        // 挂在 `didBecomeActiveNotification` 上的理由）。
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) {
+            _ in
+            refreshTakeOverAvailability()
+        }
     }
 
     // MARK: 分组骨架
@@ -968,6 +1063,90 @@ struct SettingsSectionsColumn: View {
         } else {
             content
         }
+    }
+
+    /// 切换「接管访达的推出」。
+    ///
+    /// ⚠️ **打开时必须顺带把占用轮询启动起来**（``EjectHookService/syncOccupancyPolling()``）：
+    /// ``OccupancyStore`` 是懒加载单例，不主动创建的话，
+    /// 「开着开关、但没打开过主窗口、直接在访达点推出」这条**本功能的目标路径**
+    /// 会读到空缓存 ⇒ 一律放行 ⇒ 功能静默不生效。
+    ///
+    /// 关掉时不销毁 `OccupancyStore`：它可能正被主窗口/菜单栏用着，
+    /// 而且「关掉开关」的语义只是「别再拦」，不是「把占用检测停掉」。
+    private func toggleTakeOverFinderEject() {
+        takeOverFinderEject.toggle()
+        EjectHookService.syncOccupancyPolling()
+    }
+
+    // MARK: 接管行（三态：可用 / 未授权）
+
+    /// 开关**画出来**的那个值。
+    ///
+    /// 不可用时一律「关」—— **界面上的每一个像素都要对应真实行为**：
+    /// 画成「开」而实际什么都不会发生，是这一行最不能犯的错。
+    /// 用户偏好**不被改写**（授权后自动回到意愿值），代价与理由见
+    /// ``AppSettings/TakeOverAvailability/effectiveIsOn(userWants:availability:)``。
+    private var takeOverOn: Bool {
+        AppSettings.TakeOverAvailability.effectiveIsOn(
+            userWants: takeOverFinderEject, availability: takeOverAvailability)
+    }
+
+    /// 接管那一行的说明：**不可用时换成「缺什么」**。
+    ///
+    /// **就地说明**是这一行不可用时的全部交代 —— 把它删掉，用户看到的就是一个
+    /// 拨不动、也不说为什么的开关（同 ``autoUpdateDescription`` 的教训：
+    /// 「设了没生效」与「没设」不能长得一样，而**说不出原因**等于两者都不成立）。
+    private var takeOverDescription: String {
+        takeOverAvailability.isUsable
+            ? L10n.tr(.takeOverFinderEjectFootnote)
+            : L10n.tr(.takeOverFinderEjectNeedsFDA)
+    }
+
+    /// 接管那一行的点击动作；**不可用时为 `nil`**（整行不可点，也不进兜底敲钟那条路）。
+    ///
+    /// ⚠️ **判据只看可用性，不看这个开关自己的值**（2026-09-28）：
+    /// 判据一旦读了开关的值，就会变成「关一次再也开不开」的单向开关 ——
+    /// 自动更新那一行正是这么翻的车（§8.113.14，真机修过一次）。
+    private var takeOverTapAction: (() -> Void)? {
+        guard takeOverAvailability.isUsable else { return nil }
+        return toggleTakeOverFinderEject
+    }
+
+    /// 行尾控件：可用时是那个开关；不可用时是**同一个开关（画成关）+「打开系统设置」**。
+    ///
+    /// **为什么不可用时仍然把开关画出来**：它是「本应用有这么一个设置项」的锚点。
+    /// 整行换成按钮会让用户以为功能被拿掉了，而他要的只是「去哪把它打开」。
+    ///
+    /// **为什么旁边那个按钮是必要的**：说明文字说得出「缺什么」（完全磁盘访问），
+    /// 说不出「在哪开」—— 而最后这一步正是绝大多数人会卡住的地方。
+    /// `x-apple.systempreferences:` 是**唯一**能直接跳到该子面板的手段，
+    /// 全仓只有 ``AppSettings/openFullDiskAccessSettings()`` 一处实现（主窗口横幅同源）。
+    @ViewBuilder
+    private var takeOverControl: some View {
+        if takeOverAvailability.isUsable {
+            SettingsSwitch(isOn: takeOverOn, accent: accentColor)
+        } else {
+            HStack(spacing: DesignTokens.Spacing.sm) {
+                SettingsSwitch(isOn: takeOverOn, accent: accentColor)
+                ActionButton(
+                    title: L10n.tr(.openSystemSettings),
+                    variant: .outline,
+                    size: .small,
+                    accent: accentColor,
+                    action: AppSettings.openFullDiskAccessSettings
+                )
+            }
+        }
+    }
+
+    /// 重探接管闸门（回到前台、也就是刚从系统设置回来时）。
+    ///
+    /// ⚠️ **注入口不为空时直接返回**：出图与单测里的状态是**写死的**，
+    /// 不许被这台机器上的真实权限状态覆盖（同 ``autoUpdateRowOverride`` 的纪律）。
+    private func refreshTakeOverAvailability() {
+        guard takeOverAvailabilityOverride == nil else { return }
+        takeOverAvailability = AppSettings.takeOverAvailability()
     }
 
     /// 切换开机启动（失败原因上抛给宿主弹提示）。

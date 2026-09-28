@@ -39,10 +39,29 @@ python3 Scripts/test/wait_outcome_mutation.py
 - **备份用 `cp`，还原也用 `cp`**：不用 `git checkout`（它会连未提交的改动一起清掉）。
 - **每次变异前先证明它落地了**（回读文件、打印那一行），否则「仍绿」可能只是没改上。
 - **打印被测命令的原始尾部**，不只打印我的判红结论 —— 判据自己也会错。
-- 判红**看退出码**（`swift test` 失败即非 0），但**先排掉两种假红**：
-  ⚠️ **变异体编译不过**与**过滤器一条都没跑到**的退出码同样非 0，与「被守卫抓住」**逐字相同**
-  ⇒ 由 ``classify`` 判成 `invalid`、**不算通过**（2026-09-23 补，§8.132）。
+## ⚠️ 第四次实测：判红口径被推翻（2026-09-28，与 `eject_hook_mutation.py` 同步）
+
+原硬规则第 4 条写的是「判红看退出码，先排掉两种假红（查 `"error:"` / `Test run with 0 tests`）」。
+⚠️ **那条本身也是错的**，实测各留过一个坑：
+
+1. **`"error:" in raw` 是系统性误判**：**扫源码型守卫**失败时，
+   swift-testing 会把 `#expect` 的操作数（**整份被扫文件**）**整份回显** ——
+   文件里凡有 `error:`（如 `prompt(for error:)` 这种形参名）就撞上，
+   于是**真的跑起来并失败**的变异被判成 `invalid`、**不算通过**，证据白丢。
+   被扫文件越大越容易撞。
+2. **`Test run with 0 tests` 认不出「压根没匹配上」**：一条都没匹配时 `swift test`
+   打的是 `warning: No matching test cases were run` 且**返回 0** ⇒ 旧判据两处都不命中
+   ⇒ 判成 **green**。⚠️ **`swift test` 的「退出码 0」同时表示「全部通过」与「一条都没跑」**。
+3. **编译失败有两种形态**：swiftc 的 `<file>:<行>:<列>: error:`，以及 SwiftPM 的
+   **构建期**错误（无文件行号，只有 `error: Build failed` / `error: fatalError`）。
+
+现行口径：**先拿正向证据**（`Test run with N tests` 且 `N ≥ 1` 才配谈红），
+一条都没跑到时按「构建成没成」+ 编译诊断分开两类 `invalid`。
+本脚本的过滤器**本来就是测试函数名**（能匹配），但口径仍须统一 ——
+判据的地基不能靠「我这次恰好没踩到」。
+
 - 还原之后 `cmp -s` 再确认一次；还原步骤**不挂在会失败的命令后面**（别用 `&&` 串）。
+- **先跑基线自检**（`baseline_is_green`）：未变异时必须绿，否则「每条都被抓住」毫无意义。
 """
 
 from __future__ import annotations
@@ -70,6 +89,38 @@ FILTER_WAIT = (
     "|ok必须由stopReason派生"
 )
 FILTER_BUNDLE = "非app的运行中应用路径不被当成bundle"
+
+# 「测试真的跑过」的**正向证据**：swift-testing 无论成败都会打这一行（见 ``classify``）。
+TEST_RUN_RE = re.compile(r"Test run with (\d+) tests?")
+# 构建成功的**正向证据**：SwiftPM 每次构建都会打；**编不过就没有它**。
+BUILD_OK_RE = re.compile(r"^\s*Build complete!", re.M)
+# 编译诊断的**两种**形态：① swiftc `<file>:<行>:<列>: error:`；② 构建期无行号的 `error: Build failed`。
+COMPILE_DIAG_RE = re.compile(r":\d+:\d+: error:|^\s*error: (?:Build failed|fatalError)", re.M)
+
+# 基线自检：本脚本的变异散在**四条**测试上（跨两个 suite），必须全跑。
+BASELINE_FILTER = FILTER_WAIT + "|" + FILTER_BUNDLE
+# 基线要核对的**四条测试函数名**（这些 suite 无 `@Suite` 展示名可用）。
+#
+# ⚠️ **核对前必须归一化**（``_normalize_name``）：`--filter` 匹配的是**函数名**，
+# 而 swift-testing **输出里打的是 `@Test("…")` 的显示名**，两者**可能不同形** ——
+# 实测 `OccupancyStoreTests` 那条：源码 `func 等事件的装置必须分开报事件到了与接线断了()`，
+# 输出却是 `"等事件的装置必须分开报「事件到了」与「接线断了」"`（书书名号 + 引号包裹）。
+# 拿函数名去 `raw` 里找 ⇒ **假阴性**（测试明明跑到了，却被判成「没跑到」）。
+BASELINE_TESTS = (
+    "等事件的装置必须分开报事件到了与接线断了",
+    "等待可执行路径超时时必须报出轮询次数与耗时",
+    "ok必须由stopReason派生",
+    "非app的运行中应用路径不被当成bundle",
+)
+
+
+def _normalize_name(s: str) -> str:
+    """把测试名归一化：去掉引号 / 书名号 / 括号 / 空白（函数名与显示名常不同形）。"""
+    return re.sub(r"[\s「」『』\"'“”（）()\[\]{}]", "", s)
+
+
+# 基线里**至少**要跑到多少条（2026-09-28 实测为 4 条）。防的是「过滤器只匹配上一部分」。
+BASELINE_MIN_TESTS = 4
 
 # (编号, 说明, 文件, 旧片段, 新片段, 过滤器)
 MUTATIONS = [
@@ -157,15 +208,61 @@ def run_tests(filter_expr: str) -> tuple[int, str]:
 
 
 def classify(code: int, raw: str) -> str:
-    """把一次运行判成 `red` / `green` / `invalid`（口径见模块说明的「硬规则」）。"""
-    if "error:" in raw:
+    """把一次运行判成 `red` / `green` / `invalid`（口径见模块说明的「第四次实测」）。
+
+    ⚠️ **不许**写成 `"error:" in raw`：扫源码型守卫失败时 swift-testing 会把
+    `#expect` 的操作数（整份被扫文件）**整份回显**，文件里凡有 `error:` 字样就撞上
+    ⇒ **真的跑起来并失败**的变异被判成 `invalid`、**不算通过**（2026-09-28 实测）。
+
+    现行口径 = **正向证据**：`Test run with N tests` 且 `N ≥ 1` 才配谈红；
+    一条都没跑到时，按「构建成没成」+ 编译诊断把两类 `invalid` 分开。
+    """
+    run = TEST_RUN_RE.search(raw)
+    if run is not None and int(run.group(1)) >= 1:
+        # 真的跑到测试了 —— 这时候退出码说了算。
+        return "green" if code == 0 else "red"
+    # 一条都没跑到：要么构建就没过，要么过滤器一条都没匹配上。
+    if COMPILE_DIAG_RE.search(raw) or not BUILD_OK_RE.search(raw):
         return "invalid（变异体编译不过）"
-    if "Test run with 0 tests" in raw:
-        return "invalid（过滤器一条都没跑到）"
-    return "green" if code == 0 else "red"
+    return "invalid（过滤器一条都没跑到）"
+
+
+def baseline_is_green() -> bool:
+    """先证明**未变异时装置是绿的** —— 否则后面「每条都被抓住」毫无意义。
+
+    ⚠️ 光看「退出码 0」不够：**跑 0 条测试也返回 0**（见 ``classify`` 的说明）。
+    所以这里三重自证：① ``classify`` 判 green；② 跑到 ≥ ``BASELINE_MIN_TESTS`` 条；
+    ③ 四条测试函数名逐个出现在输出里。
+    """
+    print("===== 基线自检（未变异，四条测试全跑）=====")
+    code, raw = run_tests(BASELINE_FILTER)
+    verdict = classify(code, raw)
+    print(f"退出码 {code}，判定 {verdict}")
+    print("原始尾部：")
+    print("\n".join(raw.splitlines()[-6:]))
+    if verdict != "green":
+        print("⚠️ 基线不是绿的 —— 先修基线，再来谈变异。")
+        return False
+
+    run = TEST_RUN_RE.search(raw)
+    count = int(run.group(1))
+    haystack = _normalize_name(raw)
+    missing = [name for name in BASELINE_TESTS if _normalize_name(name) not in haystack]
+    print(
+        f"基线跑到 {count} 条测试；四条测试名核对：" + ("全在" if not missing else "缺 " + "、".join(missing)))
+    if count < BASELINE_MIN_TESTS:
+        print(f"⚠️ 基线只跑到 {count} 条（< {BASELINE_MIN_TESTS}）—— 过滤器少匹配了，结论作废。")
+        return False
+    if missing:
+        print("⚠️ 有测试名没跑到 —— 基线覆盖不完整，结论作废。")
+        return False
+    return True
 
 
 def main() -> int:
+    if not baseline_is_green():
+        return 1
+
     failures: list[str] = []
     for name, why, path, old, new, filter_expr in MUTATIONS:
         original = path.read_text(encoding="utf-8")

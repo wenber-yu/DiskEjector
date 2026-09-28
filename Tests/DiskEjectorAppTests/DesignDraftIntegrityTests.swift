@@ -1712,7 +1712,16 @@ struct DesignDraftIntegrityTests {
     ///
     /// ⚠️ 别照着 `screens/` 的数去改这个基线：本条扫的是 `htmlFiles()`，
     /// **包含 `index.html`**（总览页的强调色切换器 + 开关演示，共 10 处）。
-    private static let hardcodedA11yBaseline = 67
+    ///
+    /// **2026-09-27 → 68**（`05-settings.html` 的「接管访达的推出」开关行，+1）。
+    /// 这一处**不是漏接线**，守卫 61（`含中文的属性文案必须接上data_i18n_attr`）是绿的 ——
+    /// 它带 `data-i18n-attr="aria-label:takeOverFinderEject"`，切英文会跟着翻。
+    /// 之所以仍然 +1：本文件其余 57 行用的都是「中文兜底 + `data-i18n-attr`」这一套写法
+    /// （兜底让**读 HTML 源码的人**看得见文案），新行沿用同一套。
+    /// 若为了不动这个数而让新行只留接线、不写兜底，就会在同一份设计稿里造出**第二套约定** ——
+    /// 而「同一事实两种写法」正是本仓库反复吃亏的那类漂移。
+    /// ⇒ 按本条自己给的第二个分支处理：**说明为什么，并同步基线**。
+    private static let hardcodedA11yBaseline = 68
 
     // MARK: 索引 ↔ 页面自身标题（§8.62）
 

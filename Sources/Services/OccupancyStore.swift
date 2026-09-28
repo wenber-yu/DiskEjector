@@ -179,7 +179,7 @@ final class OccupancyStore: ObservableObject {
     /// 下次同名卷再插上来会先显示一段别人的旧结论。
     private func performDetect(disks: [DiskInfo]) async {
         guard !disks.isEmpty else {
-            if !results.isEmpty { results = [:] }
+            if !results.isEmpty { publish([:]) }
             return
         }
         let detect = self.detect
@@ -193,6 +193,17 @@ final class OccupancyStore: ObservableObject {
             }
             for await (id, result) in group { next[id] = result }
         }
+        publish(next)
+    }
+
+    /// 占用结论的**唯一写入点**：同时写 ``results``（给界面）与 ``OccupancySnapshotStore``（给 hook）。
+    ///
+    /// **为什么必须收敛成一处**：``OccupancySnapshotStore`` 是 DA approval 回调线程读的那份
+    /// （非主线程不能碰 `@MainActor` 单例，见该类的说明），而 `results` 是界面读的那份。
+    /// 两处各写一遍必然分叉 ——「两个界面看到两个结论」正是本类诞生时要修的病
+    /// （见本文件顶部那段「为什么需要它」）。
+    private func publish(_ next: [String: OccupancyResult]) {
         results = next
+        OccupancySnapshotStore.update(next)
     }
 }

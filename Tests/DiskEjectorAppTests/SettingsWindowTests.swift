@@ -136,7 +136,14 @@ struct SettingsWindowTests {
     /// 用一个**比设计稿高 32pt 的宿主**来问 —— 这正是真机上窗口被撑到 598 时的样子。
     @Test func 玻璃必须铺满比设计稿高的宿主() {
         // `fillsHost: true` —— 与 `makeSettingsWindow` 同一条装配。
-        let host = NSHostingView(rootView: SettingsView(onDone: {}, fillsHost: true))
+        //
+        // ⚠️ `takeOverAvailabilityOverride` 必须**显式注入**：这个值来自本机 TCC 状态，
+        // 不注入的话，「玻璃铺满」这条断言会随这台机器给没给完全磁盘访问而变 ——
+        // 而未授权态那一行的内容与可用态不同（多一个按钮）。见
+        // ``SettingsSectionsColumn/takeOverAvailabilityOverride``。
+        let host = NSHostingView(
+            rootView: SettingsView(
+                onDone: {}, fillsHost: true, takeOverAvailabilityOverride: .usable))
         // 与 `makeSettingsWindow` 的配置保持一致：这里问的是**视图结构**，不是宿主配置。
         if #available(macOS 13.3, *) { host.safeAreaRegions = [] }
 

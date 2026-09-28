@@ -184,6 +184,119 @@ enum AppSettings {
         /// **是版本号字符串，不是布尔**：布尔记不住「跳过的是哪一版」——
         /// 下个版本发布后那个布尔还是 `true`，用户会被永久静音。
         static let skippedVersion = "skippedVersion"
+
+        /// 是否接管访达（Finder）的「推出」。详见 ``takeOverFinderEject``。
+        static let takeOverFinderEject = "takeOverFinderEject"
+    }
+
+    /// 是否接管访达（Finder）的「推出」（读写 UserDefaults）。
+    ///
+    /// **为什么默认关（`false`）**：接管是**系统级**的改动 —— 它会让 DiskEjector
+    /// 拦截所有走 `NSWorkspace.unmountAndEjectDevice` 的推出请求（Finder 的推出按钮、
+    /// `diskutil eject` 都算），并且为了「不让访达弹它自己那句没用的报错」，
+    /// 回调必须**同步阻塞等用户决定**（见 ``EjectHookService`` 的说明）。
+    /// 一次性给老用户引入这条新行为风险太高：万一出 bug，用户会以为「盘推不出来了」。
+    /// ⇒ 默认关，由用户在设置里显式打开（设置项的描述里写清代价）。
+    ///
+    /// **为什么用 `bool(forKey:)` 而不是 `register(defaults:)`**：键不存在时
+    /// `bool(forKey:)` 返回的正是 `false`，与「默认关」一致，不需要第二处真相。
+    ///
+    /// **改了即时生效，不需要重启**：``EjectHookService`` 在每次 approval 回调里读本值，
+    /// 关闭时直接放行（不弹窗、不阻塞）。注册的回调本身保持注册状态 ——
+    /// 注销再注册反而要处理「注销期间的请求漏掉」这类时序问题。
+    ///
+    /// ⚠️ **把它改成 `true` 之后必须调 ``EjectHookService/syncOccupancyPolling()``**：
+    /// ``OccupancyStore`` 是懒加载单例，不主动创建的话「开着开关、没打开过主窗口、
+    /// 直接在访达点推出」这条路径会读到空缓存 ⇒ 一律放行 ⇒ 功能静默不生效。
+    nonisolated static var takeOverFinderEject: Bool {
+        get { UserDefaults.standard.bool(forKey: Key.takeOverFinderEject) }
+        set { UserDefaults.standard.set(newValue, forKey: Key.takeOverFinderEject) }
+    }
+
+    /// 接管开关此刻**能不能用** —— 这个问题的唯一事实来源。
+    ///
+    /// ## 为什么需要它
+    ///
+    /// 接管的全部价值是「把占着盘的进程列出来」，而列进程要 `lsof`，`lsof` 要
+    /// 「完全磁盘访问」。**没授权时这条链路的每一环都还是好的，只是永远走不进弹窗**
+    /// —— ``EjectHookPolicy/decide(_:isSelfInitiated:isTakeOverEnabled:occupancy:)``
+    /// 会因 `occupancy == .needsFullDiskAccess` 而放行
+    /// （`.needsFullDiskAccess` 是「用户可补救的权限缺口」，见 ``OccupancyResult``）。
+    ///
+    /// 于是「开关打开着」与「开关真的在管事」是**两件事**：
+    /// 前者是用户偏好，后者还要乘上这个闸门。旧版把两者画成同一个开关，
+    /// 用户打开之后什么都不会发生，而界面上没有任何一句话说得出原因 ——
+    /// 「打开一个开关，然后它静默地什么都不做」是最难自查的一类缺陷。
+    ///
+    /// ## 为什么收敛成一个枚举 + 两个纯函数
+    ///
+    /// 「未授权」这个状态要同时决定四件事：开关画成什么、那一行还能不能点、
+    /// 说明文字写什么、要不要引导去系统设置。四处各判一次必然漂移
+    /// （本仓库的铁律：判定收成一个可单测的纯函数，UI 只渲染不判断）。
+    /// 这里就是那个纯函数 —— ``resolve(isSandboxed:isFullDiskAccessAuthorized:)``
+    /// 只吃两个布尔、不碰任何系统 API，因此可以穷举断言。
+    enum TakeOverAvailability: Sendable, Equatable {
+
+        /// 可用：占用检测能列出进程，开关拨了就生效。
+        case usable
+
+        /// 不可用：没授「完全磁盘访问」，占用检测拿不到结果 ⇒ 拨了也不会生效。
+        case needsFullDiskAccess
+
+        /// 由「是否沙盒」+「是否已授权」推导。**这是唯一的推导处**。
+        ///
+        /// - 沙盒构建里没有 TCC 拦截，`OccupancyResult` 直接走 `.unknown`，
+        ///   不存在「用户去授权」这条路 ⇒ 一律算可用（与 ``ContentView/refreshFDAStatus()``
+        ///   同一条判据；本应用不上架 MAS，这是防御分支）。
+        /// - 判据**只看授权**，绝不看开关自己的值 —— 读了开关的值就会变成
+        ///   「关一次再也开不开」的单向开关（§8.113.14 那个真机 bug 的形态）。
+        static func resolve(isSandboxed: Bool, isFullDiskAccessAuthorized: Bool) -> Self {
+            (isSandboxed || isFullDiskAccessAuthorized) ? .usable : .needsFullDiskAccess
+        }
+
+        /// 开关此刻能不能操作。
+        var isUsable: Bool { self == .usable }
+
+        /// 开关**画出来**（也是唯一有意义的）那个值。
+        ///
+        /// ## 为什么不是「直接显示用户偏好」
+        ///
+        /// 不可用时显示 `true` 就是在撒谎：那个开关画成「开」，而它**什么都不会做**。
+        /// 所以不可用时一律画「关」—— 界面上的每一个像素都对应真实行为。
+        ///
+        /// ## 代价（想清楚了才这么写）
+        ///
+        /// `userWants` **不被改写**（不往 `UserDefaults` 里写 `false`）：它是用户的意愿，
+        /// 不是此刻能不能生效。授权之后 ``effectiveIsOn(userWants:availability:)`` 自然回到
+        /// 用户的意愿值，用户不需要重新拨一次。
+        ///
+        /// 反过来说，**显示层与存储层在这一个状态下是分叉的**（存 `true`、画 `false`）。
+        /// 这是唯一的例外，也是有意为之：
+        /// - 画「关」⇒ 不存在「关不掉的开关」（用户看不到一个自己关不了的 `开`，
+        ///   §8.113.14 那类锁死形不成）；
+        /// - 存「意愿」⇒ 自签构建每次更新都会掉 FDA（TCC 按签名记账），
+        ///   若顺手把偏好清零，用户每更一版都得重开一次。
+        ///
+        /// 两者都只在**未授权**这一个窗口内并存，且那一行的说明文字正在解释它。
+        static func effectiveIsOn(userWants: Bool, availability: Self) -> Bool {
+            userWants && availability.isUsable
+        }
+    }
+
+    /// 探测当前的接管可用性。**读系统状态的唯一一处**。
+    ///
+    /// 判定本身是纯函数（``TakeOverAvailability/resolve(isSandboxed:isFullDiskAccessAuthorized:)``），
+    /// 这里只负责把系统探测的两个布尔喂进去。分开放的理由：
+    /// `isFullDiskAccessAuthorized()` 要真的去列举 TCC 受保护目录（10 条路径走一遍
+    /// `contentsOfDirectory`），测试里不该被迫跑它 —— 判据测纯函数，探测只在这一行。
+    ///
+    /// ⚠️ **不在启动时无条件调用**：接管开关默认关，不该给所有用户加上这 10 次目录列举。
+    /// 调用点只有两处 —— ``EjectHookService/syncOccupancyPolling()`` 那条「开关为真才启动」
+    /// 的路径，以及设置面板打开 / 回到前台时（用户正在看这个开关，此时必须说实话）。
+    nonisolated static func takeOverAvailability() -> TakeOverAvailability {
+        TakeOverAvailability.resolve(
+            isSandboxed: OccupancyDetector.isSandboxed,
+            isFullDiskAccessAuthorized: OccupancyDetector.isFullDiskAccessAuthorized())
     }
 
     /// 从 UserDefaults 读取当前强调色，无值或损坏值时回退默认色。

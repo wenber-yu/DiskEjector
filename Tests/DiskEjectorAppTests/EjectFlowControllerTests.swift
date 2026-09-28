@@ -535,4 +535,547 @@ struct EjectFlowControllerTests {
             #expect(model.actions.filter(\.isDefault).count == 1, "\(model.title)")
         }
     }
+
+    // MARK: - 「此刻有没有卷正在推出」（§8.146）
+
+    /// 推出进行中计数为 1，结束后归零。
+    ///
+    /// **为什么这个信号必须是「派生」的**：更新那条路拿它决定「能不能现在自动重启」
+    /// （``UpdateController/readyHandling(userChoseInstallAndRestart:activeEjections:)``）。
+    /// 它若是个「用户点过按钮没有」的布尔开关，就会与真实情况脱节 ——
+    /// 点了按钮但操作早已结束、或操作由别的入口发起，都会答错。
+    @MainActor
+    @Test func 推出进行中计数为一结束后归零() async {
+        let service = BlockingEjectService()
+        let controller = EjectFlowController(
+            ejectService: service, occupancyDetector: MockOccupancyDetector())
+        var entered = service.entered.makeAsyncIterator()
+
+        let task = Task { await controller.eject(disk: makeDisk()) }
+        // 等它**真的进了** `eject`（而不是「已经跑完了」）—— 那时计数必然已经 +1。
+        _ = await entered.next()
+        #expect(
+            controller.activeEjectionCount == 1,
+            """
+            推出进行中计数是 \(controller.activeEjectionCount)，不是 1 ——
+            更新那条路会据此认为「没有卷在推出」，于是一次自动重启会把
+            正在跑的 `unmountAndEjectDevice` 腰斩（§8.146）
+            """)
+
+        _ = await task.value
+        #expect(
+            controller.activeEjectionCount == 0,
+            """
+            推出结束后计数没归零（\(controller.activeEjectionCount)）——
+            计数只增不减会让自动重启**永远**被推迟，而弹窗已经承诺过会自动重启
+            """)
+    }
+
+    /// `waitUntilIdle()` 在计数归零时**被唤醒**（而不是永远挂着）。
+    ///
+    /// ⚠️ **这是「推迟自动重启」那条路的唯一出口**：`driverIsReady` 遇到「有卷在推出」
+    /// 会推迟，然后 `await waitUntilIdle()`。若这里不唤醒，界面就停在一个
+    /// **永远不自动重启**的 `.ready` 上 —— 而弹窗已经向用户承诺过会自动重启。
+    ///
+    /// ⚠️ **为什么用「有界轮询」而不是 `withTaskGroup` 竞速**：挂住的那个等待是
+    /// `withCheckedContinuation`，**不响应取消** —— 竞速的输家会一直挂着，
+    /// 而 `withTaskGroup` 退出时要等所有子任务 ⇒ **整个测试挂死**（比红更难查）。
+    /// 这里改成「等一个由 waiter 自己置位的标志，超时上限 3s」，最坏情况是**红**，不是挂。
+    ///
+    /// ⚠️ **同理，这里绝不能 `await waiter.value`**：waitUntilIdle 的唤醒一旦被改坏
+    /// （变异 M3e 删掉 `endEjection` 里唤醒等待者那三行），waiter 就**永远不返回**，
+    /// 整个测试进程挂死 —— 挂死既不会让门槛变红、又会拖垮 CI。所以只轮询标志位，
+    /// 那个挂着的 waiter 由测试进程退出时一并终止（测试里唯一一处刻意留下的悬挂任务）。
+    @MainActor
+    @Test func 等推出结束会等到计数归零才返回() async {
+        let service = BlockingEjectService()
+        let controller = EjectFlowController(
+            ejectService: service, occupancyDetector: MockOccupancyDetector())
+        var entered = service.entered.makeAsyncIterator()
+
+        let task = Task { await controller.eject(disk: makeDisk()) }
+        _ = await entered.next()
+
+        let flag = WaitFlag()
+        let waiter = Task { @MainActor in
+            await controller.waitUntilIdle()
+            flag.done = true
+        }
+        _ = await task.value  // 推出结束 ⇒ 计数归零 ⇒ 应该唤醒 waiter
+
+        for _ in 0..<150 where !flag.done {
+            try? await Task.sleep(nanoseconds: 20_000_000)  // 上限 3s
+        }
+        // 只用来表达「这个任务还存在」，不 await 它（见上面的 ⚠️）。
+        withExtendedLifetime(waiter) {}
+        #expect(
+            flag.done,
+            """
+            推出结束之后 `waitUntilIdle()` 没被唤醒 —— 那条「推迟自动重启」的路
+            会永远停在那里，用户等不到承诺过的自动重启（§8.146）
+            """)
+    }
+
+    /// 没有推出在进行时 `waitUntilIdle()` **立即返回**（不挂）。
+    @MainActor
+    @Test func 没有推出时等待立即返回() async {
+        let controller = EjectFlowController(
+            ejectService: MockEjectService(), occupancyDetector: MockOccupancyDetector())
+        await controller.waitUntilIdle()
+        #expect(controller.activeEjectionCount == 0)
+    }
+
+    // MARK: - Bug 3：占用弹窗不许等系统那十几秒（§8.146）
+
+    /// 只有「非空的占用缓存」才配得上提前弹窗。
+    ///
+    /// 真机日志坐实：`unmountAndEjectDevice` 在卷真被占用时要 **12.5 秒**才返回 `fBsyErr`
+    /// （`22:53:30.884 请求推出卷` → `22:53:43.377 推出失败: inUse(fBsyErr)`），
+    /// 而弹窗原先必须等它返回。窗口里显示得快，是因为 ``OccupancyStore`` 每 15s
+    /// 后台跑 `lsof` 并把结论缓存在 `results` 里。
+    ///
+    /// ⚠️ **反例与正例同样重要**：`.occupied([])` 与 `.unknown` 若被判成「该提前弹」，
+    /// 前者会弹一个**没有进程列表**的占用窗，后者把「还没测出来」渲染成「被占用」——
+    /// 那是本应用最不能犯的错误（见 ``OccupancyStore/result(for:)`` 的兜底说明）。
+    @Test func 只有非空的占用缓存才配得上提前弹窗() {
+        let processes = [
+            OccupyingProcess(pid: 42, processName: "IINA", path: "/Applications/IINA.app")
+        ]
+        #expect(
+            EjectUI.preemptivelyOccupied(.occupied(processes)) == processes,
+            "缓存已判定「被占用」却不提前弹 —— 用户又要盯着界面等系统那十几秒（§8.146）")
+        #expect(
+            EjectUI.preemptivelyOccupied(.occupied([])) == nil,
+            """
+            `occupied([])`（系统说忙、但本应用列不出进程）被当成「该提前弹」了 ——
+            那会弹一个没有进程列表的占用窗，用户只能看到「无法列出具体程序」，
+            而系统那条权威结论本来可能几秒后就到了
+            """)
+        #expect(
+            EjectUI.preemptivelyOccupied(.none) == nil,
+            "`.none`（已确认没有占用）被当成该提前弹 —— 会给一块没被占用的盘弹占用窗")
+        #expect(
+            EjectUI.preemptivelyOccupied(.unknown) == nil,
+            """
+            `.unknown`（还没测出来）被当成该提前弹 —— 把「不知道」渲染成「被占用」
+            是本应用最不能犯的错误（同 `OccupancyStore.result(for:)` 的兜底判据）
+            """)
+        // ⚠️ **这一格是 2026-09-25 补的**（QA 探针 Q11 实测：漏了它，全量测试仍绿）：
+        // 上面四条覆盖了 `.none` / `.unknown` / `.occupied([])`，**唯独漏了它** ——
+        // 而它与 `.unknown` 是**不同**的一格：`.unknown` 是环境硬限制（沙盒），
+        // `.needsFullDiskAccess` 是用户可补救的权限缺口（见 `OccupancyResult` 的说明）。
+        // 两格的正确处理是一样的（**不弹**），但判据必须各写一条：把 `.needsFullDiskAccess`
+        // 当成「有占用」会给一块**根本没被占用**的盘弹占用窗，而它列不出任何进程。
+        #expect(
+            EjectUI.preemptivelyOccupied(.needsFullDiskAccess) == nil,
+            """
+            `.needsFullDiskAccess`（lsof 拿不到别的进程，是权限缺口不是占用）被当成该提前弹了 ——
+            那会弹一个**列不出任何进程**的占用窗，用户照着它点「关闭并推出」只会白杀进程（§8.146.7）
+            """)
+    }
+
+    /// 预弹窗的 `present` **一返回**就必须落闸 —— **按 Esc 也一样**。
+    ///
+    /// ## 为什么这条必须钉住（2026-09-25，§8.146.6）
+    ///
+    /// 「闸门落了」= 这个预弹窗不再等用户。watcher 靠它决定「系统那次推出成功时
+    /// 要不要去收窗」—— 而 **Esc 不会取消系统那次推出**，它只是「不做激进动作」。
+    /// 若落闸被写成「点了『关闭并推出』才算」（原来那一行在 `guard` **之后**，就是这个效果），
+    /// 按 Esc 之后闸门永远不落 ⇒ 那次推出成功时 watcher 会 `respond(.cancel)`，
+    /// **收掉用户之后才打开的那个弹窗** ⇒ 用户按了按钮却**什么都没发生**。
+    ///
+    /// ⚠️ **对每一个 choice 都断言**（不是只测 `.cancel`）：落闸的判据是
+    /// 「`present` 返回了」，与 choice **无关** —— 只测一支会漏掉「按 choice 分档」的写法。
+    @MainActor
+    @Test func 预弹窗一返回就落闸_按Esc也一样() async {
+        let choices: [EjectAlertChoice] = [.cancel, .closeAndEject, .dismiss, .viewLog]
+        for choice in choices {
+            let gate = EjectUI.PreemptiveAlertGate()
+            let returned = await EjectUI.awaitPreemptiveChoice(gate: gate) { choice }
+            #expect(
+                returned == choice,
+                "`awaitPreemptiveChoice` 把用户的选择改了：进 \(choice)、出 \(returned)")
+            #expect(
+                gate.isSettled,
+                """
+                \(choice) 之后闸门没落 —— 这个预弹窗已经不在等用户了，watcher 却会以为它还在等：
+                那次后台推出一旦成功就会 `respond(.cancel)`，收掉的是**之后才打开的那个弹窗**（§8.146.6）
+                """)
+        }
+    }
+
+    /// 「收窗」的判据：**这个预弹窗还在等用户**（闸门未落）**且**「结果已经让它那句
+    /// 『被占用』站不住」时才收。
+    ///
+    /// 这是 §8.146.6 那条漏判的另一半 —— 闸门落了之后 watcher 必须**什么都不做**。
+    /// 反例（闸门已落 + 成功）就是「按 Esc ⇒ 收掉后续弹窗」那条路径本身。
+    ///
+    /// ⚠️ **「站不住」那一侧是 2026-09-25 复核**（§8.146.7）**改判过的**：
+    /// `.failed(.notFound)`（盘已经不在了）**也收** —— 一个关于不存在的磁盘的弹窗没有可问的事；
+    /// `.busy` 与其它失败（`.notPermitted` / `.other`）**留窗**（`.busy` 时那句话是对的；
+    /// 其它失败让用户点「关闭并推出」时由重试撞到真相，见 §8.146.7 判断②）。
+    @MainActor
+    @Test func 闸门落了之后系统成功也不许去收窗() {
+        let processes = [
+            OccupyingProcess(pid: 42, processName: "IINA", path: "/Applications/IINA.app")
+        ]
+        // 该收的两格 / 该留的四格 —— 分成两组写，`expected` 就不必再写一遍判据
+        // （写第二遍判据 = 拿实现跟自己比，改了实现两边一起变、断言照样绿）。
+        let shouldCollect: [EjectOutcome] = [.ejected, .failed(reason: .notFound)]
+        let shouldKeep: [EjectOutcome] = [
+            .busy(occupying: processes),
+            .failed(reason: .notPermitted),
+            .failed(reason: .other("磁盘映像忙")),
+        ]
+
+        // 判据的**全矩阵**：闸门（未落 / 已落）× 六种结果。
+        var expectations: [Bool] = []
+        for settled in [false, true] {
+            for outcome in shouldCollect + shouldKeep {
+                let gate = EjectUI.PreemptiveAlertGate()
+                if settled { gate.settle() }
+                let expected = !settled && shouldCollect.contains(outcome)
+                expectations.append(expected)
+                let actual = EjectUI.shouldDismissPreemptivePopup(gate: gate, outcome: outcome)
+                #expect(
+                    actual == expected,
+                    """
+                    闸门\(settled ? "已落" : "未落") + \(outcome)：该收=\(expected)、实际=\(actual)。
+                    闸门已落 ⇒ 这个预弹窗早就不在等用户了，再收一次收掉的是**之后才打开的那个弹窗**
+                    （用户按了按钮却什么都没发生）；闸门未落但结果没让窗上那句话站不住 ⇒
+                    用户可能正看着这个窗，收掉它等于把「他还需要的那条线索」拿掉（§8.146.6 / §8.146.7）
+                    """)
+            }
+        }
+        // **自证**：矩阵里必须既有「该收」也有「该留」，否则上面那些断言全在验同一边，
+        // 「这个函数永远返回 false / 永远返回 true」都能绿。
+        #expect(
+            expectations.contains(true) && expectations.contains(false),
+            "矩阵里「该收 / 该留」有一边是空的 —— 断言测不出「永远收」或「永远不收」")
+    }
+
+    /// **真正把那条路径跑一遍**：用户按 Esc（`.cancel`）之后，那次在跑的推出返回 `.ejected`
+    /// ⇒ **不许**收窗、**也不许**刷新列表。
+    ///
+    /// 另外三格也在同一条测试里（`2026-09-25` 复核后补）：`.failed(.notFound)`（盘已不在）
+    /// **该收**、同一格在闸门已落时**不许收**（新支不许绕过闸门）、`.failed(.notPermitted)`
+    /// **留窗**（§8.146.7 判断②）。
+    ///
+    /// ## 为什么还要这一条（2026-09-25，§8.146.6）
+    ///
+    /// 上一条测的是**判据本身**；这一条测的是**判据 + 两个动作的接线** ——
+    /// 把 `guard` 写反、或把 `dismiss()` 提到 `guard` 之前，都会在这里红。
+    /// 它跑的是 `eject` 里那个 watcher 的**同一段代码**（``EjectUI/dismissPreemptivePopupIfNeeded``），
+    /// 不是另写一份判据。
+    ///
+    /// ⚠️ **阳性对照必须在同一条测试里**（闸门未落 + 成功 ⇒ 收窗与刷新各跑一次）：
+    /// 少了它，「这个函数永远直接 `return`」也能让反例那一半绿。
+    @MainActor
+    @Test func 按Esc之后那次推出成功不许去收窗也不许刷新() async {
+        // —— 反例：用户按 Esc（闸门已落），那次推出成功了 ——
+        let settled = EjectUI.PreemptiveAlertGate()
+        settled.settle()
+        var dismissCalls = 0
+        var refreshCalls = 0
+        await EjectUI.dismissPreemptivePopupIfNeeded(
+            gate: settled,
+            outcome: .ejected,
+            dismiss: { dismissCalls += 1 },
+            refresh: { refreshCalls += 1 })
+        #expect(
+            dismissCalls == 0,
+            """
+            按 Esc 之后那次推出成功了，却还是调了「收窗」—— `EjectAlertPresenter.respond(.cancel)`
+            收的是**当前屏上那个弹窗**，而它已经不是这个预弹窗了：用户之后点开的那块盘的弹窗会被收掉，
+            那块盘的推出于是拿到 `.cancel` 直接返回、**一个进程都没碰**（§8.146.6）
+            """)
+        #expect(
+            refreshCalls == 0,
+            """
+            闸门落了之后连 `refresh()` 也跑了 —— 这条链现在的判据是「收窗与刷新同生同死」：
+            按 Esc 之后列表由 `NSWorkspace.didUnmountNotification` 那条链刷新
+            （守卫见 `卸载通知必须能自己刷新列表`，§8.146.6）
+            """)
+
+        // —— 阳性对照：闸门未落（用户还没表态），那次推出成功了 ——
+        let open = EjectUI.PreemptiveAlertGate()
+        await EjectUI.dismissPreemptivePopupIfNeeded(
+            gate: open,
+            outcome: .ejected,
+            dismiss: { dismissCalls += 1 },
+            refresh: { refreshCalls += 1 })
+        #expect(
+            dismissCalls == 1 && refreshCalls == 1,
+            """
+            系统那次推出成功了、用户还没表态，却没把那个谎报「被占用」的弹窗收掉并刷新
+            （收窗 \(dismissCalls) 次、刷新 \(refreshCalls) 次）——
+            盘已经推出去了，用户还看着一个说它被占用的窗
+            """)
+
+        // —— 阳性对照 ②：**盘已经不在了**（`.failed(.notFound)`）⇒ 同样要收窗 + 刷新 ——
+        // （2026-09-25 复核改判加上的那一支，§8.146.7：关于一块不存在的磁盘的弹窗没有可问的事）
+        await EjectUI.dismissPreemptivePopupIfNeeded(
+            gate: EjectUI.PreemptiveAlertGate(),
+            outcome: .failed(reason: .notFound),
+            dismiss: { dismissCalls += 1 },
+            refresh: { refreshCalls += 1 })
+        #expect(
+            dismissCalls == 2 && refreshCalls == 2,
+            """
+            设备已不在（`.failed(.notFound)`）时没把预弹窗收掉（收窗 \(dismissCalls) 次、刷新 \(refreshCalls) 次）——
+            用户面对一个关于一块**已经不在**的磁盘的弹窗，而列表里那块盘早就不见了（§8.146.7）
+            """)
+
+        // —— 反例 ②：闸门已落 + `.notFound` ⇒ 仍然**不许**动（闸门判据优先）——
+        let settledGone = EjectUI.PreemptiveAlertGate()
+        settledGone.settle()
+        await EjectUI.dismissPreemptivePopupIfNeeded(
+            gate: settledGone,
+            outcome: .failed(reason: .notFound),
+            dismiss: { dismissCalls += 1 },
+            refresh: { refreshCalls += 1 })
+        #expect(
+            dismissCalls == 2 && refreshCalls == 2,
+            """
+            新加的那一支（`.notFound`）**绕过了闸门** —— 用户按 Esc 之后设备又恰好不在时，
+            它会去收掉**之后才打开的那个弹窗**（§8.146.6 那条漏判换了个入口复发）
+            """)
+
+        // —— 反例 ③：其它失败（`.notPermitted`）**留窗**（§8.146.7 判断②）——
+        var keptCalls = 0
+        await EjectUI.dismissPreemptivePopupIfNeeded(
+            gate: EjectUI.PreemptiveAlertGate(),
+            outcome: .failed(reason: .notPermitted),
+            dismiss: { keptCalls += 1 },
+            refresh: { keptCalls += 1 })
+        #expect(
+            keptCalls == 0,
+            """
+            `.notPermitted` 也去收窗了 —— 本轮的判断是**留窗**：让用户点「关闭并推出」时
+            由重试撞到真相（§8.146.7 判断②）。收掉它等于把用户正看着的那条线索拿掉
+            """)
+    }
+
+    /// **接线守卫**：`EjectUI.eject` 的五条关键接线。
+    ///
+    /// ⚠️ 为什么行为测试之外还要这条：`EjectUI.eject` 的端到端行为要**真弹窗**
+    /// （`EjectAlertPresenter.present` 会 `makeKeyAndOrderFront`），
+    /// 测试进程里不能跑 ⇒ 只能钉接线。五条各自防一个不同的回归：
+    /// ① 系统推出**照常发起**（不许因为「缓存说占用」就跳过系统调用）；
+    /// ② 结果让窗上那句话站不住时**收窗**（成功 / 设备已不在，不许留一个谎报「被占用」的弹窗）；
+    /// ③ 用户点「关闭并推出」时把那次还在跑的推出**传下去**（不许并发调 `unmountAndEjectDevice`）；
+    /// ④ 落闸那一句**必须走** `awaitPreemptiveChoice` —— 就地写回 `eject` 里（尤其写回
+    ///    `guard` 之后）会让 §8.146.6 那条漏判复活，而上面那条纯函数守卫**看不见**
+    ///    `eject` 本体的顺序；
+    /// ⑤ 收窗那一句**必须走** `dismissPreemptivePopupIfNeeded`（同理：判据就地写反、
+    ///    漏掉 `!gate.isSettled`，不会有任何编译错）。
+    @Test func 提前弹窗的五条接线() throws {
+        let source = try String(
+            contentsOf: repoRootForEjectTests.appendingPathComponent("Sources/Services/EjectUI.swift"),
+            encoding: .utf8)
+        #expect(
+            source.contains("await EjectFlowController.shared.eject(disk: disk)"),
+            """
+            `EjectUI.eject` 里没有发起系统推出 —— 缓存结论**只决定何时弹窗**，
+            「能不能推出」仍必须由系统的 `fBsyErr` 说了算（§8.146）
+            """)
+        #expect(
+            source.contains("EjectAlertPresenter.shared.respond(.cancel)"),
+            """
+            系统推出**成功**时没有收掉预弹的占用窗 —— 用户会看到一个
+            谎报「被占用」的弹窗（而盘其实已经推出去了）
+            """)
+        #expect(
+            source.contains("awaiting: inFlight"),
+            """
+            用户点「关闭并推出」时没把那次还在跑的推出传下去 ——
+            两次 `unmountAndEjectDevice` 并发对同一卷行为未定义，
+            第二次会因「设备已不在」报 notFound，把一次成功写成失败
+            """)
+        #expect(
+            source.contains("await Self.awaitPreemptiveChoice(gate: gate)"),
+            """
+            落闸那一句没有走 `awaitPreemptiveChoice` —— 就地写回 `eject` 里
+            （尤其在 `guard choice == .closeAndEject` **之后**）会让 §8.146.6 那条漏判复活：
+            按 Esc 时闸门永不落，之后那次推出成功会收掉别的弹窗
+            """)
+        #expect(
+            source.contains("await Self.dismissPreemptivePopupIfNeeded("),
+            """
+            收窗那一句没有走 `dismissPreemptivePopupIfNeeded` —— 就地写回 `eject` 里、
+            判据写反（漏掉 `!gate.isSettled`）不会有任何编译错，
+            而它会去收掉之后才打开的那个弹窗（§8.146.6）
+            """)
+    }
+
+    /// **接线守卫（Q10）**：缓存**没**说被占用那条**主干**（绝大多数盘走它）必须把系统结果
+    /// 交给 `handle` —— 去掉它，失败与占用就**再也不弹窗**了。
+    ///
+    /// ⚠️ **为什么单开一条**（2026-09-25，§8.146.7）：`提前弹窗的五条接线` 里那句
+    /// `source.contains("await EjectFlowController.shared.eject(disk: disk)")` 命中的是
+    /// **抢占分支**里那一次调用，主干这条 `handle` 接线**无人守** —— QA 探针 Q10 实测：
+    /// 把主干改成 `_ = await …eject(…)`，全量测试**仍绿**。
+    /// 那条路的症状很重：盘推不出去、用户**既看不到占用窗也看不到失败窗**。
+    @Test func 缓存没占用那条主干必须把结果交给handle() throws {
+        let source = try String(
+            contentsOf: repoRootForEjectTests.appendingPathComponent("Sources/Services/EjectUI.swift"),
+            encoding: .utf8)
+        let mainPath = "await handle(await EjectFlowController.shared.eject(disk: disk), disk: disk)"
+        let preemptiveAnchor = "let inFlight = Task {"
+
+        guard let callRange = source.range(of: mainPath) else {
+            Issue.record(
+                """
+                `EjectUI.eject` 的**主干**（缓存没说被占用）没有把系统结果交给 `handle` ——
+                那条路上失败与占用**再也不会弹窗**：用户点了「推出」，盘没动，
+                而屏幕上没有任何提示（§8.146.7）
+                """)
+            return
+        }
+        // 锚点自证：确认那句调用在**抢占分支之前**（主干），不是别处一句巧合的同名调用。
+        guard let anchorRange = source.range(of: preemptiveAnchor) else {
+            Issue.record("找不到抢占分支的起点 `\(preemptiveAnchor)` —— 解析锚点坏了，上面那条结论作废")
+            return
+        }
+        #expect(
+            callRange.lowerBound < anchorRange.lowerBound,
+            """
+            那句 `handle` 调用不在抢占分支**之前** —— 主干那条路上它已经不存在了：
+            缓存说「没被占用」的盘（绝大多数）点了推出之后，失败与占用都不会有任何提示（§8.146.7）
+            """)
+    }
+
+    /// **接线守卫（Q9）**：`waitUntilIdle()` 必须用 `while` 而不是 `if`。
+    ///
+    /// ⚠️ **为什么只能钉源码**（2026-09-25，§8.146.7）：`endEjection()` 里
+    /// 「计数归零 → 唤醒」之间**没有 `await`**，被唤醒那一支在 `while` 条件之前也**没有 `await`**
+    /// ⇒ 「被唤醒时计数已经又 > 0」这个窗口落在主 actor 的**同一段同步执行**里 ——
+    /// 而主 actor 底下的 `DispatchQueue.main` 是 FIFO（在唤醒之前入队的任务一定先跑完）
+    /// ⇒ **这个窗口不存在**，也就**造不出**能区分 `while` / `if` 的行为测试。
+    ///
+    /// ⚠️ 但它不是废话：`while` 防的是**将来有人**在「归零」与「唤醒」之间插一个 `await`
+    /// （那时 `if` 会在一轮推出刚起步时放行自动重启、把 `unmountAndEjectDevice` 腰斩）。
+    /// 源码守卫的价值就在这里 —— **改动不会静默**。
+    @Test func 等推出结束必须用while而不是if() throws {
+        let source = try String(
+            contentsOf: repoRootForEjectTests.appendingPathComponent("Sources/Services/EjectFlowController.swift"),
+            encoding: .utf8)
+        #expect(
+            source.contains("while activeEjectionCount > 0 {"),
+            """
+            `waitUntilIdle()` 不再用 `while` 等计数归零了 —— 用 `if` 的话，
+            唤醒那一刻若又有一轮推出进来，它会直接返回、放行自动重启，
+            把刚起步的 `unmountAndEjectDevice` 腰斩（§8.146.7）
+            """)
+        #expect(
+            !source.contains("if activeEjectionCount > 0"),
+            "`waitUntilIdle()` 里出现了 `if activeEjectionCount > 0` —— 这正是上面那条要防的写法（§8.146.7）")
+    }
+
+    /// 用户按 Esc、系统那次推出**成功**之后，列表靠 `NSWorkspace` 的卸载通知刷新。
+    ///
+    /// ## 为什么这条链是「本轮修法」的一部分（2026-09-25，§8.146.6）
+    ///
+    /// 落闸之后 watcher 不再 `respond`，**也就不再刷新列表**；而按 Esc 这一支同样走不到
+    /// `handle`（那个函数才是 `.ejected` 的刷新点）。此时唯一会刷新列表的就是产品自己那条链：
+    /// 卷被卸载 ⇒ `NSWorkspace.didUnmountNotification` ⇒ ``DiskListStore/setupMonitoring()``
+    /// 的观察者 ⇒ `refresh()`。
+    ///
+    /// ⇒ 这条链正是「**不必**把 `refresh()` 从 `respond` 里拆出来」的依据：它一断，
+    /// 按 Esc 之后盘推出了、列表却还挂着那块盘，而**没有任何东西会报错**。
+    /// `IntegrationEjectTests` 的文件头把「挂载通知之后那次 `refresh()`」记成了产品的判定时点，
+    /// 但那份是**集成**测试（要真挂载磁盘映像），CI 沙盒里会被跳过 ⇒ 这里钉**接线**。
+    @Test func 卸载通知必须能自己刷新列表() throws {
+        let source = try String(
+            contentsOf: repoRootForEjectTests.appendingPathComponent("Sources/Services/DiskListStore.swift"),
+            encoding: .utf8)
+        #expect(
+            source.contains(
+                "[NSWorkspace.didMountNotification, NSWorkspace.didUnmountNotification]"),
+            """
+            `DiskListStore` 不再同时监听挂载与卸载通知了 —— 按 Esc 之后那次推出若成功，
+            watcher 已经被闸门挡住、不再刷新列表，于是列表会一直挂着那块**已经推出**的盘，
+            而没有任何东西会报错（§8.146.6）
+            """)
+        #expect(
+            source.contains("Task { @MainActor in await self?.refresh() }"),
+            """
+            监听里不再调 `refresh()` —— 通知收到了却什么都不做，与「没监听」逐字相同
+            """)
+    }
+
+    /// 那次在跑的推出已经成功 ⇒ `terminateAndEject` 直接返回 `.ejected`，**不再调一次**系统推出。
+    ///
+    /// ⚠️ 用不存在的 PID（kill 返回 ESRCH，被视为已退出）避免真实杀进程 ——
+    /// 与 ``terminateAndEject关闭进程后成功推出`` 同一条约定。
+    @Test func 已有一次成功推出在跑时不再重复调系统推出() async {
+        let mock = MockEjectService()
+        mock.ejectResult = .success(())
+        let controller = EjectFlowController(
+            ejectService: mock, occupancyDetector: MockOccupancyDetector())
+        let processes = [OccupyingProcess(pid: 9_999_999, processName: "Ghost", path: "")]
+
+        // 模拟「先弹窗那条路」已经发起、并且**已经成功返回**的那一次系统推出。
+        let inFlight = Task { @MainActor in EjectOutcome.ejected }
+        let result = await controller.terminateAndEject(
+            disk: makeDisk(), processes: processes, awaiting: inFlight)
+
+        guard case .ejected = result else {
+            Issue.record("那次推出已经成功了，这里却返回 \(result)")
+            return
+        }
+        #expect(
+            !mock.ejectCalled,
+            """
+            那次推出已经成功、却还是又调了一次 `unmountAndEjectDevice` ——
+            两次并发调用对同一卷行为未定义，第二次会因「设备已不在」报 notFound，
+            把一次成功写成失败（§8.146）
+            """)
+    }
+}
+
+/// `EjectUI.swift` 所在仓库根。
+///
+/// ⚠️ 本文件原先只读 `Sources/...` 的源码，没有这个锚；加它是因为新守卫要读
+/// `Sources/Services/EjectUI.swift`（同 `UpdateSettingsTests` 里那个 `repoRoot` 的口径）。
+private var repoRootForEjectTests: URL {
+    URL(fileURLWithPath: #filePath)
+        .deletingLastPathComponent()
+        .deletingLastPathComponent()
+        .deletingLastPathComponent()
+}
+
+/// 一个「完成了没有」的标志。
+///
+/// 只在主 actor 上读写（测试与它派生的 `Task { @MainActor in }` 都在主 actor 上），
+/// 所以 `@unchecked Sendable` 在这里是安全的 —— 加锁反而会把测试写成并发练习。
+private final class WaitFlag: @unchecked Sendable {
+    var done = false
+}
+
+/// 一个「进了 `eject` 就通知、然后短暂挂住」的替身。
+///
+/// **为什么要它**：``EjectFlowController/activeEjectionCount`` 只在推出**进行中**为正，
+/// 而 `MockEjectService` 立刻返回 ⇒ 计数瞬间归零，测不到那个窗口。
+/// 这里用 `AsyncStream` 通知「真的进来了」，再用 `Task.sleep`（**让路**，不阻塞线程）
+/// 把窗口撑开够测试观察。
+private final class BlockingEjectService: EjectService, @unchecked Sendable {
+
+    /// 每次进入 `eject` 时投递一个元素。
+    let entered: AsyncStream<Void>
+
+    private let enteredContinuation: AsyncStream<Void>.Continuation
+
+    override init() {
+        let (stream, continuation) = AsyncStream<Void>.makeStream()
+        self.entered = stream
+        self.enteredContinuation = continuation
+        super.init()
+    }
+
+    override func eject(disk: DiskInfo) async -> Result<Void, EjectFailure> {
+        enteredContinuation.yield()
+        try? await Task.sleep(nanoseconds: 300_000_000)
+        return .success(())
+    }
 }

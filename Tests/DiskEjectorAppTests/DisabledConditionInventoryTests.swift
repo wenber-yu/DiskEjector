@@ -70,6 +70,14 @@ struct DisabledConditionInventoryTests {
             reason:
                 "宿主能力判据（`updater != nil`），与开关自己的值**无关** —— §8.113.14 修的就是这里"),
         Entry(
+            file: "Sources/Views/SettingsView.swift",
+            snippet: "private var takeOverTapAction: (() -> Void)? {",
+            reason:
+                "宿主/环境能力判据（本机给没给「完全磁盘访问」），与开关自己的值**无关**"
+                + "（判据读 `takeOverAvailability`，不读 `takeOverFinderEject`）。"
+                + "且未授权那一态**不是死路**：那一行的行尾就是「打开系统设置」，"
+                + "授权回来（`didBecomeActive`）这一行当场恢复可点"),
+        Entry(
             file: "Sources/Views/ContentView.swift",
             snippet: ".disabled(isRefreshing)",
             reason:

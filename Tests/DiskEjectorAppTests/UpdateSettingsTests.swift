@@ -143,8 +143,8 @@ struct UpdateSettingsTests {
                 == .downloading(version: "1.2.0", fraction: 0.42))
         #expect(
             UpdateController.rowState(
-                phase: .ready(version: "1.2.0"), skippedVersion: "1.1.0", lastCheck: checked)
-                == .ready(version: "1.2.0"))
+                phase: .ready(version: "1.2.0", autoRestart: false), skippedVersion: "1.1.0", lastCheck: checked)
+                == .ready(version: "1.2.0", autoRestart: false))
         #expect(
             UpdateController.rowState(
                 phase: .failed(version: "1.2.0"), skippedVersion: "1.1.0", lastCheck: checked)
@@ -574,7 +574,8 @@ struct UpdateSettingsTests {
         // 它已经在这一态里了，再判一次会让错误处理递归地停不下来。
         #expect(!UpdateController.isDownloadFailure(phase: .idle, error: download))
         #expect(!UpdateController.isDownloadFailure(phase: .found(version: "1.1.0"), error: download))
-        #expect(!UpdateController.isDownloadFailure(phase: .ready(version: "1.1.0"), error: download))
+        #expect(
+            !UpdateController.isDownloadFailure(phase: .ready(version: "1.1.0", autoRestart: false), error: download))
         #expect(!UpdateController.isDownloadFailure(phase: .failed(version: "1.1.0"), error: download))
         // 2026-09-20 补的两态：**尤其 `.checking`** —— 用户点「检查更新」之后、
         // Sparkle 还没答的那几秒，`showUpdaterError` 是可能到的（feed 拿不到）。
@@ -672,7 +673,7 @@ struct UpdateSettingsTests {
 
         // ② **不是**终态：对活会话的主张 / 中间态 / 无事发生。
         #expect(
-            !UpdateController.isTerminalPhase(.ready(version: "1.1.0")),
+            !UpdateController.isTerminalPhase(.ready(version: "1.1.0", autoRestart: false)),
             """
             ⚠️ 2026-09-22 改判（QA 真机复验）：`.ready` 说的是「**现在**有个装好的更新等你重启」，
             而走到本判据的两处都紧接着 `abortUpdateAndShowNextUpdateImmediately:`
@@ -1270,7 +1271,7 @@ struct UpdateSettingsTests {
 
         var calls = 0
         controller.driverIsReady(version: "1.1.0") { _ in calls += 1 }
-        #expect(controller.phase == .ready(version: "1.1.0"))
+        #expect(controller.phase == .ready(version: "1.1.0", autoRestart: false))
 
         controller.installReadyUpdate()
         #expect(
@@ -1477,7 +1478,7 @@ struct UpdateSettingsTests {
             "downloading + 自动开 ⇒ 应挡（已经在下）")
         #expect(
             !UpdateController.shouldEnterBackgroundDownload(
-                phase: .ready(version: "1.1.0"), autoDownloads: true),
+                phase: .ready(version: "1.1.0", autoRestart: false), autoDownloads: true),
             "ready + 自动开 ⇒ 应挡（已就绪）")
         #expect(
             !UpdateController.shouldEnterBackgroundDownload(
@@ -1491,7 +1492,7 @@ struct UpdateSettingsTests {
             "idle + 自动关 ⇒ 应挡")
         #expect(
             !UpdateController.shouldEnterBackgroundDownload(
-                phase: .ready(version: "1.1.0"), autoDownloads: false),
+                phase: .ready(version: "1.1.0", autoRestart: false), autoDownloads: false),
             "ready + 自动关 ⇒ 应挡")
     }
 
@@ -1739,6 +1740,14 @@ struct UpdateSettingsTests {
     /// 弹窗的三个出口各自回答 Sparkle 哪个 choice。
     ///
     /// 接错的后果很具体：Esc 若回答 `.skip`，用户按一下「稍后」就被**永久静音**了。
+    ///
+    /// ⚠️ **2026-09-25 订正（§8.146）**：这里原来断言 `body.contains("reply(.dismiss)")`，
+    /// 而 `.dismiss` 恰恰是**本轮要修的那个 bug** —— Sparkle 把 `.dismiss` 处理成
+    /// `uiDriverIsRequestingAbortUpdateWithError:nil`（`SPUUIBasedUpdateDriver.m:308`）
+    /// → `abortUpdateWithError:showErrorToUser:YES` → `:456 dismissUpdateInstallation`
+    /// → `driverDidReset()` ⇒ 设置行谎报「已是最新版本」（而它明明发现了新版本）。
+    /// 现在 Esc / 关窗走「**先不回答**」（攥住 reply，见 ``UpdateController/alertReply``），
+    /// 映射本身抽成了纯函数 ``UpdateController/alertReplyChoice(for:)``（三态各有单测）。
     @Test func 三个出口各自回答哪个choice() throws {
         let source = try contents("Sources/Services/UpdateController.swift")
         let body = try #require(
@@ -1748,8 +1757,15 @@ struct UpdateSettingsTests {
         #expect(body.contains("reply(.install)"), "「后台更新并重启」→ install")
         #expect(body.contains("reply(.skip)"), "「跳过此版本」→ skip")
         #expect(
-            body.contains("reply(.dismiss)"),
-            "Esc / 关窗 → dismiss（**不是 skip** —— 那会变成永久静音）")
+            !body.contains("reply(.dismiss)"),
+            """
+            Esc / 关窗**不许**回答 `.dismiss` —— Sparkle 会据此 abort 这一轮
+            （SPUUIBasedUpdateDriver.m:308 → :456）⇒ `driverDidReset()` ⇒
+            设置行谎报「已是最新版本」（§8.146，本轮 Bug 1）
+            """)
+        #expect(
+            body.contains("case .holdForLater:"),
+            "Esc / 关窗必须落到「先不回答」那一支 —— 攥住 reply 才留得住设置行上的状态")
         #expect(
             body.contains("skipPendingVersion()"),
             "回答 .skip 之前必须把版本号记下来，否则设置行留不下「已跳过 1.1.0」这条痕迹")
@@ -1840,5 +1856,409 @@ struct UpdateSettingsTests {
         #expect(
             src.contains("static let downloadStallTimeout: TimeInterval = 120"),
             "阈值必须是**具名常量**：它是设计决策（第 34 行），改一个数就能调")
+    }
+
+    // MARK: - Bug 1：按 Esc「稍后」不许把设置行打回「已是最新版本」（§8.146）
+
+    /// 用户在弹窗上点的那一下，**该回答 Sparkle 什么**。
+    ///
+    /// ## 真机时序（弹窗路 —— `SUAutomaticallyUpdate` 未设置时**默认就是这条**）
+    ///
+    /// ```text
+    /// showUpdateFound                              ⇒ phase = .found，弹窗上屏
+    /// 用户按 Esc → present 返回 .cancel
+    ///   原先：reply(.dismiss)
+    ///     ⇒ SPUUIBasedUpdateDriver.m:308 uiDriverIsRequestingAbortUpdateWithError:nil
+    ///     ⇒ :456 dismissUpdateInstallation（error 为 nil 时也走，只要 showErrorToUser 为真）
+    ///     ⇒ UpdateUserDriver.dismissUpdateInstallation → driverDidReset() ⇒ phase = .idle
+    ///     ⇒ rowState 落到 `if let lastCheck { .upToDate(lastCheck) }`
+    ///     ⇒ 设置行写「上次检查：… · **已是最新版本**」——而它明明发现了 1.1.0
+    ///   现在：holdForLater（攥住 reply，不回答）⇒ phase 留在 .found
+    ///     ⇒ 「发现 1.1.0 · 上次检查：…」+「查看更新」（设计稿 B2 那一帧的应然行为）
+    /// ```
+    ///
+    /// ⚠️ **为什么这条测的是纯函数**：真机那一串要「点检查更新 → 等新版本弹窗 → 按 Esc
+    /// → 读设置行」，中间还隔着 Sparkle 的 `dispatch_async` 与窗口系统 ——
+    /// 测试进程里构造不出来（同 ``isTerminalPhase(_:)`` 那条理由）。
+    @Test func Esc稍后必须攥住reply而不是回答dismiss() {
+        #expect(
+            UpdateController.alertReplyChoice(for: .installAndRestart) == .install,
+            "「后台更新并重启」没映射成 `.install` —— 下载完就不会自动重启（Bug 2）")
+        #expect(
+            UpdateController.alertReplyChoice(for: .skipVersion) == .skip,
+            "「跳过此版本」没映射成 `.skip`")
+
+        // ⚠️ 本轮 Bug 1 的核心：`.cancel`（Esc）与 `.dismiss`（关窗）都必须是 holdForLater。
+        // 回答 `.dismiss` 会让 Sparkle abort 这一轮 ⇒ dismissUpdateInstallation
+        // ⇒ driverDidReset() ⇒ `.idle` ⇒ 设置行谎报「已是最新版本」。
+        for choice in [EjectAlertChoice.cancel, .dismiss] {
+            #expect(
+                UpdateController.alertReplyChoice(for: choice) == .holdForLater,
+                """
+                `\(choice)` 被回答成别的了 —— Esc / 关窗必须**先不回答**（攥住 reply），
+                否则 Sparkle 会 abort 这一轮（SPUUIBasedUpdateDriver.m:308 → :456）
+                ⇒ `driverDidReset()` ⇒ 设置行谎报「已是最新版本」，而它明明发现了新版本（§8.146）
+                """)
+        }
+    }
+
+    /// **接线守卫**：`holdForLater` 那一支真的「不回答、不改状态」。
+    ///
+    /// ⚠️ 为什么行为断言之外还要这条：上一条钉的是「映射表长什么样」，守不住
+    /// 「那一支里又被人补了一句 `reply(.dismiss)` / `driverDidReset()`」——
+    /// 那种改动会让映射表**看起来**还是对的，而实际行为回到修复前。
+    /// 两条合起来才是同一处判据的两半（行为 + 接线），少一半都不完整。
+    @Test func Esc那一支不回答reply也不改状态() throws {
+        let source = try contents("Sources/Services/UpdateController.swift")
+        let body = codeOnly(try functionBody("func showUpdateAlertIfNeeded(", in: source))
+        let branch = try caseBlock("case .holdForLater:", in: body)
+        for forbidden in ["reply(", "phase =", "driverDidReset", "alertReply = nil"] {
+            #expect(
+                !branch.contains(forbidden),
+                """
+                `.holdForLater` 那一支里出现了 `\(forbidden)` —— 那一支的**全部**语义就是
+                「不回答、不改状态」。回答 `.dismiss` 会让 Sparkle abort 这一轮
+                ⇒ `driverDidReset()` ⇒ 设置行谎报「已是最新版本」（§8.146）。实得：
+                \(branch)
+                """)
+        }
+        #expect(
+            branch.contains("logger.info"),
+            "那一支必须把「用户选了稍后」记进日志 —— 「不回答」不等于「不记录」。实得：\n\(branch)")
+    }
+
+    /// **阴性结论**：`checkForUpdates()` 的入口**一个都不可能在「会话进行中」**（§8.146.1.1）。
+    ///
+    /// ## 这条守的是什么
+    ///
+    /// `SPUUpdater.m:713` 明写：会话进行中再调 `checkForUpdates` 会**只打一条日志、
+    /// 什么都不做**。而 `UpdateController.checkForUpdates()` 在调它**之前**会先把界面
+    /// 清成 `.idle` ⇒ 这条路若在会话进行中被走到，就会**谎报「已是最新版本」** ——
+    /// 与本轮 Bug 1 **逐字相同的一句谎**，只是入口不同。
+    ///
+    /// ⚠️ **本轮一度为此加了一道闸门 + 两条守卫 + 两条变异**（判据是相位：
+    /// `.found` / `.downloading` / `.ready` = 会话活着）。**实扫之后自己撤掉了** ——
+    /// 那条分支**永远走不到**，而本仓库对「有定义、没消费者」判得很重（§8.47.6）。
+    /// ⇒ 改成把**「没有入口」这件事本身**钉住：将来谁加了新入口，这里变红。
+    ///
+    /// ## 为什么值得钉（而不是靠注释写一句「记得加闸门」）
+    ///
+    /// 2026-09-25 修 Bug 1 之后，`.found` **第一次成了会长期停留的状态**
+    /// （以前 Esc 会把会话拆掉、界面回 `.idle`）。「加一个菜单栏『检查更新』」从此
+    /// **看起来是件安全的小事**，而它会静默地把那句谎带回来。注释拦不住这个。
+    @Test func 检查更新只有那几个入口且都不在会话进行中() throws {
+        // ① 阴性锚：**菜单栏没有这一项**。这一条是整条判据的支点 ——
+        //    它一破，②里那三态的行上就会出现「会话进行中也能点的检查更新」。
+        let menu = try contents("Sources/DiskEjectorApp/MainMenu.swift")
+        #expect(
+            !menu.contains("checkForUpdates"),
+            """
+            主菜单里出现了「检查更新」—— 它可以在**任何**行态下被点到，
+            包括会话进行中的 `.found` / `.downloading` / `.ready`。
+            那时 Sparkle 会静默拒掉这次调用（`SPUUpdater.m:713`），
+            而 `checkForUpdates()` 已经先把界面清成 `.idle` ⇒ 谎报「已是最新版本」（§8.146.1.1）。
+            补法：在 `checkForUpdates()` 门口按**相位**拦（`.found` / `.downloading` / `.ready`
+            = 会话活着；`.checking` 故意不算 —— 那正是用户刚点的这一下）
+            """)
+
+        // ② 设置行那一支：「检查更新」按钮只出现在**三个非会话态**上。
+        let view = try contents("Sources/Views/SettingsView.swift")
+        for state in ["case .neverChecked:", "case .upToDate(let date):", "case .skipped(let version):"] {
+            #expect(
+                try caseBlock(state, in: view).contains("checkForUpdatesButton"),
+                """
+                `\(state)` 那一行没有「检查更新」按钮 —— 那一态就只剩「点了没反应」了。
+                （这一条是正向对照：证明下面那三条阴性断言不是因为「按钮根本没被用」而成立的）
+                """)
+        }
+        for state in [
+            "case .found(let version, let lastCheck):",
+            "case .downloading(let version, let fraction):",
+            "case .ready(let version, let autoRestart):",
+        ] {
+            #expect(
+                !(try caseBlock(state, in: view)).contains("checkForUpdatesButton"),
+                """
+                `\(state)` 那一行给了「检查更新」按钮 —— 这一态的会话**正在进行**
+                （`.found` 等用户选、`.downloading` 在下载、`.ready` 等回答 `.install`），
+                点下去 Sparkle 会静默拒掉、而界面已被清成 `.idle`
+                ⇒ 谎报「已是最新版本」（§8.146.1.1）
+                """)
+        }
+
+        // ③ 全仓调用点：只有设置行那一个按钮 + `retryDownload()` 那一处
+        //    （`presentFoundUpdate()` 的兜底在 `UpdateController` 自己里面）。
+        var callers: [String] = []
+        for file in ["Sources/Views/SettingsView.swift", "Sources/DiskEjectorApp/MainMenu.swift"] {
+            let text = try contents(file)
+            let hits = text.components(separatedBy: ".checkForUpdates()").count - 1
+            for _ in 0..<hits { callers.append(file) }
+        }
+        #expect(
+            callers == ["Sources/Views/SettingsView.swift"],
+            """
+            `checkForUpdates()` 的调用点变了（实得：\(callers)）——
+            每多一个入口，就多一次「会话进行中也能点到」的机会。
+            新增入口时要一起补门口那道**按相位**的闸门，并更新本断言（§8.146.1.1）
+            """)
+    }
+
+    // MARK: - Bug 2：点过「后台更新并重启」⇒ 下载完自动重启（§8.146）
+
+    /// `showReady` 到达时的三态分流。
+    ///
+    /// ⚠️ **判错的代价不可逆**：`SPUUserUpdateChoice.install` 在 `showReady` 阶段
+    /// 走 `finishInstallationWithResponse:`（`SPUUIBasedUpdateDriver.m:422`）——
+    /// app 会**立刻退出**。判成 `.autoRestart` 而当时有卷在推出，就是
+    /// 「用户正在拖文件时被强制重启」。
+    ///
+    /// ⚠️ **为什么是纯函数**：真机上构造不出「下载完成的那一刻恰好有卷在推出」，
+    /// 而这一支判错**不会有任何断言变红**（同 ``isTerminalPhase(_:)`` 那条理由）。
+    @Test func 下载完成时该不该自动重启按三态分流() {
+        // ① 用户点过「后台更新并重启」+ 没有推出在进行 ⇒ **自动重启**。
+        #expect(
+            UpdateController.readyHandling(userChoseInstallAndRestart: true, activeEjections: 0)
+                == .autoRestart,
+            """
+            用户明确点了「后台更新并重启」、当时又没有推出在进行，却没自动重启 ——
+            这正是用户报的那个 bug（弹窗提示块 `updateCallout` 与 `updateDownloadingHint`
+            都在承诺自动重启，而实现原先只把界面落到「已就绪 + 立即重启」）
+            """)
+
+        // ② 有推出在进行 ⇒ **推迟**（`updateCallout` 承诺「正在推出的磁盘不会被打断」）。
+        #expect(
+            UpdateController.readyHandling(userChoseInstallAndRestart: true, activeEjections: 1)
+                == .deferUntilIdle,
+            """
+            有卷正在推出却立刻自动重启 —— 会腰斩 `unmountAndEjectDevice`，
+            而弹窗提示块明写承诺「正在推出的磁盘不会被打断」（§8.146）
+            """)
+        #expect(
+            UpdateController.readyHandling(userChoseInstallAndRestart: true, activeEjections: 3)
+                == .deferUntilIdle,
+            "多卷同时推出时同样要推迟（判据是 `> 0`，不是 `== 1`）")
+
+        // ③ 用户**没点过** ⇒ 等用户点「立即重启」。
+        #expect(
+            UpdateController.readyHandling(userChoseInstallAndRestart: false, activeEjections: 0)
+                == .waitForUser,
+            """
+            用户没点过「后台更新并重启」却自动重启了 —— 自动那条路
+            （`updater(_:willInstallUpdateOnQuit:immediateInstallationBlock:)`）
+            的语义是「等退出时装」，用户从没同意被重启
+            """)
+        #expect(
+            UpdateController.readyHandling(userChoseInstallAndRestart: false, activeEjections: 2)
+                == .waitForUser,
+            "没点过 + 有推出在进行 ⇒ 仍然只是等用户（不该因为推出而变成「推迟自动重启」）")
+
+        // ④ 边界（2026-09-25 补；QA 探针 Q12 实测：漏了它，全量测试仍绿）。
+        //
+        //    ⚠️ 这里真正要钉的**不是**「负数会不会发生」，而是**判据的域**：
+        //    `activeEjections` 是 `Int`，而这条判据必须与 ``EjectFlowController/waitUntilIdle()``
+        //    用的是**同一句** `> 0` —— 一边说「没有推出」，另一边就必须**立即返回**。
+        //    两边一旦分叉（例如这里写成 `!= 0`、那边仍是 `> 0`），就会出现
+        //    「推迟了自动重启、却永远没人唤醒」的死态，而弹窗已经承诺过会自动重启。
+        #expect(
+            UpdateController.readyHandling(userChoseInstallAndRestart: true, activeEjections: -1)
+                == .autoRestart,
+            """
+            计数为负时被判成「有推出在进行」⇒ 推迟自动重启；而 `waitUntilIdle()` 的
+            `while activeEjectionCount > 0` 在负数下**立即返回** ⇒ 推迟了却没人唤醒：
+            界面停在一个**永远不自动重启**的「已就绪」上（§8.146.7）
+            """)
+        #expect(
+            UpdateController.readyHandling(userChoseInstallAndRestart: true, activeEjections: Int.max)
+                == .deferUntilIdle,
+            "极大计数（多卷并发）也要推迟 —— 判据是 `> 0`，不能写成「只有小数目才算有推出」")
+    }
+
+    /// **接线守卫**：自动重启的分流真的接在 `driverIsReady` 上。
+    ///
+    /// ⚠️ **纯函数有单测 ≠ 它被用上了**：把 `driverIsReady` 里那段 `switch` 整段删掉，
+    /// 上一条照样全绿（它只测纯函数），而自动重启就彻底不生效 ——
+    /// 这正是 2026-09-18 实扫发现 `driverDidFailDownload` **全仓库没有调用点**的那类病：
+    /// 界面上与「已经支持了」长得一模一样。
+    @Test func 自动重启的分流真的接在driverIsReady上() throws {
+        let source = try contents("Sources/Services/UpdateController.swift")
+        let body = codeOnly(try functionBody("func driverIsReady(", in: source))
+        #expect(
+            body.contains("let handling = Self.readyHandling("),
+            """
+            `driverIsReady` 没走 `readyHandling` 那个分流 —— 用户点了「后台更新并重启」
+            也永远不会自动重启（Bug 2 没修）。实得：
+            \(body)
+            """)
+        #expect(
+            body.contains("switch handling {"),
+            """
+            算出了分流结论却**没照它做**（`switch` 的入参不是那个结论）——
+            `readyHandling` 会变成一段谁都不看的死代码，而上面那条照样绿。实得：
+            \(body)
+            """)
+        // ⚠️ 这两条防的是「传了常量」这种最隐蔽的改法：`readyHandling(...)` 还在、
+        // 分流表也还在，只是**输入被写死** —— 行为测试（纯函数）与上面两条都照样绿，
+        // 而自动重启 / 推出闸门各自彻底失效。
+        #expect(
+            body.contains("userChoseInstallAndRestart: userChoseInstallAndRestart"),
+            """
+            `driverIsReady` 没把**用户意图**传进 `readyHandling`（例如写死成 `false`）——
+            自动重启会永不生效，而别的断言全绿。实得：
+            \(body)
+            """)
+        #expect(
+            body.contains("activeEjections: EjectFlowController.shared.activeEjectionCount"),
+            """
+            「有没有卷正在推出」没从 `EjectFlowController` **派生**（例如写死成 `0`）——
+            「正在推出的磁盘不会被打断」那道闸门彻底失效。实得：
+            \(body)
+            """)
+        // ⚠️ 第三条轴：**结论必须记进相位**。只 `switch` 而不记的话，
+        // 「已就绪」那一行在两条路上又会说同一句话 —— 而它们该说的话不一样
+        // （§8.146.2）。这一条防的是「把 autoRestart 写死」。
+        #expect(
+            body.contains("phase = .ready(version: version, autoRestart: handling != .waitForUser)"),
+            """
+            分流结论没记进相位（例如 `autoRestart` 写死成 `false` / `true`）——
+            设置行在「会自动重启」与「等退出时装」两条路上会说同一句话，
+            而其中一句必然是假的。实得：
+            \(body)
+            """)
+    }
+
+    /// 「等推出结束」之后那一按：**reply 已经作废就不许再答**（Q8，2026-09-25）。
+    ///
+    /// ⚠️ **为什么必须补**：这段判据原先写在 `driverIsReady` 的 `Task` 闭包里，
+    /// **整句删掉不会有任何断言变红**（QA 探针 Q8 实测：全量测试仍绿）——
+    /// 而后果是往一个**已经结束的会话**里回话（同 §8.121 那个病：把已结束的会话当成还活着）。
+    /// 真机上也构造不出「推出结束的那一刻用户恰好点了立即重启」⇒ 判据抽出来单测。
+    @Test func 推出结束后作废的reply不许再答() throws {
+        // ① 正常那一格：reply 还在、相位还是 `.ready` ⇒ **必须**答。
+        #expect(
+            UpdateController.canStillAnswerReadyReply(
+                hasReadyReply: true, phase: .ready(version: "1.1.0", autoRestart: true)),
+            "reply 还在、相位也还是 `.ready`，却不肯回答了 —— 用户等不到承诺过的自动重启")
+        // ② 用户已经点过「立即重启」⇒ `readyReply` 被清空。
+        #expect(
+            !UpdateController.canStillAnswerReadyReply(
+                hasReadyReply: false, phase: .ready(version: "1.1.0", autoRestart: true)),
+            "`readyReply` 已被清空（用户点过「立即重启」）却还回答一次 —— 那是往一个已结束的会话里回话")
+        // ③ 会话被别的回调拆掉 ⇒ 相位已经不是 `.ready`。
+        #expect(
+            !UpdateController.canStillAnswerReadyReply(hasReadyReply: true, phase: .idle),
+            """
+            会话已经被拆掉（`phase = .idle`）却还回答那个 reply —— 那正是 §8.121 那个
+            「把已结束的会话当成还活着」的病（§8.146.7）
+            """)
+
+        // ④ 接线：判据必须真的被 `driverIsReady` 用上（纯函数有单测 ≠ 它被接上）。
+        let source = try contents("Sources/Services/UpdateController.swift")
+        let body = codeOnly(try functionBody("func driverIsReady(", in: source))
+        #expect(
+            body.contains("Self.canStillAnswerReadyReply("),
+            """
+            `driverIsReady` 里那句重判没走 `canStillAnswerReadyReply` —— 就地删掉或写反
+            都不会有任何断言变红，而 `await waitUntilIdle()` 之后可能是一个**作废的 reply**。实得：
+            \(body)
+            """)
+    }
+
+    /// **接线守卫**：自动重启只在**用户点过**的那条路上生效。
+    ///
+    /// 两条路都会走到 ``UpdateController/driverIsReady(version:reply:)``，
+    /// 而它们的应然行为**相反**（一条自动重启、一条等退出时装）。
+    /// 区分它们的**唯一**依据是 `userChoseInstallAndRestart` ——
+    /// 它只能由弹窗那条路（`showUpdateAlertIfNeeded` 的 `.install` 分支）设置。
+    /// 「自动那条路也顺手设一下」不会有任何行为测试变红（那条路真机上跑不出来），
+    /// 所以必须在这里钉住。
+    @Test func 用户意图只由弹窗那条路设置() throws {
+        let source = try contents("Sources/Services/UpdateController.swift")
+        let alert = codeOnly(try functionBody("func showUpdateAlertIfNeeded(", in: source))
+        #expect(
+            alert.contains("userChoseInstallAndRestart = true"),
+            "弹窗那条路没设 `userChoseInstallAndRestart` —— 自动重启永远不生效（Bug 2 没修）")
+        #expect(
+            slice(after: "case .install:", upTo: "case .skip:", in: alert)?
+                .contains("userChoseInstallAndRestart = true") == true,
+            """
+            那句赋值必须在 `.install` 那一支里 —— 放到别处会让「跳过此版本」
+            或「稍后」也留下「用户点过」的痕迹，下一轮的自动重启就被误触发
+            """)
+
+        let onQuit = codeOnly(
+            try functionBody(
+                "func updater(\n        _ updater: SPUUpdater,\n        willInstallUpdateOnQuit", in: source))
+        #expect(
+            !onQuit.contains("userChoseInstallAndRestart = true"),
+            """
+            「等退出时装」那条路也设了用户意图 —— 那条路上用户什么都没点，
+            却被当成「他同意过自动重启」（§8.146）
+            """)
+    }
+
+    // MARK: - Bug 2 的文案轴：同一个「已就绪」，两条路说的话不一样（§8.146.2）
+
+    /// **「会不会自动重启」必须跟着状态走，不能写死在视图里。**
+    ///
+    /// ⚠️ **为什么这一轴不能合并成一句话**：`.ready` 那一行**两条路都在用** ——
+    /// 自动那条路（`willInstallUpdateOnQuit`，用户什么都没点）与弹窗那条路
+    /// （用户点过「后台更新并重启」，会自己重启）。写死「会自动重启」会在
+    /// **自动那条路上**变成一句谎话；写死「重启后完成安装」则对弹窗那条路
+    /// 只字不提它自己会重启。
+    ///
+    /// ⚠️ **而且这一行恰恰在自动那条路上待得最久**：弹窗那条路一进 `.ready`
+    /// 就回答 `.install`（app 随即退出），只有「有卷正在推出」那一段会停住 ——
+    /// 所以「哪条路看得见这一行」与「这一行在替谁说」正好相反，
+    /// 不能靠「哪条路常见」来选文案。
+    @Test func 已就绪那行的说明按会不会自动重启分开() throws {
+        // ① 纯函数侧：这个区分必须**穿过** `rowState`，否则视图拿不到它。
+        #expect(
+            UpdateController.rowState(
+                phase: .ready(version: "1.1.0", autoRestart: true),
+                skippedVersion: nil, lastCheck: nil)
+                == .ready(version: "1.1.0", autoRestart: true),
+            "`rowState` 把 `autoRestart` 吃掉了 —— 视图只剩一个「已就绪」，两句话又合并成一句")
+        #expect(
+            UpdateController.rowState(
+                phase: .ready(version: "1.1.0", autoRestart: false),
+                skippedVersion: nil, lastCheck: nil)
+                == .ready(version: "1.1.0", autoRestart: false),
+            "`rowState` 把 `autoRestart` 写死成 `true` 了")
+
+        // ② 视图侧：两个键各自接在正确的那一支上。
+        let view = try contents("Sources/Views/SettingsView.swift")
+        let block = codeOnly(try caseBlock("case .ready(let version, let autoRestart):", in: view))
+        #expect(
+            block.contains("L10n.tr(autoRestart ? .updateReadyAutoHint : .updateReadyHint)"),
+            """
+            「已就绪」那一支没按 `autoRestart` 分文案（例如只用了其中一个键）——
+            两条路会说出同一句话，而其中一句必然是假的。实得：
+            \(block)
+            """)
+    }
+
+    /// **说明键同源**：设计稿 4b 那一帧与实现的自动重启那一支必须用**同一个键**。
+    ///
+    /// 同 §8.82 立的那条（`设计稿3b那一帧与实现用同一个说明键`）：这一行是
+    /// **等高的一部分**（面板固定高度），而它写在两个地方 —— 设计稿画着它、
+    /// 实现读着它。两边分叉时**没有任何东西会红**，直到有人照着设计稿改实现。
+    @Test func 设计稿4b那一帧与实现用同一个说明键() throws {
+        let html = try contents("Design/ui/v2/screens/08-update.html")
+        let frame = try #require(
+            slice(after: "4b · 已就绪 · 点过「后台更新并重启」", upTo: "<!-- B5", in: html),
+            "找不到 4b 那一帧 —— 改了帧标题或注释就要同步这条断言（口径失效必须是红的）")
+        let draftKey = try #require(
+            slice(after: "class=\"sline__desc\" data-i18n=\"", upTo: "\"", in: frame),
+            """
+            4b 那一帧里没有 `.sline__desc`。那一态只有一句话会比别态矮
+            （面板固定高度 ⇒ 切到它时底部多出一条空白带）。实得：
+            \(frame)
+            """)
+        #expect(
+            draftKey == "updateReadyAutoHint",
+            """
+            设计稿 4b 挂的是 `\(draftKey)`，而实现那条路读的是 `updateReadyAutoHint` ——
+            两边从此分叉而没有任何东西会红（§8.82 实测过这个病：44 条守卫全绿）
+            """)
     }
 }

@@ -130,7 +130,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // 实测（2026-09-16 补齐前）：上屏后是 **440×598**（当时尺寸），玻璃只拿到内容的 566，
         // 底部 32pt 露成平色；系统标题栏的「设置」还与面板头部的「设置」重复。
         let autoSettingsKeys = CommandLine.arguments.contains("--preview-settings-keys")
-        if autoSettingsKeys || CommandLine.arguments.contains("--preview-settings") {
+        // 「接管可用性」那两个注入口也各自算一次「要开设置窗口」——
+        // 否则 `--preview-settings-no-fda` 会被忽略掉（这里是**逐字**比较，不是前缀匹配）。
+        let settingsAvailabilityFlag =
+            CommandLine.arguments.contains("--preview-settings-no-fda")
+            || CommandLine.arguments.contains("--preview-settings-has-fda")
+        if autoSettingsKeys || settingsAvailabilityFlag
+            || CommandLine.arguments.contains("--preview-settings")
+        {
             delegate.runSettingsPreview(autoKeys: autoSettingsKeys)
         }
 
@@ -161,6 +168,26 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     /// 预览跑的是未签名的命令行产物，`Bundle.main` 不是合规的 app bundle。
     static var isPreviewRun: Bool {
         CommandLine.arguments.contains { $0.hasPrefix("--preview-") }
+    }
+
+    /// 预览时**强制**的「接管可用性」；`nil` = 走实时探测（生产路径）。
+    ///
+    /// - `--preview-settings-no-fda`：强制「未授完全磁盘访问」那一态。
+    /// - `--preview-settings-has-fda`：强制「已授权」那一态。
+    ///
+    /// **为什么不靠本机的真实 TCC 状态**：这一态由「本机给没给 FDA」决定，
+    /// 而任何一台机器都只能处于其中**一半** —— 另一半**画不出来**，
+    /// 于是它的排版与文案永远没人看过。这与 ``SettingsSectionsColumn/updateStateOverride``
+    /// （七态里「下载中」等三态在真机上造不出来）是同一条理由。
+    ///
+    /// ⚠️ 只在 `--preview-*` 进程里生效，正常启动读不到 ⇒ 生产行为一字不变。
+    /// （两个旗标本就带 `--preview-` 前缀，``isPreviewRun`` 会自动成立 —— 这里再判一次
+    /// 是为了让「生产不生效」这件事在**读代码时**就看得见，而不是去数前缀。）
+    private static var previewTakeOverAvailability: AppSettings.TakeOverAvailability? {
+        guard isPreviewRun else { return nil }
+        if CommandLine.arguments.contains("--preview-settings-no-fda") { return .needsFullDiskAccess }
+        if CommandLine.arguments.contains("--preview-settings-has-fda") { return .usable }
+        return nil
     }
 
     /// 输出一次环境自检结果并退出。
@@ -439,6 +466,20 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // 不是合规 app bundle），这里再拦一次是为了让真机自检**不发出网络请求** ——
         // 自检要可重复，混进一次联网会让结果随网络状况变。
         if !Self.isPreviewRun { UpdateController.shared.startIfNeeded() }
+
+        // **接管访达（Finder）的推出**：注册 DiskArbitration approval callback，
+        // 让访达 / diskutil / 任何走 `NSWorkspace.unmountAndEjectDevice` 的推出请求
+        // 先被本应用判定（占用缓存明确列出占用者 → 弹我们的窗；否则放行）。
+        // 见 `EjectHookService` 的完整链路说明与 spike 实证（NOTES「DA 推出接管」章）。
+        //
+        // 回调**保持注册、永不注销**（注销再注册要处理「注销期间到达的请求漏掉」这类时序问题）；
+        // 要不要真的拦由 `AppSettings.takeOverFinderEject` 决定，**每次回调现读**（默认关）。
+        if !Self.isPreviewRun { EjectHookService.shared.register() }
+
+        // **开关为真时把占用轮询显式启动**：`OccupancyStore` 是懒加载单例，
+        // 不主动创建的话，「开着开关、但没打开过主窗口、直接在访达点推出」这条
+        // **本功能的目标路径**会读到空缓存 ⇒ 一律放行 ⇒ 功能静默不生效。
+        if !Self.isPreviewRun { EjectHookService.syncOccupancyPolling() }
     }
 
     /// 直发版首次启动引导用户授予「完全磁盘访问」。
@@ -1570,14 +1611,22 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: - 推出
 
     /// 推出指定卷。失败/占用的弹窗统一交给 ``EjectUI`` 处理，菜单栏与主窗口共用同一套。
+    ///
+    /// ## 2026-09-25 改：把「弹窗」与「等系统」解耦（§8.146，与 ``ContentView/eject(_:)`` 同一条）
+    ///
+    /// 原先这里是「等系统推出返回 → `refresh()` → `EjectUI.handle(outcome:)`」，
+    /// 于是有占用的盘要**等系统那十几秒**才弹占用窗。现在把窗口上已经显示的
+    /// 那份占用结论（``OccupancyStore/result(for:)`` 的缓存）一并交给
+    /// ``EjectUI/eject(disk:cachedOccupancy:)`` ⇒ 立刻弹窗，系统照常在后跑。
+    /// 顺带不再在弹窗之前做全量刷新（它对弹窗内容没有贡献，只是又叠一段等待）。
     private func eject(_ disk: DiskInfo) {
         ejectingDiskId = disk.id
 
         Task {
-            let outcome = await EjectFlowController.shared.eject(disk: disk)
+            await EjectUI.eject(
+                disk: disk,
+                cachedOccupancy: OccupancyStore.shared.result(for: disk))
             ejectingDiskId = nil
-            await DiskListStore.shared.refresh()
-            await EjectUI.handle(outcome, disk: disk)
         }
     }
 
@@ -2058,7 +2107,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // `fillsHost: true` —— 独立窗口要「玻璃铺满整窗」。`false` 是给 `.sheet`
         // 与离屏出图用的（它们要的是理想尺寸 480×800），详见 ``SettingsView/fillsHost``。
         let hosting = NSHostingView(
-            rootView: SettingsView(onDone: { [weak win] in win?.close() }, fillsHost: true))
+            rootView: SettingsView(
+                onDone: { [weak win] in win?.close() },
+                fillsHost: true,
+                takeOverAvailabilityOverride: Self.previewTakeOverAvailability))
         // 与主窗口、引导面板同一句：`.fullSizeContentView` 会让 SwiftUI 把内容整体下推 32pt，
         // 并把「内容 + 32」当固有尺寸回推给窗口（窗口上屏时被撑高）。
         if #available(macOS 13.3, *) { hosting.safeAreaRegions = [] }

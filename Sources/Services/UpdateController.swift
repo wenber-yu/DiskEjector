@@ -40,7 +40,29 @@ enum UpdatePhase: Equatable {
     /// 反过来就是这一条：**不知道就别猜**。
     case downloading(version: String, fraction: Double?)
     /// 下载并校验完成，等重启安装。
-    case ready(version: String)
+    ///
+    /// ## 为什么带着 `autoRestart`（2026-09-25，§8.146.2）
+    ///
+    /// 同一个「已就绪」，**两条路上的承诺不一样**：
+    ///
+    /// - **自动那条路**（`willInstallUpdateOnQuit`）：用户没点过任何东西，
+    ///   语义是「下次退出时静默装上」⇒ 界面只能说「重启后完成安装」。
+    /// - **弹窗那条路**（用户点过「后台更新并重启」）：现在会**自己重启**
+    ///   （`readyHandling` 的 `.autoRestart` / `.deferUntilIdle`）⇒
+    ///   界面必须说出来，否则用户在等一个他以为要自己点的动作。
+    ///
+    /// ⚠️ **所以它不能是「写死一句话」**：`.ready` 那一行**恰恰在自动那条路上
+    /// 待得最久**（弹窗那条路一进 `.ready` 就回答 `.install`，只有「有卷在推出」
+    /// 那一段会停住）—— 把「会自动重启」写死进那行的文案，会在**唯一看得见它的
+    /// 那条路**上变成新的一句谎话，正是本轮在修的那一类。
+    ///
+    /// ⚠️ **为什么记在相位里、而不是让视图去读一个开关**：它是
+    /// ``readyHandling(userChoseInstallAndRestart:activeEjections:)`` 在
+    /// ``driverIsReady(version:reply:)`` 里**当场算出来的结论**，
+    /// 记下来就是「这一轮会话已经这么决定了」。让视图另读一个可变开关的话，
+    /// `installReadyUpdate()` 清掉那个开关之后，这一行会**在应用退出的那 100ms 里
+    /// 把话改回去**（`readyReply` 被清空 ⇒ 开关翻假）。记在相位里不会翻。
+    case ready(version: String, autoRestart: Bool)
     /// 下载失败。
     case failed(version: String)
     /// **下载成功了，但之后那一步失败** —— 解压 / 验签 / 安装（账本第 43 行，2026-09-22）。
@@ -223,11 +245,26 @@ final class UpdateController: NSObject, ObservableObject {
 
     /// 「已就绪」状态下，Sparkle 等着我们回答的那个 reply。
     ///
-    /// **为什么要攥着不马上回答**：设计稿 B4 说得很清楚 ——
-    /// 「下载可以完全后台，但重启会关掉用户手上的一切」，所以
-    /// **重启不自动做，只提供入口**。攥着 reply 意味着用户点「立即重启」时
+    /// **为什么要攥着**：攥着 reply 意味着用户点「立即重启」时
     /// 我们能给出真正的 `.install`（Sparkle 会装完并重新拉起应用），
     /// 而不是「先 dismiss 再想办法把更新找回来」。
+    ///
+    /// ## ⚠️ 2026-09-24 用户拍板：弹窗那条路**改成自动重启**（§8.146）
+    ///
+    /// 这里原来写的是「设计稿 B4 说得很清楚 —— 重启不自动做，只提供入口」。
+    /// 那句与弹窗自己的两句承诺**自相矛盾**：`updateCallout` 写
+    /// 「…完成后**自动重启完成安装**」、`updateDownloadingHint` 写
+    /// 「下载完成后会自动安装，无需你再操作。」⇒ 用户看到的是
+    /// 「弹窗说要自动重启，实际下载完却停在那里等手动点」。
+    /// 以那两句为准（用户 2026-09-24 拍板），B4 那段 spec-note 已一并订正。
+    ///
+    /// 现在这一格仍有**两种**到达方式（判据是纯函数
+    /// ``readyHandling(userChoseInstallAndRestart:activeEjections:)``）：
+    ///
+    /// - 用户点过「后台更新并重启」且**没有**推出在进行 ⇒ **立刻**回答 `.install`（自动重启）；
+    /// - 用户点过、但**此刻有卷正在推出** ⇒ 攥着，等推出结束再回答 `.install`
+    ///   （``ReadyHandling/deferUntilIdle``，见 ``driverIsReady(version:reply:)``）；
+    /// - 其余（用户没点过：自动下载那条路、或弹窗上按了 Esc「稍后」）⇒ 攥着，等用户点「立即重启」。
     ///
     /// ⚠️ **代价（已核实，不是猜的）**：`SPUUpdater` 的文档写明
     /// 「`checkForUpdates` does not do anything if there is a `sessionInProgress`」，
@@ -246,7 +283,63 @@ final class UpdateController: NSObject, ObservableObject {
     private var readyReply: ((SPUUserUpdateChoice) -> Void)?
 
     /// 「发现新版本」时弹窗要回答的那个 reply。
+    ///
+    /// ## ⚠️ 用户按 Esc「稍后」时**攥着不回答**（2026-09-25，§8.146）
+    ///
+    /// 原先 Esc 分支回答 `.dismiss`，而 Sparkle 把 `.dismiss` 处理成
+    /// `uiDriverIsRequestingAbortUpdateWithError:nil`（`SPUUIBasedUpdateDriver.m:308`）
+    /// → `abortUpdateWithError:showErrorToUser:YES` → `_abortUpdateWithError:` 的
+    /// `abortUpdate()` 块（`:454`）→ `dismissUpdateInstallation`（`:456`）
+    /// → ``UpdateUserDriver/dismissUpdateInstallation()`` → `driverDidReset()` → `phase = .idle`。
+    /// 而 `.found` **不是**终态（``isTerminalPhase(_:)``）⇒ 那一支不会拦它
+    /// ⇒ 设置行落到 `rowState` 的 `if let lastCheck { return .upToDate(lastCheck) }`
+    /// ⇒ 界面写「上次检查：… · **已是最新版本**」——**而它明明发现了 1.1.0**。
+    /// 设计稿 `08-update.html` C 段第 6 行写死了应然行为：「稍后（Esc / 关窗）」
+    /// ⇒「**与上一行相同 —— 状态留在界面上**」（B2 那一帧的标签就是
+    /// 「2 · 自动更新关 · 发现新版本（Esc 之后）」）。
+    ///
+    /// ⇒ 攥住 reply 与 ``readyReply`` 是**同一个手法**（会话不结束、状态不被打回），
+    /// 于是「查看更新」（``presentFoundUpdate()``）能原样把弹窗拉回来，
+    /// 而且**不会再多打一次网络请求**。
+    ///
+    /// ⚠️ **代价（已核实，与 `.ready` 那条路逐字相同）**：攥着 reply 就等于
+    /// `sessionInProgress == YES`，而 `SPUUpdater` 文档写明
+    /// 「`checkForUpdates` does not do anything if there is a `sessionInProgress`」
+    /// ⇒ `.found` 期间 ``checkForUpdates()`` **没有反应**。这就是为什么
+    /// `.found` 那一行**本来就不显示**「检查更新」按钮（`SettingsView.updateCheckLine`
+    /// 的 `case .found` 给的是 `viewUpdateButton`）—— 同 ``readyReply`` 那条判据。
+    ///
+    /// ⚠️ **不许改用「把 `.found` 加进 ``isTerminalPhase(_:)``」**：那个闸门同时装在
+    /// ``UpdateUserDriver/showUpdaterError(_:acknowledgement:)`` 上，把 `.found` 变终态
+    /// 会让「检查过程中出错」的 reset 路径失效 —— 而 `.found` 期间 Sparkle 那一轮
+    /// **并没有** abort（我们没回答），它与「已经发生的事实」不是一回事。
     private var alertReply: ((SPUUserUpdateChoice) -> Void)?
+
+    /// 用户在这次更新会话里是否**明确点了**「后台更新并重启」。
+    ///
+    /// ## 为什么必须记住它（而不是从 `phase` 派生）
+    ///
+    /// ``driverIsReady(version:reply:)`` 到达时，我们已经无法从 `phase` 反推用户当初选了什么：
+    ///
+    /// - **弹窗那条**（用户在弹窗上点了「后台更新并重启」）⇒ `reply(.install)`
+    ///   ⇒ `downloadUpdateFromAppcastItem:… inBackground:NO`（`SPUUIBasedUpdateDriver.m:277`）；
+    /// - **自动下载那条**（`SUAutomaticallyUpdate` 开着 + 用户手动点检查 ⇒
+    ///   ``UpdateUserDriver/showUpdateFound(with:state:reply:)`` 里 `shouldPresent == false`
+    ///   ⇒ 直接 `reply(.install)`）。
+    ///
+    /// 两者在 `showReady` 那一刻 `phase` **都是** `.downloading` —— 分不出来。
+    /// 而两者的应然行为**相反**：前者要兑现弹窗提示块（`updateCallout`）的承诺
+    /// 「完成后**自动重启完成安装**」；后者（以及 ``updater(_:willInstallUpdateOnQuit:immediateInstallationBlock:)``
+    /// 那条路）的语义是「等退出时装」，用户没点过。
+    ///
+    /// ⇒ 这是**用户输入**，不是「可以派生的状态」：它记录的是用户按下了哪个按钮。
+    /// 与「能派生就别用『手动开关』」那条纪律不冲突 —— 那条禁的是
+    /// 「**会与真实情况脱节**的手动开关」，而这个标记的生命周期被严格绑在一次会话上
+    /// （``driverDidFindUpdate(_:autoDownloads:reply:)`` 一进门就重置，
+    /// ``driverDidReset()`` / ``installReadyUpdate()`` / ``checkForUpdates()`` 也清）。
+    ///
+    /// 判定见 ``readyHandling(userChoseInstallAndRestart:activeEjections:)``。
+    private var userChoseInstallAndRestart = false
 
     private override init() { super.init() }
 
@@ -314,6 +407,35 @@ final class UpdateController: NSObject, ObservableObject {
     ///
     /// updater 起不来时**退回打开 Releases 页**并记一条 error —— 不是静默什么都不做：
     /// 用户点了按钮却毫无反应，比跳到网页更让人困惑。
+    ///
+    /// ## ⚠️ 「会话进行中它会失效」这条代价 —— **实扫之后：没有入口，代价是 0**（2026-09-25，§8.146.1.1）
+    ///
+    /// `SPUUpdater.m:713` 明写：会话进行中再调 `checkForUpdates` 会**只打一条日志、
+    /// 什么都不做**（`Error: -checkForUpdates called but .sessionInProgress == YES`）。
+    /// 而本方法在调它**之前**会先把界面清成 `.idle` ⇒ 万一这条路在会话进行中被走到，
+    /// 结果就是**谎报「已是最新版本」**（与本轮 Bug 1 同一句谎，只是入口不同）。
+    ///
+    /// 于是本轮**实扫了一遍全部入口**（`grep -rn "UpdateController.shared\." Sources/`）：
+    ///
+    /// | 入口 | 出现的行态 | 可能是会话进行中吗 |
+    /// |---|---|---|
+    /// | `checkForUpdatesButton`（设置行的「检查更新」） | `.neverChecked` / `.upToDate` / `.skipped` | **不可能** —— 那三态的 `phase` 都不是 `.found` / `.downloading` / `.ready` |
+    /// | `retryDownload()`（`.failed` / `.installFailed` 那一行的「重试」） | `.failed` / `.installFailed` | **不可能** —— 那两态是终态，会话已经结束（§8.122） |
+    /// | `presentFoundUpdate()` 的兜底（本文件内部） | 只在 `.found` 且 reply 残留时 | **不可能** —— 那种残留需要「清了 `pendingUpdate` 却不清 `alertReply`」，全仓没有这种写法 |
+    ///
+    /// ⚠️ **菜单栏那条路也不存在**：`MainMenu.swift` 里搜 `checkForUpdates` **零命中** ——
+    /// 本应用的主菜单没有「检查更新」这一项（只有设置行里有）。
+    ///
+    /// ⇒ **本轮一度在这里加了一道 `if sessionInProgress` 闸门 + 两条守卫 + 两条变异**，
+    /// 实扫之后**自己撤掉了**：那是一条**永远走不到**的分支，而本仓库对
+    /// 「有定义、没消费者」的东西判得很重（§8.47.6：它在界面上与「已经支持了」长得一模一样）。
+    /// 那份「没有入口」的阴性结论改由守卫钉住 —— 见
+    /// `UpdateSettingsTests.检查更新只有那几个入口且都不在会话进行中`。
+    ///
+    /// ⚠️ **将来若给菜单栏补一个「检查更新」**：那条守卫会**变红**并告诉你该补什么。
+    /// 要补的判据就是相位（`.found` / `.downloading` / `.ready` = 会话活着），
+    /// **不是「那一格上有没有按钮」** —— 同一个动作往往还有菜单栏 / 快捷键几条路，
+    /// 判据要落在**动作**上。
     func checkForUpdates() {
         // **先清跳过标记再检查**：用户手动点了这一下，意思就是「我不跳了，再看一眼」。
         // 不清的话 Sparkle 仍会按跳过记录把这个版本压住 —— 界面上的「已跳过 1.1.0」
@@ -322,6 +444,8 @@ final class UpdateController: NSObject, ObservableObject {
         // 上一轮的失败 / 发现态也要清掉，否则旧状态会盖住新一轮的结果。
         pendingUpdate = nil
         phase = .idle
+        // 上一轮「用户点过后台更新并重启」的意图也随之作废 —— 不带上新一轮。
+        userChoseInstallAndRestart = false
 
         guard let updater = ensureUpdater() else {
             Self.logger.error("检查更新不可用：\(self.startError ?? "未知原因", privacy: .public)")
@@ -352,8 +476,18 @@ final class UpdateController: NSObject, ObservableObject {
     ///
     /// 没有待展示的内容时退回一次普通检查 —— **不能什么都不做**：
     /// 按钮点了没反应，与功能坏了长得一模一样。
+    ///
+    /// ⚠️ **判据里必须有 `phase == .found`**（2026-09-25）：`pendingUpdate` / `alertReply`
+    /// 只要有一处残留（例如会话被别的原因拆掉之后），重弹的就是一个**已经 abort 的会话** ——
+    /// 用户点了「后台更新并重启」，`reply` 送进一个死会话，界面上**什么都不发生**
+    /// （设计稿点名不许的死按钮）。判据不成立时退回 ``checkForUpdates()``：
+    /// 那会开一个**新的**会话，与「查看更新」的用户意图一致。
+    ///
+    /// ⚠️ **这里不会与 ``checkForUpdates()`` 递归**：后者只在 `alertReply != nil` 时才
+    /// 回头调本方法，而那个条件恰好让本方法的 guard **成立**（`alertReply` 只与
+    /// `phase = .found` 同时设置）⇒ 两支互斥。
     func presentFoundUpdate() {
-        guard pendingUpdate != nil, alertReply != nil else {
+        guard case .found = phase, pendingUpdate != nil, alertReply != nil else {
             checkForUpdates()
             return
         }
@@ -368,6 +502,9 @@ final class UpdateController: NSObject, ObservableObject {
     func installReadyUpdate() {
         guard let reply = readyReply else { return }
         readyReply = nil
+        // 回答之后这个意图就用掉了 —— 留着它会让**下一轮**（例如自动那条路的
+        // `willInstallUpdateOnQuit`）误以为用户点过「后台更新并重启」。
+        userChoseInstallAndRestart = false
         reply(.install)
     }
 
@@ -482,7 +619,10 @@ final class UpdateController: NSObject, ObservableObject {
         /// 正在后台下载。`fraction` 为 `nil` = 百分比无从得知（见 ``UpdatePhase/downloading(version:fraction:)``）。
         case downloading(version: String, fraction: Double?)
         /// 已下载完成，等重启安装。
-        case ready(version: String)
+        ///
+        /// `autoRestart` = **这一轮会自己重启**（用户点过「后台更新并重启」）。
+        /// 两条路各自的那句话不一样，理由见 ``UpdatePhase/ready(version:autoRestart:)``。
+        case ready(version: String, autoRestart: Bool)
         /// 下载失败。
         case failed(version: String)
         /// **下载成功了，但之后那一步失败**（解压 / 验签 / 安装），见 ``UpdatePhase/installFailed(version:)``。
@@ -543,8 +683,8 @@ final class UpdateController: NSObject, ObservableObject {
             return .checking
         case .downloading(let version, let fraction):
             return .downloading(version: version, fraction: fraction)
-        case .ready(let version):
-            return .ready(version: version)
+        case .ready(let version, let autoRestart):
+            return .ready(version: version, autoRestart: autoRestart)
         case .failed(let version):
             return .failed(version: version)
         case .installFailed(let version):
@@ -762,7 +902,7 @@ final class UpdateController: NSObject, ObservableObject {
     /// - `.locationBlocked` → **是**。「**这个位置不允许更新**」同样已成事实
     ///   （它的文档写明「**没有自动出口，也不该有**」）。冲回 `.idle` 就是 §8.94 那句谎 ——
     ///   Sparkle 已把「上次检查时间」写成当下，而它在只读卷上**一次 appcast 都没去取**。
-    /// - `.ready(version)` → **不是**。⚠️ **这一条 2026-09-22 由 QA 真机复验后改判**
+    /// - `.ready(version:autoRestart:)` → **不是**。⚠️ **这一条 2026-09-22 由 QA 真机复验后改判**
     ///   （我第一版把它划成了终态，**错了**）。它说的是「**现在**有个装好的更新等你重启」，
     ///   是一个**对还活着的会话的主张**；而走到本判据的这两处（`showUpdaterError` /
     ///   `dismissUpdateInstallation`）都紧接着 `abortUpdateAndShowNextUpdateImmediately:`
@@ -853,6 +993,93 @@ final class UpdateController: NSObject, ObservableObject {
         return autoDownloads
     }
 
+    /// 用户在更新弹窗上点下的那一下，该回答 Sparkle 什么。
+    ///
+    /// **为什么把「回答什么」抽出来**：它是本轮 Bug 1 的**全部判据** ——
+    /// Esc 该不该回答、回答什么，决定了设置行停在「发现 1.1.0」还是谎报「已是最新版本」。
+    /// 而真机上构造这一串要「点检查更新 → 等新版本弹窗 → 按 Esc → 看设置行」，
+    /// 中间还隔着 Sparkle 的 `dispatch_async` 与窗口系统 —— 在测试进程里**复现不出来**。
+    /// 抽成纯函数之后，「三种选择各自回答什么」可以被逐条钉住。
+    ///
+    /// ⚠️ **`holdForLater` 不是「什么都不做」，是「先不回答」**：那个 reply 由
+    /// ``alertReply`` 攥着，会话继续活着 —— 于是「查看更新」能原样重弹，
+    /// 而 Sparkle **不会**走 `uiDriverIsRequestingAbortUpdateWithError:`
+    /// ⇒ `phase` 留在 `.found`（详见 ``alertReply`` 的说明）。
+    ///
+    /// ⚠️ **`.cancel` 与 `.dismiss` 都算「稍后」**：弹窗那两句话是同一件事 ——
+    /// `updateEscHint`（「Esc 稍后再提醒」）与窗口右上角关闭。
+    /// 把其中一条划成别的语义，用户按同一个意思做出两种结果。
+    enum AlertReply: Equatable {
+        /// 回答 `.install`：后台下载，下载完**自动重启**完成安装（见 ``readyHandling``）。
+        case install
+        /// 回答 `.skip`：只跳过这一个版本。
+        case skip
+        /// **先不回答**（把 reply 攥住）：Esc / 关窗 = 稍后，状态留在设置行上。
+        case holdForLater
+    }
+
+    /// 弹窗选择 → 该回答什么。**纯函数，只看入参**。
+    nonisolated static func alertReplyChoice(for choice: EjectAlertChoice) -> AlertReply {
+        switch choice {
+        case .installAndRestart:
+            return .install
+        case .skipVersion:
+            return .skip
+        case .cancel, .dismiss, .closeAndEject, .viewLog:
+            // ⚠️ `.closeAndEject` / `.viewLog` 属于**推出弹窗**，更新弹窗不会给出它们；
+            // 落到这里按「稍后」处理是**保守**的选择（宁可攥着，也不 abort 一个活着的会话）。
+            return .holdForLater
+        }
+    }
+
+    /// `showReady` 到达时该怎么处理 Sparkle 交回来的那个 reply。
+    ///
+    /// ## 三态各自的依据
+    ///
+    /// - ``autoRestart``：用户在弹窗里点了「后台更新并重启」**且**此刻没有推出在进行
+    ///   ⇒ 立刻回答 `.install`（Sparkle 随后关掉 app、替换 bundle、重新拉起 = 自动重启）。
+    ///   这正是 `updateCallout`（「…完成后**自动重启完成安装**」）与
+    ///   `updateDownloadingHint`（「下载完成后会自动安装，无需你再操作。」）两句承诺的实现。
+    ///   ⚠️ 2026-09-24 **用户拍板**：以这两句为准，行为改成自动重启
+    ///   （设计稿 B4 原来那段 spec-note 写的是「「重启」不自动做，只提供入口」，
+    ///   与这两句自相矛盾，已一并订正）。
+    /// - ``deferUntilIdle``：同上，但此刻**有推出在进行** ⇒ 推迟。
+    ///   `updateCallout` 明写承诺「正在推出的磁盘不会被打断」——
+    ///   而回答 `.install` 在 `showReady` 阶段会走 `finishInstallationWithResponse:`
+    ///   （`SPUUIBasedUpdateDriver.m:422`），那是**不可逆**的：app 会立刻退出，
+    ///   把正在跑的 `unmountAndEjectDevice` 腰斩。推迟的出口是
+    ///   ``EjectFlowController/waitUntilIdle()``（推出结束就补上自动重启）。
+    /// - ``waitForUser``：用户**没点过**「后台更新并重启」（自动下载那条路、
+    ///   以及 ``updater(_:willInstallUpdateOnQuit:immediateInstallationBlock:)``
+    ///   那条「等退出时装」的路）⇒ 攥着 reply，等用户点「立即重启」。
+    ///   **别让自动重启在那条路上生效**：那条路的语义就是「下次退出时静默装上」。
+    enum ReadyHandling: Equatable {
+        /// 立刻回答 `.install`（自动重启）。
+        case autoRestart
+        /// 推迟到推出结束再自动重启。
+        case deferUntilIdle
+        /// 攥着 reply，等用户点「立即重启」。
+        case waitForUser
+    }
+
+    /// `showReady` 的处理分流。**纯函数，只看入参**。
+    ///
+    /// **为什么抽成纯函数**：真机上构造不出「下载完成的那一刻恰好有卷在推出」，
+    /// 而这一支判错**不可逆** —— `SPUUserUpdateChoice.install` 在 `showReady` 阶段
+    /// 会立刻退出 app（`SPUUIBasedUpdateDriver.m:422`），
+    /// 判错就等于「用户正在拖文件时被强制重启」。留成驱动里一句 `if`，
+    /// 「哪个分支写反了」不会有任何断言变红（同 ``isTerminalPhase(_:)`` 那条理由）。
+    ///
+    /// - Parameters:
+    ///   - userChoseInstallAndRestart: 用户是否在这次会话里明确点过「后台更新并重启」。
+    ///   - activeEjections: 此刻正在进行的推出操作数（见 ``EjectFlowController/activeEjectionCount``）。
+    nonisolated static func readyHandling(
+        userChoseInstallAndRestart: Bool, activeEjections: Int
+    ) -> ReadyHandling {
+        guard userChoseInstallAndRestart else { return .waitForUser }
+        return activeEjections > 0 ? .deferUntilIdle : .autoRestart
+    }
+
     /// 手动「检查更新」时清掉跳过标记。
     ///
     /// **跳过必须可撤销**：不清的话用户点「检查更新」也看不到那个版本，
@@ -879,6 +1106,10 @@ extension UpdateController {
     ) -> Bool {
         pendingUpdate = update
         alertReply = reply
+        // **每一轮「发现」都从「用户还没点过」开始**：上一轮若点了「后台更新并重启」、
+        // 之后下载失败/被跳过，这个意图不能带进新的一轮（否则自动那条路的
+        // `willInstallUpdateOnQuit` 会被误判成「用户点过」⇒ 强制重启）。
+        userChoseInstallAndRestart = false
         if autoDownloads {
             // 设计稿：「开着的时候用户什么都不用做，这正是『后台更新』这个词的含义」。
             //
@@ -939,10 +1170,82 @@ extension UpdateController {
     }
 
     /// 下载并校验完成，等重启。
+    ///
+    /// ## 2026-09-25：用户在弹窗里点过「后台更新并重启」时**自动重启**（§8.146）
+    ///
+    /// 此前无论用户当初选了什么，这里都只是攥住 reply、把界面落到「已就绪 + 立即重启」——
+    /// 而弹窗提示块（`updateCallout`）与下载中那一行（`updateDownloadingHint`）**都在承诺
+    /// 自动重启**。用户报的正是这个落差：「下载完成 → 没有自动重启，得手动点一下」。
+    ///
+    /// 分流判据是纯函数 ``readyHandling(userChoseInstallAndRestart:activeEjections:)``
+    /// （三态：自动重启 / 推迟到推出结束 / 等用户点），**不在这里写 `if`** ——
+    /// 真机上构造不出「下载完成那一刻恰好有卷在推出」，而这一支判错**不可逆**
+    /// （`SPUUserUpdateChoice.install` 在 `showReady` 阶段会立刻退出 app）。
+    ///
+    /// ⚠️ **自动那条路（`willInstallUpdateOnQuit`）不受影响**：它不经过弹窗，
+    /// `userChoseInstallAndRestart` 一直是 `false` ⇒ 落到 `.waitForUser`。
+    /// 那条路的语义就是「下次退出时静默装上」，用户没点过任何东西。
     func driverIsReady(version: String, reply: @escaping (SPUUserUpdateChoice) -> Void) {
         downloadCancellation = nil
         readyReply = reply
-        phase = .ready(version: version)
+
+        let handling = Self.readyHandling(
+            userChoseInstallAndRestart: userChoseInstallAndRestart,
+            // 「有没有卷正在推出」**派生**自真实操作的生命周期
+            // （`EjectFlowController` 的进出计数），不是另立一个开关。
+            activeEjections: EjectFlowController.shared.activeEjectionCount
+        )
+        // 把分流结论**记进相位**（不是让视图去读一个可变开关）——
+        // 理由见 ``UpdatePhase/ready(version:autoRestart:)``：开关会被
+        // `installReadyUpdate()` 清掉，而这一行还要在屏幕上待一会儿。
+        phase = .ready(version: version, autoRestart: handling != .waitForUser)
+
+        switch handling {
+        case .waitForUser:
+            break
+        case .autoRestart:
+            Self.logger.info(
+                "用户点过「后台更新并重启」且当前无推出在进行：自动重启完成安装（\(version, privacy: .public)）")
+            installReadyUpdate()
+        case .deferUntilIdle:
+            // ⚠️ **不能现在就装**：`updateCallout` 承诺「正在推出的磁盘不会被打断」，
+            // 而回答 `.install` 会立刻退出 app。推迟的出口 = 推出结束（否则会留下
+            // 一个「永远不自动重启」的态）。
+            Self.logger.info(
+                "用户点过「后台更新并重启」，但此刻有卷正在推出：推迟到推出结束再自动重启（\(version, privacy: .public)）")
+            Task { @MainActor [weak self] in
+                await EjectFlowController.shared.waitUntilIdle()
+                // 等的时候用户可能已经点过「立即重启」（`readyReply` 被清空）、
+                // 或者这一轮会话已经被别的回调拆掉 ⇒ 都要重新判一次，别回答一个作废的 reply
+                // （判据抽成 ``canStillAnswerReadyReply(hasReadyReply:phase:)``，理由见那里）。
+                guard
+                    let self,
+                    Self.canStillAnswerReadyReply(
+                        hasReadyReply: self.readyReply != nil, phase: self.phase)
+                else { return }
+                self.installReadyUpdate()
+            }
+        }
+    }
+
+    /// 「等推出结束」之后那一按：**这一刻还能不能回答 reply**。
+    ///
+    /// ## 为什么必须重判（2026-09-25，§8.146.7）
+    ///
+    /// `.deferUntilIdle` 那条路是**异步**的：`await waitUntilIdle()` 期间，
+    /// 用户可能已经点了「立即重启」（``installReadyUpdate()`` 会把 `readyReply` 清空），
+    /// 或者这一轮会话被别的回调拆掉（``driverDidReset()`` ⇒ `phase = .idle`）。
+    /// 这两种情况下那个 reply 都**已经作废** —— 再回答它，Sparkle 那一侧的状态就与我们对不上。
+    ///
+    /// ⚠️ **为什么抽成纯函数**：它是「别回答一个作废的 reply」这条不变量的**全部**判据，
+    /// 而原先写在 `Task` 闭包里 —— 整句删掉**不会有任何断言变红**
+    /// （QA 探针 Q8 实测：全量测试仍绿）。同 ``isTerminalPhase(_:)`` 那条理由：
+    /// 真机上也构造不出「推出结束的那一刻用户恰好点了立即重启」。
+    nonisolated static func canStillAnswerReadyReply(
+        hasReadyReply: Bool, phase: UpdatePhase
+    ) -> Bool {
+        guard hasReadyReply, case .ready = phase else { return false }
+        return true
     }
 
     /// 更新因为「**应用所在的位置不允许**」而中止（只读卷 / App Translocation，§8.94）。
@@ -965,6 +1268,8 @@ extension UpdateController {
     func driverDidReset() {
         downloadCancellation = nil
         phase = .idle
+        // 会话结束了 ⇒ 上一轮的用户意图作废（见 ``userChoseInstallAndRestart`` 的说明）。
+        userChoseInstallAndRestart = false
     }
 
     /// 用户跳过当前这个版本。
@@ -979,25 +1284,37 @@ extension UpdateController {
 
     /// 把弹窗拉起来（`showUpdateFound` 那条路）。
     ///
-    /// 用户的选择映射到 Sparkle 的三个 reply：
-    /// 「后台更新并重启」→ `.install`、「跳过此版本」→ `.skip`、Esc / 关窗 → `.dismiss`。
+    /// 用户的选择映射到 Sparkle 的三个 reply（映射本身是纯函数
+    /// ``alertReplyChoice(for:)``，有单测）：
+    /// 「后台更新并重启」→ `.install`、「跳过此版本」→ `.skip`、
+    /// Esc / 关窗 → **先不回答**（把 reply 攥住，见 ``alertReply``）。
     func showUpdateAlertIfNeeded() async {
         guard let update = pendingUpdate, let reply = alertReply else { return }
         let model = UpdateAlertBuilder.model(for: update)
         let choice = await EjectAlertPresenter.shared.present(model)
-        alertReply = nil
-        switch choice {
-        case .installAndRestart:
-            // 这一条对应设计稿的「后台更新并重启」：**语义是「后台下载，重启时安装」**，
-            // 不是「立刻重启」—— 立刻重启由 B4 那一态的「立即重启」按钮负责。
+        switch Self.alertReplyChoice(for: choice) {
+        case .install:
+            alertReply = nil
+            // 记住这个意图：下载完成（`showReady`）时要**自动重启**，
+            // 而不是退回「已就绪 + 立即重启」等用户再点一次（``readyHandling``）。
+            userChoseInstallAndRestart = true
             reply(.install)
-        case .skipVersion:
+        case .skip:
+            alertReply = nil
+            userChoseInstallAndRestart = false
             skipPendingVersion()
             reply(.skip)
-        default:
-            // Esc / 关窗 = 稍后。**状态留在设置行上**（phase 仍是 `.found`），
-            // 否则用户既不知道有新版本、也没有再打开的入口，只能等下次启动。
-            reply(.dismiss)
+        case .holdForLater:
+            // ⚠️ **不回答 reply，也不清 `alertReply`**：回答 `.dismiss` 会让 Sparkle
+            // abort 这一轮（`SPUUIBasedUpdateDriver.m:308` → `:456`）⇒
+            // `dismissUpdateInstallation` ⇒ `driverDidReset()` ⇒ `phase = .idle`
+            // ⇒ 设置行谎报「已是最新版本」。攥住之后 `phase` 留在 `.found`，
+            // 而「查看更新」能原样重弹。完整推导见 ``alertReply`` 的说明。
+            //
+            // ⚠️ 代价：`.found` 期间 `checkForUpdates()` 无效（`sessionInProgress`），
+            // 所以那一行**不给**「检查更新」按钮（`SettingsView` 的 `case .found`）。
+            Self.logger.info(
+                "用户选择稍后（Esc / 关窗）：攥住 reply，设置行留在「发现 \(update.version, privacy: .public)」")
         }
     }
 }
@@ -1184,9 +1501,11 @@ extension UpdateController: SPUUpdaterDelegate {
     /// 这一条**已真机复验**（§8.80.4：新代码 + 旧版本号打包 → 退出后版本真的变了）——
     /// 因为「库的注释不算证据」这条判据同样适用于**有利**的那句注释。
     ///
-    /// ⚠️ **代价**：这一轮周期会一直开着（`sessionInProgress == YES`），直到用户点
-    /// 「立即重启」或退出应用。所以 `.ready` 那一态下设置行不再显示「检查更新」
-    /// （改显示「立即重启」）—— 与弹窗那条路**同一套理由**，见 ``readyReply`` 的说明。
+    /// ⚠️ **代价**：这一轮周期会一直开着（`sessionInProgress == YES`），直到
+    /// **三种出口**之一发生 —— 用户点「立即重启」、退出应用，或（用户点过
+    /// 「后台更新并重启」时）我们**自己**回答 `.install` 让它现在就装（§8.146）。
+    /// 前两种出口下 `.ready` 那一态设置行不再显示「检查更新」（改显示「立即重启」）——
+    /// 与弹窗那条路**同一套理由**，见 ``readyReply`` 的说明。
     ///
     /// ## 这一态与「后台下载中」的关系（2026-09-19 订正）
     ///

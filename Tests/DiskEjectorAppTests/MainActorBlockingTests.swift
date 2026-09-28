@@ -368,6 +368,10 @@ struct MainActorBlockingTests {
         "EjectFlowControllerTests.swift":
             "`EjectFlowController` / `EjectAlertPanel` / `EjectAlertPresenter` 都是主 actor；装配走 `NSHostingController`",
         "EmptyStateTests.swift": "离屏渲染 `OffscreenRender.bitmap` + `ViewFixtures.mainWindow`（两个都 `@MainActor`）",
+        "EjectHookPolicyTests.swift":
+            "`OccupancyStore` 的主 actor `init` 与 `refresh(disks:)`（只有 `占用结论的单一写入点` 那个 suite 要）"
+            + " —— ⚠️ 标注是**顶格但只盖一个 suite**（本文件另外 5 个 suite 全是纯值判据、不吃主 actor），"
+            + "本表的口径（顶格 `@MainActor` + 类型声明）看不出这层区别，故在此写明",
         "HoverBackgroundTests.swift": "`OffscreenRender.boundingBox` —— 量悬停底色要出图",
         "KeySilentWindowTests.swift": "建真 `NSWindow` + `ViewFixtures`；`AppDelegate` / `EjectAlertPanel` 主 actor",
         "LanguageLayoutGapTests.swift": "`NSHostingController` 装配（`NSApplication.shared` 也要）",

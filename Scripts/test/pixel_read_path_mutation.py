@@ -36,6 +36,7 @@ python3 Scripts/test/pixel_read_path_mutation.py
 
 from __future__ import annotations
 
+import re
 import shutil
 import subprocess
 import sys
@@ -138,17 +139,39 @@ def run_guard() -> tuple[int, str]:
     return proc.returncode, (proc.stdout or "") + (proc.stderr or "")
 
 
+# 「测试真的跑过」的**正向证据**：swift-testing 无论成败都会打这一行。
+TEST_RUN_RE = re.compile(r"Test run with (\d+) tests?")
+# 构建成功的**正向证据**：SwiftPM 每次构建都会打这一行；**编不过就没有它**。
+BUILD_OK_RE = re.compile(r"^\s*Build complete!", re.M)
+# 编译诊断的**两种**形态（2026-09-28 补齐第二种，见 `deployment_target_mutation.py` 的 M1/M2）：
+# swiftc 的 `<file>:<行>:<列>: error:`，与**构建期**无文件行号的 `error: Build failed`。
+COMPILE_DIAG_RE = re.compile(r":\d+:\d+: error:|^\s*error: (?:Build failed|fatalError)", re.M)
+
+
 def classify(code: int, raw: str) -> str:
     """把一次运行判成 `red` / `green` / `invalid`。
 
-    ⚠️ 判据自己也要验（见模块说明）：编译失败与「一条都没跑到」都会给出非 0 退出码，
-    与「被守卫抓住」逐字相同 —— 必须先排掉。
+    ⚠️ 判据自己也要验（见模块说明）：编译失败与「一条都没跑到」都会与「被守卫抓住」
+    给出**看不出差别**的结果 —— 必须先排掉。
+
+    ⚠️ 但**不许**用 `"error:" in raw` 排「编译不过」（2026-09-28 实测翻车，见
+    `swift-mutation-testing-practices` 的 K15 补强）：本文件的守卫正是**扫源码型**，
+    失败操作数是**整份被扫文件**，swift-testing 会把它整份回显，而 `Sources/` 里就存在
+    `error:` 字样（`SettingsView.swift` 的 `prompt(for error: LaunchAtLoginError)`）⇒
+    **真的跑起来并失败**的变异被误判成 `invalid`，而 `invalid` 不算通过 ⇒ 证据白丢。
+
+    改用**正向证据**：只有真的跑到测试（`Test run with N tests` 且 N ≥ 1）才配谈红；
+    跑 0 条时看**构建成没成**（`Build complete!`）与**编译诊断**来分两种 invalid。
+    ⚠️ 「过滤器没匹配上」这一种 `swift test` 是**退出码 0**，光看退出码会读成绿。
     """
-    if "error:" in raw:
+    run = TEST_RUN_RE.search(raw)
+    if run is not None and int(run.group(1)) >= 1:
+        # 真的跑到测试了 —— 这时候退出码说了算。
+        return "green" if code == 0 else "red"
+    # 一条都没跑到：要么构建就没过，要么过滤器一条都没匹配上。
+    if COMPILE_DIAG_RE.search(raw) or not BUILD_OK_RE.search(raw):
         return "invalid（变异体编译不过）"
-    if "Test run with 0 tests" in raw:
-        return "invalid（过滤器一条都没跑到）"
-    return "green" if code == 0 else "red"
+    return "invalid（过滤器一条都没跑到）"
 
 
 def main() -> int:
