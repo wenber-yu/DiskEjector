@@ -38,9 +38,9 @@
 #
 # ## 三条来自实发事故的硬约束（别在这里"优化"掉）
 #
-#   ⚠️ **push 必须绕过 git 配置里的代理**：本仓库 `.git/config` 里那条
-#      `http.proxy = 127.0.0.1:7890` 会 SSL 握手超时（端口是开的），而**直连是通的** ——
-#      v2026.09.28.2 实发时三次 push 全挂在这里。见 ``git_push``。
+#   ⚠️ **push 不写死「直连」或「代理」**：两条路都踩过 —— v2026.09.28.2 时代理 TLS
+#      握手超时、直连通；v2026.09.29 时直连 github.com 超时、代理通。所以 ``git_push``
+#      先直连、失败再回落到仓库代理，见 ``git_push``。
 #   ⚠️ **先打 tag 再构建**：版本号派生自 `git describe`，顺序反了产物带的是**上一个**版本号，
 #      而构建会成功、校验也不会红。
 #   ⚠️ **清输出目录用 `mv` 不用 `rm`**：`Dist/` 下上百个文件会触发批量删除确认，
@@ -256,9 +256,33 @@ git_tag_exists() {
     git -C "$PACKAGE_DIR" rev-parse -q --verify "refs/tags/$1" >/dev/null 2>&1
 }
 
-# ⚠️ 绕过 `.git/config` 里那条失效代理（端口开着但 TLS 握手超时，而直连是通的）。
+# push 的网络策略：**直连与代理哪个通用哪个**，不写死。
+#
+# 历史教训（两条方向相反，都踩过）：
+#   - v2026.09.28.2 发版时，`.git/config` 里 `http.proxy = 127.0.0.1:7890` 端口开着但
+#     TLS 握手超时，**直连是通的** —— 那次必须绕过代理。
+#   - v2026.09.29 发版时，情况反过来了：直连 github.com 超时（主站路由不通），
+#     **走代理反而能通**。
+# 所以唯一稳妥的做法是：先直连，失败（非零退出）再回落到仓库里那条代理。
+# 代理地址从 `git config --get http.proxy` 现读，不写死（本机可能是任意端口）。
 git_push() {
-    run_or_echo git -C "$PACKAGE_DIR" -c http.proxy= -c https.proxy= push "$@"
+    local proxy
+    proxy="$(git -C "$PACKAGE_DIR" config --get http.proxy 2>/dev/null || true)"
+
+    # 第一招：直连。
+    if run_or_echo git -C "$PACKAGE_DIR" -c http.proxy= -c https.proxy= push "$@"; then
+        return 0
+    fi
+    say "   直连 push 失败 —— 回落到仓库代理（${proxy:-无}）重试"
+
+    # 第二招：代理（若仓库里有配）。
+    if [ -n "$proxy" ]; then
+        run_or_echo git -C "$PACKAGE_DIR" -c http.proxy="$proxy" -c https.proxy="$proxy" push "$@" \
+            || fail "push 失败（直连与代理都不通）"
+        return 0
+    fi
+
+    fail "push 失败（直连不通，且仓库未配置代理）"
 }
 
 # dry-run 包装：只对**有外部副作用**的命令用它。只读命令（git status / log / gh view）照跑，
