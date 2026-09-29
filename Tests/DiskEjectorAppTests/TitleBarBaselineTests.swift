@@ -125,15 +125,22 @@ struct TitleBarBaselineTests {
 
     // MARK: - 两块玻璃的标题各自落在内容带正中
 
-    /// 设置面板：头部标题（「设置」）的墨迹垂直中心必须落在内容带中心。
+    /// 设置面板：内容区头部标题（**当前分类名**）的墨迹垂直中心必须落在内容带中心。
     ///
     /// 偏下约 10pt 就是「头部在 52pt 里整体居中」（中心 26）—— 用户报告的正是这个。
+    ///
+    /// ⚠️ **2026-09-29 两栏之后，头部标题不再是固定写死的「设置」**，而是当前分类名
+    /// （``SettingsHeaderBar/title``，由 ``SettingsView`` 传 `section.title` 进来）。
+    /// 判据本身不受影响（量的是**纵向**位置，标题是哪几个字不重要），
+    /// 但出图宽度与真实场景对齐：头部只占**右栏**（窗口 720 − 左栏 200 = 520），
+    /// 拿整窗宽出图会把「完成」按钮画到永远不会出现的位置上。
     @Test func 设置面板标题墨迹中心落在内容带中心() {
         let headerHeight = SettingsMetrics.headerHeight
         guard
             let ink = titleInk(
-                SettingsHeaderBar(onDone: {}),
-                width: DesignTokens.Size.settingsPanel.width, height: headerHeight,
+                SettingsHeaderBar(title: SettingsSection.general.title, onDone: {}),
+                width: DesignTokens.Size.settingsPanel.width - DesignTokens.Size.settingsSidebarWidth,
+                height: headerHeight,
                 rows: 0...(headerHeight - 8), who: "设置面板")
         else {
             Issue.record("设置面板头部离屏渲染后，标题那几列没扫到任何墨迹 —— 渲染没成功，或列窗口落在了空白处，这条断言不能算通过")
@@ -146,7 +153,7 @@ struct TitleBarBaselineTests {
         #expect(
             delta >= bandCenterSlackLow && delta < bandCenterSlackHigh,
             """
-            「设置」墨迹的纵向范围 \(ink.rows.first)…\(ink.rows.last)pt，中心 \(center)pt，\
+            头部标题墨迹的纵向范围 \(ink.rows.first)…\(ink.rows.last)pt，中心 \(center)pt，\
             比内容带中心 \(bandCenter)pt 偏 \(delta)pt（允许 \(bandCenterSlackLow)…\(bandCenterSlackHigh)）。\
             偏下≈10 说明头部又变回「在 \(headerHeight)pt 里整体居中」（中心 \(headerHeight / 2)）；\
             偏到 \(headerHeight - bandCenter) 附近说明量墨迹时 y 轴方向反了。

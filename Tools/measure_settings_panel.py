@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""量设计稿设置面板（`05-settings.html`）的**内容自然高度**，供 `SettingsLayoutTests` 对齐。
+"""量设计稿**单栏**设置面板（`05-settings.html`）的**内容自然高度**。
 
 ```bash
 P=/Users/wenbo/.workbuddy/binaries/python/versions/3.13.12/bin/python3
@@ -7,12 +7,26 @@ $P Tools/measure_settings_panel.py            # 量并打印明细
 $P Tools/measure_settings_panel.py --json     # 只打 JSON（给脚本用）
 ```
 
-## 量法（与 `SettingsLayoutTests.中文高度与设计稿几乎逐点相同()` 的注释同源）
+## ⚠️ 这个脚本服务的是**冻结的历史稿**（2026-09-29 起）
+
+设置面板已经改成**两栏**（`09-settings-split.html`，`settingsPanel = 720×440`），
+`05-settings.html` 冻结在 480×920 只作参照（`DESIGN-SPEC.md` §8.151.4）。
+
+⇒ **本脚本的量产（899.94 那一套）不再是任何断言的基准**。它现在还留着，只为两件事：
+① 复核那份历史稿自己没被改坏；② 将来要量「五组之和」那个形态时有现成口径。
+**两栏的基准在 `Tools/measure_settings_split.py`** —— 别把这里的数读成当前契约。
+
+原先它对齐的是 `SettingsLayoutTests.中文高度与设计稿几乎逐点相同()`，
+那个用例已随形态切换**删除**（换成逐页比对的
+`SettingsLayoutTests.每个分类页的中文高度与设计稿逐点相同()`，基准来自两栏脚本）。
+
+## 量法
 
     内容自然高 = `.shead` 的高 + `.settings__body` **关掉 flex 之后**的自然高
 
 这个量法在旧稿上复现出 **766.44**（与当时的期望值逐点相同），在 2026-09-27 加了
-「接管访达的推出」之后复现出 **841.16** —— 两次都对上了，所以它不是新编的口径。
+「接管访达的推出」之后复现出 **841.16**，2026-09-28 拆「自动更新」后是 **899.94** ——
+三次都对上了，所以它不是新编的口径。
 
 ## 三条纪律（来自技能 `html-mockup-layout-probe`）
 

@@ -5,7 +5,7 @@
    来源：Sources/Localization/Localizable.xcstrings
        + Design/ui/v2/assets/i18n-extra.json
    ----------------------------------------------------------------------------
-   源指纹 784c96510e9e6eda84db3be7629d03143f6533cb16139a65009a2ee56301436d
+   源指纹 e05642ac354932c51a605b579070c6bd6e1d3f4bd6d9d1bebea5ddf16c9809a6
      = sha256(xcstrings + extra + 本脚本) —— 任一方变了它就是旧的，
        由 DesignDraftIntegrityTests 拦下「改了源忘了重跑」。
    ----------------------------------------------------------------------------
@@ -34,6 +34,8 @@ window.DS_LANGS = [
 window.DS_L10N = {
   "zh-Hans": {
       "accentColor": "强调色",
+      "accessibilityOnboardingMessage": "已开启推出提醒。磁盘推出后，本应用会自动关掉系统留下的「占用中」提示框。若在系统设置里额外允许「%@」使用辅助功能，这一步会更精确：只会关掉目标磁盘的提示框，不影响其它磁盘。不授权也能正常使用。",
+      "accessibilityOnboardingTitle": "可选：授予辅助功能权限",
       "appLanguage": "语言",
       "appName": "磁盘推出助手",
       "autoCheckUpdate": "自动检查更新",
@@ -62,7 +64,7 @@ window.DS_L10N = {
       "ds.about.versionLine": "版本 1.0.0 · 构建 42 · Developer ID 直发版",
       "ds.alert.busyFull": "关闭它们会丢失未保存的内容。DiskEjector 会先请求正常退出，几秒后仍未退出的将被强制结束，然后重新尝试推出。",
       "ds.alert.busyShort": "关闭它们会丢失未保存的内容。",
-      "ds.alert.change1": "设置里新增<b>「自动更新」</b>开关，可后台下载并在重启后安装",
+      "ds.alert.change1": "设置里新增<b>「自动检查更新」</b>开关，可后台下载并在重启后安装",
       "ds.alert.change2": "修复未插入磁盘时骨架层一直不消失的问题",
       "ds.alert.change3": "推出失败弹窗新增<b>「查看日志」</b>直达入口",
       "ds.alert.failedLogged": "这次失败已记入日志（时间、磁盘名、错误原因），可在设置中查看。",
@@ -80,7 +82,6 @@ window.DS_L10N = {
       "ds.fda.granted": "已获得完全磁盘访问，占用检测正常",
       "ds.language.followSystemHint": "跟随系统语言（当前：简体中文）",
       "ds.language.pendingHint": "将在重启后切换为 English",
-      "ds.loginItem.awaiting": "等待系统批准",
       "ds.occ.appsShort1": "1 个程序占用",
       "ds.occ.appsShort2": "2 个程序占用",
       "ds.occ.appsUsingA": "2 个程序正在占用",
@@ -156,6 +157,7 @@ window.DS_L10N = {
       "launchAtLoginNeedsApprovalMessage": "macOS 要求手动允许登录项。请前往「系统设置 → 通用 → 登录项」，开启磁盘推出助手的开关。",
       "launchAtLoginNeedsApprovalTitle": "需要在系统设置中允许",
       "launchAtLoginPendingHint": "注册已提交，但还需在系统设置中手动打开，否则不会自动启动。",
+      "launchAtLoginPendingTitle": "等待系统批准",
       "launchAtLoginUnavailableMessage": "当前无法设置登录项。请将磁盘推出助手移到「应用程序」文件夹后重试。",
       "loadingDisks": "正在读取磁盘…",
       "logSectionHint": "记录每次推出失败的时间、磁盘与原因。",
@@ -180,6 +182,7 @@ window.DS_L10N = {
       "menuZoom": "缩放",
       "noRemovableDisks": "没有可移动磁盘",
       "notNow": "稍后",
+      "notifEjectBlockedBody": "%@ 正在使用这块磁盘。点按这条通知，可在%@里关闭它并推出。",
       "occupiedProcessesTitle": "占用程序:",
       "off": "关",
       "ok": "确定",
@@ -199,6 +202,7 @@ window.DS_L10N = {
       "safeToEjectConclusion": "没有程序占用，可以安全推出",
       "settings": "设置",
       "settingsEllipsis": "设置…",
+      "settingsGroupAbout": "关于",
       "settingsGroupAppearance": "外观",
       "settingsGroupDiagnostics": "诊断",
       "settingsGroupGeneral": "通用",
@@ -255,6 +259,8 @@ window.DS_L10N = {
   },
   "en": {
       "accentColor": "Accent Color",
+      "accessibilityOnboardingMessage": "Eject alerts are on. When a disk is ejected, the system’s leftover “in use” alert is closed for you. Allowing %@ to use Accessibility in System Settings makes this exact — only that disk’s alert is closed, never another one’s. The feature works without it.",
+      "accessibilityOnboardingTitle": "Optional: Grant Accessibility Access",
       "appLanguage": "Language",
       "appName": "DiskEjector",
       "autoCheckUpdate": "Check for Updates Automatically",
@@ -283,7 +289,7 @@ window.DS_L10N = {
       "ds.about.versionLine": "Version 1.0.0 · Build 42 · Developer ID",
       "ds.alert.busyFull": "Quitting them loses any unsaved work. DiskEjector first asks them to quit, force-quits any that are still running a few seconds later, then tries to eject again.",
       "ds.alert.busyShort": "Quitting them loses any unsaved work.",
-      "ds.alert.change1": "New <b>Automatically Update</b> switch — downloads in the background and installs on restart",
+      "ds.alert.change1": "New <b>Check for Updates Automatically</b> switch — downloads in the background and installs on restart",
       "ds.alert.change2": "Fixes the skeleton view never disappearing when no disk is attached",
       "ds.alert.change3": "The eject-failure alert now has a direct <b>View Log</b> button",
       "ds.alert.failedLogged": "This failure was logged (time, disk, reason) — open Settings to see it.",
@@ -301,7 +307,6 @@ window.DS_L10N = {
       "ds.fda.granted": "Full Disk Access granted — detection is working",
       "ds.language.followSystemHint": "Follows the system language (currently: Simplified Chinese)",
       "ds.language.pendingHint": "Will switch to English after restart",
-      "ds.loginItem.awaiting": "Awaiting system approval",
       "ds.occ.appsShort1": "1 app",
       "ds.occ.appsShort2": "2 apps",
       "ds.occ.appsUsingA": "In use by 2 apps",
@@ -377,6 +382,7 @@ window.DS_L10N = {
       "launchAtLoginNeedsApprovalMessage": "macOS requires manual approval for login items. Go to System Settings → General → Login Items and enable DiskEjector.",
       "launchAtLoginNeedsApprovalTitle": "Approval Needed in System Settings",
       "launchAtLoginPendingHint": "Registration submitted — you still need to enable it in System Settings, or it will not launch.",
+      "launchAtLoginPendingTitle": "Awaiting system approval",
       "launchAtLoginUnavailableMessage": "Login items are unavailable. Move DiskEjector to the Applications folder and try again.",
       "loadingDisks": "Reading disks…",
       "logSectionHint": "Records the time, disk, and reason of every failed eject.",
@@ -401,6 +407,7 @@ window.DS_L10N = {
       "menuZoom": "Zoom",
       "noRemovableDisks": "No Removable Disks",
       "notNow": "Later",
+      "notifEjectBlockedBody": "%@ is using this disk. Click this notification to close it and eject from %@.",
       "occupiedProcessesTitle": "Occupied by:",
       "off": "Off",
       "ok": "OK",
@@ -420,6 +427,7 @@ window.DS_L10N = {
       "safeToEjectConclusion": "No apps are using it — safe to eject",
       "settings": "Settings",
       "settingsEllipsis": "Settings…",
+      "settingsGroupAbout": "About",
       "settingsGroupAppearance": "Appearance",
       "settingsGroupDiagnostics": "Diagnostics",
       "settingsGroupGeneral": "General",
@@ -476,6 +484,8 @@ window.DS_L10N = {
   },
   "zh-Hant": {
       "accentColor": "強調色",
+      "accessibilityOnboardingMessage": "已開啟退出提醒。磁碟退出後，本應用會自動關掉系統留下的「佔用中」提示框。若在系統設定裡額外允許「%@」使用輔助功能，這一步會更精確：只會關掉目標磁碟的提示框，不影響其他磁碟。不授權也能正常使用。",
+      "accessibilityOnboardingTitle": "可選：授予輔助功能權限",
       "appLanguage": "語言",
       "appName": "磁碟推出助手",
       "autoCheckUpdate": "自動檢查更新",
@@ -504,7 +514,7 @@ window.DS_L10N = {
       "ds.about.versionLine": "版本 1.0.0 · 組建 42 · Developer ID 直發版",
       "ds.alert.busyFull": "關閉它們會遺失未儲存的內容。DiskEjector 會先請求正常退出，幾秒後仍未退出的將被強制結束，然後重新嘗試退出。",
       "ds.alert.busyShort": "關閉它們會遺失未儲存的內容。",
-      "ds.alert.change1": "設定裡新增<b>「自動更新」</b>開關，可背景下載並在重啟後安裝",
+      "ds.alert.change1": "設定裡新增<b>「自動檢查更新」</b>開關，可背景下載並在重啟後安裝",
       "ds.alert.change2": "修正未插入磁碟時骨架層一直不消失的問題",
       "ds.alert.change3": "推出失敗彈窗新增<b>「檢視日誌」</b>直達入口",
       "ds.alert.failedLogged": "這次失敗已記入日誌（時間、磁碟名、錯誤原因），可在設定中查看。",
@@ -522,7 +532,6 @@ window.DS_L10N = {
       "ds.fda.granted": "已取得完整磁碟存取權，偵測正常",
       "ds.language.followSystemHint": "跟隨系統語言（目前：繁體中文）",
       "ds.language.pendingHint": "將在重新啟動後切換為 English",
-      "ds.loginItem.awaiting": "等待系統核准",
       "ds.occ.appsShort1": "1 個程式使用",
       "ds.occ.appsShort2": "2 個程式使用",
       "ds.occ.appsUsingA": "2 個程式正在使用",
@@ -598,6 +607,7 @@ window.DS_L10N = {
       "launchAtLoginNeedsApprovalMessage": "macOS 要求手動允許登入項目。請前往「系統設定 → 一般 → 登入項目」，開啟磁碟推出助手的開關。",
       "launchAtLoginNeedsApprovalTitle": "需要在系統設定中允許",
       "launchAtLoginPendingHint": "註冊已提交，但還需在系統設定中手動開啟，否則不會自動啟動。",
+      "launchAtLoginPendingTitle": "等待系統核准",
       "launchAtLoginUnavailableMessage": "目前無法設定登入項目。請將磁碟推出助手移到「應用程式」檔案夾後再試一次。",
       "loadingDisks": "正在讀取磁碟…",
       "logSectionHint": "記錄每次退出失敗的時間、磁碟與原因。",
@@ -622,6 +632,7 @@ window.DS_L10N = {
       "menuZoom": "縮放",
       "noRemovableDisks": "沒有可卸除式磁碟",
       "notNow": "稍後",
+      "notifEjectBlockedBody": "%@ 正在使用這顆磁碟。點一下這則通知，可在%@裡關閉它並退出。",
       "occupiedProcessesTitle": "佔用程式:",
       "off": "關",
       "ok": "確定",
@@ -641,6 +652,7 @@ window.DS_L10N = {
       "safeToEjectConclusion": "沒有程式佔用，可以安全退出",
       "settings": "設定",
       "settingsEllipsis": "設定…",
+      "settingsGroupAbout": "關於",
       "settingsGroupAppearance": "外觀",
       "settingsGroupDiagnostics": "診斷",
       "settingsGroupGeneral": "一般",

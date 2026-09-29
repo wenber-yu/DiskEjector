@@ -1316,6 +1316,110 @@ struct DesignDraftIntegrityTests {
             """)
     }
 
+    /// 中文兜底必须与语言包的 zh-Hans 值**逐字一致** —— §8.69.7 那条不变量的**文本**那一半。
+    ///
+    /// 守卫 59 / 60 只比**标签**（值里有 `<b>` 而源码里没有，或反过来）。**字**本身没人管：
+    /// 源码快照可以整句都停在**上一版设计**的说法上，而两边都不报错 —— 因为 `ds.js` 一加载
+    /// 就把 `innerHTML` 覆盖成值，**渲染出来永远是对的**。这正是本仓库反复吃亏的那一类：
+    /// **少了东西不会报错**。
+    ///
+    /// 实测（2026-09-29）抓到 `05-settings.html` 三处：`takeOverFinderEject` 的兜底写着
+    /// 「接管访达的推出」，而值是「推出时提醒占用」；说明文字更停在**已退役的拦截方案**上
+    /// （「由本应用判定并列出占用者…访达会等待你的决定」）。渲染零差异，
+    /// 但这页是**给人读的规格**、也是交给实现方的依据 ⇒ 陈旧兜底会把人引向错误设计。
+    ///
+    /// 判据与豁免（三条，都是为了**不制造假红**）：
+    /// - 只比 **zh-Hans**：源码快照是中文，跟别的语言比没有意义。
+    /// - 两侧都走 `plainText`（去标签 + 压平空白）：标签那一半归守卫 59 / 60，
+    ///   这里只问「字对不对」。
+    /// - 值里含**占位符**的跳过：03 页的兜底是**已代入样本**的「即将推出「Samsung T7」」，
+    ///   而值是「即将推出「%@」」—— 逐字比必然假红。
+    /// - 说明区（`noteClassTokens`）跳过：设计稿自己的论述本来就不翻。
+    /// - 属性值比的是**剥掉标签之后**的文本：`ds.js` 写回属性时就是 `.replace(/<[^>]+>/g,'')`。
+    @Test func 中文兜底必须与语言包的值逐字一致() throws {
+        guard let zh = try loadLanguagePack()["zh-Hans"] else {
+            Issue.record("语言包里没有 zh-Hans 列")
+            return
+        }
+        var rows: [String] = []
+        var compared = 0
+        var attrCompared = 0
+        for url in try htmlFiles() {
+            let name = url.lastPathComponent
+            let html = try read(url)
+
+            for element in elementTexts(in: html) {
+                guard let key = element.key, !element.note else { continue }
+                guard let value = zh[key], let want = Self.fallbackComparable(value) else { continue }
+                let got = Self.fallbackText(element.text)
+                guard !got.isEmpty else { continue }
+                compared += 1
+                guard got != want else { continue }
+                rows.append("\(name)：\(key)\n        兜底 = \(got)\n        值   = \(want)")
+            }
+
+            for hit in Self.textAttrHits(in: html) {
+                guard !hit.note, let spec = hit.attrs["data-i18n-attr"] else { continue }
+                for pair in spec.split(separator: ",") {
+                    let parts = pair.split(separator: ":", maxSplits: 1).map(String.init)
+                    guard parts.count == 2, parts[0] == hit.attr else { continue }
+                    guard let value = zh[parts[1]], let want = Self.fallbackComparable(value)
+                    else { continue }
+                    attrCompared += 1
+                    let got = Self.fallbackText(hit.value)
+                    guard got != want else { continue }
+                    rows.append(
+                        "\(name)：\(parts[1]) [\(hit.attr)]\n        兜底 = \(got)\n        值   = \(want)")
+                }
+            }
+        }
+        print("  [中文兜底] 比对元素文本 \(compared) 处 ｜ 属性文案 \(attrCompared) 处")
+        // 负向锚：比对数为 0 时 `rows` 恒空 —— 解析改名、或豁免条件写宽了，都是这种形状。
+        // 实测（2026-09-29）元素 334 处、属性 51 处。
+        #expect(compared >= 250, "只比对了 \(compared) 处元素兜底 —— 解析口径失效（假绿）")
+        #expect(attrCompared >= 30, "只比对了 \(attrCompared) 处属性兜底 —— `data-i18n-attr` 解析失效（假绿）")
+        #expect(
+            rows.isEmpty,
+            """
+            中文兜底与语言包的值对不上（\(rows.count) 处）：
+            \(rows.joined(separator: "\n  "))
+            源码快照是**中文兜底**（JS 没跑 / 语言包没加载时看到的就是它）。
+            渲染上通常看不出来（`ds.js` 一加载就覆盖），但这页是**给人读的规格** ——
+            陈旧兜底会把读的人引向**已经废掉的设计**（§8.69.7 已退役的拦截方案那次就是）。
+            改文案时把兜底一起改。
+            """)
+    }
+
+    /// 语言包的值能不能拿来做**逐字**比对。`nil` = 不能比（含占位符，或去标签后为空）。
+    ///
+    /// ⚠️ 占位符键必须跳过，不是偷懒：源码快照写的是**代入样本之后**的样子
+    /// （03 页「即将推出「Samsung T7」」对值「即将推出「%@」」），逐字比恒不相等。
+    private static func fallbackComparable(_ value: String) -> String? {
+        guard
+            let re = try? NSRegularExpression(pattern: placeholderPattern),
+            re.firstMatch(in: value, range: NSRange(value.startIndex..., in: value)) == nil
+        else { return nil }
+        let plain = fallbackText(value)
+        return plain.isEmpty ? nil : plain
+    }
+
+    /// 兜底比对专用的归一化：**`<br>` 等价于空白**，然后去标签 + 压平空白。
+    ///
+    /// ⚠️ 不能直接用 `plainText`：它把 `<br>` 整个删掉（`。<br>macOS` → `。macOS`），
+    /// 而源码里 `<br>` 后面通常跟着**换行 + 缩进**，压平后留下一个空格
+    /// （`。<br>\n  macOS` → `。 macOS`）⇒ 4 处**只有空格不同**的假红（实测 2026-09-29：
+    /// `fdaOnboardingBody` / `ds.empty.hintLong` / `ds.alert.updateSub` ×2）。
+    /// 把 `<br>` 先换成空格，两侧的口径就一致了 —— 换行在渲染上本来就是空白，
+    /// 「标签对不对」那件事归守卫 59 / 60，这里只问**字**。
+    ///
+    /// ⚠️ 不动 `plainText` 本身：它还被另外几条守卫用着，改它会**悄悄改变那些守卫的严格度**。
+    private static func fallbackText(_ html: String) -> String {
+        let brAsSpace = replace(in: html, pattern: #"<br\s*/?>"#, with: " ")
+        let stripped = replace(in: brAsSpace, pattern: #"<[^>]+>"#, with: "")
+        return stripped.split(whereSeparator: { $0.isWhitespace || $0.isNewline })
+            .joined(separator: " ")
+    }
+
     // MARK: 属性文案
 
     /// 含中文的**属性文案**必须接上 `data-i18n-attr` —— 否则切英文时它还是中文。
@@ -1590,9 +1694,17 @@ struct DesignDraftIntegrityTests {
             scan.defined.contains("--fs-11") && scan.defined.contains("--text-3"),
             "`--fs-11` / `--text-3` 不在定义集里 —— 定义侧的正则坏了")
         #expect(scan.pages.count >= 9, "只扫到 \(scan.pages.count) 个页面 —— 逐页扫描坏了")
-        for p in scan.pages {
-            #expect(!p.used.isEmpty, "\(p.name) 一个 var() 都没扫到 —— 使用侧解析坏了（假绿）")
-        }
+        // ⚠️ 2026-09-29：原来这里是**逐页**要求 `used` 非空。新增的
+        // `09-settings-split.html` 把两栏形态的全部样式放进了共享层（它的页面里
+        // 只剩 `style="gap:64px"` 这类**不含变量**的内联），于是它**合法地**是 0 处 ——
+        // 而那条锚把它判成「使用侧解析坏了」，是**假红**。
+        // 锚的目的（防「定义侧与使用侧两边都没扫到」）已由上面两条定义侧锚
+        // 与下面的总量锚覆盖，故口径改成「**有** var() 的页面数」：
+        // 既能发现整页解析失效，又不逼每个页面必须写内联变量。
+        let pagesWithVars = scan.pages.filter { !$0.used.isEmpty }.count
+        #expect(
+            pagesWithVars >= 8,
+            "只有 \(pagesWithVars) 个页面扫到 var() —— 逐页解析坏了（假绿）")
         let occurrences = scan.pages.reduce(0) { $0 + $1.used.count }
         #expect(occurrences >= 500, "只扫到 \(occurrences) 处 var() —— 量级不对（实际 900+ 处）")
 
@@ -1729,7 +1841,23 @@ struct DesignDraftIntegrityTests {
     /// 新行带 `data-i18n-attr="aria-label:autoDownloadUpdate"`，切英文会跟着翻；
     /// 之所以仍然 +4，是沿用「中文兜底 + `data-i18n-attr`」那套写法（兜底让**读 HTML 源码的人**
     /// 看得见文案）。拆行**没有**增加新的例外类别，只是同一套写法多用了 4 次。
-    private static let hardcodedA11yBaseline = 72
+    ///
+    /// **2026-09-29 → 86**：新增 `09-settings-split.html`（设置面板的两栏形态）——
+    /// 它把**同一个设置面板的分类各画了一帧**，每帧都画完整控件，共 14 处：
+    /// 通用帧 4（语言下拉 + Dock / 登录项 / 推出提醒三个开关）、
+    /// 通用第三态帧 4（同上，那一帧是「登录项等待系统批准」，整页重画）、
+    /// 外观帧 4（四个强调色色板）、更新帧 2（两个更新开关）。
+    /// 与上两次（接管行 +1、拆行 +4）**完全同源**：这 14 处**没有一处是漏接线** ——
+    /// 守卫 61 对它们全是绿的，都带 `data-i18n-attr`，切英文会跟着翻；
+    /// 之所以仍然 +14，是沿用「中文兜底 + `data-i18n-attr`」那套写法
+    /// （兜底让**读 HTML 源码的人**看得见文案）。本轮**没有**新增例外类别。
+    ///
+    /// ⚠️ 它与上两次的性质不同：前两次是**产品形态变了**，这一次是
+    /// **同一形态多画了几帧**（探索稿要一次看全五个分类 + 一个第三态）。
+    /// 真要压这个数，只能把演示帧改成「一帧完整窗口 + 其余分类只画内容区片段」，
+    /// 外加把第三态帧砍掉 —— 那会看不出两栏联动、也看不出第三态高度是否放得下，
+    /// **不划算**，故如实同步基线。产品侧真正实现时这个数会**回落**（只会有一个面板）。
+    private static let hardcodedA11yBaseline = 86
 
     // MARK: 索引 ↔ 页面自身标题（§8.62）
 
@@ -1819,7 +1947,7 @@ struct DesignDraftIntegrityTests {
         let fm = FileManager.default
         let screensDir = designRoot.appendingPathComponent("screens")
         let files = (try fm.contentsOfDirectory(atPath: screensDir.path))
-            .filter { $0.hasSuffix(".html") }.sorted()
+            .filter { Self.isDraftPage($0) }.sorted()
 
         #expect(!files.isEmpty, "screens/ 下一个页面都没有 —— 路径错了（假绿）")
 
@@ -2149,11 +2277,26 @@ struct DesignDraftIntegrityTests {
         return Self.plainText(raw)
     }
 
+    /// 一个文件名算不算**设计稿页面**。
+    ///
+    /// ⚠️ 工具探针的临时文件用 `_` 前缀 —— `Tools/measure_*.py` 会往 `screens/` 里
+    /// 写一份「原页面 + 探针脚本」的副本：它**必须与原页面同目录**，否则相对的
+    /// `../assets/ds.css` 会 404，量到的是无样式布局（这是那条技能里明写的纪律）。
+    /// 这类文件**不是**设计稿页面，不该进「页面集合」，也不该被任何逐页守卫扫到。
+    ///
+    /// 2026-09-29 实测踩到：`swift test` 与测量脚本**并行**跑时，探针文件正好在磁盘上，
+    /// 于是「每个页面都必须被索引链接到」报它是孤儿、「硬编码中文的无障碍标签」
+    /// 因为它的副本被**多算了一遍**（86 → 100）—— 症状看起来**像设计稿写错了**，
+    /// 实则是工具与守卫抢同一个目录。排除前缀是根治，不是把红改成绿。
+    private static func isDraftPage(_ name: String) -> Bool {
+        name.hasSuffix(".html") && !name.hasPrefix("_")
+    }
+
     /// `screens/` 下的页面文件名（不含 index.html 等）。
     private func screenFiles() throws -> [String] {
         let dir = designRoot.appendingPathComponent("screens")
         return (try FileManager.default.contentsOfDirectory(atPath: dir.path))
-            .filter { $0.hasSuffix(".html") }.sorted()
+            .filter { Self.isDraftPage($0) }.sorted()
     }
 
     /// 去标签 + 压平空白（`SCREEN 04\n  名字 …` ⇒ 一行）。
@@ -2476,7 +2619,9 @@ struct DesignDraftIntegrityTests {
     private func htmlFiles() throws -> [URL] {
         let fm = FileManager.default
         guard let e = fm.enumerator(at: designRoot, includingPropertiesForKeys: nil) else { return [] }
-        return e.compactMap { $0 as? URL }.filter { $0.pathExtension == "html" }.sorted { $0.path < $1.path }
+        return e.compactMap { $0 as? URL }
+            .filter { Self.isDraftPage($0.lastPathComponent) }
+            .sorted { $0.path < $1.path }
     }
 
     /// 去掉 `/* … */` 注释（注释里常写着别的数字 / 类名，不剥会误收）。

@@ -31,7 +31,7 @@
 - **import 目标脚本取 `MUTATIONS`，不用正则去抠**（K23：正则抠多行字面量会灾难性回溯，
   实测跑 2m43s 无输出，看着像「慢」，其实判据死了）。
 - 目标脚本都有 `if __name__ == "__main__"` 守卫，import 期不会跑变异。
-- 本仓库 6 个脚本的条目有**两种形态**，这里都认（见 ``anchor_hits``）：
+- 本仓库各脚本的条目有**两种形态**，这里都认（见 ``anchor_hits``）：
   - `(name, edits, expect)`，`edits = [(path, old, new), …]`（`deployment_target_mutation.py`）；
   - `(name, why, path, old, new, filter)`，其中 `old is None` 表示「用模块级 `ANCHOR`」
     （`pixel_read_path_mutation.py`）。
@@ -54,6 +54,12 @@ SCRIPTS_TO_AUDIT = (
     "wait_outcome_mutation",
     # 2026-09-28：启动即检查 + 「检查失败」不再冒充「已是最新」那一轮。
     "update_check_mutation",
+    # 2026-09-29：两栏设置面板的左栏 ↑/↓ 分类导航那一轮。
+    "settings_section_nav_mutation",
+    # 2026-09-29：登录项「等待系统批准」的受阻提示行那一轮（§8.153 工程侧实现）。
+    # ⚠️ 它的五条变异**都不改布局、只改颜色或条件** ⇒ 高度一字不差，
+    # 全靠 `SettingsLayoutTests` 里那两条**像素判据**抓 —— 所以这份审计对它尤其重要。
+    "settings_warn_row_mutation",
 )
 
 

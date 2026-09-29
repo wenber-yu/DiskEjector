@@ -90,19 +90,20 @@
   /* ---- 尺寸 Size（与 SwiftUI DesignTokens 对齐） ---- */
   --w-main: 800px;   --h-main: 520px;
   --w-popover: 360px;
-  /* 480 × 920 是 2026-09-28 在 800（更早 876）基础上按**英文**重测定的
-     （见 DESIGN-SPEC §8.36.2 / §8.40.2 / §8.150.5）：
-     440 宽时英文需要 735pt 内容高，480 宽只需 688 —— 宽 40pt 换高 47pt，
-     而且中英高度差从 63pt 收到 32pt，对以后加语言更抗造。
-     ⚠️ 800 是**产品侧（SwiftUI / CoreText）**的口径：它那边英文实测 782.60、中文 766.60。
-     本文件跑在 Chrome 里，英文**内容区**需要 726.25 而可用只有 710 —— 差 16.25pt
-     恰好被底部 16pt 内边距吸收，最后一行只有 **0.25pt** 溢出窗口下边缘。
-     所以症状不是「末行被裁一截」，而是**「英文下底部留白没了」**（实测见 §8.43）。
-     那是 Chrome 与 CoreText 的断行差（本仓库已记为「已知不是 bug」），不是排版写错了。
-     2026-09-18 拍板：**两份文档用同一个数**，不再让 826 与 800 各说各话。
-     宽不再加：480 → 560 只能再省 32pt 高，却要多给 80pt 宽 —— 不划算。
-     ⚠️ 页面里的 .win 必须用 var(--h-settings)，不要另写数字 —— 两个真相迟早会打架。 */
-  --w-settings: 480px; --h-settings: 920px;
+  /* 720 × 440 = **两栏形态**（2026-09-29 采纳，`screens/09-settings-split.html`）。
+     单栏版（480 × 920）的高度是「最长那门语言」的函数：2026-09-28 实测英文最坏
+     916.20 / 容器 920，**只剩 3.8pt** —— 再加一行说明就得先做一轮压缩文案的手术。
+     两栏把高度从「五组之和」降成「**最高的那一组**」，而宽度对语言长度不敏感。
+     ⚠️ 判据永远是**最长那门语言**：`Tools/measure_settings_split.py` 实测最高的一帧是
+     「通用 · 登录项等待系统批准」的**英文**态 = 384.22（同帧中文 368.28），
+     取 440 ⇒ 最坏余量 55.78。只量中文会拿到 368.28，按它定 400 就会在英文下
+     把最后一行推进 overflow: hidden —— 而「被裁掉」与「本来就没那么多内容」长得一样。
+     ⚠️ 这两个令牌服务的是**已实现的两栏形态**（`DesignTokens.Size.settingsPanel`），
+     由 `DesignSizeParityTests` 与实现逐一钉死。
+     ⚠️ 页面里的 .win 必须用 var(--w-settings) / var(--h-settings)，不要另写数字 ——
+     两个真相迟早会打架。**唯一例外是 05 页**：它画的是已退役的单栏形态，
+     尺寸就地冻结成内联的 480×920（历史快照，不再跟令牌走，见第 18 节）。 */
+  --w-settings: 720px; --h-settings: 440px;
   --h-titlebar: 52px;
   --sz-diskicon: 40px;
   --sz-chip-icon: 20px;
@@ -338,6 +339,18 @@ body.ds {
 .btn--sm { height: 26px; padding: 0 10px; font-size: var(--fs-12); }
 .btn--sm svg { width: 13px; height: 13px; }
 .btn--lg { height: 34px; padding: 0 16px; font-size: var(--fs-13); }
+
+/* 链接式按钮 —— 「去做一件事，但不值得占一个按钮的位置」。
+   ⚠️ 2026-09-29 从 `05-settings.html` 的 `<style>` 搬到本文件：两栏版
+   （`09-settings-split.html`）的诊断页要用同一个控件，再抄一份就是第二个副本。
+   值逐字未改，05 页那次搬家是**零视觉变更**。 */
+.linkbtn {
+  border: 0; background: transparent; padding: 0; cursor: pointer;
+  font-family: var(--font-ui); font-size: var(--fs-12); font-weight: 500;
+  color: var(--accent); display: inline-flex; align-items: center; gap: 4px;
+}
+.linkbtn:hover { text-decoration: underline; }
+.linkbtn svg { width: 12px; height: 12px; }
 
 /* 键盘焦点环 —— 仅键盘导航时出现，鼠标点击不出现 */
 .btn:focus-visible, .iconbtn:focus-visible, .chip:focus-visible,
@@ -765,6 +778,15 @@ body.ds {
 .sline__label { font-size: var(--fs-13); color: var(--text-1); }
 .sline__desc  { font-size: var(--fs-11); color: var(--text-2); margin-top: 2px; line-height: 1.45; }
 .sline__control { flex: none; display: flex; align-items: center; gap: var(--s-2); }
+/* 受阻态（2026-09-29 收敛成组件，见 DESIGN-SPEC §8.153）——
+   此前 05 / 09 两页是 inline 硬写的，既不进账本、也没法复用：
+   下一个「需要一整行注意」的地方找不到现成的类，只能再手写一遍，
+   语义边界就是这样被悄悄推开的。
+   ⚠️ 第二行不能省：基类的 label 是 `--text-1`，只加背景不改标签色
+   ⇒ 画面上「看着做了、其实没做」（本仓库红线：样式没生效与本来没写逐字相同）。
+   ⚠️ 护栏：**同屏最多一条** —— 琥珀靠「稀少」产生信息量。 */
+.sline--warn { background: var(--warn-soft); }
+.sline--warn .sline__label { color: var(--warn-text); font-weight: 500; }
 
 /* 开关 Switch */
 .switch {
@@ -1004,6 +1026,22 @@ body.ds {
   color: var(--text-1);
 }
 
+/* 说明区列表（设计稿自己的论述文字，**不翻** —— 见 noteClassTokens）。
+   ⚠️ 2026-09-29 收拢到本文件：此前 9 个页面各在自己的 `<style>` 里抄了一份，
+   其中 `index.html` 那份与其余 8 份**行距不同**（`1.75 / 7px` vs `1.7 / 6px`）——
+   而**没有任何东西会报错**，总览页的说明列表就是比每一屏松一点。
+   9 份副本**已全部删除**（含 `index.html` 那份）：本文件是唯一真相。
+   ⚠️ 反面教材的形态：这类「同一段 CSS 抄 N 份」在没有任何守卫盯着时，
+   漂移**不会报错**，只会让某一页看起来「差一点点」—— 而那最容易被当成设计意图。
+   新页面直接用本类，别再复制。 */
+.note-list { margin: 0; padding-left: 18px; font-size: var(--fs-12); color: var(--text-2); line-height: 1.7; }
+.note-list li { margin-bottom: 6px; }
+.note-list b { color: var(--text-1); }
+.note-list code {
+  font-family: var(--font-mono); font-size: var(--fs-11);
+  background: var(--bg-subtle); padding: 1px 5px; border-radius: var(--r-xs);
+}
+
 .panel {
   background: rgba(255, 255, 255, 0.62);
   -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px);
@@ -1079,3 +1117,101 @@ body.ds {
 
 .spin { animation: spin 900ms linear infinite; display: inline-flex; }
 @keyframes spin { to { transform: rotate(360deg) } }
+
+/* ============================================================================
+   18. 两栏设置 Split Settings
+   ----------------------------------------------------------------------------
+   设置面板的形态：左分类栏 + 右内容区（macOS 系统设置 / Xcode 偏好面板的标准形态）。
+   2026-09-29 **已采纳并实现**（产品侧 `SettingsView`）。旧形态（单栏 480 × 920）
+   见 `screens/05-settings.html` —— 那一页保留在册：它是「高度预算见底」那套约束下的
+   正确答案，不是做错的版本。
+
+   它解决的是**高度**：单栏把五组内容纵向堆叠，面板高度就成了「最长那门语言」
+   的函数 —— 英文一折行就顶破窗口（实测只剩 3.8pt 余量）。两栏之后，
+   高度只由**最高的那一组**决定，加一页内容的代价从「高度」转移到「宽度」，
+   宽度对语言长度不敏感。
+
+   ⚠️ 尺寸走令牌 `--w-settings` / `--h-settings`（= 720 / 440），与实现侧
+   `DesignTokens.Size.settingsPanel` 由 `DesignSizeParityTests` 钉死 ——
+   所以下面 `.win--split` **只写令牌不提供的那个属性**，尺寸一个数字都不重复写。
+
+   ⚠️ 颜色**零新增令牌**：侧栏底走 `--bg-sunken`、选中态走 `--accent` / `--on-accent`，
+   全都有现成的深色取值 ⇒ 深色模式不需要为两栏补任何一帧样式。
+   ========================================================================== */
+
+/* ---- 窗口 ---- */
+/* 尺寸**走令牌**（`.win--settings` 已提供 `--w-settings` / `--h-settings`），
+   这里只补 `.win` 本身没有的那个属性：横向排布。
+   ⚠️ 别在这里再写一遍 720 / 440 —— 那正是「两个真相」的开端。 */
+.win--split {
+  flex-direction: row;          /* 覆盖 .win 的 column */
+}
+
+/* 窗口控制点浮在侧栏顶部（与 `.sdetail__head` 同一条水平带） */
+.traffic--float { position: absolute; left: 20px; top: 20px; z-index: 2; }
+
+/* ---- 左：分类栏 ---- */
+.sside {
+  flex: none;
+  width: 200px;
+  display: flex; flex-direction: column; gap: 1px;
+  padding: 52px 10px 12px;      /* 顶部 52 = 给窗口控制点让位，与内容区头齐平 */
+  background: var(--bg-sunken);
+  box-shadow: inset -0.5px 0 0 var(--hairline);
+}
+.sside__item {
+  display: flex; align-items: center; gap: 9px;
+  height: 28px; padding: 0 8px;
+  border: 0; border-radius: var(--r-sm);
+  background: transparent; cursor: pointer;
+  font-family: var(--font-ui); font-size: var(--fs-13); font-weight: 400;
+  color: var(--text-1); text-align: left; white-space: nowrap;
+  transition: background var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
+}
+.sside__item svg { width: 15px; height: 15px; flex: none; color: var(--text-2); }
+.sside__item:hover { background: var(--bg-subtle); }
+/* 选中态 = 强调色实底 + 白字（macOS 侧栏惯例，Finder 与系统设置都这样）。
+   ⚠️ 不用 `--accent-soft` + accent 前景：那个组合在浅色下只有 ~3.4:1，
+   **低于 4.5:1**；而实底白字是「图形化高亮」，可辨识性不依赖文字对比度，
+   且它与周围底色的差值远超 3:1（非文本组件门槛）。*/
+.sside__item[aria-selected="true"] {
+  background: var(--accent); color: var(--on-accent); font-weight: 500;
+}
+.sside__item[aria-selected="true"] svg { color: var(--on-accent); }
+.sside__item[aria-selected="true"]:hover { background: var(--accent-hover); }
+.sside__item:focus-visible { outline: 2px solid var(--accent-ring); outline-offset: 2px; }
+
+/* ---- 右：内容区 ---- */
+.sdetail { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
+.sdetail__head {
+  flex: none; height: 52px;
+  display: flex; align-items: center; gap: var(--s-3);
+  padding: 0 var(--s-4) 0 var(--s-5);
+  box-shadow: inset 0 -0.5px 0 var(--hairline);
+}
+.sdetail__title {
+  flex: 1 1 auto; min-width: 0;
+  font-size: var(--fs-15); font-weight: 600; letter-spacing: -0.01em;
+}
+.sdetail__body { flex: 1 1 auto; overflow: hidden; padding: var(--s-5) var(--s-5) var(--s-4); }
+
+/* ---- 关于页：居中大图标 ---- */
+/* ⚠️ 这一块**只在两栏形态里成立**。单栏形态（05）里同样信息被压成 70pt 的横排
+   `.aboutrow` —— 不是设计口味变了，是高度预算见底时被迫的取舍。
+   两栏之后「关于」独占一页，macOS 的标准居中形态才重新变得划算。 */
+.aboutpane {
+  display: flex; flex-direction: column; align-items: center; text-align: center;
+  padding-top: var(--s-6);
+}
+.aboutpane__icon {
+  width: 76px; height: 76px; border-radius: var(--r-lg);
+  display: flex; align-items: center; justify-content: center;
+  background: linear-gradient(160deg, var(--accent), var(--accent-hover));
+  color: #fff; box-shadow: var(--e2);
+}
+.aboutpane__icon svg { width: 40px; height: 40px; }
+.aboutpane__name { font-size: var(--fs-17); font-weight: 600; letter-spacing: -0.01em; margin-top: var(--s-4); }
+.aboutpane__ver {
+  font-size: var(--fs-12); color: var(--text-2);
+  margin-top: 5px; font-variant-numeric: tabular-nums;
+}

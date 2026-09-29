@@ -140,7 +140,7 @@ struct SettingsWindowTests {
         // ⚠️ `takeOverAvailabilityOverride` 必须**显式注入**：这个值来自本机 TCC 状态，
         // 不注入的话，「玻璃铺满」这条断言会随这台机器给没给完全磁盘访问而变 ——
         // 而未授权态那一行的内容与可用态不同（多一个按钮）。见
-        // ``SettingsSectionsColumn/takeOverAvailabilityOverride``。
+        // ``SettingsSectionPane/takeOverAvailabilityOverride``。
         let host = NSHostingView(
             rootView: SettingsView(
                 onDone: {}, fillsHost: true, takeOverAvailabilityOverride: .usable))

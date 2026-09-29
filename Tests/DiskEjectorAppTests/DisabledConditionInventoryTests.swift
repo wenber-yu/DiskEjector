@@ -108,6 +108,13 @@ struct DisabledConditionInventoryTests {
             file: "Sources/Views/GlassViews.swift",
             snippet: ".allowsHitTesting(false)",
             reason: "纯背景层（玻璃底），不吃点击，**不是状态判据**"),
+        Entry(
+            file: "Sources/Views/SettingsView.swift",
+            snippet: ".allowsHitTesting(false)",
+            reason:
+                "纯装饰层（左栏右边界那条 0.5pt `Hairline`，2026-09-29 两栏新增），不吃点击，**不是状态判据**。"
+                + "⚠️ 它**必须**留着：那条线是 `.overlay` 内嵌的，若允许命中，它会在左栏最右侧盖出一条"
+                + "1pt 宽的「死区」—— 分类项的圆角右边缘正好落在那里，点上去看着像没反应。"),
     ]
 
     // MARK: - 断言

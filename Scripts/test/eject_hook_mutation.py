@@ -302,8 +302,14 @@ MUTATIONS = [
         "⇒ 未授权时整行又能点了，用户点下去「有反应但不会生效」"
         "（⚠️ 这条是**接线守卫**：纯函数全绿，只有扫源码那条会红）",
         SETTINGS_VIEW,
-        "                        onTap: takeOverTapAction,",
-        "                        onTap: toggleTakeOverFinderEject,",
+        # ⚠️ 锚点缩进 24 → 16 空格（2026-09-29）：两栏设置面板把这段内容从
+        # `SettingsSectionsColumn` 里提出来放进 `SettingsSectionPane`，
+        # **少了一层嵌套** ⇒ 逐字抄着旧缩进的锚点全部命中 0 次。
+        # 这是 `mutation_residue_audit.py` 文档里说的 K16（**源码被合法改过**），
+        # 不是残留 —— 但锚点不修的话这两条变异**永远施加不上**，审计会一直红、
+        # 然后被人当噪音忽略。**改缩进时记得回来扫一遍本文件。**
+        "                onTap: takeOverTapAction,",
+        "                onTap: toggleTakeOverFinderEject,",
         FILTER_AVAIL_WIRING,
     ),
     (
@@ -311,8 +317,8 @@ MUTATIONS = [
         "接管的无障碍值读回用户偏好而不是生效值 ⇒ 看不见的用户听到「开」，"
         "而它并没有生效（看得见的人至少能看出开关是关的）",
         SETTINGS_VIEW,
-        "                        accessibilityValue: L10n.tr(takeOverOn ? .on : .off)",
-        "                        accessibilityValue: L10n.tr(takeOverFinderEject ? .on : .off)",
+        "                accessibilityValue: L10n.tr(takeOverOn ? .on : .off)",
+        "                accessibilityValue: L10n.tr(takeOverFinderEject ? .on : .off)",
         FILTER_AVAIL_WIRING,
     ),
 ]

@@ -8,6 +8,20 @@
         "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "強調色" } }
       }
     },
+    "accessibilityOnboardingMessage" : {
+      "localizations" : {
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "已开启推出提醒。磁盘推出后，本应用会自动关掉系统留下的「占用中」提示框。若在系统设置里额外允许「%@」使用辅助功能，这一步会更精确：只会关掉目标磁盘的提示框，不影响其它磁盘。不授权也能正常使用。" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Eject alerts are on. When a disk is ejected, the system\u2019s leftover \u201cin use\u201d alert is closed for you. Allowing %@ to use Accessibility in System Settings makes this exact \u2014 only that disk\u2019s alert is closed, never another one\u2019s. The feature works without it." } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "已開啟退出提醒。磁碟退出後，本應用會自動關掉系統留下的「佔用中」提示框。若在系統設定裡額外允許「%@」使用輔助功能，這一步會更精確：只會關掉目標磁碟的提示框，不影響其他磁碟。不授權也能正常使用。" } }
+      }
+    },
+    "accessibilityOnboardingTitle" : {
+      "localizations" : {
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "可选：授予辅助功能权限" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Optional: Grant Accessibility Access" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "可選：授予輔助功能權限" } }
+      }
+    },
     "appLanguage" : {
       "localizations" : {
         "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "语言" } },
@@ -125,6 +139,13 @@
         "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "「%@」被占用，无法推出" } },
         "en" : { "stringUnit" : { "state" : "translated", "value" : "\u201c%@\u201d is in use and can\u2019t be ejected" } },
         "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "「%@」被佔用，無法退出" } }
+      }
+    },
+    "notifEjectBlockedBody" : {
+      "localizations" : {
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "%@ 正在使用这块磁盘。点按这条通知，可在%@里关闭它并推出。" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "%@ is using this disk. Click this notification to close it and eject from %@." } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "%@ 正在使用這顆磁碟。點一下這則通知，可在%@裡關閉它並退出。" } }
       }
     },
     "ejectFailedInUseReason" : {
@@ -1079,6 +1100,13 @@
         "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "註冊已提交，但還需在系統設定中手動開啟，否則不會自動啟動。" } }
       }
     },
+    "launchAtLoginPendingTitle" : {
+      "localizations" : {
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "等待系统批准" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Awaiting system approval" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "等待系統核准" } }
+      }
+    },
     "loadingDisks" : {
       "localizations" : {
         "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "正在读取磁盘…" } },
@@ -1112,6 +1140,13 @@
         "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "没有程序占用，可以安全推出" } },
         "en" : { "stringUnit" : { "state" : "translated", "value" : "No apps are using it — safe to eject" } },
         "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "沒有程式佔用，可以安全退出" } }
+      }
+    },
+    "settingsGroupAbout" : {
+      "localizations" : {
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "关于" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "About" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "關於" } }
       }
     },
     "settingsGroupAppearance" : {

@@ -52,9 +52,9 @@
     "目前 1.0.0（組建 42）→ 1.1.0（組建 58）<br>2026-09-17 · 12.4 MB"
   ],
   "ds.alert.change1": [
-    "设置里新增<b>「自动更新」</b>开关，可后台下载并在重启后安装",
-    "New <b>Automatically Update</b> switch — downloads in the background and installs on restart",
-    "設定裡新增<b>「自動更新」</b>開關，可背景下載並在重啟後安裝"
+    "设置里新增<b>「自动检查更新」</b>开关，可后台下载并在重启后安装",
+    "New <b>Check for Updates Automatically</b> switch — downloads in the background and installs on restart",
+    "設定裡新增<b>「自動檢查更新」</b>開關，可背景下載並在重啟後安裝"
   ],
   "ds.alert.change2": [
     "修复未插入磁盘时骨架层一直不消失的问题",
@@ -195,11 +195,6 @@
     "若不在列表中，点左下角",
     "If it’s not listed, click",
     "若不在清單中，點左下角"
-  ],
-  "ds.loginItem.awaiting": [
-    "等待系统批准",
-    "Awaiting system approval",
-    "等待系統核准"
   ],
   "ds.fda.granted": [
     "已获得完全磁盘访问，占用检测正常",

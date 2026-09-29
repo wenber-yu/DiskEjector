@@ -1,4 +1,5 @@
 import AppKit
+import ApplicationServices
 import SwiftUI
 
 /// 视觉风格（设置项单一事实来源）。
@@ -341,6 +342,42 @@ enum AppSettings {
         guard
             let url = URL(
                 string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles")
+        else { return }
+        NSWorkspace.shared.open(url)
+    }
+
+    /// 打开「系统设置 › 隐私与安全性 › 辅助功能」面板。
+    ///
+    /// ## 为什么先调一次 `AXIsProcessTrustedWithOptions(prompt:)`
+    ///
+    /// 那是**唯一**能把本应用登记进「辅助功能」列表的手段 —— 用户跳到面板里却
+    /// **找不到「磁盘推出助手」这一项**，比不提示更让人困惑（他会以为是我们写错了）。
+    /// 被动查询（``SystemEjectDialogDismisser/isAccessibilityTrusted`` 走的
+    /// `AXIsProcessTrusted()`）不会产生这个副作用，所以两者不能互相替代。
+    ///
+    /// ⚠️ 该调用在**还没授权**时会额外弹一个系统框（「…想要控制此电脑」），
+    /// 而它自带「打开系统设置」按钮 ⇒ 用户可能连着看到两个入口。这是有意的：
+    /// 它同时也是「用户关掉了这个框」时的第二道出口，且**顺序上先登记、后跳转**，
+    /// 用户无论走哪条路到了面板，那一项都已经在列表里了。
+    ///
+    /// 与 ``openFullDiskAccessSettings()`` 并列：两者是**不同**的权限、不同的子面板，
+    /// 且本应用两个都要（FDA 用于列占用者，辅助功能用于关系统框），不能互相跳转替代。
+    nonisolated static func openAccessibilitySettings() {
+        // ⚠️ **键名写成字面量，而不是引用 `kAXTrustedCheckOptionPrompt`**：
+        // 那个常量在 `AXUIElement.h` 里是 `CFStringRef`（值就是这个字符串），
+        // 但 Swift 6 把导入的 C 全局 `var` 一律判为「共享可变状态」——
+        // 在 nonisolated 上下文里引用它**直接编译不过**：
+        //   reference to var 'kAXTrustedCheckOptionPrompt' is not concurrency-safe
+        // 而它实际是只读的（这是导入层的判定，不是它的真实语义）。
+        // 直接 `as String` 也不行（它是 `Unmanaged<CFString>`）。
+        // 改错这里的表现是「既不弹框、也不登记本应用」—— 用户会跳到一个找不到
+        // 「磁盘推出助手」的面板里，且**没有任何报错**，所以这行有真机验收
+        // （见本方法的说明与 `AccessibilityOnboardingTests`）。
+        _ = AXIsProcessTrustedWithOptions(
+            ["AXTrustedCheckOptionPrompt": true] as CFDictionary)
+        guard
+            let url = URL(
+                string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")
         else { return }
         NSWorkspace.shared.open(url)
     }

@@ -104,7 +104,7 @@ struct OnboardingView: View {
     // `OnboardingLayoutTests` 要逐个量它们的真实渲染尺寸，才能把设计稿的
     // 52 / 135.5 / 54 / 30 钉住。只量面板总高的话，一处偏了会被另一处抵消 ——
     // 实测就有过「图标容器矮 4pt、提示块高 4pt，总高看着完全正常」这种巧合。
-    // 与 `SettingsSectionsColumn` 被单独抽出来是同一个理由。
+    // 与 `SettingsSectionPane` 被单独抽出来是同一个理由。
 
     var body: some View {
         VStack(spacing: 0) {

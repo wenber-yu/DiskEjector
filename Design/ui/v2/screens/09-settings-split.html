@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light" data-accent="blue">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>设置面板（两栏） · DiskEjector UI v2</title>
+<link rel="stylesheet" href="../assets/ds.css">
+</head>
+<body class="ds">
+<div class="wallpaper">
+<div class="doc">
+
+  <nav class="doc__nav">
+    <a href="../index.html">设计规范总览</a>
+    <a href="01-main-window.html">主窗口</a>
+    <a href="02-menu-bar.html">菜单栏面板</a>
+    <a href="03-eject-flow.html">推出流程弹窗</a>
+    <a href="04-onboarding.html">授权引导</a>
+    <a href="05-settings.html">设置面板</a>
+    <a href="06-states.html">状态矩阵</a>
+    <a href="07-dark.html">深色模式</a>
+    <a href="08-update.html">版本更新</a>
+    <a href="09-settings-split.html" aria-current="page">设置面板（两栏）</a>
+  </nav>
+
+  <p class="doc__eyebrow">Screen 09 · Settings (Two-Pane) · 已采纳</p>
+  <h1 class="doc__title">设置面板（两栏）</h1>
+  <p class="doc__lede">
+    设置面板的<strong>目标形态</strong>：<strong>左侧分类、右侧内容</strong>。
+    2026-09-29 采纳 —— 单栏版（480 × 920，见「设置面板」页）的窗口高度是
+    <strong>「最长那门语言」的函数</strong>：英文最坏情况下只余 3.8pt，
+    再加一句话就得把窗口撑破。两栏把高度从「五组之和」降成<strong>「最高的那一组」</strong>，
+    而宽度对语言长度不敏感 —— 加内容、加语言都不再要动窗口尺寸。
+    单栏版（05 页）在实现侧切换完成后退役。
+  </p>
+
+  <div class="artboard" style="gap:64px">
+
+    <!-- ============ 通用（默认页） ============ -->
+    <div class="frame">
+      <div class="frame__label">720 × 440 · 通用（默认页）</div>
+
+      <div class="win win--settings win--split">
+        <div class="traffic traffic--float"><i></i><i></i><i></i></div>
+
+        <div class="sside" role="tablist" aria-orientation="vertical">
+          <button class="sside__item" role="tab" aria-selected="true"><i data-i="gear"></i><span data-i18n="settingsGroupGeneral">通用</span></button>
+          <button class="sside__item" role="tab" aria-selected="false"><i data-i="sun"></i><span data-i18n="settingsGroupAppearance">外观</span></button>
+          <button class="sside__item" role="tab" aria-selected="false"><i data-i="down"></i><span data-i18n="settingsGroupUpdates">更新</span></button>
+          <button class="sside__item" role="tab" aria-selected="false"><i data-i="doc"></i><span data-i18n="settingsGroupDiagnostics">诊断</span></button>
+          <button class="sside__item" role="tab" aria-selected="false"><i data-i="info"></i><span data-i18n="settingsGroupAbout">关于</span></button>
+        </div>
+
+        <div class="sdetail">
+          <div class="sdetail__head">
+            <div class="sdetail__title" data-i18n="settingsGroupGeneral">通用</div>
+            <button class="btn btn--outline btn--sm" data-i18n="done">完成</button>
+          </div>
+          <div class="sdetail__body">
+            <div class="scard">
+              <div class="sline">
+                <div class="sline__text">
+                  <div class="sline__label" data-i18n="appLanguage">语言</div>
+                  <div class="sline__desc" data-i18n="ds.language.followSystemHint">跟随系统语言（当前：简体中文）</div>
+                </div>
+                <div class="sline__control">
+                  <span class="popup" role="button" aria-haspopup="listbox" aria-expanded="false" aria-label="语言" data-i18n-attr="aria-label:appLanguage">
+                    <span data-i18n="followSystemLanguage">跟随系统</span>
+                    <i data-i="chevronDown"></i>
+                  </span>
+                </div>
+              </div>
+
+              <div class="sline">
+                <div class="sline__text">
+                  <div class="sline__label" data-i18n="showDockIcon">在 Dock 中显示图标</div>
+                </div>
+                <div class="sline__control">
+                  <button class="switch" role="switch" aria-checked="false" aria-label="在 Dock 中显示图标" data-i18n-attr="aria-label:showDockIcon"></button>
+                </div>
+              </div>
+
+              <div class="sline">
+                <div class="sline__text">
+                  <div class="sline__label" data-i18n="launchAtLogin">登录时启动</div>
+                  <div class="sline__desc" data-i18n="launchAtLoginFootnote">开机后自动驻留菜单栏，插盘即可用。</div>
+                </div>
+                <div class="sline__control">
+                  <button class="switch" role="switch" aria-checked="true" aria-label="登录时启动" data-i18n-attr="aria-label:launchAtLogin"></button>
+                </div>
+              </div>
+
+              <div class="sline">
+                <div class="sline__text">
+                  <div class="sline__label" data-i18n="takeOverFinderEject">推出时提醒占用</div>
+                  <div class="sline__desc" data-i18n="takeOverFinderEjectFootnote">在访达中点推出、但磁盘正被占用时，在菜单栏提醒你谁在占用，可一键关闭并推出。</div>
+                </div>
+                <div class="sline__control">
+                  <button class="switch" role="switch" aria-checked="false" aria-label="推出时提醒占用" data-i18n-attr="aria-label:takeOverFinderEject"></button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ 通用 · 登录项等待系统批准 ============ -->
+    <div class="frame">
+      <div class="frame__label">720 × 440 · 通用 · 登录项等待系统批准（第三态，比默认态多一行）</div>
+
+      <div class="win win--settings win--split">
+        <div class="traffic traffic--float"><i></i><i></i><i></i></div>
+
+        <div class="sside" role="tablist" aria-orientation="vertical">
+          <button class="sside__item" role="tab" aria-selected="true"><i data-i="gear"></i><span data-i18n="settingsGroupGeneral">通用</span></button>
+          <button class="sside__item" role="tab" aria-selected="false"><i data-i="sun"></i><span data-i18n="settingsGroupAppearance">外观</span></button>
+          <button class="sside__item" role="tab" aria-selected="false"><i data-i="down"></i><span data-i18n="settingsGroupUpdates">更新</span></button>
+          <button class="sside__item" role="tab" aria-selected="false"><i data-i="doc"></i><span data-i18n="settingsGroupDiagnostics">诊断</span></button>
+          <button class="sside__item" role="tab" aria-selected="false"><i data-i="info"></i><span data-i18n="settingsGroupAbout">关于</span></button>
+        </div>
+
+        <div class="sdetail">
+          <div class="sdetail__head">
+            <div class="sdetail__title" data-i18n="settingsGroupGeneral">通用</div>
+            <button class="btn btn--outline btn--sm" data-i18n="done">完成</button>
+          </div>
+          <div class="sdetail__body">
+            <div class="scard">
+              <div class="sline">
+                <div class="sline__text">
+                  <div class="sline__label" data-i18n="appLanguage">语言</div>
+                  <div class="sline__desc" data-i18n="ds.language.followSystemHint">跟随系统语言（当前：简体中文）</div>
+                </div>
+                <div class="sline__control">
+                  <span class="popup" role="button" aria-haspopup="listbox" aria-expanded="false" aria-label="语言" data-i18n-attr="aria-label:appLanguage">
+                    <span data-i18n="followSystemLanguage">跟随系统</span>
+                    <i data-i="chevronDown"></i>
+                  </span>
+                </div>
+              </div>
+
+              <div class="sline">
+                <div class="sline__text">
+                  <div class="sline__label" data-i18n="showDockIcon">在 Dock 中显示图标</div>
+                </div>
+                <div class="sline__control">
+                  <button class="switch" role="switch" aria-checked="false" aria-label="在 Dock 中显示图标" data-i18n-attr="aria-label:showDockIcon"></button>
+                </div>
+              </div>
+
+              <div class="sline">
+                <div class="sline__text">
+                  <div class="sline__label" data-i18n="launchAtLogin">登录时启动</div>
+                </div>
+                <div class="sline__control">
+                  <button class="switch" role="switch" aria-checked="true" aria-label="登录时启动" data-i18n-attr="aria-label:launchAtLogin"></button>
+                </div>
+              </div>
+
+              <div class="sline sline--warn">
+                <div class="sline__text">
+                  <div class="sline__label" data-i18n="launchAtLoginPendingTitle">等待系统批准</div>
+                  <div class="sline__desc" data-i18n="launchAtLoginPendingHint">注册已提交，但还需在系统设置中手动打开，否则不会自动启动。</div>
+                </div>
+                <div class="sline__control">
+                  <button class="btn btn--outline btn--sm" data-i18n="openSystemSettings">打开系统设置</button>
+                </div>
+              </div>
+
+              <div class="sline">
+                <div class="sline__text">
+                  <div class="sline__label" data-i18n="takeOverFinderEject">推出时提醒占用</div>
+                  <div class="sline__desc" data-i18n="takeOverFinderEjectFootnote">在访达中点推出、但磁盘正被占用时，在菜单栏提醒你谁在占用，可一键关闭并推出。</div>
+                </div>
+                <div class="sline__control">
+                  <button class="switch" role="switch" aria-checked="false" aria-label="推出时提醒占用" data-i18n-attr="aria-label:takeOverFinderEject"></button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ 外观 ============ -->
+    <div class="frame">
+      <div class="frame__label">720 × 440 · 外观</div>
+
+      <div class="win win--settings win--split">
+        <div class="traffic traffic--float"><i></i><i></i><i></i></div>
+
+        <div class="sside" role="tablist" aria-orientation="vertical">
+          <button class="sside__item" role="tab" aria-selected="false"><i data-i="gear"></i><span data-i18n="settingsGroupGeneral">通用</span></button>
+          <button class="sside__item" role="tab" aria-selected="true"><i data-i="sun"></i><span data-i18n="settingsGroupAppearance">外观</span></button>
+          <button class="sside__item" role="tab" aria-selected="false"><i data-i="down"></i><span data-i18n="settingsGroupUpdates">更新</span></button>
+          <button class="sside__item" role="tab" aria-selected="false"><i data-i="doc"></i><span data-i18n="settingsGroupDiagnostics">诊断</span></button>
+          <button class="sside__item" role="tab" aria-selected="false"><i data-i="info"></i><span data-i18n="settingsGroupAbout">关于</span></button>
+        </div>
+
+        <div class="sdetail">
+          <div class="sdetail__head">
+            <div class="sdetail__title" data-i18n="settingsGroupAppearance">外观</div>
+            <button class="btn btn--outline btn--sm" data-i18n="done">完成</button>
+          </div>
+          <div class="sdetail__body">
+            <div class="scard">
+              <div class="sline">
+                <div class="sline__text">
+                  <div class="sline__label" data-i18n="visualEffects">视觉效果</div>
+                  <div class="sline__desc" data-i18n="transparentModeFootnote">透明模式使用系统毛玻璃；色调模式使用固定的浅色背景。</div>
+                </div>
+                <div class="sline__control">
+                  <div class="seg" role="tablist">
+                    <button class="seg__opt" role="tab" aria-selected="true" data-i18n="transparentModeShort">透明</button>
+                    <button class="seg__opt" role="tab" aria-selected="false" data-i18n="tintedModeShort">色调</button>
+                  </div>
+                </div>
+              </div>
+
+              <div class="sline">
+                <div class="sline__text">
+                  <div class="sline__label" data-i18n="accentColor">强调色</div>
+                </div>
+                <div class="sline__control">
+                  <div class="swatches">
+                    <button class="swatch swatch--blue"   data-accent-btn="blue"   aria-pressed="true"  aria-label="蓝色" data-i18n-attr="aria-label:colorBlue"></button>
+                    <button class="swatch swatch--purple" data-accent-btn="purple" aria-pressed="false" aria-label="紫色" data-i18n-attr="aria-label:colorPurple"></button>
+                    <button class="swatch swatch--orange" data-accent-btn="orange" aria-pressed="false" aria-label="橙色" data-i18n-attr="aria-label:colorOrange"></button>
+                    <button class="swatch swatch--green"  data-accent-btn="green"  aria-pressed="false" aria-label="绿色" data-i18n-attr="aria-label:colorGreen"></button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ 更新 ============ -->
+    <div class="frame">
+      <div class="frame__label">720 × 440 · 更新</div>
+
+      <div class="win win--settings win--split">
+        <div class="traffic traffic--float"><i></i><i></i><i></i></div>
+
+        <div class="sside" role="tablist" aria-orientation="vertical">
+          <button class="sside__item" role="tab" aria-selected="false"><i data-i="gear"></i><span data-i18n="settingsGroupGeneral">通用</span></button>
+          <button class="sside__item" role="tab" aria-selected="false"><i data-i="sun"></i><span data-i18n="settingsGroupAppearance">外观</span></button>
+          <button class="sside__item" role="tab" aria-selected="true"><i data-i="down"></i><span data-i18n="settingsGroupUpdates">更新</span></button>
+          <button class="sside__item" role="tab" aria-selected="false"><i data-i="doc"></i><span data-i18n="settingsGroupDiagnostics">诊断</span></button>
+          <button class="sside__item" role="tab" aria-selected="false"><i data-i="info"></i><span data-i18n="settingsGroupAbout">关于</span></button>
+        </div>
+
+        <div class="sdetail">
+          <div class="sdetail__head">
+            <div class="sdetail__title" data-i18n="settingsGroupUpdates">更新</div>
+            <button class="btn btn--outline btn--sm" data-i18n="done">完成</button>
+          </div>
+          <div class="sdetail__body">
+            <div class="scard">
+              <div class="sline">
+                <div class="sline__text">
+                  <div class="sline__label" data-i18n="autoCheckUpdate">自动检查更新</div>
+                  <div class="sline__desc" data-i18n="autoCheckUpdateHint">启动时和后台定期检查新版本。</div>
+                </div>
+                <div class="sline__control">
+                  <button class="switch" role="switch" aria-checked="true" aria-label="自动检查更新" data-i18n-attr="aria-label:autoCheckUpdate"></button>
+                </div>
+              </div>
+
+              <div class="sline">
+                <div class="sline__text">
+                  <div class="sline__label" data-i18n="autoDownloadUpdate">自动下载更新</div>
+                  <div class="sline__desc" data-i18n="autoDownloadUpdateHint">发现新版本后自动下载，退出时安装。</div>
+                </div>
+                <div class="sline__control">
+                  <button class="switch" role="switch" aria-checked="false" aria-label="自动下载更新" data-i18n-attr="aria-label:autoDownloadUpdate"></button>
+                </div>
+              </div>
+
+              <div class="sline">
+                <div class="sline__text">
+                  <div class="sline__label" data-i18n="checkForUpdates">检查更新</div>
+                  <div class="sline__desc" data-i18n="ds.update.upToDate">上次检查：今天 14:30 · 已是最新版本</div>
+                </div>
+                <div class="sline__control">
+                  <button class="btn btn--outline btn--sm" data-i18n="checkForUpdates">检查更新</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ 诊断 ============ -->
+    <div class="frame">
+      <div class="frame__label">720 × 440 · 诊断</div>
+
+      <div class="win win--settings win--split">
+        <div class="traffic traffic--float"><i></i><i></i><i></i></div>
+
+        <div class="sside" role="tablist" aria-orientation="vertical">
+          <button class="sside__item" role="tab" aria-selected="false"><i data-i="gear"></i><span data-i18n="settingsGroupGeneral">通用</span></button>
+          <button class="sside__item" role="tab" aria-selected="false"><i data-i="sun"></i><span data-i18n="settingsGroupAppearance">外观</span></button>
+          <button class="sside__item" role="tab" aria-selected="false"><i data-i="down"></i><span data-i18n="settingsGroupUpdates">更新</span></button>
+          <button class="sside__item" role="tab" aria-selected="true"><i data-i="doc"></i><span data-i18n="settingsGroupDiagnostics">诊断</span></button>
+          <button class="sside__item" role="tab" aria-selected="false"><i data-i="info"></i><span data-i18n="settingsGroupAbout">关于</span></button>
+        </div>
+
+        <div class="sdetail">
+          <div class="sdetail__head">
+            <div class="sdetail__title" data-i18n="settingsGroupDiagnostics">诊断</div>
+            <button class="btn btn--outline btn--sm" data-i18n="done">完成</button>
+          </div>
+          <div class="sdetail__body">
+            <div class="scard">
+              <div class="sline">
+                <div class="sline__text">
+                  <div class="sline__label" data-i18n="logSectionTitle">错误日志</div>
+                  <div class="sline__desc" data-i18n="logSectionHint">记录每次推出失败的时间、磁盘与原因。</div>
+                </div>
+                <div class="sline__control">
+                  <button class="linkbtn"><span data-i18n="revealLogInFinder">在访达中显示</span><i data-i="externalLink"></i></button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ 关于 ============ -->
+    <div class="frame">
+      <div class="frame__label">720 × 440 · 关于</div>
+
+      <div class="win win--settings win--split">
+        <div class="traffic traffic--float"><i></i><i></i><i></i></div>
+
+        <div class="sside" role="tablist" aria-orientation="vertical">
+          <button class="sside__item" role="tab" aria-selected="false"><i data-i="gear"></i><span data-i18n="settingsGroupGeneral">通用</span></button>
+          <button class="sside__item" role="tab" aria-selected="false"><i data-i="sun"></i><span data-i18n="settingsGroupAppearance">外观</span></button>
+          <button class="sside__item" role="tab" aria-selected="false"><i data-i="down"></i><span data-i18n="settingsGroupUpdates">更新</span></button>
+          <button class="sside__item" role="tab" aria-selected="false"><i data-i="doc"></i><span data-i18n="settingsGroupDiagnostics">诊断</span></button>
+          <button class="sside__item" role="tab" aria-selected="true"><i data-i="info"></i><span data-i18n="settingsGroupAbout">关于</span></button>
+        </div>
+
+        <div class="sdetail">
+          <div class="sdetail__head">
+            <div class="sdetail__title" data-i18n="settingsGroupAbout">关于</div>
+            <button class="btn btn--outline btn--sm" data-i18n="done">完成</button>
+          </div>
+          <div class="sdetail__body">
+            <div class="aboutpane">
+              <div class="aboutpane__icon"><i data-i="eject"></i></div>
+              <div class="aboutpane__name" data-i18n="appName">磁盘推出助手</div>
+              <div class="aboutpane__ver" data-i18n="ds.about.versionLine">版本 1.0.0 · 构建 42 · Developer ID 直发版</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ===================== 说明 ===================== -->
+  <div class="doc__section">
+    <h2 class="doc__h2">设计说明 <em>Rationale</em></h2>
+    <div class="grid2">
+      <div class="panel">
+        <h3 class="doc__h3" style="margin-top:0">要点</h3>
+        <ul class="note-list">
+          <li><b>换两栏，是因为单栏的高度预算已经见底。</b>单栏版的窗口高度 = 五组内容纵向相加，
+            而每一组都随语言长度伸展 —— 2026-09-28 实测英文最坏情况 <code>916.20pt</code>、
+            容器 <code>920</code>，<b>只剩 3.8pt</b>。这意味着「再加一句说明文字」这种需求已经不可能满足，
+            而加一个设置项更是要先做一轮压缩文案的手术。两栏之后高度只由<b>最高的那一组</b>决定，
+            通用页 <code>237pt</code> 就是天花板 —— 余量从 3.8pt 变成 100pt 以上。</li>
+
+          <li><b>用左侧栏，不用顶部标签栏。</b>顶部标签（老式「偏好设置」的工具条图标）横向空间有限：
+            五个分类已经占满，再加一类就得换行或缩写；而且中文标签比英文宽，
+            宽度预算同样会被语言挟持 —— 那只是把「高度问题」换成「宽度问题」。
+            左侧栏是纵向的，<b>加分类只是往下多一行</b>，而 macOS 用户对它的肌肉记忆来自系统设置本身。</li>
+
+          <li><b>「关于」回到了居中大图标 —— 这不是口味变了，是约束变了。</b>
+            单栏版把它压成 70pt 的横排一行，理由是原话：「居中大图标 + 竖排版本号要吃 206pt」，
+            而当时高度已经不够。两栏之后「关于」独占一页、高度宽裕，
+            macOS 的标准「关于」形态（大图标居中）才重新变得划算。
+            <b>同一个决策，在不同的约束下正确答案会翻转</b> —— 所以 05 页保留在册：
+            它是那套约束下的正确答案，不是「做错的版本」。</li>
+
+          <li><b>侧栏选中态用强调色实底 + 白字。</b>这是 Finder 与系统设置的惯例，
+            也是唯一一个「不看文字也能定位」的写法。刻意<b>不用</b>
+            <code>accent-soft</code> 底 + 强调色前景：那个组合在浅色下对比度只有约 <code>3.4:1</code>，
+            达不到 AA；实底白字属于「图形化高亮」，可辨识性来自底色差异而非文字本身。</li>
+
+          <li><b>五个分类对应五个用户会主动产生的疑问</b>，与单栏版一一对应、文案一字不改：
+            「能不能别那么透明」「能不能换个颜色」「会不会自己更新」「出问题了去哪看」，
+            以及「这是什么东西、什么版本」。</li>
+
+          <li><b>内容少的分类保持安静，不为了「填满」而塞东西。</b>诊断页只有一行、关于页只有三行 ——
+            单栏版里这种「少」会被压缩到零（关于被压成一行），而两栏保留了「这一页确实只有这些」的诚实。
+            空，是两栏的成本，也是它的收益。</li>
+        </ul>
+      </div>
+
+      <div class="panel">
+        <h3 class="doc__h3" style="margin-top:0">规格 Handoff</h3>
+        <ul class="note-list">
+          <li>窗口 <code>720 × 440</code>，两栏横向 <code>flex</code>；独立窗口弹出，不改主窗口尺寸</li>
+          <li>左栏宽 <code>200</code>；内边距 <code>52 / 10 / 12</code>（顶 52 = 给窗口控制点让位，与右栏头齐平）</li>
+          <li>分类项：高 <code>28</code>、圆角 <code>6</code>、左右内边距 <code>8</code>、图标 <code>15</code>、图标与文字间距 <code>9</code>、项间距 <code>1</code></li>
+          <li>分类项选中态 <code>--accent</code> 实底 + <code>--on-accent</code> 文字 + 字重 <code>500</code>；悬停 <code>--bg-subtle</code>（选中项悬停为 <code>--accent-hover</code>）</li>
+          <li>左栏底 <code>--bg-sunken</code>，右边界 <code>0.5px --hairline</code>（内嵌，不占宽）</li>
+          <li>右栏头部高 <code>52</code>，内边距 <code>0 16 0 20</code>，底边 <code>0.5px --hairline</code>；标题 <code>15 / 600</code></li>
+          <li>右栏内容区内边距 <code>20 / 20 / 16</code> ⇒ <b>可用宽 480</b>（单栏版只有 440，宽了 40 ⇒ 说明文字折行更少、行高更矮）</li>
+          <li>卡片、设置行、开关、分段控件、色板、下拉一律复用单栏版的既有规格，<b>本形态不新增任何组件</b></li>
+          <li>颜色<b>零新增令牌</b>：全部走现有变量，深色取值现成 ⇒ 两栏不需要单独的深色设计</li>
+          <li>分类 → 文案键：通用 <code>settingsGroupGeneral</code>、外观 <code>settingsGroupAppearance</code>、更新 <code>settingsGroupUpdates</code>、诊断 <code>settingsGroupDiagnostics</code>、关于 <code>settingsGroupAbout</code>（本轮新增进产品 xcstrings）</li>
+          <li><b>实现侧只需改两个值</b>：<code>ds.css</code> 的 <code>--w-settings</code> / <code>--h-settings</code> →
+            <code>720 / 440</code>；<code>DesignTokens.Size.settingsPanel</code> → <code>720 × 440</code>。
+            <b><code>DesignSizeParityTests</code> 的 <code>pairs</code> 表</b>对<b>这两个令牌</b>不用动 ——
+            它按「令牌名 ↔ 常量名」配对，两边同时改值就继续同数。</li>
+          <li>⚠️ <b><code>pairs</code> 表仍要加六条</b>（2026-09-29 实施时更正）：左栏那六个数字在
+            <code>ds.css</code> 里是<b>字面量、不是令牌</b>（<code>.sside { width: 200px }</code>），
+            而「声称来自设计稿的常量必须登记进同源表」会去扫
+            <code>settingsSidebarWidth</code> 这类注释里写着「设计稿」的常量 ⇒ 会红。
+            登记用的是 <code>.rule(选择器, 属性, nth:)</code>。详见 <code>DESIGN-SPEC.md</code> §8.152.7 ①。</li>
+          <li>⚠️ <b>不要新增 <code>--w-split</code> 之类的令牌</b>：会立刻被「设计稿新声明的尺寸令牌必须登记进同源表」抓住，
+            而它要配对的是一个实现里并不存在的常量 —— 那正是那张表最忌讳的「宣称两边一致」。</li>
+          <li>连带要重写的（都是<b>单栏口径</b>的断言，切换形态必然红）：其实<b>只有</b>
+            <code>SettingsLayoutTests</code> 一处（高度预算：英文 <code>916.20 ≤ 920</code> 这套）。
+            ⚠️ 原先这里还列了 <code>WindowSelfCheck</code>（「断言窗口就是 <code>480 × 920</code>」）、
+            <code>SnapshotRenderTests</code>、<code>--preview-settings-keys</code> 的自检文案 ——
+            <b>这三处都是读 <code>DesignTokens.Size.settingsPanel</code> 的，没有写死数字</b>，
+            改完令牌它们自己就跟着变。当时那句把「判据」说成了「字面量」，
+            真正要动的只是它们文档注释里那句「480 × 920」。</li>
+          <li>左栏的 5 个分类图标复用现有 <code>data-i</code> 图标表：<code>gear</code> / <code>sun</code> / <code>download</code> / <code>log</code> / <code>info</code>，<b>零新增图标</b></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+</div>
+</div>
+<script src="../assets/i18n.js"></script>
+<script src="../assets/ds.js"></script>
+</body>
+</html>

@@ -88,15 +88,69 @@ struct DesignSizeParityTests {
         Pair(
             key: "--w-settings", constant: "settingsPanel", locator: .token("--w-settings:"),
             actual: { DesignTokens.Size.settingsPanel.width },
-            label: "设置面板宽", why: "设计稿 `--w-settings: 480px`"),
+            label: "设置面板宽",
+            why: """
+                设计稿 `--w-settings: 720px`（两栏形态：左栏 200 + 右栏 520）。
+                ⚠️ 单栏时代是 480 —— 600 与 720 之间的那次切换是**形态切换本身**，不是微调。
+                """),
         Pair(
             key: "--h-settings", constant: "settingsPanel", locator: .token("--h-settings:"),
             actual: { DesignTokens.Size.settingsPanel.height },
-            label: "设置面板高", why: "设计稿 `--h-settings: 800px`"),
+            label: "设置面板高",
+            why: """
+                设计稿 `--h-settings: 440px`。单栏时代是 920（= 五组纵向相加的英文最坏 916.20 + 余量）；
+                两栏之后高度只由**最高的那一页**决定，440 = 设计稿最高帧 384.22 + 余量 55.78。
+                """),
         Pair(
             key: "--h-titlebar", constant: "titleBarHeight", locator: .token("--h-titlebar:"),
             actual: { DesignTokens.Size.titleBarHeight },
             label: "标题栏高", why: "设计稿 `--h-titlebar: 52px`"),
+        // ---- 设置面板左栏（两栏形态） ----
+        //
+        // ⚠️ 这一组的六个数字在 `ds.css` 里**都是字面量、不是令牌**（`.sside { width: 200px }`），
+        // 所以它们**不在**「设计稿新声明的尺寸令牌必须登记进同源表」那条守卫的射程内 ——
+        // 是 `SettingsLayoutTests.左栏几何符合设计稿()` 量到 208 之后才被发现的。
+        // **主动登记**（而不是等守卫报错）的理由：左栏宽 200 反推出右栏可用宽 480，
+        // 而 480 是所有折行的前提 ⇒ 它一漂，一整片高度契约跟着漂，而**没有任何东西会报错**。
+        Pair(
+            key: ".sside width", constant: "settingsSidebarWidth",
+            locator: .rule(".sside", "width:"),
+            actual: { DesignTokens.Size.settingsSidebarWidth },
+            label: "设置面板左栏宽", why: "设计稿 `.sside { width: 200px }`"),
+        Pair(
+            key: ".sside__item height", constant: "settingsSidebarItemHeight",
+            locator: .rule(".sside__item", "height:"),
+            actual: { DesignTokens.Size.settingsSidebarItemHeight },
+            label: "分类项高", why: "设计稿 `.sside__item { height: 28px }`"),
+        Pair(
+            key: ".sside__item svg width", constant: "settingsSidebarItemIcon",
+            locator: .rule(".sside__item svg", "width:"),
+            actual: { DesignTokens.Size.settingsSidebarItemIcon },
+            label: "分类项图标边长", why: "设计稿 `.sside__item svg { width: 15px }`"),
+        Pair(
+            key: ".sside__item gap", constant: "settingsSidebarItemGap",
+            locator: .rule(".sside__item", "gap:"),
+            actual: { DesignTokens.Size.settingsSidebarItemGap },
+            label: "分类项图标与文字间距", why: "设计稿 `.sside__item { gap: 9px }`"),
+        Pair(
+            key: ".sside gap", constant: "settingsSidebarItemSpacing",
+            locator: .rule(".sside", "gap:"),
+            actual: { DesignTokens.Size.settingsSidebarItemSpacing },
+            label: "分类项之间的间距",
+            why: """
+                设计稿 `.sside { gap: 1px }`。
+                ⚠️ 它是**子项之间**的间距、不含末尾 —— 实现侧曾因为在 `VStack` 末尾多放一个
+                `Spacer` 而多出 1pt（`Spacer` 也算一个子项），整列从 208 变 209。
+                """),
+        Pair(
+            key: ".sside padding", constant: "settingsSidebarPaddingH",
+            locator: .rule(".sside", "padding:", nth: 2),
+            actual: { DesignTokens.Size.settingsSidebarPaddingH },
+            label: "左栏左右内边距",
+            why: """
+                设计稿 `.sside { padding: 52px 10px 12px }` 的**第二个**值（nth=2）——
+                52 是顶部（与内容区头部齐平）、12 是底部，只有 10 是左右。
+                """),
         Pair(
             key: ".win border", constant: "glassBorderWidth",
             locator: .rule(".win", "border:"),
@@ -438,15 +492,14 @@ struct DesignSizeParityTests {
             label: "菜单空状态容器",
             why: "56：写在 `02-menu-bar.html` 的**内联 style** 里（覆盖 ds.css 的 76），不在 `ds.css`"),
         Pair(
-            key: "–", constant: "aboutRowIcon", locator: nil,
-            actual: { DesignTokens.Size.aboutRowIcon },
-            label: "「关于」行图标",
-            why: "44：写在 `05-settings.html` 的**内联 style** 里"),
-        Pair(
-            key: "–", constant: "aboutRowHeight", locator: nil,
-            actual: { DesignTokens.Size.aboutRowHeight },
-            label: "「关于」行高",
-            why: "70：设计稿**实测值**"),
+            key: "–", constant: "aboutPaneIcon", locator: nil,
+            actual: { DesignTokens.Size.aboutPaneIcon },
+            label: "「关于」页图标容器",
+            why: """
+                76：写在 `ds.css` 的 `.aboutpane__icon`（两栏形态，`09-settings-split.html`）。
+                单栏版曾有一对 `aboutRowIcon`(44) / `aboutRowHeight`(70)，2026-09-29 随
+                「关于」横排一行那个形态一起退役 —— 两栏的「关于」独占一页、是居中大图标。
+                """),
         Pair(
             key: "–", constant: "rowBusyBarWidth", locator: nil,
             actual: { DesignTokens.Size.rowBusyBarWidth },

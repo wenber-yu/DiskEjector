@@ -155,7 +155,7 @@ struct MenuPopoverView: View {
                         Text(String(format: L10n.tr(.ejectAttentionTitle), item.disk.displayName))
                             .font(.system(size: DesignTokens.FontSize.bodyStrong, weight: .semibold))
                             .foregroundStyle(DesignTokens.Palette.foreground)
-                        Text(item.processes.map(\.displayName).joined(separator: "、"))
+                        Text(item.processSummary)
                             .font(.system(size: DesignTokens.FontSize.footnote))
                             .foregroundStyle(DesignTokens.Palette.mutedForeground)
                             .lineLimit(1)

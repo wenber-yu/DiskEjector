@@ -26,6 +26,10 @@ import Testing
 /// - ✅ 主窗口：**本机真实磁盘**一版（本机 1 块外接盘，首帧占用态为 `.unknown`，
 ///   正好对应设计稿的未授权变体）＋ **注入的多盘并列 / 忙态 / 紧凑行**三版
 /// - ✅ 菜单栏面板：注入设计稿那两块盘（Samsung T7 忙 / WD Blue 安全）
+/// - ✅ 设置面板：**五个分类页各一张 × 明暗** + 登录项第三态 + 更新各态 + 接管未授权态
+///   （两栏之后新增的；2026-09-29。⚠️ 单栏时代「拍到哪一页」不是个维度，
+///   两栏之后**任何一张设置图都必须说出它拍的是哪一页**，
+///   否则默认页「通用」会把整批图变成同一张 —— 见下面各段的注释）
 ///
 /// ⚠️ **2026-09-17 补**：本文件此前在文件头写着「未覆盖：多盘并列 / 忙态的主窗口与面板 ——
 /// 没有注入口，属独立改动」。注入口在 §8.29 / §8.30 补齐后，**这条缺口一直没回来关**，
@@ -585,7 +589,15 @@ struct SnapshotRenderTests {
             try dump(
                 SettingsView(
                     updateStateOverride: state, autoUpdateRowsOverride: designAutoUpdate,
-                    takeOverAvailabilityOverride: .usable),
+                    takeOverAvailabilityOverride: .usable,
+                    // ⚠️ **必须显式指到「更新」页**（2026-09-29 两栏之后补）：
+                    // 默认页是「通用」，而这一行状态机**只画在「更新」页上** ——
+                    // 不指的话这十几张图会全部拍到「通用」，图上**一条更新行都没有**，
+                    // 而文件名还叫 `settings-update-*`。看的人只会得出
+                    // 「更新行画不出来」这种错误结论，甚至更糟：以为画过了。
+                    // 这是两栏形态带来的一类**新**陷阱 —— 单栏时代所有内容都在同一页上，
+                    // 「拍到哪一页」这个维度根本不存在。
+                    initialSection: .updates),
                 width: DesignTokens.Size.settingsPanel.width,
                 height: DesignTokens.Size.settingsPanel.height,
                 name: "settings-update-\(slug)-light")
@@ -607,7 +619,10 @@ struct SnapshotRenderTests {
         ]
         for (slug, state) in autoUpdateRows {
             try dump(
-                SettingsView(autoUpdateRowsOverride: state, takeOverAvailabilityOverride: .usable),
+                SettingsView(
+                    autoUpdateRowsOverride: state, takeOverAvailabilityOverride: .usable,
+                    // 同上：这两行在「更新」页上。
+                    initialSection: .updates),
                 width: DesignTokens.Size.settingsPanel.width,
                 height: DesignTokens.Size.settingsPanel.height,
                 name: "settings-auto-update-\(slug)-light")
@@ -618,12 +633,52 @@ struct SnapshotRenderTests {
         // ⚠️ 这一态由**本机给没给完全磁盘访问**决定 —— 任何一台机器都只能处于其中一半，
         // 所以它在真机上**未必画得出来**（授权过的机器上永远看不到）。
         // ⇒ 必须显式注入 + 单独出图，否则它的排版与文案永远没人看过。
-        // 同源理由见 ``SettingsSectionsColumn/updateStateOverride``。
+        // 同源理由见 ``SettingsSectionPane/updateStateOverride``。
         try dump(
-            SettingsView(takeOverAvailabilityOverride: .needsFullDiskAccess),
+            SettingsView(takeOverAvailabilityOverride: .needsFullDiskAccess, initialSection: .general),
             width: DesignTokens.Size.settingsPanel.width,
             height: DesignTokens.Size.settingsPanel.height,
             name: "settings-take-over-needs-fda-light")
+
+        // ---- 五个分类各一张 + 登录项第三态（两栏形态，2026-09-29）----
+        //
+        // ⚠️ **这一段非有不可**：两栏之后「用户看到哪一页」是一个**新的维度**，
+        // 而 `SettingsView` 的默认页是「通用」—— 上面那一大批图（更新各态、两行各态）
+        // 都是**显式指定页面**才拍到东西的。不逐页出图的话，外观 / 诊断 / 关于
+        // 这三页在走查图里**完全不存在**，而「没画过的页面没人看过」正是本仓库
+        // 反复吃亏的那一类（§8.33）。
+        for section in SettingsSection.allCases {
+            for dark in [false, true] {
+                try dump(
+                    SettingsView(
+                        takeOverAvailabilityOverride: .usable, initialSection: section),
+                    width: DesignTokens.Size.settingsPanel.width,
+                    height: DesignTokens.Size.settingsPanel.height,
+                    name: "settings-page-\(section.rawValue)-\(dark ? "dark" : "light")",
+                    dark: dark)
+            }
+        }
+        // 登录项的「等待系统批准」第三态：真机上**造不出来**（要 `SMAppService`
+        // 真的返回 `.requiresApproval`），只能靠注入口 —— 不出图它永远没人看过。
+        // 它也是设计稿 09 页第 2 帧，且是**设计稿最高的一帧**（英文 384.22）。
+        //
+        // ⚠️ **明暗各出一张**（2026-09-29 补深色）：那行受阻提示行用的是
+        // `warningSoft` / `warningText` 两个**明暗自适应**令牌 ——
+        // 浅色下量到的是 `#FFF2E0` 底 + `#B25000` 字，深色下换成
+        // `rgba(255,159,10,0.16)` 底 + `#FFB340` 字。**两套值都要有人看过**：
+        // 只出浅色的话，深色下那行是不是「浅琥珀底配深色字」（= 看不清）没有任何东西知道。
+        // 令牌与设计稿逐值相等由 `PaletteColorParityTests` 守，但**渲染结果**只能看图。
+        for dark in [false, true] {
+            try dump(
+                SettingsView(
+                    takeOverAvailabilityOverride: .usable,
+                    launchAtLoginStateOverride: .requiresApproval,
+                    initialSection: .general),
+                width: DesignTokens.Size.settingsPanel.width,
+                height: DesignTokens.Size.settingsPanel.height,
+                name: "settings-launch-approval-\(dark ? "dark" : "light")",
+                dark: dark)
+        }
 
         // ---- 深色对照（设计稿 07-dark.html）----
         try dump(

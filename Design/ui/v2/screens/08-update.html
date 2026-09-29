@@ -6,10 +6,6 @@
 <title>版本更新 · DiskEjector UI v2</title>
 <link rel="stylesheet" href="../assets/ds.css" data-page-node-id="E6jQxe1R2CGtCnxFueNMvD">
 <style>
-  .note-list { margin: 0; padding-left: 18px; font-size: var(--fs-12); color: var(--text-2); line-height: 1.7; }
-  .note-list li { margin-bottom: 6px; }
-  .note-list b { color: var(--text-1); }
-  .note-list code { font-family: var(--font-mono); font-size: var(--fs-11); background: var(--bg-subtle); padding: 1px 5px; border-radius: var(--r-xs); }
   table.state-tbl { width: 100%; border-collapse: collapse; font-size: var(--fs-12); }
   table.state-tbl th {
     text-align: left; font-size: var(--fs-11); font-weight: 600; color: var(--text-3);
@@ -57,6 +53,7 @@
     <a href="06-states.html" data-page-node-id="rCGMSRUWLumQDndBoQjHJh">状态矩阵</a>
     <a href="07-dark.html" data-page-node-id="tBtJF2SjylyzfSgKDRfdCQ">深色模式</a>
     <a href="08-update.html" aria-current="page" data-page-node-id="QGQGWEVjbw2LYpwDRm7sKK">版本更新</a>
+    <a href="09-settings-split.html">设置面板（两栏）</a>
   </nav>
 
   <p class="doc__eyebrow" data-page-node-id="HC1xSMUlG7hJV7a2yqlbCH">Screen 08 · Update</p>
@@ -415,8 +412,9 @@
           </div>
         </div>
         <p class="spec-note" style="max-width:400px" data-page-node-id="ovuJiKfug3rMh8BCsqEIi7">
-          <b data-page-node-id="YglbFRhNpeOz6Szunt1dwk">这一行不染色。</b>本应用的琥珀只表示「磁盘被占用」、红只表示「破坏性动作」；
-          下载失败两者都不是。借一个已经承担了别的含义的颜色，比没有颜色更糟 ——
+          <b data-page-node-id="YglbFRhNpeOz6Szunt1dwk">这一行不染色。</b>琥珀只用于「受阻，且需用户介入才能恢复」（判据见 06-states 的 D 节）；
+          下载失败<b>会自愈</b>（文案原文「网络不可用。下次启动会自动重试。」）⇒ 不满足第二条判据。
+          红只表示「破坏性动作」，也不是。借一个已经承担了别的含义的颜色，比没有颜色更糟 ——
           用户会以为磁盘出了问题。失败靠<b data-page-node-id="kkVm1o5xjBXCvEBDIilgBZ">文字 + 一个「重试」按钮</b>表达。
         </p>
       </div>

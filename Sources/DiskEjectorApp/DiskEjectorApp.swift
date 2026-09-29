@@ -1,6 +1,68 @@
 import AppKit
 import Combine
 import SwiftUI
+import UserNotifications
+
+/// `--notification-status` 自检用的取值盒。
+///
+/// **为什么需要一个小类**：`getNotificationSettings` 的回调是 `@Sendable`，
+/// 在里面直接写 `main()` 的局部变量会被 Swift 6 严格并发拦下。
+///
+/// 用信号量在 `main()` 里同步等结果，所以这里只需要「加锁读写一个字符串」。
+final class NotificationStatusBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storage = "（3 秒内没拿到通知授权状态）"
+
+    var text: String {
+        get {
+            lock.lock()
+            defer { lock.unlock() }
+            return storage
+        }
+        set {
+            lock.lock()
+            defer { lock.unlock() }
+            storage = newValue
+        }
+    }
+}
+
+/// 「应用被重新打开时该亮哪一个窗口」的落点判据。
+///
+/// ## 为什么它值得一个纯函数
+///
+/// 两条落点的差别在用户眼里是「一眼看到该点哪个按钮」与「先找一轮」的区别，
+/// 而判错**没有任何编译错**、也不会有断言变红 —— 窗口确实开了，只是开错了那一个。
+///
+/// ## 为什么放在类外面
+///
+/// 它只依赖一个 `Bool`，与 AppKit 无关。放进 `AppDelegate`（`@MainActor`）会让
+/// 每个调用点（含测试）都被迫上主 actor；文件级 `@MainActor` 在测试里是**要登记的成本**
+/// （见 `MainActorBlockingTests`）。判据本身不需要，就别付这笔账。
+///
+/// ## ⚠️ 这条判据是为什么存在的
+///
+/// **点系统通知在系统层面就是一次「打开应用」事件**，会走到
+/// ``AppDelegate/applicationShouldHandleReopen(_:hasVisibleWindows:)``。
+/// 真机实测（2026-09-29）：不做这层分流时，点通知会开出 **800×520 主窗口**，
+/// 它成为 key window 后把 `presentAttentionPanel` 刚打开的菜单面板**顶掉** ——
+/// 用户最终只看到主窗口，而「关闭并推出」在面板上。
+///
+/// 有待处理提醒时优先面板，对「点 Dock 图标」同样是合理行为：提醒比常规入口更要紧。
+enum AppReopenPolicy {
+
+    /// 「重新打开」时该亮哪个窗口。
+    enum Target: Equatable {
+        /// 有待处理提醒 → 菜单面板（提醒卡片与「关闭并推出」都在那儿）。
+        case attentionPanel
+        /// 平时 → 主窗口。
+        case mainWindow
+    }
+
+    static func target(hasPendingAttention: Bool) -> Target {
+        hasPendingAttention ? .attentionPanel : .mainWindow
+    }
+}
 
 @main
 @MainActor
@@ -47,6 +109,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     /// 「待处理占用提醒」的订阅 —— 有提醒时把菜单栏图标换成警示态。
     private var attentionCancellable: AnyCancellable?
 
+    /// 已投过系统通知的挂载路径。
+    ///
+    /// **为什么记在 AppDelegate 而不是 `EjectNotificationService` 里**：投递判据
+    /// 「这一轮新出现了哪些提醒」本来就是**订阅端**的知识（只有它见过上一轮的键集合）。
+    /// 通知服务只负责「怎么投、怎么撤」。两边各存一份必然漂移。
+    private var notifiedAttentionKeys: Set<String> = []
+
     /// 磁盘列表等长效订阅的容器（随 app 生命周期存活）。
     private var attentionSubscriptions = Set<AnyCancellable>()
 
@@ -63,6 +132,85 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // 诊断模式：输出环境状态与识别到的磁盘后退出。
         if CommandLine.arguments.contains("--diagnostics") {
             delegate.runDiagnostics()
+            return
+        }
+
+        // 关系统占用框的自检入口：`DiskEjectorApp --dismiss-system-dialog <盘名>`。
+        //
+        // **为什么要一个 CLI 入口**：这段逻辑只在「真有系统占用框挂在屏幕上」时才走得到，
+        // 而那个状态复现成本高（挂盘 → 占用 → 从访达点推出 → 等框出现）。
+        // 有了它，真机验收可以直接跑**生产代码本身**，不必另写一份探针
+        // —— 另写一份等于什么都没验（同 `--preview-popover` 那条纪律）。
+        if let index = CommandLine.arguments.firstIndex(of: "--dismiss-system-dialog"),
+            index + 1 < CommandLine.arguments.count
+        {
+            let name = CommandLine.arguments[index + 1]
+            let report = SystemEjectDialogDismisser.dismiss(forDiskNamed: name)
+            // **把明细打出来**：失败的五种原因（没授权 / 找不到进程 / 没有窗口 /
+            // 窗口不是这块盘的 / 按钮形态没覆盖到）外观完全相同，都表现为「框还在」。
+            print(
+                """
+                关框尝试（盘=\(name)）：
+                  辅助功能授权 = \(report.isTrusted)
+                  agent 进程数 = \(report.agentProcessCount)
+                  窗口数       = \(report.windowCount)
+                  命中这块盘   = \(report.matchedWindowCount)
+                  按下按钮     = \(report.pressedCount)
+                  结束进程     = \(report.terminatedCount)
+                  放弃(多框)   = \(report.skippedAmbiguousCount)
+                """)
+            return
+        }
+
+        // 通知授权自检：`DiskEjectorApp --notification-status`。
+        //
+        // **为什么需要它**：通知不出现的原因有好几种**外观完全相同**的可能
+        // （没授权 / 用户拒绝 / 投递失败 / 被系统折叠），而本机 OSLog 读不到
+        // （`log show` 任何谓词都返回 0 行）。把授权状态从命令行打出来，
+        // 是不依赖日志的唯一判据 —— 同 `--dismiss-system-dialog` 的理由。
+        if CommandLine.arguments.contains("--notification-status") {
+            let box = NotificationStatusBox()
+            let semaphore = DispatchSemaphore(value: 0)
+            UNUserNotificationCenter.current().getNotificationSettings { settings in
+                box.text = """
+                    通知授权状态 = \(settings.authorizationStatus.rawValue)（0=未决 1=拒绝 2=已授权 3=临时）
+                    横幅/提示    = \(settings.alertSetting.rawValue)（0=未设 1=关 2=开）
+                    声音         = \(settings.soundSetting.rawValue)
+                    通知中心     = \(settings.notificationCenterSetting.rawValue)
+                    提醒样式     = \(settings.alertStyle.rawValue)（0=无 1=横幅 2=弹窗）
+                    """
+                semaphore.signal()
+            }
+            _ = semaphore.wait(timeout: .now() + 3)
+            print(box.text)
+            return
+        }
+
+        // 投一条测试通知：`DiskEjectorApp --post-test-notification`。
+        //
+        // **为什么值得一个入口**：真机上「通知没出现」有多种可能（没授权 /
+        // 投递被拒 / 被系统折叠 / 只是没赶上截图），而单看现象它们**完全一样**。
+        // 这个入口用**应用自己的身份**投一条固定内容的通知，把「通道通不通」
+        // 与「业务什么时候投」两层分开 —— 前者是一次性事实，后者才是逻辑问题。
+        // 与 `--dismiss-system-dialog` 同源：都跑生产路径，不另写一份探针。
+        if CommandLine.arguments.contains("--post-test-notification") {
+            let box = NotificationStatusBox()
+            let semaphore = DispatchSemaphore(value: 0)
+            let content = UNMutableNotificationContent()
+            content.title = "通知通道自检"
+            content.body = "能看到这条横幅，说明应用的通知通道是通的。"
+            content.sound = .default
+            let request = UNNotificationRequest(
+                identifier: "com.diskejector.app.selftest", content: content, trigger: nil)
+            UNUserNotificationCenter.current().add(request) { error in
+                box.text = error.map { "投递失败：\($0.localizedDescription)" } ?? "投递成功（未报错）"
+                semaphore.signal()
+            }
+            _ = semaphore.wait(timeout: .now() + 3)
+            print(box.text)
+            // **不要立刻退出**：交给通知中心显示需要进程再活一会儿 ——
+            // 实测「add 成功」不等于「横幅已经上屏」。
+            Thread.sleep(forTimeInterval: 2)
             return
         }
 
@@ -183,7 +331,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     ///
     /// **为什么不靠本机的真实 TCC 状态**：这一态由「本机给没给 FDA」决定，
     /// 而任何一台机器都只能处于其中**一半** —— 另一半**画不出来**，
-    /// 于是它的排版与文案永远没人看过。这与 ``SettingsSectionsColumn/updateStateOverride``
+    /// 于是它的排版与文案永远没人看过。这与 ``SettingsSectionPane/updateStateOverride``
     /// （七态里「下载中」等三态在真机上造不出来）是同一条理由。
     ///
     /// ⚠️ 只在 `--preview-*` 进程里生效，正常启动读不到 ⇒ 生产行为一字不变。
@@ -1374,11 +1522,21 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private func setupAttentionObserver() {
         let center = EjectAttentionCenter.shared
 
-        // 1. 提醒变化 → 更新图标。
+        // 0. 系统通知：装 delegate（**点击通知 → 打开菜单面板**）。
+        //
+        // 授权不在这里申请 —— 只有「用户开过这个功能」才有理由弹系统授权框，
+        // 判据在 `EjectNotificationService.start(onOpenPanel:)` 里。
+        EjectNotificationService.shared.start { [weak self] in
+            self?.presentAttentionPanel()
+        }
+
+        // 1. 提醒变化 → 更新图标 + 投 / 撤系统通知。
         attentionCancellable = center.$pending
             .receive(on: DispatchQueue.main)
-            .sink { [weak self] _ in
-                self?.updateStatusItemImage()
+            .sink { [weak self] pending in
+                guard let self else { return }
+                self.updateStatusItemImage()
+                self.syncAttentionNotifications(pending)
             }
 
         // 2. 磁盘列表变化 → 清除已不存在的盘的提醒。
@@ -1390,6 +1548,40 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 for path in stale { center.clear(mountPath: path) }
             }
             .store(in: &attentionSubscriptions)
+    }
+
+    /// 按「这一轮新出现的提醒 / 已经消失的提醒」投递与撤回系统通知。
+    ///
+    /// ## 为什么必须 diff
+    ///
+    /// ``EjectAttentionCenter/pending`` 每次变化发的都是**全量字典**，而访达的重试会让
+    /// 同一块盘反复 `note`（同一键、新值）⇒ 对字典里每个元素都投一条必然刷屏。
+    /// 「上一轮的键集合」是订阅端独有的知识，所以这份 diff 只能做在这里
+    /// （通知服务那头只保留「怎么投、怎么撤」）。
+    private func syncAttentionNotifications(_ pending: [String: EjectAttention]) {
+        let current = Set(pending.keys)
+        for key in current.subtracting(notifiedAttentionKeys) {
+            guard let item = pending[key] else { continue }
+            EjectNotificationService.shared.post(item)
+        }
+        for key in notifiedAttentionKeys.subtracting(current) {
+            EjectNotificationService.shared.withdraw(mountPath: key)
+        }
+        notifiedAttentionKeys = current
+    }
+
+    /// 把菜单面板亮出来 —— 用户点击系统通知时的落点。
+    ///
+    /// **为什么是菜单面板而不是主窗口**：提醒与「关闭并推出」都在面板上。
+    /// 跳去主窗口等于让用户再找一次那个按钮。
+    ///
+    /// ⚠️ **必须先 `activate`**：`.accessory` 形态下应用不在前台，
+    /// `NSPopover` 不会上屏（与 `--preview-popover` 那条注释同一个坑）。
+    @MainActor
+    private func presentAttentionPanel() {
+        guard let popover = statusPopover, let button = statusItem?.button else { return }
+        NSApp.activate(ignoringOtherApps: true)
+        if !popover.isShown { showStatusPopover(anchoredTo: button) }
     }
 
     /// 根据是否还有待处理提醒，切换菜单栏图标。
@@ -2114,7 +2306,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     ///
     /// | 缺的东西 | 后果 |
     /// |---|---|
-    /// | `safeAreaRegions = []` | **上屏前 480×920 → 上屏后 480×952**（多 32pt） |
+    /// | `safeAreaRegions = []` | **上屏前 480×920 → 上屏后 480×952**（多 32pt）※ 这组数字是在单栏尺寸上量的；两栏改成 720×440 之后是 **440 → 472**，机制不变（`.fullSizeContentView` 把内容下推 32pt 并按「内容 + 32」回推固有尺寸） |
     /// | `backgroundColor = .clear` + `isOpaque = false` | 窗口不透明 → `.underWindowBackground` 的毛玻璃**糊不到桌面**，看起来是平色块 |
     /// | `titleVisibility = .hidden` | 系统标题栏的「设置」与面板自己头部的「设置」**重复** |
     /// | `contentView.layer.cornerRadius` | 玻璃卡片是 12pt 圆角、窗口底角却是直角，两者不重合 |
@@ -2157,7 +2349,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // 独立窗口没有 SwiftUI 的 presentation 上下文，`@Environment(\.dismiss)`
         // 在这里是空操作 —— 必须由宿主把「完成」接到关窗上，否则按钮点了没反应。
         // `fillsHost: true` —— 独立窗口要「玻璃铺满整窗」。`false` 是给 `.sheet`
-        // 与离屏出图用的（它们要的是理想尺寸 480×920），详见 ``SettingsView/fillsHost``。
+        // 与离屏出图用的（它们要的是理想尺寸 720×440），详见 ``SettingsView/fillsHost``。
         let hosting = NSHostingView(
             rootView: SettingsView(
                 onDone: { [weak win] in win?.close() },
@@ -2184,7 +2376,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: - 关闭/退出
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        if !flag { showMainWindow() }
+        guard !flag else { return true }
+        switch AppReopenPolicy.target(
+            hasPendingAttention: EjectAttentionCenter.shared.hasPendingAttention)
+        {
+        case .attentionPanel: presentAttentionPanel()
+        case .mainWindow: showMainWindow()
+        }
         return true
     }
 

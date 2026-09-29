@@ -171,7 +171,34 @@ enum DesignTokens {
         /// 主窗口尺寸（设计稿硬性规格）。
         static let mainWindow = CGSize(width: 800, height: 520)
 
-        /// 设置面板尺寸。
+        /// 设置面板尺寸 —— **两栏形态**（设计稿 `09-settings-split.html`，2026-09-29 采纳）。
+        ///
+        /// ## 2026-09-29：单栏 480×920 → 两栏 720×440
+        ///
+        /// **换形态是因为单栏的高度预算已经见底**：单栏版的高度 = 五组内容**纵向相加**，
+        /// 于是窗口高度成了「最长那门语言」的函数 —— 2026-09-28 实测英文最坏
+        /// `916.20` / 容器 `920`，**只剩 3.8pt**，再加一行说明就得先做一轮压缩文案的手术。
+        /// 两栏把高度从「五组之和」降成「**最高的那一组**」，而宽度对语言长度不敏感：
+        /// 以后加内容只动宽度预算，不动窗口尺寸。
+        ///
+        /// ⚠️ **判据永远是「最长的那门语言」**：实量（`Tools/measure_settings_split.py`）
+        /// 最高的一帧是「通用 · 登录项等待系统批准」的**英文**态 = **384.22**
+        /// （同帧中文 368.28），取 **440** ⇒ 最坏余量 55.78。
+        /// 只量中文会拿到 368.28，按它定 400 就会在英文下把最后一行推进 `overflow: hidden`
+        /// —— 而「被裁掉」与「本来就没那么多内容」在渲染图上长得一模一样。
+        ///
+        /// ⚠️ **宽 480→720 与高 920→440 是同一次改动**，不是两次独立调整：
+        /// 单栏时代那条「宽解决英文放不下、高解决多了一行」的教训在**新形态下不再适用**，
+        /// 别再照着它推两栏的尺寸。
+        ///
+        /// 右栏可用宽 = `720 − 200(左栏) − 20×2(内容内边距) = 480`
+        /// （单栏版只有 440 ⇒ 同样的说明文字折行更少，行高更矮）。
+        ///
+        /// 单栏版（`screens/05-settings.html`）**保留在册**：它是「高度预算见底」
+        /// 那套约束下的正确答案，不是做错的版本。以下是它的历史推导，留作参照 ——
+        /// **⚠️ 下面这些数字全部属于单栏形态（已退役），不是当前值。**
+        ///
+        /// ---
         ///
         /// **高度是量出来的，不是拍脑袋定的**：内容自然高度随文案变化，
         /// 历史值 520pt 装不下（实测内容 602pt），于是面板底部的「关于 / 更新」被
@@ -261,7 +288,26 @@ enum DesignTokens {
         /// 全仓搜不到任何 `visibleFrame` 夹取）。876 在 1440×900 的机器上就已贴边，
         /// 920 会超出。要再往里加内容，得先解决「窗口比屏幕高」这件事 ——
         /// 滚动区虽有，但折叠线之下用户看不见。**别顺手把高度加上去。**
-        static let settingsPanel = CGSize(width: 480, height: 920)
+        static let settingsPanel = CGSize(width: 720, height: 440)
+
+        // MARK: 两栏设置面板（设计稿 `09-settings-split.html` 第 18 节）
+
+        /// 左栏（分类栏）宽度（设计稿 `.sside { width: 200px }`）。
+        static let settingsSidebarWidth: CGFloat = 200
+        /// 分类项高度（`.sside__item { height: 28px }`）。
+        static let settingsSidebarItemHeight: CGFloat = 28
+        /// 分类项图标边长（`.sside__item svg { width: 15px }`）。
+        static let settingsSidebarItemIcon: CGFloat = 15
+        /// 分类项图标与文字的间距（`.sside__item { gap: 9px }`）。
+        static let settingsSidebarItemGap: CGFloat = 9
+        /// 分类项之间的间距（`.sside { gap: 1px }`）。
+        static let settingsSidebarItemSpacing: CGFloat = 1
+        /// 左栏左右内边距（`.sside { padding: 52px 10px 12px }` 里的 `10px`）。
+        static let settingsSidebarPaddingH: CGFloat = 10
+        /// 右栏内容区内边距（`.sdetail__body { padding: 20px 20px 16px }`）。
+        static let settingsDetailPaddingTop: CGFloat = 20
+        static let settingsDetailPaddingH: CGFloat = 20
+        static let settingsDetailPaddingBottom: CGFloat = 16
 
         /// 菜单栏弹出面板宽度。
         static let menuPopoverWidth: CGFloat = 360
@@ -601,10 +647,16 @@ enum DesignTokens {
 
         /// 空状态大图标容器（设计稿 76 × 76，圆角 18）。
         static let emptyArtSize: CGFloat = 76
-        /// 设置面板「关于」行图标（设计稿 44 × 44）。
-        static let aboutRowIcon: CGFloat = 44
-        /// 设置面板「关于」行高度（设计稿实测 70）。
-        static let aboutRowHeight: CGFloat = 70
+        /// 设置面板「关于」页的图标容器（设计稿 09 页 `.aboutpane__icon`：76 × 76、圆角 14）。
+        ///
+        /// ⚠️ **与 ``emptyArtSize`` 数值相同、语义不同，别合并**：那个是「空状态装饰图」
+        /// （`subtle` 底、圆角 18），这个是「关于页的应用图标」（accent 实底 + 白图标、
+        /// 圆角 14、带 e2 阴影）。
+        ///
+        /// 单栏版曾有一对 `aboutRowIcon`(44) / `aboutRowHeight`(70)，随「关于」横排一行
+        /// 那个形态一起删除 —— 两栏的「关于」独占一页，不再有那条行
+        /// （设计稿 05 页那一版仍在 `screens/05-settings.html` 里留着作参照）。
+        static let aboutPaneIcon: CGFloat = 76
 
         /// 开关：轨道 38 × 22，滑块 18，内缩 2（行程 16）。
         static let switchTrackWidth: CGFloat = 38
@@ -633,8 +685,17 @@ enum DesignTokens {
 
     /// 语义色与表面色。
     ///
-    /// **硬规则**（设计稿 §2.1）：琥珀只表示「被占用」，红色只表示「破坏性」。
-    /// 磁盘快写满等其他语义一律不复用这两种颜色，避免同色双义。
+    /// **硬规则**（设计稿 §2.1）：琥珀与红是**专义色** ——
+    /// 琥珀只用于「**受阻，且需用户介入才能恢复**」，红色只表示「破坏性」。
+    ///
+    /// 判据三条**同时成立**才用琥珀：① 不是失败、是受阻；② 不介入不会自行恢复；
+    /// ③ 恢复动作在**用户手上**（不在等网络、等系统、等重试）。判据外的语义
+    /// 一律不复用这两种颜色，避免同色双义。
+    ///
+    /// ⚠️ **本条 2026-09-29 澄清过**：旧文写的是「琥珀只表示**被占用**」，比实际用法窄 ——
+    /// FDA 未授权横幅、登录项等待批准都**不是「被占用」**，但都满足三条判据。
+    /// 反过来「更新下载失败」不满足第 ②（它下次启动会自动重试）⇒ 不染色。
+    /// 完整推导与全部实例见设计稿 §2.1 与 `06-states.html` D 节。
     enum Palette {
 
         // MARK: 明暗自适应工具
@@ -797,7 +858,12 @@ enum DesignTokens {
 
         // MARK: 语义色
 
-        /// 被占用：琥珀。**唯一用途**是左侧色条、证据区、占用文字。
+        /// **受阻**：琥珀。判据三条见 ``Palette`` 抬头（受阻 / 不会自愈 / 恢复在用户手上）。
+        ///
+        /// 本应用里它的实例不少：左侧色条、证据区、占用文字、容量条高用量、
+        /// FDA 未授权横幅、登录项等待批准行。
+        /// ⚠️ 旧文写的是「**唯一用途**是左侧色条、证据区、占用文字」——那句话在
+        /// 2026-09-29 语义澄清之前就已经不准确了（上面几个实例早就在用），一并更正。
         static var warning: Color { adaptive(light: hex(0xFF9500), dark: hex(0xFF9F0A)) }
         /// 琥珀底上的文字（浅色需压暗才够对比度）。
         static var warningText: Color { adaptive(light: hex(0xB25000), dark: hex(0xFFB340)) }

@@ -22,6 +22,16 @@ struct EjectAttention: Identifiable, Sendable, Equatable {
 
     /// 记录时刻（仅供排序 / 诊断，UI 不展示）。
     let notedAt: Date
+
+    /// 占用者的展示名摘要，如 `Final Cut Pro、访达`。
+    ///
+    /// **放在这里是为了「只有一份」**：菜单面板的提醒卡片与系统通知的正文都要这句话，
+    /// 各拼一份必然漂移（分隔符、顺序、去重只要有一处不同，用户就会看到两种说法）。
+    /// 分隔符用顿号：中文界面读得顺，英文界面也还能看 —— 换成 `ListFormatter`
+    /// 会让两处按各自 locale 拼出不同结果，反而破坏「同一个提醒只有一种说法」。
+    var processSummary: String {
+        processes.map(\.displayName).joined(separator: "、")
+    }
 }
 
 /// 「待处理占用」的单一事实来源：菜单栏提示由它驱动。

@@ -20,10 +20,10 @@
 
   .toolbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }
 
-  .note-list { margin: 0; padding-left: 18px; font-size: var(--fs-12); color: var(--text-2); line-height: 1.75; }
-  .note-list li { margin-bottom: 7px; }
-  .note-list b { color: var(--text-1); }
-  .note-list code { font-family: var(--font-mono); font-size: var(--fs-11); background: var(--bg-subtle); padding: 1px 5px; border-radius: var(--r-xs); }
+  /* `.note-list` 不在这里定义 —— 走 `assets/ds.css` 的共享版。
+     2026-09-29：本文件原先自带一份，行距 1.75 / 列表项 7px，而共享版是 1.7 / 6px。
+     9 个文件 9 份副本，其中 8 份逐字相同、只有这里漂了 —— **没有任何东西会报错**，
+     总览页就是比每一屏松一点。现在收编，本文件不再有第二份真相。 */
 
   .swatchgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(148px, 1fr)); gap: 10px; }
   .swatchcard { padding: 0; border-radius: var(--r-md); overflow: hidden; background: var(--bg-raised); box-shadow: inset 0 0 0 0.5px var(--border); }
@@ -92,6 +92,7 @@
     <a href="screens/06-states.html" data-page-node-id="3hXltfsVaeR4bYBeJR8VGY">状态矩阵</a>
     <a href="screens/07-dark.html" data-page-node-id="hj7tpfHZ5AHJZBZ9EHY6AW">深色模式</a>
     <a href="screens/08-update.html">版本更新</a>
+    <a href="screens/09-settings-split.html">设置面板（两栏）</a>
   </nav>
 
   <!-- ==================== HERO ==================== -->
@@ -681,6 +682,30 @@
           <div class="scard-link__no">SCREEN 08</div>
           <div class="scard-link__title">版本更新</div>
           <div class="scard-link__desc">新版本弹窗（跳过 / 后台更新并重启）· 后台下载就地进度 · 已跳过与稍后两个落点</div>
+        </div>
+      </a>
+
+      <a class="scard-link" href="screens/09-settings-split.html">
+        <div class="scard-link__thumb" style="align-items:center;justify-content:center">
+          <div class="wf-block" style="width:80%;height:98px;display:flex;gap:8px;padding:10px">
+            <div style="width:32%;display:flex;flex-direction:column;gap:5px">
+              <div class="wf-bar" style="width:100%;height:12px;background:var(--accent)"></div>
+              <div class="wf-bar" style="width:88%;height:12px"></div>
+              <div class="wf-bar" style="width:94%;height:12px"></div>
+              <div style="flex:1"></div>
+            </div>
+            <div style="flex:1;display:flex;flex-direction:column;gap:6px">
+              <div class="wf-bar" style="width:46%;height:6px"></div>
+              <div class="wf-bar" style="width:100%;height:15px"></div>
+              <div class="wf-bar" style="width:100%;height:15px"></div>
+              <div class="wf-bar" style="width:100%;height:15px"></div>
+            </div>
+          </div>
+        </div>
+        <div class="scard-link__body">
+          <div class="scard-link__no">SCREEN 09 · 已采纳</div>
+          <div class="scard-link__title">设置面板（两栏）</div>
+          <div class="scard-link__desc">720 × 440 · 左侧分类 + 右侧内容 · 高度不再随最长语言伸长</div>
         </div>
       </a>
     </div>

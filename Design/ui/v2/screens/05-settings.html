@@ -6,10 +6,6 @@
 <title>设置面板 · DiskEjector UI v2</title>
 <link rel="stylesheet" href="../assets/ds.css" data-page-node-id="pmt2aCojZpc6OBrFDqrK1w">
 <style>
-  .note-list { margin: 0; padding-left: 18px; font-size: var(--fs-12); color: var(--text-2); line-height: 1.7; }
-  .note-list li { margin-bottom: 6px; }
-  .note-list b { color: var(--text-1); }
-  .note-list code { font-family: var(--font-mono); font-size: var(--fs-11); background: var(--bg-subtle); padding: 1px 5px; border-radius: var(--r-xs); }
   .shead {
     flex: none; height: 52px; display: flex; align-items: center;
     padding: 0 16px; border-bottom: 0.5px solid var(--hairline);
@@ -28,13 +24,6 @@
     color: #fff; box-shadow: var(--e1);
   }
   .aboutrow__icon svg { width: 23px; height: 23px; }
-  .linkbtn {
-    border: 0; background: transparent; padding: 0; cursor: pointer;
-    font-family: var(--font-ui); font-size: var(--fs-12); font-weight: 500;
-    color: var(--accent); display: inline-flex; align-items: center; gap: 4px;
-  }
-  .linkbtn:hover { text-decoration: underline; }
-  .linkbtn svg { width: 12px; height: 12px; }
 </style>
 </head>
 <body class="ds" data-page-node-id="m4epPCE5UlaxC17c7n8AA1">
@@ -51,6 +40,7 @@
     <a href="06-states.html" data-page-node-id="hboDR3ArMMoCZIzGiShD7w">状态矩阵</a>
     <a href="07-dark.html" data-page-node-id="O2rOa1tVGB3e4SGuXRw1nO">深色模式</a>
     <a href="08-update.html" data-page-node-id="4GKI4kGHOHveiYVinzT5V5">版本更新</a>
+    <a href="09-settings-split.html">设置面板（两栏）</a>
   </nav>
 
   <p class="doc__eyebrow" data-page-node-id="YJd2dLWbbIUuQBZy4x0CND">Screen 05 · Settings</p>
@@ -60,14 +50,23 @@
     「能不能别那么透明」「能不能换个颜色」「能不能开机就在」「出问题了去哪看」「会不会自己更新」。
     没有对应问题的项，就不该出现在这里。
   </p>
+  <p class="doc__lede">
+    <strong>⚠️ 本页是单栏旧形态，已被「<a href="09-settings-split.html">设置面板（两栏）</a>」取代。</strong>
+    采纳的是两栏版；本页保留在册，是因为它记录了<strong>高度预算见底时</strong>（英文最坏 916.20 / 容器 920，
+    只剩 3.8pt）那套约束下的正确答案 —— 不是「做错的版本」。实现侧切换完成后本页退役。
+  </p>
 
   <div class="artboard" style="gap:64px" data-page-node-id="5jsjQ2Hx5Wf30IPzgNp2fU">
 
     <!-- ============ 设置面板 ============ -->
     <div class="frame" data-page-node-id="IRbUW2f4WrY5IVqh8CQSDG">
-      <div class="frame__label" data-page-node-id="QzG1X6DuUzyB28aRcm2EYM">480 × 920 · 五组内容全部可见（与产品侧同数；浏览器切英文时底部留白被吃掉，见 §8.43）</div>
+      <div class="frame__label" data-page-node-id="QzG1X6DuUzyB28aRcm2EYM">480 × 920 · 五组内容全部可见（本页是历史形态、尺寸冻结；浏览器切英文时底部留白被吃掉，见 §8.43）</div>
 
-      <div class="win win--settings" data-page-node-id="9rdqMgyeX5rGq8fy7HlgUX">
+      <!-- ⚠️ 本页画的是**已退役的单栏形态**（产品侧 2026-09-29 已切两栏，见
+           `09-settings-split.html`）。窗口尺寸**就地冻结**成内联的 480×920，
+           不再跟 `--w-settings` / `--h-settings` 走 —— 那两个令牌现在服务的是
+           两栏形态（720 × 440）。这是历史快照，不是待补的漏网之鱼。 -->
+      <div class="win win--settings" style="width:480px;height:920px" data-page-node-id="9rdqMgyeX5rGq8fy7HlgUX">
         <div class="shead" data-page-node-id="ZD25WhZGodQHWFbYl6ZFTs">
           <span class="shead__title" data-page-node-id="z7Owz4JYBALVkVJoGdUqWR" data-i18n="openSettings">设置</span>
           <span style="flex:1" data-page-node-id="FlQ9xXgCbrqOoeRQMzPSpL"></span>
@@ -148,11 +147,11 @@
 
               <div class="sline">
                 <div class="sline__text">
-                  <div class="sline__label" data-i18n="takeOverFinderEject">接管访达的推出</div>
-                  <div class="sline__desc" data-i18n="takeOverFinderEjectFootnote">在访达中点推出时，由本应用判定并列出占用者。判定期间访达会等待你的决定，此时其他磁盘的推出也会一并暂缓。</div>
+                  <div class="sline__label" data-i18n="takeOverFinderEject">推出时提醒占用</div>
+                  <div class="sline__desc" data-i18n="takeOverFinderEjectFootnote">在访达中点推出、但磁盘正被占用时，在菜单栏提醒你谁在占用，可一键关闭并推出。</div>
                 </div>
                 <div class="sline__control">
-                  <button class="switch" role="switch" aria-checked="false" aria-label="接管访达的推出" data-i18n-attr="aria-label:takeOverFinderEject"></button>
+                  <button class="switch" role="switch" aria-checked="false" aria-label="推出时提醒占用" data-i18n-attr="aria-label:takeOverFinderEject"></button>
                 </div>
               </div>
             </div>
@@ -300,9 +299,9 @@
               </div>
             </div>
 
-            <div class="sline" style="background:var(--warn-soft)" data-page-node-id="lWr293MFOlFlGkZo7ju7JC">
+            <div class="sline sline--warn" data-page-node-id="lWr293MFOlFlGkZo7ju7JC">
               <div class="sline__text" data-page-node-id="rTYyFLR1qQUeT5toKxnBWK">
-                <div class="sline__label" style="color:var(--warn-text);font-weight:500" data-page-node-id="xFA6CqYakARwyvftp8iprF" data-i18n="ds.loginItem.awaiting">等待系统批准</div>
+                <div class="sline__label" data-page-node-id="xFA6CqYakARwyvftp8iprF" data-i18n="launchAtLoginPendingTitle">等待系统批准</div>
                 <div class="sline__desc" data-page-node-id="8TvLQZrSrGVm0OW2f84RnJ" data-i18n="launchAtLoginPendingHint">注册已提交，但还需在系统设置中手动打开，否则不会自动启动。</div>
               </div>
               <div class="sline__control" data-page-node-id="iLG81xoWna6BU2et13qrto">
@@ -400,13 +399,18 @@
             ⚠️ 顺带压短了一句文案：<code>autoUpdateUnavailableHint</code> 英文从 79 字符压到 49 字符 ——
             它要在两行上各出现一次，各折两行的话英文比中文多两行、<b>高度无解</b>（不是偏紧）。
             改任何一段文案后需同步复测，否则底部会被折叠到滚动区外——这正是旧版「设置排版不好看」的真实原因。</li>
+          <li><b>已被两栏形态取代：见「设置面板（两栏）」页。</b>
+            本页是单栏纵向排布，五组依次往下堆；两栏版把它们拆成左侧分类 + 右侧内容，
+            <b>高度只由最高的那一组决定</b>，不再随语言长度伸展。
+            2026-09-29 采纳的是两栏版；本页保留在册，回答的是「这套约束下的最少面板是什么样」——
+            当窗口高度再次成为硬约束时（例如要塞进某个固定区域），它仍然是可用的答案。</li>
         </ul>
       </div>
 
       <div class="panel" data-page-node-id="dvUD95H4BBlcFmP8C77eSG">
         <h3 class="doc__h3" style="margin-top:0" data-page-node-id="I1VxqYS3Fc6O2PuD3g5IAD">规格 Handoff</h3>
         <ul class="note-list" data-page-node-id="6KdQZfh6M7irEUfbnmrfyW">
-          <li data-page-node-id="UljFWAj04qlJajxblzf6yl">面板 <code data-page-node-id="vEUpV8EaKwBwBGyv3HjIfP">480 × 920</code>（与产品侧同数，见 DESIGN-SPEC §8.43），独立窗口弹出（不再作为主窗口的 sheet）</li>
+          <li data-page-node-id="UljFWAj04qlJajxblzf6yl">面板 <code data-page-node-id="vEUpV8EaKwBwBGyv3HjIfP">480 × 920</code>（<b>本页冻结的历史值</b>；产品侧 2026-09-29 已切 <code>720 × 440</code> 两栏形态），独立窗口弹出（不再作为主窗口的 sheet）</li>
           <li data-page-node-id="HKeawko04yFSP3gtyAy0Wq">头部高 <code data-page-node-id="u77C92svz5qL25nvZ7RvGB">52</code>；内容内边距 <code data-page-node-id="GbRsVYq7L7xj0GEW0ueEA3">20 / 20 / 16</code></li>
           <li data-page-node-id="yGFxELPjIGvagCWKFnN1ow">分组标题 <code data-page-node-id="wsvU52wXQYU157s94V6bIQ">11 / 600</code> + 字距 <code data-page-node-id="pi0W7beB4rmlRx9jPfle0d">0.05em</code>，距卡片 <code data-page-node-id="v6n3PQWNOvWCxkv9JWxgzF">6</code>；组间距 <code data-page-node-id="8WEoPN24pSbCtGYRws5fUk">20</code></li>
           <li data-page-node-id="j0f01Q0CetS3H8Vu27KgtR">设置行最小高 <code data-page-node-id="7kfuCFDXCH02mRPm6VGiYj">44</code>，内边距 <code data-page-node-id="3O6qZOCR5rdxI3H8XWeLAA">11 / 12</code>；行间 <code data-page-node-id="EIX8J27qqWy4jvxdJ0xFye">0.5px</code> 内嵌分隔线</li>

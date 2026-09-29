@@ -104,8 +104,9 @@ struct IconBadge: View {
         /// **与 `.emptyArt` 不是同一档**：面板只有 360pt 宽，76 的方块在空状态里
         /// 比文案还重。设计稿在 `02-menu-bar.html` 里把它覆盖成 56 / 圆角 14。
         case menuEmptyArt
-        /// 设置面板「关于」行：44 × 44，圆角 12，accent 实心 + 白色图标。
-        case settingsAbout
+        // ⚠️ 2026-09-29 删除 `case settingsAbout`（44 × 44、圆角 12、accent 实心）：
+        // 设置面板切两栏后「关于」独占一页、改用居中大图标（``SettingsAboutPane``，
+        // 在 `SettingsView.swift` 里）。理由与下面那两条逐字相同 —— 零实例化点。
         // ⚠️ 这里曾经还有 `dialogWarning` / `dialogPrimary`（「无底色，警告色/强调色 32pt」），
         // 2026-09-16 设计走查时删掉。两条理由：
         //
@@ -212,15 +213,13 @@ struct IconBadge: View {
                 foreground: DesignTokens.Palette.textDecorative,
                 border: .clear
             )
-        case .settingsAbout:
-            return Config(
-                container: DesignTokens.Size.aboutRowIcon,
-                iconSize: 22,
-                radius: DesignTokens.Radius.md,
-                background: accentColor,
-                foreground: .white,
-                border: .clear
-            )
+        // ⚠️ 2026-09-29 删除 `case .settingsAbout`：设置面板切两栏后，
+        // 「关于」独占一页、改用居中大图标（``SettingsAboutPane``：76 × 76、
+        // accent 实底 + 白图标 40、e2 阴影）。本档位（44 × 44 的行内徽标）
+        // 在源码与测试里都**再没有实例化点** —— 与上面那两条
+        // `dialogWarning` / `dialogPrimary` 同一条纪律：留着一个没人用的规格，
+        // 下一个人会以为「关于页的图标是个 44pt 的行内徽标」。
+        // 设计稿 05 页那一版（`.aboutrow`）仍在册，但产品侧已随形态切换退役。
         }
     }
 }
@@ -228,9 +227,10 @@ struct IconBadge: View {
 // MARK: - AlertIcon（弹窗图标容器）
 //
 // 设计稿 `.alert__icon`：38 × 38、圆角 10、图标 20，坐在同色系浅底上。
-// 与 ``IconBadge`` 的区别是**它带语义色**：琥珀=被占用（`.alert__icon--warn`）、
-// 红=破坏性失败（`.alert__icon--danger`）。这两种颜色在设计稿里是**专义**的
-// （§2.1：琥珀只表示被占用、红只表示破坏性），所以不做成通用的可配色组件。
+// 与 ``IconBadge`` 的区别是**它带语义色**：琥珀=受阻（`.alert__icon--warn`，
+// 本组件拿它表达「被占用」这个实例）、红=破坏性失败（`.alert__icon--danger`）。
+// 这两种颜色在设计稿里是**专义**的（§2.1：琥珀=受阻且需用户介入、红=破坏性），
+// 所以不做成通用的可配色组件。
 
 /// 弹窗左上角图标。设计稿 `.alert__icon--warn` / `.alert__icon--danger`。
 struct AlertIcon: View {
@@ -690,11 +690,16 @@ struct ProcessChipOverflow: View {
 //
 // 设计稿 `.meter`：轨道高 5 全圆角，右侧百分比**固定宽 34** —— 固定宽才能让
 // 多行磁盘的百分比数字纵向对齐（数字用 `tabular-nums` 等宽）。
-// 用量达到 ``DesignTokens/Threshold/meterHigh``（90%）时切琥珀（`.meter--high`），
-// 但**不改变语义**：琥珀仍只表示「被占用」，这里只是复用同一支暖色表达「注意」，
-// 不参与「能否推出」的判定。
-// ⚠️ 设计稿 `06-states.html` D 节写着「琥珀只表示被占用」，并把这一处列为**唯一例外**
-// —— 改动这一档之前先读那一节（两边是配套的：一边是规则，一边是例外）。
+// 用量达到 ``DesignTokens/Threshold/meterHigh``（90%）时切琥珀（`.meter--high`）。
+//
+// ⚠️ **它不是规则的例外，是规则的实例**（2026-09-29 更正）。照 §2.1 那三条判据逐条核：
+// ① 快满，不是失败，是受阻；② 用户不清它就不会自己变少；③ 清理由用户做（删文件 / 换盘）。
+// 三条全中 ⇒ 用琥珀是**合法**的，不需要「唯一例外」这种豁免。
+// 它同时**不参与「能否推出」的判定** —— 与「被占用」那一支的琥珀各说各的。
+//
+// ⚠️ 旧文写的是「D 节写着『琥珀只表示被占用』，并把这一处列为**唯一例外**」——
+// 那句引用**已经失效**：D 节现在写的是三条判据，正文里的「唯一例外」措辞
+// 已于 2026-09-29 删除。改动这一档之前读 `06-states.html` 的 D 节（判据）与 E 节（本实例）。
 
 struct StorageMeter: View {
     let ratio: Double

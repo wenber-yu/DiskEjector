@@ -9,7 +9,7 @@ import Testing
 /// ## 这条测试防的是哪一类 bug
 ///
 /// 用户报「切换透明和色调没有任何变化」。根因不是渲染错了，而是**这个偏好只被写、
-/// 从来没有被读**：`SettingsSectionsColumn` 用 `@AppStorage` 把它存进 UserDefaults，
+/// 从来没有被读**：`SettingsSectionPane` 用 `@AppStorage` 把它存进 UserDefaults，
 /// 全仓库却没有任何一处读它来决定画什么 —— ``GlassSurface`` 一律画毛玻璃。
 ///
 /// 一个只写不读的偏好，在 UI 上和「没做这个功能」**没有区别**，而且不会让任何

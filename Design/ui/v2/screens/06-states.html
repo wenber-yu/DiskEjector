@@ -6,10 +6,6 @@
 <title>状态矩阵 · DiskEjector UI v2</title>
 <link rel="stylesheet" href="../assets/ds.css" data-page-node-id="0XAPuRhtZHGsOOA27gxnbu">
 <style>
-  .note-list { margin: 0; padding-left: 18px; font-size: var(--fs-12); color: var(--text-2); line-height: 1.7; }
-  .note-list li { margin-bottom: 6px; }
-  .note-list b { color: var(--text-1); }
-  .note-list code { font-family: var(--font-mono); font-size: var(--fs-11); background: var(--bg-subtle); padding: 1px 5px; border-radius: var(--r-xs); }
   table.state-tbl { width: 100%; border-collapse: collapse; font-size: var(--fs-12); }
   table.state-tbl th {
     text-align: left; font-size: var(--fs-11); font-weight: 600; color: var(--text-3);
@@ -36,6 +32,7 @@
     <a href="06-states.html" aria-current="page" data-page-node-id="GYAKl8ay8k3cmofVDAnqE3">状态矩阵</a>
     <a href="07-dark.html" data-page-node-id="ESrym6TKGNJMRphosCWJMm">深色模式</a>
     <a href="08-update.html" data-page-node-id="HoBiVU8giHIPGhGq400HSG">版本更新</a>
+    <a href="09-settings-split.html">设置面板（两栏）</a>
   </nav>
 
   <p class="doc__eyebrow" data-page-node-id="0xU9F7uO3FyFmRNqvOXFLd">Screen 06 · States</p>
@@ -310,11 +307,12 @@
             实际上 Spotlight 可能正抓着这块盘——这是本应用最不能犯的错误。</li>
         </ul>
         <ul class="note-list" data-page-node-id="mLLLYSAkDl4hOWipHmkTWl">
-          <li data-page-node-id="Sj3997HISoZyEJI6KuKCii"><b data-page-node-id="3zZjDxiKGQ9zr7fCdNXPSA">琥珀只表示「被占用」，红色只表示「破坏性」。</b>磁盘快写满、容量告警等其他语义
-            一律不使用这两种颜色，避免同一颜色在同一界面里承担两种含义。
-            <br><b>唯一例外（2026-09-19 拍板）：容量条用量 ≥ 90%（<code>.meter--high</code>）。</b>
-            这里复用同一支暖色只为提醒「快满」，<b>不改变语义</b> —— 不参与「能否推出」的判定，
-            也不表示「被占用」。阈值 0.9 的可视依据见本节 <b>E · 容量条用量三档</b>。</li>
+          <li data-page-node-id="Sj3997HISoZyEJI6KuKCii"><b data-page-node-id="3zZjDxiKGQ9zr7fCdNXPSA">琥珀只表示「受阻，且需用户介入才能恢复」，红色只表示「破坏性」。</b>判据三条同时成立才算琥珀：
+            ① 不是失败，是受阻 / 未完成；② 不介入不会自行恢复；③ 恢复动作在用户手上。
+            会自愈的中间态一律不染色 —— 更新下载失败即一例（下次启动自动重试，见 08 页）。
+            <br><b>现有四处合规用法（2026-09-29 澄清，含 2026-09-19 拍板的容量条）：</b>磁盘被占用（左侧琥珀条 / 证据区）、
+            容量条用量 ≥ 90%（<code>.meter--high</code>）、FDA 授权横幅（<code>.banner</code>）、登录项待批准行。
+            四者<b>都不参与</b>「能否推出」的判定。阈值 0.9 的可视依据见本节 <b>E · 容量条用量三档</b>。</li>
         </ul>
       </div>
     </div>
@@ -352,7 +350,7 @@
 
       <ul class="note-list" style="margin-top:16px">
         <li><b>30% / 70%：常态。</b>填充用当前强调色，百分比数字用次级文字色 —— 三档里只有最下面那根不同。</li>
-        <li><b>95%：切琥珀。</b>填充 <code>var(--warn)</code>、百分比数字 <code>var(--warn-text)</code>（<code>ds.css</code> 的 <code>.meter--high</code>）。这是「琥珀只表示被占用」的<b>唯一例外</b>，且<b>不改变语义</b> —— 它不参与「能否推出」的判定，见 D 节那条硬规则。</li>
+        <li><b>95%：切琥珀。</b>填充 <code>var(--warn)</code>、百分比数字 <code>var(--warn-text)</code>（<code>ds.css</code> 的 <code>.meter--high</code>）。容量告警符合琥珀的判据（受阻 + 不介入不恢复 + 恢复在用户手上，见 D 节），<b>不是例外</b> —— 它同样不参与「能否推出」的判定。</li>
         <li><b>阈值为什么是 90 而不是 80。</b>70% 之后还有一段正常使用区间（系统更新、临时文件），过早变琥珀会让这个颜色退化成「常态噪声」；到 90% 时剩余空间已经装不下一次大更新，才值得提醒。</li>
       </ul>
     </div>

@@ -262,6 +262,7 @@ enum EjectUI {
         switch outcome {
         case .ejected:
             await DiskListStore.shared.refresh()
+            dismissSystemDialogIfAny(disk: disk)
 
         case .busy(let occupying):
             let choice = await EjectAlertPresenter.shared.present(
@@ -278,6 +279,28 @@ enum EjectUI {
             if choice == .viewLog {
                 LogService.shared.revealLogInFinder()
             }
+        }
+    }
+
+    /// 盘推出成功后，关掉系统那张「磁盘被占用」框（如果还挂着）。
+    ///
+    /// ## 为什么接在这里（2026-09-29 用户需求）
+    ///
+    /// 用户在访达点推出 → 盘被占用 → macOS 弹 `UnmountAssistantAgent` 的
+    /// 「磁盘"X"没有被推出…」框；用户改用本应用的「关闭并推出」成功后，那个框
+    /// **不会自己消失**，还挂在屏幕上。``handle(_:disk:)`` 是**所有**推出成功路径的
+    /// 唯一收口（预弹路径、菜单栏路径、主窗口路径最后都落到 `.ejected` 这一支），
+    /// 接在这里就不会漏。
+    ///
+    /// ## 为什么丢到后台
+    ///
+    /// AX 调用是**跨进程同步**的（见 ``SystemEjectDialogDismisser``），在 `@MainActor`
+    /// 上直接调会卡住 UI；而盘已经推出，关框晚几十毫秒没有任何影响。
+    /// 关不掉也只是弹窗残留（体验瑕疵），绝不该影响推出结果与列表刷新。
+    private static func dismissSystemDialogIfAny(disk: DiskInfo) {
+        let name = disk.displayName
+        Task.detached(priority: .utility) {
+            SystemEjectDialogDismisser.dismiss(forDiskNamed: name)
         }
     }
 

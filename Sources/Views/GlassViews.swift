@@ -291,7 +291,7 @@ struct GlassSurface: View {
     /// **「视觉效果」偏好必须在这一层读** —— 设置面板只负责写它。
     ///
     /// 2026-09-17 用户报「切换透明和色调没有任何变化」，根因就是这个令牌
-    /// **全仓库只有写入点、没有任何读取点**：`SettingsSectionsColumn` 用
+    /// **全仓库只有写入点、没有任何读取点**：`SettingsSectionPane` 用
     /// `@AppStorage` 把它存进 UserDefaults，而 ``GlassSurface`` 一律画毛玻璃。
     /// 一个只写不读的偏好，在 UI 上和「没做这个功能」没有区别。
     ///
