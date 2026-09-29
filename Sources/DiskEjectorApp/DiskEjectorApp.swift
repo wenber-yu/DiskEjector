@@ -44,6 +44,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     /// popover 显示状态监听，关闭时按钮恢复未选中态。
     private var popoverEventMonitor: Any?
 
+    /// 「待处理占用提醒」的订阅 —— 有提醒时把菜单栏图标换成警示态。
+    private var attentionCancellable: AnyCancellable?
+
+    /// 磁盘列表等长效订阅的容器（随 app 生命周期存活）。
+    private var attentionSubscriptions = Set<AnyCancellable>()
+
     static func main() {
         // stdout 默认是块缓冲：重定向到文件时，`print` 的内容要等进程正常退出才落盘。
         // 而 `--preview-alerts` 是要**被外部 kill 掉**的长驻预览模式，缓冲区会一起丢掉，
@@ -446,6 +452,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         setupStatusItem()
         setupMainWindow()
 
+        // **订阅「待处理占用提醒」驱动菜单栏图标**：有提醒 → 图标换成警示态（小圆点）。
+        if !Self.isPreviewRun { setupAttentionObserver() }
+
         if !Self.isPreviewRun { maybeShowFDAOnboarding() }
 
         // **updater 必须在启动时建起来。**
@@ -469,16 +478,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         // **接管访达（Finder）的推出**：注册 DiskArbitration approval callback，
         // 让访达 / diskutil / 任何走 `NSWorkspace.unmountAndEjectDevice` 的推出请求
-        // 先被本应用判定（占用缓存明确列出占用者 → 弹我们的窗；否则放行）。
-        // 见 `EjectHookService` 的完整链路说明与 spike 实证（NOTES「DA 推出接管」章）。
+        // 先被本应用判定（占用缓存明确列出占用者 → 放行 + 菜单栏提醒；否则放行）。
+        // 见 `EjectHookService` 的完整链路说明与 spike 实证。
         //
         // 回调**保持注册、永不注销**（注销再注册要处理「注销期间到达的请求漏掉」这类时序问题）；
-        // 要不要真的拦由 `AppSettings.takeOverFinderEject` 决定，**每次回调现读**（默认关）。
+        // 要不要真的提醒由 `AppSettings.takeOverFinderEject` 决定，**每次回调现读**（默认关）。
         if !Self.isPreviewRun { EjectHookService.shared.register() }
 
         // **开关为真时把占用轮询显式启动**：`OccupancyStore` 是懒加载单例，
         // 不主动创建的话，「开着开关、但没打开过主窗口、直接在访达点推出」这条
-        // **本功能的目标路径**会读到空缓存 ⇒ 一律放行 ⇒ 功能静默不生效。
+        // **本功能的目标路径**会读到空缓存 ⇒ 一律不提醒 ⇒ 功能静默不生效。
         if !Self.isPreviewRun { EjectHookService.syncOccupancyPolling() }
     }
 
@@ -1304,7 +1313,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         guard let button = statusItem.button else { return }
 
-        button.image = NSImage(systemSymbolName: "eject.fill", accessibilityDescription: "Eject")
+        updateStatusItemImage()
         button.toolTip = L10n.tr(.appName)
         button.setAccessibilityLabel(L10n.tr(.appName))
         button.setAccessibilityRole(.button)
@@ -1346,10 +1355,53 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         guard !statusItemButtonOnScreen(), let staleItem = statusItem else { return }
         NSStatusBar.system.removeStatusItem(staleItem)
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        statusItem?.button?.image = NSImage(systemSymbolName: "eject.fill", accessibilityDescription: "Eject")
         statusItem?.button?.toolTip = L10n.tr(.appName)
         statusItem?.button?.target = self
         statusItem?.button?.action = #selector(handleStatusItemClick(_:))
+        updateStatusItemImage()
+    }
+
+    /// 订阅「待处理占用提醒」，驱动菜单栏图标 + 清除已推出的盘。
+    ///
+    /// ## 两件事（都依赖 `EjectAttentionCenter`）
+    ///
+    /// 1. **有提醒 → 图标警示态**：菜单栏图标加一个小圆点（`exclamationmark.circle.fill`
+    ///    叠在 `eject.fill` 上），提醒用户「有盘被占用推不出去，点开看」。
+    /// 2. **盘消失 → 清除提醒**：提醒的盘已不在磁盘列表里（已推出 / 已拔），
+    ///    提醒就失去意义，自动清掉。**为什么挂在磁盘列表上而不是「推出成功」回调**：
+    ///    用户可能点系统框自己推出、也可能物理拔盘 —— 这两种都不走本应用的推出链路，
+    ///    只有「盘不在了」是它们的共同结果。
+    private func setupAttentionObserver() {
+        let center = EjectAttentionCenter.shared
+
+        // 1. 提醒变化 → 更新图标。
+        attentionCancellable = center.$pending
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                self?.updateStatusItemImage()
+            }
+
+        // 2. 磁盘列表变化 → 清除已不存在的盘的提醒。
+        DiskListStore.shared.$disks
+            .receive(on: DispatchQueue.main)
+            .sink { disks in
+                let mounted = Set(disks.map(\.mountPath))
+                let stale = center.pending.keys.filter { !mounted.contains($0) }
+                for path in stale { center.clear(mountPath: path) }
+            }
+            .store(in: &attentionSubscriptions)
+    }
+
+    /// 根据是否还有待处理提醒，切换菜单栏图标。
+    private func updateStatusItemImage() {
+        guard let button = statusItem?.button else { return }
+        if EjectAttentionCenter.shared.hasPendingAttention {
+            button.image = NSImage(
+                systemSymbolName: "exclamationmark.circle.fill",
+                accessibilityDescription: "Eject attention")
+        } else {
+            button.image = NSImage(systemSymbolName: "eject.fill", accessibilityDescription: "Eject")
+        }
     }
 
     /// 检查当前状态栏按钮所在窗口 frame 是否与 NSScreen.screens 中任一屏相交。

@@ -5,7 +5,7 @@
    来源：Sources/Localization/Localizable.xcstrings
        + Design/ui/v2/assets/i18n-extra.json
    ----------------------------------------------------------------------------
-   源指纹 98c2e1ec7b5d2cb19d08f14a1180b2a6166682e14d04439058167917c070dc96
+   源指纹 784c96510e9e6eda84db3be7629d03143f6533cb16139a65009a2ee56301436d
      = sha256(xcstrings + extra + 本脚本) —— 任一方变了它就是旧的，
        由 DesignDraftIntegrityTests 拦下「改了源忘了重跑」。
    ----------------------------------------------------------------------------
@@ -107,6 +107,7 @@ window.DS_L10N = {
       "ds.update.skipped": "已跳过 1.1.0 · 再点一次仍会检查并提示",
       "ds.update.upToDate": "上次检查：今天 14:30 · 已是最新版本",
       "eject": "推出",
+      "ejectAttentionTitle": "「%@」被占用，无法推出",
       "ejectBusyIrreversibleCaption": "此操作不可撤销",
       "ejectBusyMessageFormat": "以下程序正在读写这块磁盘。它们挡着推出的路，需要先结束才能推出。",
       "ejectBusyNoProcessInfo": "磁盘「%@」正被占用，但当前无法列出具体程序。请确认已在「系统设置 › 隐私与安全性 › 完全磁盘访问」中允许磁盘推出助手后重试。",
@@ -203,9 +204,9 @@ window.DS_L10N = {
       "settingsGroupGeneral": "通用",
       "settingsGroupUpdates": "更新",
       "showDockIcon": "在 Dock 中显示图标",
-      "takeOverFinderEject": "接管访达的推出",
-      "takeOverFinderEjectFootnote": "在访达中点推出时，由本应用判定并列出占用者。判定期间访达会等待你的决定，此时其他磁盘的推出也会一并暂缓。",
-      "takeOverFinderEjectNeedsFDA": "需要「完全磁盘访问」才能列出占用者，否则接管不会生效。",
+      "takeOverFinderEject": "推出时提醒占用",
+      "takeOverFinderEjectFootnote": "在访达中点推出、但磁盘正被占用时，在菜单栏提醒你谁在占用，可一键关闭并推出。",
+      "takeOverFinderEjectNeedsFDA": "需要「完全磁盘访问」才能列出占用者，否则提醒无法显示是谁在占用。",
       "tintedMode": "色调模式（系统背景色）",
       "tintedModeShort": "色调",
       "transparentMode": "透明模式（Liquid Glass 毛玻璃）",
@@ -327,6 +328,7 @@ window.DS_L10N = {
       "ds.update.skipped": "Skipped 1.1.0 · checking again still shows it",
       "ds.update.upToDate": "Last checked: Today 14:30 · Up to date",
       "eject": "Eject",
+      "ejectAttentionTitle": "“%@” is in use and can’t be ejected",
       "ejectBusyIrreversibleCaption": "This can't be undone",
       "ejectBusyMessageFormat": "The following apps are reading from or writing to this disk. They are blocking the eject and must be quit first.",
       "ejectBusyNoProcessInfo": "The disk \"%@\" is in use, but the specific apps cannot be listed. Make sure DiskEjector is granted Full Disk Access in System Settings › Privacy & Security, then try again.",
@@ -423,9 +425,9 @@ window.DS_L10N = {
       "settingsGroupGeneral": "General",
       "settingsGroupUpdates": "Updates",
       "showDockIcon": "Show icon in Dock",
-      "takeOverFinderEject": "Take over Finder's eject",
-      "takeOverFinderEjectFootnote": "Finder's eject goes through this app: it lists what holds the disk. Finder waits; other disks are deferred meanwhile.",
-      "takeOverFinderEjectNeedsFDA": "Takeover needs Full Disk Access to list what holds a disk.",
+      "takeOverFinderEject": "Alert on eject when in use",
+      "takeOverFinderEjectFootnote": "When Finder’s eject is blocked, the menu bar shows what holds the disk, with one-click close and eject.",
+      "takeOverFinderEjectNeedsFDA": "Listing what holds a disk needs Full Disk Access.",
       "tintedMode": "Tinted (System Background)",
       "tintedModeShort": "Tinted",
       "transparentMode": "Transparent (Liquid Glass)",
@@ -547,6 +549,7 @@ window.DS_L10N = {
       "ds.update.skipped": "已跳過 1.1.0 · 再點一次仍會檢查並提示",
       "ds.update.upToDate": "上次檢查：今天 14:30 · 已是最新版本",
       "eject": "退出",
+      "ejectAttentionTitle": "「%@」被佔用，無法退出",
       "ejectBusyIrreversibleCaption": "此操作無法復原",
       "ejectBusyMessageFormat": "以下程式正在讀寫這顆磁碟。它們擋住了退出，必須先結束才能退出。",
       "ejectBusyNoProcessInfo": "磁碟「%@」正被佔用，但目前無法列出具體程式。請確認已在「系統設定 › 隱私與安全性 › 完全磁碟存取」中允許磁碟推出助手後再試。",
@@ -643,9 +646,9 @@ window.DS_L10N = {
       "settingsGroupGeneral": "一般",
       "settingsGroupUpdates": "更新",
       "showDockIcon": "在 Dock 中顯示圖示",
-      "takeOverFinderEject": "接管 Finder 的推出",
-      "takeOverFinderEjectFootnote": "在 Finder 中點推出時，由本應用程式判定並列出佔用者。判定時 Finder 會等待你的決定，此時其他磁碟的推出也會一併暫緩。",
-      "takeOverFinderEjectNeedsFDA": "需要「完全磁碟存取權」才能列出佔用者，否則接管不會生效。",
+      "takeOverFinderEject": "退出時提醒佔用",
+      "takeOverFinderEjectFootnote": "在 Finder 中點退出、但磁碟正被佔用時，在選單列提醒你是誰在佔用，可一鍵關閉並退出。",
+      "takeOverFinderEjectNeedsFDA": "需要「完全磁碟存取權」才能列出佔用者，否則提醒無法顯示是誰在佔用。",
       "tintedMode": "色調模式（系統背景色）",
       "tintedModeShort": "色調",
       "transparentMode": "透明模式（Liquid Glass 毛玻璃）",

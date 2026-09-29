@@ -80,6 +80,7 @@ import Testing
         // 永远没人守（§8.105 实测漏了 `README.md` 就是这个后果）。
         "Design/prd/incremental-takeover-finder-eject.md",
         "Design/architecture/incremental-takeover-finder-eject.md",
+        "Design/architecture/eject-takeover-pivot.md",
         "SPEC.md",
         "README.md",
         "Release-notes/README.md",

@@ -108,6 +108,7 @@ SNAPSHOT = REPO / "Sources/Services/OccupancySnapshotStore.swift"
 OCCUPANCY_STORE = REPO / "Sources/Services/OccupancyStore.swift"
 APP_SETTINGS = REPO / "Sources/Settings/AppSettings.swift"
 SETTINGS_VIEW = REPO / "Sources/Views/SettingsView.swift"
+ATTENTION = REPO / "Sources/Services/EjectAttentionCenter.swift"
 
 # 过滤器（swift-testing 的 `--filter` 认测试名正则）。
 # ⚠️ 这些名字必须与 `EjectHookPolicyTests.swift` 里的 `@Test func` **逐字相同**：
@@ -117,9 +118,8 @@ FILTER_SWITCH = "开关关时一律放行即使盘被占用|开关关优先于�
 FILTER_SELF = "自排除时放行且不读占用缓存"
 FILTER_SWITCH_ORDER = "开关关优先于自排除"
 FILTER_VAGUE = "占用不明确时放行"
-FILTER_BOUNDARY = "窗口边界恰好三十秒时可以再弹"
-FILTER_KEY = "明确列出占用进程时拦截并带上挂载路径"
-FILTER_RESOLVE = "只有关闭并推出才清场放行"
+FILTER_KEY = "明确列出占用进程时提醒并带上挂载路径"
+FILTER_ATTENTION_DEDUP = "同键重复提醒是更新不是累积"
 FILTER_SIGKILL = "忽略SIGTERM的进程被升级SIGKILL|无权终止时计入并升级SIGKILL"
 FILTER_NOPATH = "没有挂载路径一律解析失败"
 FILTER_UNKNOWN = "读不到时兜unknown而不是none"
@@ -129,12 +129,6 @@ FILTER_AVAIL_RESOLVE = "可用性只由沙盒与授权两个布尔决定"
 FILTER_AVAIL_PAINT = "不可用时不许画成开"
 FILTER_AVAIL_WANTS = "可用时等于用户意愿"
 FILTER_AVAIL_WIRING = "接管行三处都过闸门"
-
-# 「用户决策窗口」那组常量契约（2026-09-28 追加，见 M17–M19）。
-FILTER_DECISION_WINDOW = (
-    "用户决策超时必须留在系统等待上限之内|决策窗口要留出余量不能贴边"
-    "|系统等待上限是实测值不是旋钮|决策窗口不能短到看不清占用者"
-)
 
 # 「真的跑到了测试」的**正向证据**：swift-testing 无论成败都会打这一行（见 ``classify``）。
 TEST_RUN_RE = re.compile(r"Test run with (\d+) tests?")
@@ -149,19 +143,18 @@ BUILD_OK_RE = re.compile(r"^\s*Build complete!", re.M)
 #   会被错判成「过滤器一条都没跑到」（`DeploymentTargetTests` 的 M1 / M2 当场 NG）。
 COMPILE_DIAG_RE = re.compile(r":\d+:\d+: error:|^\s*error: (?:Build failed|fatalError)", re.M)
 
-# 基线自检要核对的**八个 suite 展示名**（`@Suite("…")` 里的那个字符串）。
+# 基线自检要核对的**七个 suite 展示名**（`@Suite("…")` 里的那个字符串）。
 BASELINE_SUITES = (
     "接管访达推出的判定层",
-    "接管访达推出的同盘去重",
+    "待处理占用提醒",
     "同步清场器",
     "占用结论的跨线程只读快照",
     "占用结论的单一写入点",
     "接管访达推出的开关偏好",
     "接管访达推出的可用性闸门",
-    "接管访达推出的用户决策窗口",
 )
 
-# 基线自检：**八个 suite 全跑**（不是某一条），否则「全绿」不代表装置整体是绿的。
+# 基线自检：**七个 suite 全跑**（不是某一条），否则「全绿」不代表装置整体是绿的。
 #
 # ⚠️ **必须写类型名，不能写 `@Suite("…")` 的展示名**：`--filter` 匹配的是
 # **类型标识符与测试函数名**，展示名**不参与**匹配。2026-09-28 实测：
@@ -170,15 +163,13 @@ BASELINE_SUITES = (
 # ⇒ 整个基线自检是**空转**（比「基线红」更坏：它看起来是绿的）。
 # 展示名不改丢：单独拿来核对「每个 suite 是不是都真的跑到了」（见 ``baseline_is_green``）。
 FILTER_BASELINE = (
-    "EjectHookPolicyTests|EjectHookThrottleTests|ProcessTerminatorTests"
+    "EjectHookPolicyTests|EjectAttentionCenterTests|ProcessTerminatorTests"
     "|OccupancySnapshotStoreTests|OccupancyStoreSnapshotParityTests"
     "|TakeOverFinderEjectPreferenceTests|TakeOverAvailabilityTests"
-    "|TakeOverDecisionWindowTests"
 )
-# 基线里**至少**要跑到多少条测试（2026-09-28 实测为 **42** 条 =
-# 原来 38 条 + 「用户决策窗口」那 4 条）。
-# 防的是「过滤器只匹配上一部分」这种半空转 —— ``classify`` 只拦得住 N == 0。
-BASELINE_MIN_TESTS = 34
+# 基线里**至少**要跑到多少条测试。防的是「过滤器只匹配上一部分」这种半空转 ——
+# ``classify`` 只拦得住 N == 0。
+BASELINE_MIN_TESTS = 28
 
 # (编号, 说明, 文件, 旧片段, 新片段, 过滤器)
 MUTATIONS = [
@@ -211,36 +202,30 @@ MUTATIONS = [
     ),
     (
         "M3",
-        "`shouldBlock` 去掉 `!processes.isEmpty` ⇒ `.occupied([])` 会弹一个**空列表窗**",
+        "`shouldNotify` 去掉 `!processes.isEmpty` ⇒ `.occupied([])` 会提醒一个**空列表**"
+        "（系统说忙但列不出具体程序，弹空提醒毫无意义）",
         POLICY,
         "        guard case .occupied(let processes) = occupancy, !processes.isEmpty else { return nil }",
         "        guard case .occupied(let processes) = occupancy else { return nil }",
         FILTER_VAGUE,
     ),
     (
-        "M4",
-        "去重窗口比较 `<` 改 `<=` ⇒ 窗口多出一个瞬时宽度，边界那刻弹不出第二窗"
-        "（「取消后再点推出」在 30s 边界处被多吞一瞬）",
-        POLICY,
-        "        return now.timeIntervalSince(end) < window",
-        "        return now.timeIntervalSince(end) <= window",
-        FILTER_BOUNDARY,
-    ),
-    (
         "M5",
-        "去重键从 `mountPath` 换成 `volumeName` ⇒ 两块**同名盘**互相去重（A 盘弹过，B 盘不弹）",
+        "提醒的键从 `mountPath` 换成 `volumeName` ⇒ 两块**同名盘**的提醒互相覆盖"
+        "（A 盘的提醒被同名的 B 盘顶掉）",
         POLICY,
         "        let disk = DiskInfo(\n            id: request.mountPath,",
         "        let disk = DiskInfo(\n            id: request.volumeName,",
         FILTER_KEY,
     ),
     (
-        "M6",
-        "`resolve` 的 `cancel` 也走 `.allow`（清场放行）⇒ **取消 = 替用户终止占用进程**这个破坏性决定",
-        POLICY,
-        "        choice == .closeAndEject ? .allow : .passThrough",
-        "        choice == .closeAndEject ? .allow : .allow",
-        FILTER_RESOLVE,
+        "M20",
+        "`EjectAttentionCenter.note` 用数组追加而不是字典键覆盖 ⇒ Finder 重试会**累积**"
+        "一堆重复提醒（每 2.2s 一条），这正是转向后要去掉的「反复骚扰」",
+        ATTENTION,
+        "        pending[disk.mountPath] = EjectAttention(disk: disk, processes: processes, notedAt: date)",
+        "        pending[UUID().uuidString] = EjectAttention(disk: disk, processes: processes, notedAt: date)",
+        FILTER_ATTENTION_DEDUP,
     ),
     (
         "M7",
@@ -334,35 +319,6 @@ MUTATIONS = [
         "                        accessibilityValue: L10n.tr(takeOverOn ? .on : .off)",
         "                        accessibilityValue: L10n.tr(takeOverFinderEject ? .on : .off)",
         FILTER_AVAIL_WIRING,
-    ),
-    (
-        "M17",
-        "用户决策超时改回 60s ⇒ 放行时刻越过系统对 unmount 的等待上限（≈12.5s），"
-        "**访达那时已经不等了** ⇒ 用户按了「关闭并推出」而盘纹丝不动"
-        "（2026-09-28 端到端实测：放行 14.45s / 14.78s 两次都推不出去）",
-        POLICY,
-        "    static let userDecisionTimeout: TimeInterval = 8",
-        "    static let userDecisionTimeout: TimeInterval = 60",
-        FILTER_DECISION_WINDOW,
-    ),
-    (
-        "M18",
-        "用户决策窗口压到 4s ⇒ 用户还在读占用列表，弹窗就自己收掉了 ——"
-        "「接管」退化成「弹一下就没了」",
-        POLICY,
-        "    static let userDecisionTimeout: TimeInterval = 8",
-        "    static let userDecisionTimeout: TimeInterval = 4",
-        FILTER_DECISION_WINDOW,
-    ),
-    (
-        "M19",
-        "把系统等待上限也一起改大（12.5 → 60）—— 这是「修 M17」最省事的**假修法**："
-        "不等式照样成立，而「点了没反应」原封不动"
-        "⇒ 专门守一条「上限是实测值、不是可以随手拧的旋钮」",
-        POLICY,
-        "    static let systemUnmountPatience: TimeInterval = 12.5",
-        "    static let systemUnmountPatience: TimeInterval = 60",
-        FILTER_DECISION_WINDOW,
     ),
 ]
 

@@ -35,6 +35,9 @@ struct MenuPopoverView: View {
     /// （头部计数、分隔线、四行动作）一起重建。⇒ **订阅随读取走**，理由同 ``DiskListRegion``。
     private let occupancyStore: OccupancyStore
 
+    /// 「待处理占用」提醒（有人刚在访达点推出、但盘被占用）—— 面板顶部的提醒卡片来源。
+    @ObservedObject private var attention: EjectAttentionCenter
+
     let accent: AccentColor
     let onOpenMainWindow: () -> Void
     let onRefresh: () -> Void
@@ -56,6 +59,7 @@ struct MenuPopoverView: View {
     init(
         store: DiskListStore = .shared,
         occupancyStore: OccupancyStore = .shared,
+        attention: EjectAttentionCenter = .shared,
         accent: AccentColor,
         onOpenMainWindow: @escaping () -> Void,
         onRefresh: @escaping () -> Void,
@@ -65,6 +69,7 @@ struct MenuPopoverView: View {
     ) {
         _store = ObservedObject(wrappedValue: store)
         self.occupancyStore = occupancyStore
+        _attention = ObservedObject(wrappedValue: attention)
         self.accent = accent
         self.onOpenMainWindow = onOpenMainWindow
         self.onRefresh = onRefresh
@@ -101,6 +106,9 @@ struct MenuPopoverView: View {
     var body: some View {
         VStack(spacing: 0) {
             header
+            if !attention.pending.isEmpty {
+                attentionBanner
+            }
             if store.disks.isEmpty {
                 emptyState
             } else {
@@ -122,6 +130,71 @@ struct MenuPopoverView: View {
         // 「NSLayoutConstraint ... exceeds internal limits」并把测试进程打死（signal 5）。
         // `.background` 传下去的是内容已经算好的有限尺寸。
         .background(GlassSurface(cornerRadius: DesignTokens.Radius.lg))
+    }
+
+    // MARK: - 待处理占用提醒
+
+    /// 面板顶部的「待处理占用」提醒卡片：有人刚在访达点推出、但盘被占用。
+    ///
+    /// **为什么是卡片而不是磁盘行里的角标**：提醒是「事件」不是「现状」——
+    /// 它要醒目地告诉用户「你刚才那次推出没成，因为 X 在占用」，而不是默默
+    /// 混进磁盘列表里。放在头部正下方、磁盘列表上方，是面板里最显眼的位置。
+    ///
+    /// **「关闭并推出」复用 `onEject`**：它走 ``EjectUI/eject(disk:cachedOccupancy:)``
+    /// 的完整链路（弹确认窗 → 清场 → 推出），不在这里另写一套推出逻辑 ——
+    /// 单一事实来源，避免两条推出路径漂移。
+    private var attentionBanner: some View {
+        VStack(spacing: 6) {
+            ForEach(Array(attention.pending.values)) { item in
+                HStack(spacing: DesignTokens.Spacing.sm) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: DesignTokens.FontSize.bodyStrong))
+                        .foregroundStyle(DesignTokens.Palette.error)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(String(format: L10n.tr(.ejectAttentionTitle), item.disk.displayName))
+                            .font(.system(size: DesignTokens.FontSize.bodyStrong, weight: .semibold))
+                            .foregroundStyle(DesignTokens.Palette.foreground)
+                        Text(item.processes.map(\.displayName).joined(separator: "、"))
+                            .font(.system(size: DesignTokens.FontSize.footnote))
+                            .foregroundStyle(DesignTokens.Palette.mutedForeground)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                    }
+
+                    Spacer(minLength: 0)
+
+                    Button {
+                        onEject(item.disk)
+                    } label: {
+                        Text(L10n.tr(.closeAndEject))
+                            .font(.system(size: DesignTokens.FontSize.footnote, weight: .medium))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 4)
+                            .background(
+                                Capsule(style: .continuous).fill(DesignTokens.Palette.error)
+                            )
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(
+                        String(format: L10n.tr(.closeAndEjectDiskFormat), item.disk.displayName))
+                }
+                .padding(.horizontal, DesignTokens.Spacing.md)
+                .padding(.vertical, DesignTokens.Spacing.sm)
+                .background(
+                    RoundedRectangle(cornerRadius: DesignTokens.Radius.sm, style: .continuous)
+                        .fill(DesignTokens.Palette.errorSoft)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: DesignTokens.Radius.sm, style: .continuous)
+                        .strokeBorder(DesignTokens.Palette.errorLine, lineWidth: 0.5)
+                )
+            }
+        }
+        .padding(.horizontal, DesignTokens.Spacing.sm)
+        .padding(.bottom, DesignTokens.Spacing.sm)
+        .accessibilityElement(children: .contain)
     }
 
     // MARK: - 头部

@@ -120,6 +120,13 @@
         "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "退出" } }
       }
     },
+    "ejectAttentionTitle" : {
+      "localizations" : {
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "「%@」被占用，无法推出" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "\u201c%@\u201d is in use and can\u2019t be ejected" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "「%@」被佔用，無法退出" } }
+      }
+    },
     "ejectFailedInUseReason" : {
       "localizations" : {
         "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "磁盘仍然被占用。有一个程序在这块盘上打开了文件，请关闭它后重试。" } },
@@ -514,23 +521,23 @@
     },
     "takeOverFinderEject" : {
       "localizations" : {
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "接管访达的推出" } },
-        "en" : { "stringUnit" : { "state" : "translated", "value" : "Take over Finder's eject" } },
-        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "接管 Finder 的推出" } }
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "推出时提醒占用" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Alert on eject when in use" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "退出時提醒佔用" } }
       }
     },
     "takeOverFinderEjectFootnote" : {
       "localizations" : {
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "在访达中点推出时，由本应用判定并列出占用者。判定期间访达会等待你的决定，此时其他磁盘的推出也会一并暂缓。" } },
-        "en" : { "stringUnit" : { "state" : "translated", "value" : "Finder's eject goes through this app: it lists what holds the disk. Finder waits; other disks are deferred meanwhile." } },
-        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "在 Finder 中點推出時，由本應用程式判定並列出佔用者。判定時 Finder 會等待你的決定，此時其他磁碟的推出也會一併暫緩。" } }
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "在访达中点推出、但磁盘正被占用时，在菜单栏提醒你谁在占用，可一键关闭并推出。" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "When Finder\u2019s eject is blocked, the menu bar shows what holds the disk, with one-click close and eject." } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "在 Finder 中點退出、但磁碟正被佔用時，在選單列提醒你是誰在佔用，可一鍵關閉並退出。" } }
       }
     },
     "takeOverFinderEjectNeedsFDA" : {
       "localizations" : {
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "需要「完全磁盘访问」才能列出占用者，否则接管不会生效。" } },
-        "en" : { "stringUnit" : { "state" : "translated", "value" : "Takeover needs Full Disk Access to list what holds a disk." } },
-        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "需要「完全磁碟存取權」才能列出佔用者，否則接管不會生效。" } }
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "需要「完全磁盘访问」才能列出占用者，否则提醒无法显示是谁在占用。" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Listing what holds a disk needs Full Disk Access." } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "需要「完全磁碟存取權」才能列出佔用者，否則提醒無法顯示是誰在佔用。" } }
       }
     },
     "tintedMode" : {

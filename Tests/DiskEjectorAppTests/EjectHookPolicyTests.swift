@@ -188,16 +188,16 @@ struct EjectHookPolicyTests {
         #expect(decision == .passThrough(.occupancyNotBlocking))
     }
 
-    @Test func 明确列出占用进程时拦截并带上挂载路径() throws {
+    @Test func 明确列出占用进程时提醒并带上挂载路径() throws {
         let req = try makeRequest()
         let process = makeProcess(pid: 42, name: "IMVIDEO")
         let decision = EjectHookPolicy.decide(
             req, isSelfInitiated: false, isTakeOverEnabled: true, occupancy: .occupied([process]))
-        guard case .intercept(let disk, let processes) = decision else {
-            Issue.record("应当拦截，实际是 \(decision)")
+        guard case .notify(let disk, let processes) = decision else {
+            Issue.record("应当提醒，实际是 \(decision)")
             return
         }
-        // 去重键就是 `DiskInfo.id` —— 它必须是**挂载路径**（不是卷名、不是 bsdName）。
+        // 提醒的键就是 `DiskInfo.id` —— 它必须是**挂载路径**（不是卷名、不是 bsdName）。
         #expect(disk.id == req.mountPath)
         #expect(disk.mountPath == req.mountPath)
         #expect(disk.volumeName == "SpikeVol")
@@ -258,116 +258,59 @@ struct EjectHookPolicyTests {
         let disk = makeDisk("/Volumes/SpikeVol")
         #expect(disk.displayName == "SpikeVol")  // 证明 displayName 的回落路径确实存在
     }
-
-    // MARK: 用户选择 → 回话
-
-    @Test func 只有关闭并推出才清场放行() {
-        #expect(EjectHookPolicy.resolve(.closeAndEject) == .allow)
-        for choice: EjectAlertChoice in [.cancel, .dismiss, .viewLog, .skipVersion, .installAndRestart] {
-            #expect(
-                EjectHookPolicy.resolve(choice) == .passThrough,
-                "「\(choice)」不是「我要推出」的意思 —— 放行但**不清场**，让系统自己判（盘还占着 ⇒ 访达弹一次占用框就停，不重试）")
-        }
-    }
-
-    /// 「取消」**绝不能再回 dissent**（2026-09-29 实测）：dissent 会让调用方（Finder）无限重试，
-    /// 表现为「取消后应用弹窗反复弹出 + 系统框反复出现」。放行才是「取消 = 放弃推出」的正确落点。
-    @Test func 取消走放行不走dissent() {
-        #expect(EjectHookPolicy.resolve(.cancel) == .passThrough)
-    }
 }
 
-// MARK: - 同盘去重
+// MARK: - 待处理占用提醒
 
-@Suite("接管访达推出的同盘去重")
-struct EjectHookThrottleTests {
+@MainActor
+@Suite("待处理占用提醒")
+struct EjectAttentionCenterTests {
 
-    private let t0 = Date(timeIntervalSince1970: 1_000_000)
-    private let key = "/Volumes/SpikeVol"
-
-    /// ⚠️ `claim` / `release` 是 `mutating`，而 `#expect` 会把表达式包进一个
-    /// **参数不可变**的闭包 ⇒ 不能直接写在 `#expect(...)` 里（会报
-    /// `cannot use mutating member on immutable value`）。先调、再断言。
-
-    @Test func 弹窗期间同一块盘的第二个请求被挡下() {
-        var throttle = EjectHookThrottle(window: 30)
-        let first = throttle.claim(key: key, now: t0)
-        let second = throttle.claim(key: key, now: t0)
-        let third = throttle.claim(key: key, now: t0.addingTimeInterval(0.001))
-        #expect(first)
-        #expect(!second)
-        #expect(!third)
+    private func makeDisk(_ path: String) -> DiskInfo {
+        DiskInfo(
+            id: path, bsdName: "disk9s1", volumeName: (path as NSString).lastPathComponent,
+            mountPath: path, totalBytes: 1_000, usedBytes: 400, freeBytes: 600,
+            deviceProtocol: "USB", deviceModel: nil)
     }
 
-    /// 窗口边界：**恰好 `起点 + 30s` 时已经可以再弹**（闭开区间）。
-    ///
-    /// 这条专门防「`<` 写成 `<=`」—— 那种错会让窗口多出一个瞬时宽度，
-    /// 而它只在**刚好**卡在边界上的那一次请求里表现出来。
-    @Test func 窗口边界恰好三十秒时可以再弹() {
-        var throttle = EjectHookThrottle(window: 30)
-        let first = throttle.claim(key: key, now: t0)
-        #expect(first)
-        throttle.release(key: key, at: t0)
-
-        let at29 = throttle.claim(key: key, now: t0.addingTimeInterval(29))
-        #expect(!at29)
-        let at30 = throttle.claim(key: key, now: t0.addingTimeInterval(30))
-        #expect(at30)
-        throttle.release(key: key, at: t0.addingTimeInterval(30))
-
-        let at59 = throttle.claim(key: key, now: t0.addingTimeInterval(59))
-        #expect(!at59)
-        let at61 = throttle.claim(key: key, now: t0.addingTimeInterval(61))
-        #expect(at61)
+    private func makeProcess(pid: Int32, name: String = "tail") -> OccupyingProcess {
+        OccupyingProcess(pid: pid, processName: name, path: "/Volumes/SpikeVol/keep.txt")
     }
 
-    /// 去重键必须是**挂载路径** —— 一块盘弹过窗，不该影响另一块盘。
-    ///
-    /// 用 `volumeName` 会让两块同名的盘互相去重；用 `bsdName` 会在拔插后复用。
-    @Test func 去重按挂载路径互相隔离() {
-        var throttle = EjectHookThrottle(window: 30)
-        let a = throttle.claim(key: "/Volumes/A", now: t0)
-        #expect(a)
-        throttle.release(key: "/Volumes/A", at: t0)
-        let b = throttle.claim(key: "/Volumes/B", now: t0)
-        #expect(b)
+    /// 同一挂载路径重复 `note` 是**更新**不是累积 —— 去重靠字典键，不靠数组。
+    @Test func 同键重复提醒是更新不是累积() {
+        let center = EjectAttentionCenter()
+        let disk = makeDisk("/Volumes/SpikeVol")
+        center.note(disk: disk, processes: [makeProcess(pid: 1)])
+        center.note(disk: disk, processes: [makeProcess(pid: 1), makeProcess(pid: 2)])
+        #expect(center.pending.count == 1)
+        #expect(center.pending["/Volumes/SpikeVol"]?.processes.count == 2)
     }
 
-    /// 窗口起点是**弹窗结束**的时刻，不是开始的时刻。
-    ///
-    /// 长决策（最长 8s）下，从「开始弹窗」起算的窗口在用户还没点按钮时就已经过期，
-    /// 调用方的重试会立刻再弹一次。
-    @Test func 窗口起点是弹窗结束的时刻而不是开始的时刻() {
-        var throttle = EjectHookThrottle(window: 30)
-        let claimed = throttle.claim(key: key, now: t0)
-        #expect(claimed)
-        #expect(!throttle.isSuppressed(key: key, now: t0.addingTimeInterval(50)))
-        throttle.release(key: key, at: t0.addingTimeInterval(50))
-        #expect(throttle.isSuppressed(key: key, now: t0.addingTimeInterval(50)))
-        #expect(throttle.isSuppressed(key: key, now: t0.addingTimeInterval(79)))
-        #expect(!throttle.isSuppressed(key: key, now: t0.addingTimeInterval(80)))
+    /// 不同挂载路径各占一条。
+    @Test func 不同盘各占一条提醒() {
+        let center = EjectAttentionCenter()
+        center.note(disk: makeDisk("/Volumes/A"), processes: [makeProcess(pid: 1)])
+        center.note(disk: makeDisk("/Volumes/B"), processes: [makeProcess(pid: 2)])
+        #expect(center.pending.count == 2)
     }
 
-    /// 同一块盘弹窗挂起期间，其它盘**不受影响**（窗口与 inFlight 都按盘隔离）。
-    @Test func 一块盘弹窗期间另一块盘仍可弹() {
-        var throttle = EjectHookThrottle(window: 30)
-        let a = throttle.claim(key: "/Volumes/A", now: t0)
-        #expect(a)
-        let b = throttle.claim(key: "/Volumes/B", now: t0)
-        #expect(b)
-        let aAgain = throttle.claim(key: "/Volumes/A", now: t0)
-        #expect(!aAgain)
+    @Test func 清除后不再有待处理() {
+        let center = EjectAttentionCenter()
+        center.note(disk: makeDisk("/Volumes/A"), processes: [makeProcess(pid: 1)])
+        #expect(center.hasPendingAttention)
+        center.clear(mountPath: "/Volumes/A")
+        #expect(!center.hasPendingAttention)
+        #expect(center.pending.isEmpty)
     }
 
-    @Test func 线程安全外壳与值类型口径一致() {
-        let store = EjectHookThrottleStore(window: 30, now: { self.t0 })
-        let first = store.claim(key: "/Volumes/A")
-        #expect(first)
-        let second = store.claim(key: "/Volumes/A")
-        #expect(!second)
-        store.release(key: "/Volumes/A")
-        let third = store.claim(key: "/Volumes/A")
-        #expect(!third)
+    @Test func 清空全部() {
+        let center = EjectAttentionCenter()
+        center.note(disk: makeDisk("/Volumes/A"), processes: [makeProcess(pid: 1)])
+        center.note(disk: makeDisk("/Volumes/B"), processes: [makeProcess(pid: 2)])
+        center.clearAll()
+        #expect(center.pending.isEmpty)
+        #expect(!center.hasPendingAttention)
     }
 }
 
@@ -720,63 +663,5 @@ struct TakeOverAvailabilityTests {
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .deletingLastPathComponent()
-    }
-}
-
-// MARK: - 用户决策窗口
-
-/// 「用户决策最多等多久」这一组常量之间的**契约**。
-///
-/// **为什么值得一组独立守卫**：这几个数**互相耦合**，而 `userDecisionTimeout` 曾经是 60
-/// —— 把它改大（或改回去）**不会让任何现有断言变红**，只会让用户看清占用者之后
-/// 点下「关闭并推出」时**盘纹丝不动**。
-///
-/// 实测（2026-09-28，`Scripts/e2e_click_takeover.sh`，同一台机器/同一块盘，
-/// 只改「弹窗出现后多久点下去」）：
-///
-/// | 阻塞 | 放行时刻 | 结果 |
-/// |---|---|---|
-/// | 3.1s | ~5.4s | ✅ 推出成功 |
-/// | 9.8s | 12.07s | ✅ 推出成功 |
-/// | 12.2s | 14.45s | ❌ 盘还在 |
-/// | 12.5s | 14.78s | ❌ 盘还在（可复现） |
-///
-/// ⇒ 「用户决策 + 清场宽限」必须**留出余量地**落在系统等待上限之内。
-@Suite("接管访达推出的用户决策窗口")
-struct TakeOverDecisionWindowTests {
-
-    /// 放行时刻 = 用户决策 + 清场宽限（清场是同步阻塞的，要算进去）。
-    private static var releaseDeadline: TimeInterval {
-        EjectHookPolicy.userDecisionTimeout
-            + ProcessTerminator.termGrace + ProcessTerminator.killGrace
-    }
-
-    @Test func 系统等待上限是实测值不是旋钮() {
-        // ⚠️ 防的是**假绿**：如果有人把 `userDecisionTimeout` 超限，最省事的「修法」
-        // 是把上限也一起改大 —— 那样下面那条不等式照样成立，而 bug 原封不动。
-        // 12.5 有两条互相独立的实测支撑（§8.146.3 的 12.5s 返回；2026-09-28 的
-        // 12.07s 成功 / 14.45s 失败）。要改它，先拿出新的实测。
-        #expect(abs(EjectHookPolicy.systemUnmountPatience - 12.5) < 0.001)
-    }
-
-    @Test func 用户决策超时必须留在系统等待上限之内() {
-        // ⚠️ `#expect` 的说明参数是 `Comment`（**不接受运行时拼出来的字符串**）——
-        // 要带具体数值就用 `print`，别把它拼进 message。
-        #expect(
-            Self.releaseDeadline < EjectHookPolicy.systemUnmountPatience,
-            "放行时刻越过系统等待上限：访达那时已经不等了，用户点了「关闭并推出」盘也推不出去")
-    }
-
-    @Test func 决策窗口要留出余量不能贴边() {
-        // 只判「小于」不够：2026-09-28 成功的那一次放行时刻是 12.07s，
-        // 距上限只剩 0.43s —— 真机上一点调度抖动就会翻面。
-        let margin = EjectHookPolicy.systemUnmountPatience - Self.releaseDeadline
-        #expect(margin >= 1.5, "余量太小，贴边会在真机上偶发失败")
-    }
-
-    @Test func 决策窗口不能短到看不清占用者() {
-        // 反向也守一条：压得太小（比如 1s）同样是 bug —— 用户还在读占用列表，
-        // 弹窗就自己收掉了，等于把「接管」变成「弹一下就没了」。
-        #expect(EjectHookPolicy.userDecisionTimeout >= 5, "决策窗口太短，用户来不及看清占用者")
     }
 }
