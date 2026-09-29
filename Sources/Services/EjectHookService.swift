@@ -141,16 +141,18 @@ final class EjectHookService: @unchecked Sendable {
             return nil
 
         case .intercept(let diskInfo, let processes):
-            // ⑥ 去重：**只在「决定要拦」之后**才查，且只防「同一块盘弹窗还挂着」。
+            // ⑥ 去重：**只在「决定要拦」之后**才查。
             //    顺序不可交换：`unmountAndEjectDevice` 会触发两个回调，第二个是
             //    **整个盘**的 eject（没有挂载路径）。先去重（或对无挂载路径的请求也去重）
-            //    就会在访达自己推出的第二阶段把它 dissent 掉 ⇒ 推出失败 + 访达报错框。
+            //    就会在访达自己推出的第二阶段把它放行掉 ⇒ 推出失败 + 访达报错框。
             //    `EjectHookRequest.make` 返回 nil 是第一道防线，「去重只在 intercept 之后」是第二道。
-            //    ⚠️ 只做 inFlight 去重、不做时间窗口：实测真实推出请求（NSWorkspace.unmountAndEjectDevice）
-            //    在 dissent 后只报一次 fBsyErr 就退出、绝不自动重试（「重试风暴」是 osascript 脚本自身的循环）。
+            //
+            //    ⚠️ 去重命中（窗口内重复 / 弹窗还挂着）**一律放行、绝不再弹应用窗**：
+            //    调用方（Finder）在「取消」后仍会重试 ~30s，去重窗口挡住它，避免「取消一次
+            //    换来反复弹窗」。回 `kDAReturnBusy`（dissent）会让调用方弹系统框并继续重试。
             guard throttle.claim(key: diskInfo.id) else {
-                log(.inFlight, mountPath: diskInfo.id)
-                return busyDissenter()  // 瞬时回话，**不阻塞**
+                log(.dedupHit, mountPath: diskInfo.id)
+                return nil  // 瞬时放行，**不阻塞**、不弹窗
             }
             defer { throttle.release(key: diskInfo.id) }
 
@@ -167,8 +169,12 @@ final class EjectHookService: @unchecked Sendable {
 
             // ⑧ 回话。
             switch EjectHookPolicy.resolve(choice) {
-            case .dissentBusy:
-                return busyDissenter()
+            case .passThrough:
+                // 用户点了「取消」：**放行、不清场**。盘还占着 ⇒ 访达 unmount 失败 ⇒
+                // 访达弹一次「磁盘被占用」框就停（不重试）。这是「取消 = 放弃推出」的正确落点，
+                // 也是 macOS 原生的「取消推出」闭环（用户点系统框的「取消」即静默结束）。
+                // 绝不能再回 `kDAReturnBusy`：dissent 会让调用方无限重试（实测）。
+                return nil
 
             case .allow:
                 // ⚠️ **先同步清场，再放行** —— 顺序不能反。
@@ -229,12 +235,6 @@ final class EjectHookService: @unchecked Sendable {
             return .cancel
         }
         return box.value ?? .cancel
-    }
-
-    private static func busyDissenter() -> Unmanaged<DADissenter> {
-        let s = "DiskEjector: disk busy" as CFString
-        return Unmanaged.passRetained(
-            DADissenterCreate(kCFAllocatorDefault, DAReturn(kDAReturnBusy), s))
     }
 
     /// 每次回话打**一条**带原因码的日志。

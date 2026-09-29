@@ -261,13 +261,19 @@ struct EjectHookPolicyTests {
 
     // MARK: 用户选择 → 回话
 
-    @Test func 只有关闭并推出才放行() {
+    @Test func 只有关闭并推出才清场放行() {
         #expect(EjectHookPolicy.resolve(.closeAndEject) == .allow)
         for choice: EjectAlertChoice in [.cancel, .dismiss, .viewLog, .skipVersion, .installAndRestart] {
             #expect(
-                EjectHookPolicy.resolve(choice) == .dissentBusy,
-                "「\(choice)」不是「我要推出」的意思 —— 放行等于**替用户做了推出这个破坏性决定**")
+                EjectHookPolicy.resolve(choice) == .passThrough,
+                "「\(choice)」不是「我要推出」的意思 —— 放行但**不清场**，让系统自己判（盘还占着 ⇒ 访达弹一次占用框就停，不重试）")
         }
+    }
+
+    /// 「取消」**绝不能再回 dissent**（2026-09-29 实测）：dissent 会让调用方（Finder）无限重试，
+    /// 表现为「取消后应用弹窗反复弹出 + 系统框反复出现」。放行才是「取消 = 放弃推出」的正确落点。
+    @Test func 取消走放行不走dissent() {
+        #expect(EjectHookPolicy.resolve(.cancel) == .passThrough)
     }
 }
 
@@ -276,6 +282,7 @@ struct EjectHookPolicyTests {
 @Suite("接管访达推出的同盘去重")
 struct EjectHookThrottleTests {
 
+    private let t0 = Date(timeIntervalSince1970: 1_000_000)
     private let key = "/Volumes/SpikeVol"
 
     /// ⚠️ `claim` / `release` 是 `mutating`，而 `#expect` 会把表达式包进一个
@@ -283,61 +290,84 @@ struct EjectHookThrottleTests {
     /// `cannot use mutating member on immutable value`）。先调、再断言。
 
     @Test func 弹窗期间同一块盘的第二个请求被挡下() {
-        var throttle = EjectHookThrottle()
-        let first = throttle.claim(key: key)
-        let second = throttle.claim(key: key)
-        let third = throttle.claim(key: key)
+        var throttle = EjectHookThrottle(window: 30)
+        let first = throttle.claim(key: key, now: t0)
+        let second = throttle.claim(key: key, now: t0)
+        let third = throttle.claim(key: key, now: t0.addingTimeInterval(0.001))
         #expect(first)
         #expect(!second)
         #expect(!third)
     }
 
-    /// 弹窗结束（`release`）后**立即**可以再弹 —— 去重不设时间窗口。
+    /// 窗口边界：**恰好 `起点 + 30s` 时已经可以再弹**（闭开区间）。
     ///
-    /// 这条是本 bug 的**核心守卫**：早期版本的 `dedupWindow`（30s 时间窗口）会
-    /// 在 `release` 之后继续抑制同一块盘，导致「用户取消后再点推出」被静默吞掉
-    /// （直接 dissent → 访达弹系统框）。删掉时间窗口后，`release` 一解除就恢复可弹。
-    @Test func 弹窗结束后立即可再弹不去重() {
-        var throttle = EjectHookThrottle()
-        let first = throttle.claim(key: key)
+    /// 这条专门防「`<` 写成 `<=`」—— 那种错会让窗口多出一个瞬时宽度，
+    /// 而它只在**刚好**卡在边界上的那一次请求里表现出来。
+    @Test func 窗口边界恰好三十秒时可以再弹() {
+        var throttle = EjectHookThrottle(window: 30)
+        let first = throttle.claim(key: key, now: t0)
         #expect(first)
-        throttle.release(key: key)
+        throttle.release(key: key, at: t0)
 
-        let again = throttle.claim(key: key)
-        #expect(again)
+        let at29 = throttle.claim(key: key, now: t0.addingTimeInterval(29))
+        #expect(!at29)
+        let at30 = throttle.claim(key: key, now: t0.addingTimeInterval(30))
+        #expect(at30)
+        throttle.release(key: key, at: t0.addingTimeInterval(30))
+
+        let at59 = throttle.claim(key: key, now: t0.addingTimeInterval(59))
+        #expect(!at59)
+        let at61 = throttle.claim(key: key, now: t0.addingTimeInterval(61))
+        #expect(at61)
     }
 
     /// 去重键必须是**挂载路径** —— 一块盘弹过窗，不该影响另一块盘。
     ///
     /// 用 `volumeName` 会让两块同名的盘互相去重；用 `bsdName` 会在拔插后复用。
     @Test func 去重按挂载路径互相隔离() {
-        var throttle = EjectHookThrottle()
-        let a = throttle.claim(key: "/Volumes/A")
+        var throttle = EjectHookThrottle(window: 30)
+        let a = throttle.claim(key: "/Volumes/A", now: t0)
         #expect(a)
-        let b = throttle.claim(key: "/Volumes/B")
+        throttle.release(key: "/Volumes/A", at: t0)
+        let b = throttle.claim(key: "/Volumes/B", now: t0)
         #expect(b)
     }
 
-    /// 同一块盘弹窗挂起期间，其它盘**不受影响**（inFlight 是按盘隔离的）。
+    /// 窗口起点是**弹窗结束**的时刻，不是开始的时刻。
+    ///
+    /// 长决策（最长 8s）下，从「开始弹窗」起算的窗口在用户还没点按钮时就已经过期，
+    /// 调用方的重试会立刻再弹一次。
+    @Test func 窗口起点是弹窗结束的时刻而不是开始的时刻() {
+        var throttle = EjectHookThrottle(window: 30)
+        let claimed = throttle.claim(key: key, now: t0)
+        #expect(claimed)
+        #expect(!throttle.isSuppressed(key: key, now: t0.addingTimeInterval(50)))
+        throttle.release(key: key, at: t0.addingTimeInterval(50))
+        #expect(throttle.isSuppressed(key: key, now: t0.addingTimeInterval(50)))
+        #expect(throttle.isSuppressed(key: key, now: t0.addingTimeInterval(79)))
+        #expect(!throttle.isSuppressed(key: key, now: t0.addingTimeInterval(80)))
+    }
+
+    /// 同一块盘弹窗挂起期间，其它盘**不受影响**（窗口与 inFlight 都按盘隔离）。
     @Test func 一块盘弹窗期间另一块盘仍可弹() {
-        var throttle = EjectHookThrottle()
-        let a = throttle.claim(key: "/Volumes/A")
+        var throttle = EjectHookThrottle(window: 30)
+        let a = throttle.claim(key: "/Volumes/A", now: t0)
         #expect(a)
-        let b = throttle.claim(key: "/Volumes/B")
+        let b = throttle.claim(key: "/Volumes/B", now: t0)
         #expect(b)
-        let aAgain = throttle.claim(key: "/Volumes/A")
+        let aAgain = throttle.claim(key: "/Volumes/A", now: t0)
         #expect(!aAgain)
     }
 
     @Test func 线程安全外壳与值类型口径一致() {
-        let store = EjectHookThrottleStore()
+        let store = EjectHookThrottleStore(window: 30, now: { self.t0 })
         let first = store.claim(key: "/Volumes/A")
         #expect(first)
         let second = store.claim(key: "/Volumes/A")
         #expect(!second)
         store.release(key: "/Volumes/A")
         let third = store.claim(key: "/Volumes/A")
-        #expect(third)
+        #expect(!third)
     }
 }
 

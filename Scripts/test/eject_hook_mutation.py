@@ -117,9 +117,9 @@ FILTER_SWITCH = "开关关时一律放行即使盘被占用|开关关优先于�
 FILTER_SELF = "自排除时放行且不读占用缓存"
 FILTER_SWITCH_ORDER = "开关关优先于自排除"
 FILTER_VAGUE = "占用不明确时放行"
-FILTER_BOUNDARY = "弹窗结束后立即可再弹不去重"
+FILTER_BOUNDARY = "窗口边界恰好三十秒时可以再弹"
 FILTER_KEY = "明确列出占用进程时拦截并带上挂载路径"
-FILTER_RESOLVE = "只有关闭并推出才放行"
+FILTER_RESOLVE = "只有关闭并推出才清场放行"
 FILTER_SIGKILL = "忽略SIGTERM的进程被升级SIGKILL|无权终止时计入并升级SIGKILL"
 FILTER_NOPATH = "没有挂载路径一律解析失败"
 FILTER_UNKNOWN = "读不到时兜unknown而不是none"
@@ -219,11 +219,11 @@ MUTATIONS = [
     ),
     (
         "M4",
-        "`release` 忘记移除 `inFlight` ⇒ 弹窗结束后这块盘**永远不能再弹**"
-        "（正是「取消后再点推出弹系统框」那个 bug 的另一个侧面）",
+        "去重窗口比较 `<` 改 `<=` ⇒ 窗口多出一个瞬时宽度，边界那刻弹不出第二窗"
+        "（「取消后再点推出」在 30s 边界处被多吞一瞬）",
         POLICY,
-        "    mutating func release(key: String) {\n        inFlight.remove(key)\n    }",
-        "    mutating func release(key: String) {\n        // M4 变异：不再移除 inFlight\n    }",
+        "        return now.timeIntervalSince(end) < window",
+        "        return now.timeIntervalSince(end) <= window",
         FILTER_BOUNDARY,
     ),
     (
@@ -236,10 +236,10 @@ MUTATIONS = [
     ),
     (
         "M6",
-        "`resolve` 的 `cancel` 也放行 ⇒ **替用户做了推出这个破坏性决定**",
+        "`resolve` 的 `cancel` 也走 `.allow`（清场放行）⇒ **取消 = 替用户终止占用进程**这个破坏性决定",
         POLICY,
-        "        choice == .closeAndEject ? .allow : .dissentBusy",
-        "        (choice == .closeAndEject || choice == .cancel) ? .allow : .dissentBusy",
+        "        choice == .closeAndEject ? .allow : .passThrough",
+        "        choice == .closeAndEject ? .allow : .allow",
         FILTER_RESOLVE,
     ),
     (

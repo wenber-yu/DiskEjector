@@ -96,6 +96,8 @@ enum EjectHookPassReason: String, Sendable, Equatable {
     case notExternalVolume
     /// 占用缓存没有**明确列出**占用进程（`.none` / `.unknown` / `.needsFullDiskAccess` / `.occupied([])`）。
     case occupancyNotBlocking
+    /// 去重窗口命中（同一块盘在窗口期内已弹过一次）。
+    case dedupHit
     /// 同一块盘的弹窗还挂着（回调尚未返回），重复请求不重复弹。
     case inFlight
 }
@@ -110,10 +112,11 @@ enum EjectHookDecision: Sendable, Equatable {
 
 /// 用户的选择 → 回调该怎么回话。
 enum EjectHookResolution: Sendable, Equatable {
-    /// 放行（由访达完成推出）。调用方**先**同步清场再放行。
+    /// 清场后放行（用户点了「关闭并推出」）：先终止占用进程，再 `return nil` 让访达完成推出。
     case allow
-    /// 回 `kDAReturnBusy`（退回现状：访达弹它自己的报错框）。
-    case dissentBusy
+    /// 放行、不清场（用户点了「取消」）：直接 `return nil`，让访达自己 unmount ——
+    /// 盘还占着 ⇒ unmount 失败 ⇒ 访达弹一次「磁盘被占用」框就停（**不重试**）。
+    case passThrough
 }
 
 /// 判定层。**纯值、无单例、无 `@MainActor`、无 `DADisk`** —— 全部 P0 判据落在这里。
@@ -159,9 +162,16 @@ enum EjectHookPolicy {
     /// ⚠️ 架构文档 §6-Q3 原判据是「访达自己放弃**并弹框**」⇒ 下调到 `T_patience − 5`；
     /// 复核结果是**不弹框**、但**放弃 unmount** —— 同样触发下调（`12.5 − 5 = 7.5 ≈ 8`）。
     ///
-    /// ⚠️ 超时的收场是**返回 `.cancel`**（→ dissent，访达弹它自己的「占用中」框），
+    /// ⚠️ 超时的收场是**返回 `.cancel`**（→ 放行，访达 unmount 失败后弹它自己的「占用中」框），
     /// 盘保持挂载 —— 这是自洽的：用户没确认强推，就该像没接管一样。
     static let userDecisionTimeout: TimeInterval = 8
+
+    /// 同盘去重窗口（秒）。
+    ///
+    /// **依据**（真实日志 + spike，2026-09-29 复测）：调用方（Finder / osascript）
+    /// 在收到回话后重试的间隔稳定在 ~2.16s，一轮重试跨度 ≥ 12.5s；且用户点系统框
+    /// 「取消」才会让调用方停止。取 30s 覆盖一整轮重试并留余量。
+    static let dedupWindow: TimeInterval = 30
 
     /// 三关 + 开关 → 结论。**顺序即优先级，不可交换**。
     ///
@@ -217,53 +227,85 @@ enum EjectHookPolicy {
 
     /// 用户的选择 → 回调该怎么回话。
     ///
-    /// `.closeAndEject` ⇒ `.allow`（放行，由访达完成推出；调用方**先**同步清场）。
-    /// 其余（`cancel` / `dismiss` / `viewLog` / …）⇒ `.dissentBusy`（退回现状）。
+    /// `.closeAndEject` ⇒ `.allow`（清场后放行，由访达完成推出）。
+    /// 其余（`cancel` / `dismiss` / `viewLog` / …）⇒ `.passThrough`（放行、不清场）。
     ///
-    /// ⚠️ **`.dismiss` 等值不可能从 busy 弹窗出来**，兜底走 dissent 是为了与
-    /// 「用户没说要推出」这个语义一致 —— 放行等于**替用户做了推出这个破坏性决定**。
+    /// ## 为什么「取消」是放行、不是 dissent（2026-09-29 实测修正）
+    ///
+    /// 早期实现让「取消」走 `.dissentBusy`（`kDAReturnBusy`）。实测（真实日志 +
+    /// spike）证明：**dissent 会让调用方（Finder / osascript）重试并弹「未能推出」框**，
+    /// 于是「取消」之后应用弹窗反复弹出、系统框反复出现。
+    ///
+    /// 放行（`return nil`）让调用方 unmount 失败后弹**「磁盘被占用」框**（带「取消」/
+    /// 「强制推出」）—— 这才是 macOS 原生、用户熟悉的「取消推出」闭环：用户点系统框的
+    /// 「取消」即静默结束。放行**也会**触发调用方重试（真实日志已证），但那一层由
+    /// ``EjectHookThrottle`` 的去重窗口挡住 —— 窗口内重复回调直接放行、不再弹应用窗。
+    ///
+    /// ⚠️ **`.dismiss` 等值不可能从 busy 弹窗出来**，兜底走放行而不是 dissent：
+    /// dissent 会退回「弹系统框 + 反复弹应用窗」的坑；放行不清场则退化成「系统自己判」，
+    /// 与「用户没说要推出」自洽（放行 ≠ 替用户推出，只是不再拦）。
     static func resolve(_ choice: EjectAlertChoice) -> EjectHookResolution {
-        choice == .closeAndEject ? .allow : .dissentBusy
+        choice == .closeAndEject ? .allow : .passThrough
     }
 }
 
 // MARK: - 去重
 
-/// 同盘去重：**同一块盘的弹窗还挂着时，重复到达的请求不重复弹**。
+/// 同盘去重：**窗口期内同一块盘至多弹一次窗**。
 ///
-/// ## 为什么只做「inFlight」去重，不做「时间窗口」去重
+/// ## 为什么必须用「时间窗口」，而不是只靠「inFlight」（2026-09-29 实测修正）
 ///
-/// 早期版本有一个 `dedupWindow = 30s` 的时间窗口，理由是「dissent 之后访达会以
-/// ~2.16s 间隔重试 7 次（实测 `log-finder-dissent-busy.txt`）」。**这条依据是错的**：
-/// 那 7 次重试来自 `osascript -e 'eject'` 这个**脚本**——脚本收到 `fBsyErr` 后
-/// 自己循环重试。而真实的推出请求（Finder 界面点推出、`NSWorkspace.unmountAndEjectDevice`）
-/// 在 dissent 后**只报一次 `fBsyErr`（OSStatus -47）就退出，绝不自动重试**
-/// （2026-09-28 实测：`ejecter.swift` 一次请求 → watcher 只收到 1 次回调）。
+/// 真实日志（用户真机操作 `wenbo-data`）铁证：点「取消」或「超时」后，调用方
+/// （Finder / osascript）会**持续重试** —— 间隔 ~2.2s，直到用户点系统框的「取消」
+/// 让调用方停止这次推出请求。若不去重，「取消」一次会换来**反复弹应用窗 + 反复系统框**
+/// 的无限循环（这正是 2026-09-29 用户报的 bug）。
 ///
-/// 时间窗口把「用户主动的第二次点击」误判成「重试风暴」吞掉，正是
-/// 「取消后再点推出弹系统框」这个 bug 的根源。删掉它后，每次点击都重新弹窗。
+/// 而「inFlight」只覆盖「弹窗还挂着的极短时间」，弹窗一收掉（`release`）就失效，
+/// 挡不住调用方随后 ~30s 的重试风暴。所以必须有一个**跨「弹窗结束」的窗口**：
+/// 窗口起点 = 上一次弹窗结束的时刻，长度覆盖调用方一轮完整重试。
 ///
-/// 真正需要防的是**同一块盘弹窗还挂着时**重复到达的请求（`inFlight` 覆盖）：
-/// `unmountAndEjectDevice` 会触发 unmount + eject 两个回调，其中第二个是「整个盘」、
-/// 无挂载路径，已被 ``EjectHookRequest/make`` 判 nil 放行；`inFlight` 兜底的是
-/// 并发/异常时序下同一块盘的回调重叠。
+/// ## 为什么「命中窗口」要放行而不是 dissent
+///
+/// dissent（`kDAReturnBusy`）会让调用方弹「未能推出」框**并继续重试**；放行
+/// （`return nil`）让调用方 unmount 失败后弹「磁盘被占用」框，用户点该框的「取消」
+/// 即静默结束。放行才是「取消 = 放弃推出」的正确落点（见 ``EjectHookPolicy/resolve``）。
+///
+/// ## 为什么是值类型 + 显式 `now`
+///
+/// 时间必须**从外面传**，否则「窗口边界」永远只能靠 `sleep` 测（既慢又不确定）。
 struct EjectHookThrottle: Sendable, Equatable {
 
-    /// 正在弹窗（回调尚未返回）的盘。
-    /// 防御「同一块盘的第二个请求在我们还没返回时到达」。
+    /// 窗口长度（秒）。
+    var window: TimeInterval
+
+    /// 键 = **挂载路径**（= ``DiskInfo/id``），值 = 上一次弹窗**结束**的时刻。
+    ///
+    /// **为什么用挂载路径**：``DiskInfo/id`` 就是它，``OccupancyStore/results`` 的键也是它。
+    /// 用 `volumeName` 会让两块同名的盘互相去重；用 `bsdName` 会在拔插后复用。
+    var lastPromptEnd: [String: Date] = [:]
+
+    /// 正在弹窗（回调尚未返回）的盘。防御「同一块盘的第二个请求在我们还没返回时到达」。
     var inFlight: Set<String> = []
 
     /// 尝试占用「这块盘的弹窗名额」。
-    /// - Returns: `true` = 可以弹（**同时登记 `inFlight`**）；`false` = 弹窗已挂着。
-    mutating func claim(key: String) -> Bool {
+    /// - Returns: `true` = 可以弹（**同时登记 `inFlight`**）；`false` = 命中去重。
+    mutating func claim(key: String, now: Date) -> Bool {
         guard !inFlight.contains(key) else { return false }
+        guard !isSuppressed(key: key, now: now) else { return false }
         inFlight.insert(key)
         return true
     }
 
-    /// 弹窗结束（无论用户点了什么）：解除 `inFlight`，立即可再弹。
-    mutating func release(key: String) {
+    /// 弹窗结束（无论用户点了什么）：解除 `inFlight`，并把窗口起点钉在 `now`。
+    mutating func release(key: String, at now: Date) {
         inFlight.remove(key)
+        lastPromptEnd[key] = now
+    }
+
+    /// 纯查询（不写状态），供日志与单测读。
+    func isSuppressed(key: String, now: Date) -> Bool {
+        guard let end = lastPromptEnd[key] else { return false }
+        return now.timeIntervalSince(end) < window
     }
 }
 
@@ -272,22 +314,30 @@ struct EjectHookThrottle: Sendable, Equatable {
 /// **为什么需要锁**：`DASessionSetDispatchQueue` 用的是 `.concurrent` 队列，
 /// 两个 approval 回调**理论上可以并发**进入（``EjectService/isHookSelfInitiated``
 /// 用 `NSLock` 是同一个理由）。值类型本身没有并发保护。
+///
+/// **为什么 `now` 可注入**：单测要能把「窗口边界」钉在确定的时刻上。
 final class EjectHookThrottleStore: @unchecked Sendable {
 
     private let lock = NSLock()
-    private var value = EjectHookThrottle()
+    private var value: EjectHookThrottle
+    private let now: () -> Date
 
-    /// - Returns: `true` = 可以弹窗；`false` = 弹窗已挂着（调用方**立即**回话，不阻塞）。
+    init(window: TimeInterval = EjectHookPolicy.dedupWindow, now: @escaping () -> Date = { Date() }) {
+        self.value = EjectHookThrottle(window: window)
+        self.now = now
+    }
+
+    /// - Returns: `true` = 可以弹窗；`false` = 命中去重（调用方**立即**回话，不阻塞）。
     func claim(key: String) -> Bool {
         lock.lock()
         defer { lock.unlock() }
-        return value.claim(key: key)
+        return value.claim(key: key, now: now())
     }
 
-    /// 弹窗结束：解除 `inFlight`，立即可再弹。
+    /// 弹窗结束：窗口从此刻起算。
     func release(key: String) {
         lock.lock()
         defer { lock.unlock() }
-        value.release(key: key)
+        value.release(key: key, at: now())
     }
 }
