@@ -148,13 +148,18 @@ struct EjectFlowControllerTests {
     }
 
     /// 非占用类的失败（如设备已消失）仍映射为 `.failed`，不应被误判为占用。
+    /// ⚠️ 显式注入 `volumeMounted: { _ in true }`：测试的挂载路径是编的、不在真实
+    /// 挂载列表里，默认实现会把它判成「盘已消失 ⇒ 兜底算成功」——那正是
+    /// 「报错但盘已不在时视作成功」那条独立测试的职责，不是本条的。
+    /// 本条只测「盘还在时的报错 = 真失败」这条映射本身。
     @Test func eject非占用类失败映射为failed() async {
         let disk = makeDisk()
         let mockEject = MockEjectService()
         mockEject.ejectResult = .failure(.notFound)
         let mockDetect = MockOccupancyDetector()
         mockDetect.result = .none
-        let controller = EjectFlowController(ejectService: mockEject, occupancyDetector: mockDetect)
+        let controller = EjectFlowController(
+            ejectService: mockEject, occupancyDetector: mockDetect, volumeMounted: { _ in true })
 
         let result = await controller.eject(disk: disk)
 
@@ -163,6 +168,70 @@ struct EjectFlowControllerTests {
             return
         }
         #expect(reason == .notFound)
+    }
+
+    // MARK: 报错后验盘兜底（2026-09-29 用户真机实测的误报修复）
+
+    /// **场景**：接管开关开着，Finder 重试风暴进行中，用户点提醒卡片「关闭并推出」
+    /// → 我们清场（恰好帮 Finder 扫清了路）→ **Finder 的下一轮重试抢先推出** →
+    /// 我们这次 `unmountAndEjectDevice` 撞上已消失的卷报 `OSStatus -36`。
+    /// 盘已推出 = 用户要的结果已达成 ⇒ **必须算成功**，弹「无法推出」是误报。
+    /// （真机日志铁证：`10:31:38.132 推出失败: other(OSStatus -36)` 而盘已推出。）
+    @Test func eject报错但盘已不在挂载列表时视作成功() async {
+        let disk = makeDisk()
+        let mockEject = MockEjectService()
+        mockEject.ejectResult = .failure(.other("未能完成操作。（OSStatus 错误 -36。）"))
+        let mockDetect = MockOccupancyDetector()
+        mockDetect.result = .none
+        let controller = EjectFlowController(
+            ejectService: mockEject, occupancyDetector: mockDetect, volumeMounted: { _ in false })
+
+        let result = await controller.eject(disk: disk)
+
+        guard case .ejected = result else {
+            Issue.record("盘已不在挂载列表，报错应兜底为成功，实际 \(result)")
+            return
+        }
+    }
+
+    /// 提醒卡片「关闭并推出」走的正是这条链路：清场后重试报错 + 盘已不在 ⇒ 算成功。
+    /// 用不存在的 PID（kill 返回 ESRCH，被视为已退出）避免真实杀进程。
+    @Test func terminateAndEject报错但盘已不在时视作成功() async {
+        let disk = makeDisk()
+        let mockEject = MockEjectService()
+        mockEject.ejectResult = .failure(.other("未能完成操作。（OSStatus 错误 -36。）"))
+        let mockDetect = MockOccupancyDetector()
+        mockDetect.result = .none
+        let controller = EjectFlowController(
+            ejectService: mockEject, occupancyDetector: mockDetect, volumeMounted: { _ in false })
+
+        let processes = [OccupyingProcess(pid: 9_999_999, processName: "Ghost", path: "")]
+        let result = await controller.terminateAndEject(disk: disk, processes: processes)
+
+        guard case .ejected = result else {
+            Issue.record("盘已不在挂载列表，报错应兜底为成功，实际 \(result)")
+            return
+        }
+    }
+
+    /// **反向守卫**：盘还在挂载列表里的报错是真失败，兜底不许吞掉它 ——
+    /// 否则真故障（权限不足等）会被静默成「成功」，用户以为推出去了而盘还挂着。
+    @Test func terminateAndEject报错且盘还在时仍报失败() async {
+        let disk = makeDisk()
+        let mockEject = MockEjectService()
+        mockEject.ejectResult = .failure(.notPermitted)
+        let mockDetect = MockOccupancyDetector()
+        mockDetect.result = .none
+        let controller = EjectFlowController(
+            ejectService: mockEject, occupancyDetector: mockDetect, volumeMounted: { _ in true })
+
+        let processes = [OccupyingProcess(pid: 9_999_999, processName: "Ghost", path: "")]
+        let result = await controller.terminateAndEject(disk: disk, processes: processes)
+
+        guard case .failed = result else {
+            Issue.record("盘还在挂载列表，报错必须如实报失败，实际 \(result)")
+            return
+        }
     }
 
     // MARK: 失败留痕（弹窗与设置面板都向用户承诺了这件事）
@@ -178,7 +247,8 @@ struct EjectFlowControllerTests {
         let mockDetect = MockOccupancyDetector()
         mockDetect.result = .none
         let controller = EjectFlowController(
-            ejectService: mockEject, occupancyDetector: mockDetect, log: recorder.record)
+            ejectService: mockEject, occupancyDetector: mockDetect, log: recorder.record,
+            volumeMounted: { _ in true })
 
         _ = await controller.eject(disk: makeDisk())
 

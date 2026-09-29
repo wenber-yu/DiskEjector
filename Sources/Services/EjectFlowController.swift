@@ -1,5 +1,6 @@
 import Darwin
 import Foundation
+import os
 
 /// 推出操作的最终结果（菜单栏与主窗口共用同一套判定）。
 ///
@@ -31,6 +32,11 @@ final class EjectFlowController {
 
     static let shared = EjectFlowController()
 
+    /// 系统日志出口（`log stream` 诊断用；**不**进用户可见的 `error.log` ——
+    /// 「被外部推手抢先推成」不是失败，不该让「已记入日志」的承诺说谎）。
+    private static let logger = Logger(
+        subsystem: "com.diskejector.app", category: "EjectFlow")
+
     private let ejectService: EjectService
     private let occupancyDetector: OccupancyDetector
 
@@ -43,17 +49,37 @@ final class EjectFlowController {
     /// 同时避免把测试造的假失败写进用户真实的日志文件。
     private let log: (String?, String) -> Void
 
+    /// 挂载点是否仍在系统挂载列表里（用于「报错后验盘」兜底，见 ``volumeStillMounted(_:)``）。
+    ///
+    /// **为什么做成可注入的闭包**：测试造不出「真挂载又真卸载」的卷
+    /// （那是真机、真硬件的事），注入替身才能单测「报错 + 盘已消失 ⇒ 算成功」这条兜底。
+    private let volumeMounted: (String) -> Bool
+
     /// 可注入初始化（生产一律用 `shared`；测试传入 mock 子类）。
     init(
         ejectService: EjectService = .shared,
         occupancyDetector: OccupancyDetector = .shared,
         log: @escaping (String?, String) -> Void = { disk, message in
             LogService.shared.log(disk: disk, message: message)
-        }
+        },
+        volumeMounted: @escaping (String) -> Bool = { EjectFlowController.volumeStillMounted($0) }
     ) {
         self.ejectService = ejectService
         self.occupancyDetector = occupancyDetector
         self.log = log
+        self.volumeMounted = volumeMounted
+    }
+
+    /// 挂载点是否仍在系统挂载列表里。
+    ///
+    /// **为什么用 `mountedVolumeURLs` 而不是 `fileExists`**：卸载后 `/Volumes/X`
+    /// 的挂载点目录**通常**会被移除，但残根目录（强制拔盘、权限残留）会骗过
+    /// `fileExists`；挂载列表是内核的权威答案。
+    private static func volumeStillMounted(_ mountPath: String) -> Bool {
+        let urls =
+            FileManager.default.mountedVolumeURLs(
+                includingResourceValuesForKeys: nil, options: [.skipHiddenVolumes]) ?? []
+        return urls.contains { $0.path == mountPath }
     }
 
     // MARK: - 「此刻有没有卷正在推出」
@@ -145,7 +171,14 @@ final class EjectFlowController {
             case .success: .ejected
             // 系统判定忙：把检测到的进程（可能为空）交给弹窗呈现。
             case .failure(.inUse): .busy(occupying: processes)
-            case .failure(let failure): .failed(reason: failure)
+            case .failure(let failure):
+                // ⚠️ **报错 ≠ 失败**：先验盘，盘已不在 = 有人抢先推成了。
+                // 典型场景（2026-09-29 用户真机实测）：Finder 重试风暴进行中
+                // （用户点过 Finder 推出、没点系统框「取消」），本应用发起的
+                // `unmountAndEjectDevice` 撞上一个刚被 Finder 推掉的卷，
+                // 系统报 `OSStatus -36` / `notFound` —— 但「盘推出」正是用户要的结果，
+                // 此时报错弹窗是**误报**。详见 ``terminateAndEject(disk:processes:awaiting:)``。
+                volumeMounted(disk.mountPath) ? .failed(reason: failure) : .ejected
             }
         return record(outcome, disk: disk)
     }
@@ -222,7 +255,26 @@ final class EjectFlowController {
                 outcome = .busy(occupying: remaining)
             }
         case .failure(let failure):
-            outcome = .failed(reason: failure)
+            // ⚠️ **报错 ≠ 失败**：清场之后可能有「外部推手」抢先推成了（2026-09-29 用户真机实测）。
+            //
+            // 场景：接管开关开着，用户在 Finder 点推出 → 本应用放行 → Finder 弹系统
+            // 「占用中」框并**持续重试**（~2.16s 间隔，直到用户点系统框「取消」）。
+            // 用户此时点提醒卡片的「关闭并推出」走到这里：SIGTERM 清掉占用进程后，
+            // **Finder 的下一轮重试会先把盘推掉**（我们杀进程恰好帮了它）；
+            // 我们随后这次 `unmountAndEjectDevice` 撞上一个已消失的卷，
+            // 系统报 `OSStatus -36`（实测日志 10:31:38.132）。但盘已推出 =
+            // 用户要的结果已达成 ⇒ **验盘兜底**：挂载点已不在挂载列表里就视作成功，
+            // 不弹「无法推出」误报框。
+            //
+            // （`.inUse` 分支不需要这层兜底：卷都不在挂载列表里就轮不到「忙」。）
+            if volumeMounted(disk.mountPath) {
+                outcome = .failed(reason: failure)
+            } else {
+                Self.logger.notice(
+                    "盘已被外部推手抢先推出，unmount 落空(\(String(describing: failure), privacy: .public))视作成功 mount=\(disk.mountPath, privacy: .public)"
+                )
+                outcome = .ejected
+            }
         }
         return record(outcome, disk: disk)
     }
