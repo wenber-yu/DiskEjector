@@ -3,20 +3,21 @@
     <channel>
         <title>DiskEjector</title>
         <item>
-            <title>2026.09.30</title>
-            <pubDate>Wed, 30 Sep 2026 20:14:16 +0800</pubDate>
+            <title>2026.10.01</title>
+            <pubDate>Thu, 01 Oct 2026 01:20:34 +0800</pubDate>
             <link>https://github.com/wenber-yu/DiskEjector</link>
-            <sparkle:version>306</sparkle:version>
-            <sparkle:shortVersionString>2026.09.30</sparkle:shortVersionString>
+            <sparkle:version>314</sparkle:version>
+            <sparkle:shortVersionString>2026.10.01</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
             <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
             <description><![CDATA[<ul>
-<li><strong>主窗口与设置合二为一</strong>：不再分开两个窗口 —— 左边侧栏上半部分列外置磁盘、下半部分是设置分类（通用 / 外观 / 更新 / 诊断 / 关于），点哪项右边就显示哪项。看盘、调设置一屏搞定，不用再来回切窗口</li>
-<li><strong>窗口更宽敞，磁盘信息一眼看全</strong>：新窗口 800×520，磁盘容量、占用进度条、推出按钮同屏完整呈现，小屏也不再局促</li>
-<li><strong>按钮回归 macOS 原生样式</strong>：「推出」「打开系统设置」等按钮换用系统标准控件，观感、悬停、按下反馈与系统其它应用完全一致，看着更眼熟、用着更顺手</li>
+<li><strong>修复 macOS 26 下的界面观感问题</strong>：在 macOS 26 上，主窗口侧栏恢复系统的「浮岛」效果，侧栏与设置项的悬停高亮恢复正常 —— 新版界面观感与系统完全一致</li>
+<li><strong>修复点击「刷新」导致应用闪退</strong>：部分用户在 macOS 26 上点右上角刷新按钮会直接闪退，已修复</li>
+<li><strong>修复刷新按钮变形、恢复转圈动画</strong>：点击刷新时按钮不再被挤压变形，刷新进行中会正常显示转圈动画</li>
+<li><strong>菜单栏图标颜色恢复正常</strong>：菜单栏图标现在会跟随桌面壁纸的深浅自动变成黑色或白色，与系统其它图标表现一致（此前一旦在设置里改过强调色，图标就会固定颜色不再自适应）</li>
 </ul>
 ]]></description>
-            <enclosure url="https://github.com/wenber-yu/DiskEjector/releases/download/v2026.09.30/DiskEjector-2026.09.30.dmg" length="2823281" type="application/octet-stream" sparkle:edSignature="omDEuBOtOpBk+GDyGjmF1PlfbYRMvxI9ncLOQv8SmeAs20DnOe/7hmKwuPPfFJX1niIwoO2x3lvrZvmT1LTZDQ=="/>
+            <enclosure url="https://github.com/wenber-yu/DiskEjector/releases/download/v2026.10.01/DiskEjector-2026.10.01.dmg" length="2833810" type="application/octet-stream" sparkle:edSignature="h1q17mD4NXEqGN+otOSFCe5ISABzFUBCmQqtAjHYMmZ8IcfeWRPR+5Th6nAtxC9fUhpdww12w97w66Vnxfw0CA=="/>
         </item>
     </channel>
 </rss>
