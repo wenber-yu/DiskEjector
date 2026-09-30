@@ -3,21 +3,20 @@
     <channel>
         <title>DiskEjector</title>
         <item>
-            <title>2026.09.29.1</title>
-            <pubDate>Tue, 29 Sep 2026 21:49:06 +0800</pubDate>
+            <title>2026.09.30</title>
+            <pubDate>Wed, 30 Sep 2026 20:14:16 +0800</pubDate>
             <link>https://github.com/wenber-yu/DiskEjector</link>
-            <sparkle:version>300</sparkle:version>
-            <sparkle:shortVersionString>2026.09.29.1</sparkle:shortVersionString>
+            <sparkle:version>306</sparkle:version>
+            <sparkle:shortVersionString>2026.09.30</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
             <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
             <description><![CDATA[<ul>
-<li><strong>设置界面焕新为左右两栏</strong>：左边是分类列表（通用 / 接管 / 更新 / 外观 / 诊断 / 关于），右边是当前分类的内容，不再是一根长滚动条从头翻到尾。分类支持 ↑/↓ 方向键直接切换</li>
-<li><strong>登录项等待批准时不再「静默没反应」</strong>：开启「登录时启动」后如果系统还没批准，设置里会紧跟一行琥珀色提示，写明「等待系统批准」，并附「打开系统设置」按钮一键跳转 —— 不用再猜开关到底开没开成</li>
-<li><strong>推出被占用提醒更完整</strong>：推出时发现磁盘被占用，除了应用内提示，现在会同时发一条系统通知；即便错过弹窗，也能从通知中心找回提醒，点通知直接打开应用处理</li>
-<li><strong>修复推出报错被误报</strong>：某些情况下磁盘其实已经被推出成功（例如访达的重试抢先完成），应用却报了失败；现在会核实磁盘状态后再如实报告</li>
+<li><strong>主窗口与设置合二为一</strong>：不再分开两个窗口 —— 左边侧栏上半部分列外置磁盘、下半部分是设置分类（通用 / 外观 / 更新 / 诊断 / 关于），点哪项右边就显示哪项。看盘、调设置一屏搞定，不用再来回切窗口</li>
+<li><strong>窗口更宽敞，磁盘信息一眼看全</strong>：新窗口 800×520，磁盘容量、占用进度条、推出按钮同屏完整呈现，小屏也不再局促</li>
+<li><strong>按钮回归 macOS 原生样式</strong>：「推出」「打开系统设置」等按钮换用系统标准控件，观感、悬停、按下反馈与系统其它应用完全一致，看着更眼熟、用着更顺手</li>
 </ul>
 ]]></description>
-            <enclosure url="https://github.com/wenber-yu/DiskEjector/releases/download/v2026.09.29.1/DiskEjector-2026.09.29.1.dmg" length="2887821" type="application/octet-stream" sparkle:edSignature="yDIv+RJiRNa7VTu4EBe6ojoOJ+FA/vaSTICE0728MQxb+XT6D1Z0BUNw+r5tShZXxjpeC5jbGSqWpz3HOZbJAg=="/>
+            <enclosure url="https://github.com/wenber-yu/DiskEjector/releases/download/v2026.09.30/DiskEjector-2026.09.30.dmg" length="2823281" type="application/octet-stream" sparkle:edSignature="omDEuBOtOpBk+GDyGjmF1PlfbYRMvxI9ncLOQv8SmeAs20DnOe/7hmKwuPPfFJX1niIwoO2x3lvrZvmT1LTZDQ=="/>
         </item>
     </channel>
 </rss>
