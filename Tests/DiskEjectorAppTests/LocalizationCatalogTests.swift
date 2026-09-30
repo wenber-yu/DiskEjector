@@ -169,6 +169,28 @@ struct LocalizationCatalogTests {
             L10n.Key(rawValue: "terminateAndEject") == nil,
             "「终止程序并推出」没有任何消费者（按钮用的是 closeAndEject「关闭并推出」），文案键不该再留着"
         )
+        // **v3（2026-09-30）随主窗口与设置合并一起退役的三个键**，各自的最后一个
+        // 消费者都查过 git 历史（`git grep <rev>`），不是推测：
+        //
+        // | 键 | 最后一个消费者 | 为什么它没了 |
+        // |---|---|---|
+        // | `on` / `off` | `SettingsView` 里 5 处 `accessibilityValue: L10n.tr(cond ? .on : .off)` | 那是给**自绘开关**补的无障碍值（自绘开关当时 `accessibilityHidden`，不补就永远读不出开/关）。v3 把开关交还系统 `Toggle`，它**自带值语义** ⇒ 手补这件事整体消失 |
+        // | `done` | `TextButton(title: L10n.tr(.done), action: { dismiss() })` | 独立设置窗口底部那个「完成」按钮。v3 设置并入主窗口详情区，窗口没了，按钮随之没了 |
+        //
+        // ⚠️ 钉「不存在」而不是只依赖上面那条「必须有消费者」：后者在**键还在、只是
+        // 没人用**时红，前者在**键被重新加回来**时红 —— 两件事症状不同、修法也不同。
+        #expect(
+            L10n.Key(rawValue: "on") == nil && L10n.Key(rawValue: "off") == nil,
+            """
+            `on` / `off` 又回来了。它们是给**自绘开关**补无障碍值用的
+            （`accessibilityValue: L10n.tr(cond ? .on : .off)`），v3 起开关是系统的
+            `Toggle`、自带值语义、不需要补。
+            若确实又出现了一个自绘控件需要读开/关，请在用它那处写明是哪个控件，
+            再审这一条 —— 别只是把键加回来。
+            """)
+        #expect(
+            L10n.Key(rawValue: "done") == nil,
+            "`done` 又回来了 —— 它随独立设置窗口一起退役（v3 主窗口与设置合并），当前没有任何界面需要它")
     }
 
     /// ⚠️ **`updateChecking` 已转正**（2026-09-20，用户拍板补中间态）。

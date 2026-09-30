@@ -32,39 +32,89 @@ import Testing
 @MainActor
 struct SettingsLayoutTests {
 
-    /// 设计稿 `screens/09-settings-split.html` 每帧的**内容自然高**（头部 52 + 正文）。
+    /// 设计稿每帧的**内容自然高**（头部 52 + 正文）—— **v3 口径：详情区宽 592**。
     ///
     /// ## 这些数是量出来的，不是抄的
     ///
     /// ```bash
     /// /Users/wenbo/.workbuddy/binaries/python/versions/3.13.12/bin/python3 \
-    ///     Tools/measure_settings_split.py
+    ///     Tools/measure_settings_v3.py
     /// ```
     ///
-    /// 脚本自带三条自证（`svg>0`、`readyState` 已离开 `loading`、选择器没命中就退出码 1），
-    /// 且**量与出图钉在同一门语言**（它会显式调 `dsSetLang`）—— 改这段结构后必须重跑，
-    /// **不许手抄**：手抄的数会与实现一起漂，而 ``designFrameHeights`` 那条断言比的是
-    /// 「实现 vs 这里写的数」，两边一起漂它就**一直绿**。
+    /// ⚠️ **v3 换脚本了，别再用 `measure_settings_split.py`**：那个量的是 v2 独立设置窗口
+    /// （720×440、左栏贴边 ⇒ 详情区宽 **520**）。v3 把设置并进主窗口详情区之后宽度是 **592**，
+    /// 说明文字折行更少 ⇒ 每页更矮。**宽度变了，那批数就整体作废**（HANDOFF §5 点名的第一件事）。
     ///
-    /// 实测（2026-09-29，`--lang both`）：
+    /// 脚本自带四条自证（`svg>0`、`readyState` 已离开 `loading`、选择器没命中就退出码 1、
+    /// **回读 `.sdetail` 实宽并要求 ≈592** —— 最后这条防的是「CSS 覆盖没生效、
+    /// 静默给出 520 宽下的旧数」），且**量与出图钉在同一门语言**（它会显式调 `dsSetLang`）
+    /// —— 改这段结构后必须重跑，**不许手抄**：手抄的数会与实现一起漂，
+    /// 而 ``designFrameHeights`` 那条断言比的是「实现 vs 这里写的数」，两边一起漂它就**一直绿**。
+    ///
+    /// ## 还有一条**交叉校验**（v3 新增，别跳过）
+    ///
+    /// v3 稿（`screens/_10-combined-draft.html`）只画了**两帧**：磁盘页 + 设置「通用」页。
+    /// 其余四页稿里没有 ⇒ 它们的基准走「**v2 内容 + v3 宽度**」。
+    /// 凭什么算设计稿口径：v3 的 `assets/ds.css` 与 v2 **逐字相同**、设置页类名与结构同源
+    /// ⇒ 同一段 HTML 在 592 宽下的布局是确定的。
+    ///
+    /// `measure_settings_v3.py` 会把两路**并排量**并打出差值 ——
+    /// 「通用」页实测 **两路逐点相同（差 0.00）**，这就是上面那句论证的证据。
+    ///
+    /// 实测（2026-09-30，`--lang both`）：
     ///
     /// | 帧 | 页面 | zh-Hans | en |
     /// |---|---|---|---|
-    /// | 0 | 通用 | 324.28 | 324.28 |
-    /// | 1 | 通用 · 登录项等待系统批准 | 368.28 | **384.22** |
+    /// | 0 | 通用 | **308.34** | 324.28 |
+    /// | 1 | 通用 · 登录项等待系统批准 | **352.34** | **384.22** |
     /// | 2 | 外观 | 190.78 | 206.72 |
     /// | 3 | 更新 | 264.34 | 264.34 |
     /// | 4 | 诊断 | 146.78 | 146.78 |
     /// | 5 | 关于 | 251.03 | 251.03 |
     ///
-    /// ⇒ 最高帧 **384.22**（英文那一版）⇒ 窗口高取 **440**，最坏余量 **55.78**。
-    /// ⚠️ **判据必须是「最长的那门语言」**：只量中文会取到 368.28，短 16pt。
+    /// ## v3 只改动了「通用」页（−16pt），其余四页逐点未变 —— 而且原因是可核对的
+    ///
+    /// 只有「通用」页有会**换行**的长说明文字 ⇒ 详情区从 520 变宽到 592 之后它少折一行。
+    /// 其余四页的行都没到折行边界 ⇒ 宽度变化对它们没有影响。
+    /// **这不是「大概没变」，是两路量出来一致、且与 v2 的数逐个对上的。**
+    /// （所以下表里那四页与 v2 时代同值**不是抄来的惰性**，谁再改宽度就得重跑脚本看它们动不动。）
+    ///
+    /// ⚠️ **判据必须是「最长的那门语言」**：只量中文会取到 352.34，短 32pt。
     private static let designFrameHeights: [SettingsSection: CGFloat] = [
-        .general: 324.28,
+        .general: 308.34,
         .appearance: 190.78,
         .updates: 264.34,
         .diagnostics: 146.78,
         .about: 251.03,
+    ]
+
+    /// **系统控件固有偏差**（v3 交还系统样式后新增）：`Toggle(.switch)` 固有高 **24pt**，
+    /// 设计稿画的 `.switch` 是 **22pt** ⇒ 每个「**没有说明文字**的开关行」贡献 **+2**。
+    ///
+    /// ## 这个数是从哪来的（不是从实现量出来的，别怀疑循环论证）
+    ///
+    /// 探针 `.build/probe/v3_switch_height/`（离屏 `fittingSize`）：
+    ///
+    /// | 量物 | 高 |
+    /// |---|---|
+    /// | 系统 `Toggle(.switch)`（labelsHidden） | **24.00** |
+    /// | 行（label + 系统 Toggle，padding 12/16） | 48.00 |
+    /// | 同行、开关钉 `frame(height: 22)` | 46.00 |
+    ///
+    /// 设计稿侧 `.switch` 在 `ds.css` 里钉的是 22 ⇒ 差 **2/行**，与「通用」页实测
+    /// 310.4 − 308.34 = **2.06**（多出的 0.06 是折行/浮点噪声）吻合。
+    /// **有说明文字的开关行不贡献**：那种行的行高由说明文字决定，盖过控件差
+    /// （⇒ 其余四页差 ≤0.98，逐点吻合）。
+    ///
+    /// ## HANDOFF 为什么不许把开关钉回 22
+    ///
+    /// §3.7 类别 3：系统控件「❗什么都不做」。钉 `frame(height: 22)` 是往系统控件上
+    /// 叠自绘约束，退回老路 ⇒ 偏差只能记在**判据侧**，不能消在**实现侧**。
+    ///
+    /// ⚠️ **「通用」页增删一行无说明开关行，这里的数必须跟着改**
+    /// （默认态 1 行：Dock 图标；第三态多 1 行：登录项行 —— 见 ``登录项待批准态的高度等于设计稿()``）。
+    private static let systemToggleDelta: [SettingsSection: CGFloat] = [
+        .general: 2  // 默认态：Dock 图标那一行（无说明）
     ]
 
     /// 设计稿**第 2 帧**（通用 · 登录项等待系统批准）的高度 —— 同一个页面的**另一帧**。
@@ -72,28 +122,46 @@ struct SettingsLayoutTests {
     /// ## 为什么它不在 ``designFrameHeights`` 里
     ///
     /// 那张表按**分类**索引（一页一个数）。而这一帧与第 1 帧是**同一页**，
-    /// 只是多了一个条件分支 —— 塞进那张表要么覆盖掉 324.28、要么给 `SettingsSection`
+    /// 只是多了一个条件分支 —— 塞进那张表要么覆盖掉 308.34、要么给 `SettingsSection`
     /// 编一个假分类。所以另立一张**按语言**索引的表：
     ///
-    /// | 语言 | 高度 |
+    /// | 语言 | 高度（v3 口径） |
     /// |---|---|
-    /// | `zh-Hans` | **368.28** |
+    /// | `zh-Hans` | **352.34** |
     /// | `en` | **384.22** ← 就是 ``designTallestFrame`` |
     ///
-    /// ⚠️ **两个数各有出处，不是同一个数抄两遍**：324.28 是第 1 帧、368.28 是第 2 帧。
-    /// 而 ``designTallestFrame``（384.22）**正是这里的英文版** —— 面板高 440 是照它定的。
-    /// 换句话说：**这一帧就是面板高度的那条理由**，所以它自己的高度当然要对得上。
+    /// ⚠️ **两个数各有出处，不是同一个数抄两遍**：308.34 是第 1 帧、352.34 是第 2 帧。
+    /// 而 ``designTallestFrame``（384.22）**正是这里的英文版**。
     ///
-    /// 实测命令（`--lang both`）：`Tools/measure_settings_split.py`。
+    /// ## v3 起它**不再是**面板高度的理由（这一点变了，别照旧读）
+    ///
+    /// v2 的面板高 **440** 是照这一帧的英文版定的 —— 设置窗口的**唯一**职责就是装设置内容，
+    /// 所以高度必须贴着内容、不许留白。v3 的窗口是**主窗口**（800×520），
+    /// 同时装磁盘列表与设置五页 ⇒ 高度由整体形态定，**与设置内容无关**。
+    ///
+    /// 这条断言仍然钉**这一帧自身**的绝对值（那一行受阻提示行有没有插进去、形态走没走样），
+    /// 但**不再**用于推导面板高 —— 后者已由 `MainWindowTests.窗口尺寸为设计稿` 守着。
+    ///
+    /// 实测命令（`--lang both`）：`Tools/measure_settings_v3.py`。
     private static let designPendingApprovalHeights: [String: CGFloat] = [
-        "zh-Hans": 368.28,
+        "zh-Hans": 352.34,
         "en": 384.22,
     ]
 
-    /// 设计稿**最高的一帧** = 通用 ·「登录项等待系统批准」· 英文 = **384.22**。
+    /// 第三态比默认态**多**出的那条无说明开关行：登录项行 ——
+    /// 待批准态下 `launchAtLoginDescription` 返回 `nil`（说明整体搬到受阻行），
+    /// 行高改由系统 Toggle（24pt）决定 ⇒ 在 ``systemToggleDelta`` 的 1 行之上**再 +2**
+    /// （第三态帧共 **2 行** ⇒ 总偏差 4，别只算这一条）。
+    private static let pendingApprovalExtraToggleDelta: CGFloat = 2
+
+    /// 设计稿**最高的一帧** = 通用 ·「登录项等待系统批准」· 英文 = **384.22**（v3 口径同值）。
     ///
-    /// 它是 `DesignTokens.Size.settingsPanel.height` 取 440 的依据
-    /// （440 − 384.22 = 余量 55.78），所以「面板是不是虚高」这条判据必须拿它比。
+    /// ⚠️ **v3 起它不再是「面板高度」的依据**：v2 的 440 是照它算的（440 − 384.22 = 55.78），
+    /// 因为那时窗口的职责就是装设置内容。v3 的窗口是主窗口，高度由整体形态定。
+    ///
+    /// 它现在只服务于**下界**那一向：「详情区比最高帧高出 ≥ 8pt」
+    /// = 再来一行说明也不会被静默裁掉。
+    /// （上界那一向 v3 没有对象了 → 退役，理由见 ``designSlackCeiling`` 那一段。）
     ///
     /// ## ⚠️ 为什么不拿实现自己的最高帧（这条判据的基准是刻意选的）
     ///
@@ -113,11 +181,22 @@ struct SettingsLayoutTests {
     /// 它与 ``designPendingApprovalHeights`` 的 `en` 项**是同一个数**（同一帧、同一语言）。
     private static let designTallestFrame: CGFloat = 384.22
 
-    /// 「面板高 − 设计稿最高帧」允许的**上界**（60）。
+    /// ⚠️ **v3 退役：这里原有 `designSlackCeiling = 60`（「面板高 − 设计稿最高帧」的上界）。**
     ///
-    /// 它守的是「面板虚高、底部一条空白带」。下界（8）不在这里 ——
-    /// 那是量脚本自己的告警线，写在 ``面板高度既不截内容也不虚高()`` 里。
-    private static let designSlackCeiling: CGFloat = 60
+    /// 它守的是「设置窗口虚高、底部一条空白带」—— 而那条判据能成立，靠的是一个前提：
+    /// **窗口高度由设置内容倒推**（v2 的 440 就是照最高帧 384.22 + 55.78 余量定的）。
+    ///
+    /// v3 把这个前提拿掉了：窗口是**主窗口**（800×520），同时装磁盘列表与设置五页，
+    /// 高度由整体形态定、**与设置内容无关** ⇒ 详情区底部必然留白，
+    /// 而且是设计稿自己画的（`screens/_10-combined-draft.html` 帧 2 就是如此，
+    /// 实测余量 **468 − 384.22 = 83.78**，比 v2 的 55.78 大）。
+    /// 此时再拿「余量 ≤ 60」判虚高，等于**把设计稿自己画的留白判成 bug**。
+    ///
+    /// 那「窗口不许被改大」由谁守？—— 由 `MainWindowTests.窗口尺寸为设计稿`（800×520）
+    /// 守着，比在这里盯余量更直接（那边断了，详情区高自然也不对）。
+    ///
+    /// **保留下来的那一向（下界 8）在** ``面板高度既不截内容也不虚高()`` 里：
+    /// 它守的是「内容别溢出、再来一行也别被静默裁掉」—— 与窗口由谁定尺寸无关，v3 依然成立。
 
     /// 本文件量高度时**统一注入**的「接管闸门」状态 —— 与设计稿同一版（开关可用）。
     ///
@@ -304,17 +383,44 @@ struct SettingsLayoutTests {
         return count
     }
 
-    // MARK: 两栏的几何 helper
+    // MARK: 详情区的几何 helper（v3）
 
-    /// 右栏（内容区）宽度 = 窗口宽 − 左栏宽（设计稿 720 − 200 = 520）。
+    /// 侧栏面板**本体之外**再内缩的宽度（本机实测 **8pt**，四边都有）。
+    ///
+    /// ⚠️ **它不是设计稿给的数**，是系统在 macOS 26 上的行为
+    /// （统一工具栏 + `fullSizeContentView` + 全高布局 ⇒ 侧栏浮岛四边各内缩 8pt）。
+    /// 详情区左缘因此落在 **208**，而不是面板本体宽度 200。
+    ///
+    /// ⚠️ **14–15 上没有浮岛 ⇒ 内缩为 0 ⇒ 那一代是 600**。
+    /// 所以这个数**不能进 `DesignTokens`** —— 那等于把「26 有浮岛」写死进生产代码，
+    /// 而生产侧的详情区宽度是**由结构保证**的（写补偿代码会在 14–15 上反而算错，
+    /// 见 ``DesignTokens/Size/mainSidebarWidth`` 的注释）。
+    /// 它只是**出图与量测的画布基准**：量的是「本机（26）上长什么样」。
+    private let sidebarOuterInset: CGFloat = 8
+
+    /// v3 详情区的宽度 —— `主窗口 800 − 侧栏本体 200 − 浮岛左内缩 8 = **592**`。
+    ///
+    /// `Design/ui/v3/HANDOFF.md` §5 那张表按「800 − 200 = 600」粗算，**少算了这 8pt**。
+    /// 以实测为准（取证：`.build/probe/v3_assemble/`，量到侧栏外沿 x ∈ [8, 208]）。
     private var detailWidth: CGFloat {
-        DesignTokens.Size.settingsPanel.width - DesignTokens.Size.settingsSidebarWidth
+        DesignTokens.Size.mainWindow.width
+            - DesignTokens.Size.mainSidebarWidth
+            - sidebarOuterInset
     }
 
-    /// 右栏**可用内容宽** = 右栏宽 − 内容区左右内边距（设计稿 520 − 20×2 = **480**）。
+    /// v3 详情区的高度 = 主窗口高 − 系统工具栏（``DesignTokens/Size/titleBarBandHeight``）。
     ///
-    /// 这是「一切折行」真正发生的那个宽度 —— 面板宽 720 与它没关系，
-    /// 拿 720 去算百分比预算会把门槛放得很松（见 ``分段控件不许吃掉标签列的宽度()``）。
+    /// v2 时这里是「设置面板高 440」—— 一个**独立窗口**的高度，由内容夹逼出来
+    /// （英文最坏 384.22 ⇒ 取 440）。v3 的设置住在详情区里 ⇒ 高度由**窗口与工具栏**
+    /// 决定，不再由内容决定：内容超出走滚动，不存在「再加一行就无解」。
+    private var detailHeight: CGFloat {
+        DesignTokens.Size.mainWindow.height - DesignTokens.Size.titleBarBandHeight
+    }
+
+    /// 详情区**可用内容宽** = 详情区宽 − 内容区左右内边距。
+    ///
+    /// 这是「一切折行」真正发生的那个宽度 —— 窗口宽与它没关系，
+    /// 拿窗口宽去算百分比预算会把门槛放得很松（见 ``分段控件不许吃掉标签列的宽度()``）。
     private var contentWidth: CGFloat {
         detailWidth - 2 * SettingsMetrics.detailPaddingH
     }
@@ -377,13 +483,13 @@ struct SettingsLayoutTests {
                 let pane = renderPane(section, language: language)
                 let need = head + pane.height
                 print(
-                    "  [两栏设置] \(language) · \(section.rawValue)：头部 \(head) + 内容 \(pane.height) = \(need)pt ｜ 窗口 \(DesignTokens.Size.settingsPanel.height)"
+                    "  [两栏设置] \(language) · \(section.rawValue)：头部 \(head) + 内容 \(pane.height) = \(need)pt ｜ 窗口 \(detailHeight)"
                 )
                 #expect(
-                    need <= DesignTokens.Size.settingsPanel.height,
+                    need <= detailHeight,
                     """
                     [\(language)] 「\(section.rawValue)」页需要 \(need)pt（头部 \(head) + 内容 \(pane.height)），
-                    超过面板 \(DesignTokens.Size.settingsPanel.height)pt —— 多出来的部分会被滚动区静默裁掉。
+                    超过面板 \(detailHeight)pt —— 多出来的部分会被滚动区静默裁掉。
                     首选改法是压短那一页的文案或收内边距，**不是加高面板**：
                     面板高度是按「最长语言下最高的那一页」定的（见 DesignTokens.Size.settingsPanel）。
                     """
@@ -457,91 +563,41 @@ struct SettingsLayoutTests {
         print("  [两栏设置] 实现最高帧 = \(tallest.0) \(tallest.1)pt")
 
         #expect(
-            tallest.1 <= DesignTokens.Size.settingsPanel.height,
-            "最高的一帧「\(tallest.0)」需要 \(tallest.1)pt，超过面板 \(DesignTokens.Size.settingsPanel.height)pt —— 那一页会被截掉。全部各帧：\(printed)"
+            tallest.1 <= detailHeight,
+            "最高的一帧「\(tallest.0)」需要 \(tallest.1)pt，超过面板 \(detailHeight)pt —— 那一页会被截掉。全部各帧：\(printed)"
         )
 
-        // 上界：拿**设计稿**最高帧当基准（理由见上面那段）。
-        let designSlack = DesignTokens.Size.settingsPanel.height - Self.designTallestFrame
+        // 余量：**v3 只守下界**（上界已退役，理由见 ``designSlackCeiling`` 那一段）。
+        //
+        // 下界守的是「内容别溢出、再来一行也别被静默裁掉」—— 与「窗口高由谁定」无关，
+        // v3 依然成立。
+        let designSlack = detailHeight - Self.designTallestFrame
         print("  [两栏设置] 面板高 − 设计稿最高帧 \(Self.designTallestFrame) = \(designSlack)pt")
-        #expect(
-            designSlack <= Self.designSlackCeiling,
-            """
-            面板（\(DesignTokens.Size.settingsPanel.height)pt）比**设计稿最高帧**（\(Self.designTallestFrame)pt）\
-            高出 \(designSlack)pt（> \(Self.designSlackCeiling)）—— 面板虚高，底部会留下一条明显的空白带。
-            要么把 DesignTokens.Size.settingsPanel.height 收到 \(Self.designTallestFrame + Self.designSlackCeiling)pt 以内，
-            要么去设计稿里补内容（`screens/09-settings-split.html`）并重跑 Tools/measure_settings_split.py。
-            ⚠️ **别拿实现自己的最高帧（\(tallest.0) \(tallest.1)pt）当基准** —— 那个数比设计稿矮，
-            理由见 ``designTallestFrame``（基准刻意选设计稿、不选实现）。
-            """
-        )
-        // 下界：余量太薄时「再加一行说明」就会被静默裁掉 —— 与量脚本同一条告警线。
         #expect(
             designSlack >= 8,
             "面板只比设计稿最高帧高 \(designSlack)pt（< 8）—— 余量太薄，再加一行说明文字就会被 `overflow` **静默裁掉**。要么加高面板，要么去设计稿里收内容"
         )
     }
 
-    /// 左栏几何：宽 200、五项、整列自然高 208。
+    /// ⚠️ **这里原先有一条 `左栏几何符合设计稿()`，v3 退役。**
     ///
-    /// ## ⚠️ 断言里那三个数**写成字面量**，不写 `DesignTokens.Size.…`
+    /// 它量的是两栏设置窗口那个独立左栏（``SettingsSidebar``：宽 200、五项、自然高 208），
+    /// 而 v3 之后设置没有自己的左栏了 —— 分类栏就是**主窗口的侧栏**
+    /// （``MainSidebarView``，`List(selection:)` + `.listStyle(.sidebar)`），
+    /// 浮岛、圆角、材质、选中态全归系统。
     ///
-    /// 2026-09-29 变异测试抓到的（**这条原本是没牙的**）：
-    /// 第一版写的是 `abs(sidebar.width - DesignTokens.Size.settingsSidebarWidth) <= 0.5`、
-    /// 期望高度也由 `headerHeight + count × itemHeight + …` 算出来 ——
-    /// 而令牌一改，**渲染与期望两边同时跟着变** ⇒ 把 `settingsSidebarWidth` 从 200
-    /// 改成 210，**12 条测试全绿**。这就是仓库反复记的那条「拿常量跟自己比 = 没牙」。
+    /// **判据没有丢，只是换了地方守**：
+    /// - 「宽 200」现在由 ``MainWindowContentController`` 把 `minimumThickness` 与
+    ///   `maximumThickness` **一起**锁成 ``DesignTokens/Size/mainSidebarWidth``，
+    ///   真机自检 ``WindowSelfCheck/checkSplitAssembly(window:content:label:mismatches:)``
+    ///   逐条核对（并确认 `canCollapse == false`、用户拖不动那条分隔线）；
+    /// - 「自然高 208」是**那个自绘左栏的内边距账**（`52 + 5×28 + 4×1 + 12`），
+    ///   v3 的侧栏几何由系统排版，那个数字没有对应物。
     ///
-    /// ⇒ 这里量的是**渲染结果**，就该拿**设计稿的数字**去比：
-    /// 宽 `200`（`.sside { width: 200px }`）、自然高 `208`（`52 + 5×28 + 4×1 + 12`）。
-    /// 两个数**各有出处**，`DesignSizeParityTests` 那边另有一份
-    /// （`.rule(".sside","width:")` ↔ `settingsSidebarWidth`）钉住**声明值**。
-    /// 两条分工不同、也别合并：
-    /// - 同源表那条抓「**常量与设计稿不同数**」（改常量不改设计稿）；
-    /// - 本条抓「**视图没按那个数排**」（例如把 `frame(width:)` 写死成 240，
-    ///   常量一动不动 ⇒ 同源表完全看不见）。
-    /// 改设计稿里的左栏几何时，两处会**一起**红 —— 那是对的，别只改一处让它变绿。
-    ///
-    /// 真正要紧的是**宽 200**：右栏可用宽（520 − 20×2 = 480）是由它反推出来的，
-    /// 左栏悄悄变宽就会把右栏挤窄，而**没有任何东西会报错**（只会多折几行、
-    /// 高度契约跟着漂）。
-    ///
-    /// ⚠️ **量自然高必须先 `.fixedSize(vertical: true)`**（2026-09-29 实测）：
-    /// 左栏是**贪心**的 —— `.frame(maxHeight: .infinity)` 撑满整列，
-    /// 因为它要拿 `--bg-sunken` 铺满那 440pt（否则底色只有内容那么高，下面露一条白）。
-    /// 直接 `sizeThatFits` 会把「提案的那个高度」原样报回来 —— 实测拿到的是
-    /// `1.797…e+308`（= `.greatestFiniteMagnitude`），而不是内容高。
-    /// 这个失败方式**不报错、不崩溃**，只是断言恒成立（208 ≤ 1.8e308 恒真）——
-    /// 又一个「少了东西不会报错」。
-    ///
-    /// （本条原先叫「英文下也必须放得下」，2026-09-29 两栏之后并入了
-    /// ``每个分类页都放得下()`` 的逐语言循环 —— 那个函数的前身是一条
-    /// 「记录英文放不下」的已知缺陷锁，2026-09-18 面板加宽后转成了门槛。）
-    @Test func 左栏几何符合设计稿() {
-        let sidebar = renderedSize(
-            SettingsSidebar(selection: .constant(.general))
-                .fixedSize(horizontal: false, vertical: true),
-            width: 200)
-        print("  [两栏设置] 左栏渲染 \(sidebar.width)×\(sidebar.height)")
-
-        #expect(
-            abs(sidebar.width - 200) <= 0.5,
-            "左栏渲染宽 \(sidebar.width)pt，设计稿 `.sside { width: 200px }` 是 200pt —— 它一变右栏就跟着变，而右栏可用宽是所有折行的前提"
-        )
-        #expect(
-            abs(sidebar.height - 208) <= 0.5,
-            """
-            左栏自然高渲染出来 \(sidebar.height)pt，设计稿是 208pt
-            （`padding: 52px 10px 12px` + 5 项 × 28 + 4 个 `gap: 1px`）。
-            ⚠️ 常见原因是 `VStack` 末尾多了一个 `Spacer` —— 间距算的是**子项之间**，
-            而 `Spacer` 也算一个子项，于是末尾白吃 1pt（209 而不是 208）。
-            """
-        )
-        #expect(
-            sidebar.height <= DesignTokens.Size.settingsPanel.height,
-            "左栏自然高 \(sidebar.height)pt 超过面板 \(DesignTokens.Size.settingsPanel.height)pt —— 最后一个分类会被裁掉"
-        )
-    }
+    /// 一条**仍然适用**的经验：拿 `DesignTokens.Size.…` 当期望值去比渲染结果，
+    /// 等于「常量跟自己比」—— 令牌一改两边同时变，测试照样全绿
+    /// （2026-09-29 变异测试实测：把 `settingsSidebarWidth` 从 200 改成 210，12 条全绿）。
+    /// 现在守侧栏的那条用的是**实测的 200**。
 
     /// ⚠️ 这里曾有第二条「繁中下也必须放得下」——**2026-09-29 两栏之后删掉了**。
     ///
@@ -600,20 +656,23 @@ struct SettingsLayoutTests {
         for section in SettingsSection.allCases {
             guard let want = Self.designFrameHeights[section] else {
                 Issue.record(
-                    "「\(section.rawValue)」页没有设计稿基准 —— 新增分类必须同时补基准（跑 Tools/measure_settings_split.py 重量），否则这一页的排版走样没有任何东西会报错"
+                    "「\(section.rawValue)」页没有设计稿基准 —— 新增分类必须同时补基准（跑 Tools/measure_settings_v3.py 重量），否则这一页的排版走样没有任何东西会报错"
                 )
                 continue
             }
+            // 设计稿口径 + 系统控件固有偏差（见 ``systemToggleDelta``：系统 Toggle 24 vs 稿 22）。
+            let expected = want + (Self.systemToggleDelta[section] ?? 0)
             let got = head + renderPane(section).height
-            print("  [两栏设置] \(section.rawValue)：实现 \(got) ｜ 设计稿 \(want)")
+            print("  [两栏设置] \(section.rawValue)：实现 \(got) ｜ 设计稿 \(want) + 系统偏差 \(expected - want)")
 
             #expect(
-                abs(got - want) <= 2,
+                abs(got - expected) <= 2,
                 """
-                「\(section.rawValue)」页中文下需要 \(got)pt，设计稿实测 \(want)pt \
-                （差 \(got - want)pt > 2）。差得超过 2pt 说明**结构**变了\
-                （少/多一行、内边距或图标尺寸改动），不只是折行差异 —— \
-                请同步复核设计稿与该页内容（设计稿那侧用 `Tools/measure_settings_split.py` 重量，别手抄）。
+                「\(section.rawValue)」页中文下需要 \(got)pt，期望 \(expected)pt \
+                （设计稿实测 \(want)pt + 系统控件偏差 \(expected - want)pt，差 \(got - expected)pt > 2）。\
+                差得超过 2pt 说明**结构**变了（少/多一行、内边距或图标尺寸改动），不只是折行差异 —— \
+                请同步复核设计稿与该页内容（设计稿那侧用 `Tools/measure_settings_v3.py` 重量，别手抄）。\
+                若这页增删了**无说明文字的开关行**，请同步 ``systemToggleDelta``（每行 +2）。
                 """
             )
         }
@@ -669,17 +728,24 @@ struct SettingsLayoutTests {
         )
 
         let head = SettingsMetrics.headerHeight
+        // 设计稿口径 + 系统控件偏差：第三态帧里同样有 Dock 图标那条无说明开关行
+        // （``systemToggleDelta`` 的 +2），**再加**登录项行 —— 待批准态下
+        // `launchAtLoginDescription` 返回 `nil`（说明整体搬去了受阻行），
+        // 行高改由系统 Toggle 24pt 决定 ⇒ 再 +2。两条合起来 = 第三态共 2 行。
+        let extra = (Self.systemToggleDelta[.general] ?? 0) + Self.pendingApprovalExtraToggleDelta
         for (language, want) in Self.designPendingApprovalHeights.sorted(by: { $0.key < $1.key }) {
+            let expected = want + extra
             let got = head + pane(.requiresApproval, language: language).height
-            print("  [登录项第三态] \(language)：实现 \(got) ｜ 设计稿 \(want)")
+            print("  [登录项第三态] \(language)：实现 \(got) ｜ 设计稿 \(want) + 系统偏差 \(extra)")
 
             #expect(
-                abs(got - want) <= 2,
+                abs(got - expected) <= 2,
                 """
-                [\(language)] 第三态需要 \(got)pt，设计稿实测 \(want)pt（差 \(got - want)pt > 2）。
+                [\(language)] 第三态需要 \(got)pt，期望 \(expected)pt \
+                （设计稿实测 \(want)pt + 系统偏差 \(extra)pt，差 \(got - expected)pt > 2）。
                 差得超过 2pt 说明**结构**变了（那行受阻提示行没插进去 / 插错位置 /
                 按钮高度与设计稿的 `.btn--sm` 不同），不只是折行差异 ——
-                请同步复核设计稿 09 页第 2 帧（用 `Tools/measure_settings_split.py` 重量，别手抄）。
+                请同步复核设计稿 09 页第 2 帧（用 `Tools/measure_settings_v3.py` 重量，别手抄）。
                 """
             )
         }
@@ -726,7 +792,7 @@ struct SettingsLayoutTests {
     /// 2. **暖色必须铺满整行**（跨 ≥ 40pt 高）：只断言「> 0 个」的话，
     ///    「底色加在内边距之前」（只剩标签那一小条）照样能通过。
     @Test func 受阻行的琥珀底真的画出来了() {
-        let size = CGSize(width: detailWidth, height: DesignTokens.Size.settingsPanel.height)
+        let size = CGSize(width: detailWidth, height: detailHeight)
 
         /// 暖色（底色本体 + 琥珀文字都算）。
         func isWarm(_ r: Double, _ g: Double, _ b: Double) -> Bool {
@@ -1218,14 +1284,24 @@ struct SettingsLayoutTests {
     /// ``OffscreenRender``，见 `DESIGN-SPEC.md` §8.131。）
     ///
     /// ⚠️ **宽度必须按右栏（``detailWidth``）出图**：头部只占右栏 ——
-    /// 拿整窗 720 出图，「完成」按钮会更靠右，两个数都对不上产品里看到的画面。
+    /// 拿整窗出图，两个数都对不上产品里看到的画面。
     ///
     /// **扫描带取 y ∈ [8, 44]**（52pt 头部的中段）：**必须避开底部那条 `Hairline`** ——
     /// 它横跨整宽，会把 x=0 也算成墨迹。
+    ///
+    /// ## v3：渲染对象从 `SettingsHeaderBar` 换成 ``MainDetailHead``
+    ///
+    /// 前者是**独立设置窗口**的头部（标题 + 右侧「完成」按钮）；
+    /// 后者是**主窗口详情区**的头部（标题 + 可选副标题，右侧什么都没有）——
+    /// 「完成」这个概念在 v3 已不存在（设置是常驻面板，没有「做完」这个动作，
+    /// 见 `Design/ui/v3/HANDOFF.md` §3.4）。
+    ///
+    /// ⇒ 下面那条「自证」随之**反过来**：原来要求右半侧有墨迹（那是「完成」），
+    /// 现在要求右半侧**没有**墨迹 —— 顺带守住「别把『完成』按钮加回来」。
     @Test func 头部标题渲染起点等于设计稿内边距() {
         guard
             let rep = OffscreenRender.bitmap(
-                SettingsHeaderBar(title: L10n.tr(.settingsGroupGeneral), onDone: {}),
+                MainDetailHead(title: L10n.tr(.settingsGroupGeneral), subtitle: nil),
                 size: CGSize(width: detailWidth, height: SettingsMetrics.headerHeight)),
             let range = OffscreenRender.inkColumnRange(rep, rows: 8...44, maxX: detailWidth)
         else {
@@ -1233,24 +1309,27 @@ struct SettingsLayoutTests {
             return
         }
 
-        // 自证：右半侧也该有墨迹（「完成」按钮）。两侧都扫到，才说明渲出的是一整个头部，
-        // 而不是某个只画了一半的半成品（量到半成品会得出错误基准值）。
+        // 自证：详情区头部**右侧不该有墨迹**（v3 的头部只有标题）。
+        // 扫到了说明「完成」按钮又回来了 —— 那正是 v3 点名要删掉的东西。
         #expect(
-            range.last > detailWidth / 2,
-            "最右侧墨迹只到 \(range.last)pt（右栏宽 \(detailWidth)）—— 渲染不完整，下面的断言无意义"
+            range.last < detailWidth / 2,
+            """
+            最右侧墨迹到了 \(range.last)pt（右栏宽 \(detailWidth)）—— 头部右侧本该是空的。\
+            多半是把「完成」按钮加回来了：v3 里设置是主窗口的常驻面板，没有「完成」这个概念。
+            """
         )
 
         let expected = SettingsMetrics.headerPaddingLeading
         // 把量到的数打出来 —— 像素量测最容易的失败方式是「量错了东西」，
         // 有这两个数才能当场分辨「对齐坏了」和「扫描带落在空白上」。
-        print("  [设置面板头部] 首列墨迹 \(range.first)pt、最右 \(range.last)pt（期望首列 ≈ \(expected)）")
+        print("  [详情区头部] 首列墨迹 \(range.first)pt、最右 \(range.last)pt（期望首列 ≈ \(expected)）")
         #expect(
             range.first >= expected - 1 && range.first <= expected + 6,
             """
             标题首列墨迹在 \(range.first)pt，设计稿内边距 \(expected)pt。\
-            偏小（≈16.0）说明前导内边距退回成单栏时代的 16 了（两栏设计稿是 20）；\
+            偏小（≈16.0）说明前导内边距退回成 16 了；\
             再小（≈12.0）说明内边距被改小；偏大（≈80.0）说明红绿灯让位块又回来了 —— \
-            设计稿的左栏里没有 traffic。
+            详情区头部里没有 traffic。
             """
         )
     }

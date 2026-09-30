@@ -1,22 +1,28 @@
 import AppKit
 import SwiftUI
 
-/// 主窗口内容（设计稿 `01-main-window.html`）。
+/// **主窗口详情区里的磁盘列表页**（设计稿 `_10-combined-draft.html` 右栏那一片）。
 ///
-/// **设计稿规格**：800 × 520，外框圆角 12，标题栏 52（上下文标题「外置磁盘 · N 块」+ 刷新/设置），
-/// 条件出现的 FDA 横幅，磁盘行列表（内边距 12 / 16 / 16）。
+/// ## 它不再是「整个主窗口」
 ///
-/// **职责**：主窗口承担「说明白发生了什么」——三块盘、两种状态并列，用户无需读完整个窗口。
-/// 与菜单栏的分工：菜单栏 = 动作（紧凑、一行一行），主窗口 = 诊断（容量条 + 证据区 + 横幅）。
+/// v3 之前它是窗口内容视图：自带一条 52pt 自绘标题栏（标题 + 刷新 + 齿轮）、
+/// 自绘窗口背景，还负责给 `contentView` 设圆角。合并之后这些**都不在它这一层**：
 ///
-/// **统一背景**：跟菜单面板、设置面板同款 ``GlassSurface``（系统材质 + `--bg-glass` 叠加色
-/// + 0.5px `--border-strong` 外描边）—— 三块玻璃必须看起来是同一块。
+/// | 原先在 `ContentView` 里的 | 现在归谁 |
+/// |---|---|
+/// | 52pt 标题栏（标题 / 刷新 / 齿轮） | 标题 → ``MainDetailHead``；刷新 → `NSToolbar` 尾端那一个 item；**齿轮取消**（设置已经在侧栏里，再放一个就是同一件事两个入口） |
+/// | `GlassSurface` 窗口背景 | `NSSplitViewController` 底下那一层（整窗一块玻璃，侧栏浮岛叠在它上面） |
+/// | `contentView.layer.cornerRadius`（12pt 遮罩） | **删掉** —— 窗口圆角归系统，理由与影见 HANDOFF §3.7.3 |
+/// | `frame(800 × 520)` | 窗口尺寸（``DesignTokens/Size/mainWindow``）；详情区只负责「填满分到的那一块」 |
 ///
-/// **保留的不变量**：
+/// ⇒ 它现在只做一件事：把**这一页**（FDA 横幅 + 磁盘列表）画出来。
+/// 侧栏与窗口装配分别在 `MainWindowNavigation.swift` 与 `DiskEjectorApp.swift`。
+///
+/// **保留的不变量**（这些一条都没变）：
 /// - 列表来自 ``DiskListStore``（与菜单栏同源）
 /// - 占用检测走 ``OccupancyStore``（与菜单栏**同一份状态**，不再是两处各测各的）
 /// - FDA canary 由本视图自己轮询（应用级状态，与有没有盘无关）
-/// - 推出走 ``EjectUI.handle``，与菜单栏共用弹窗
+/// - 推出走 ``EjectUI/handle``，与菜单栏共用弹窗
 struct ContentView: View {
 
     /// 磁盘列表来源。
@@ -29,7 +35,6 @@ struct ContentView: View {
     /// 硬编码的后果是：**「列表为空 → 画空状态」这条分支只能靠本机恰好没插盘才走得到**，
     /// 于是守着它的那条真机断言大部分时间都在跳过（见 ``AppDelegate/checkEmptyStateInsteadOfSkeleton``）。
     @ObservedObject private var store: DiskListStore
-    @State private var isRefreshing = false
     @State private var ejectingDiskId: String? = nil
 
     /// 每个卷的占用检测结果 —— **与菜单栏面板读的是同一个字典**。
@@ -125,13 +130,17 @@ struct ContentView: View {
     /// ## 为什么需要这个开关
     ///
     /// ``SnapshotRenderTests`` 出图时 `cacheDisplay` 是**同步**截的，而 `.task` 里的
-    /// `await refreshDisks()` 会先把 `isRefreshing` 置真，再依次等磁盘枚举与占用检测
-    /// （`lsof`）跑完。截图正好落在「**盘已经列出来、刷新还没收尾**」那个窗口里 ——
-    /// 于是走查图右上角画的是 **spinner**，而设计稿 `01-main-window.html` 里是**箭头**。
+    /// `await refreshDisks()` 要依次等磁盘枚举与占用检测（`lsof`）跑完。
+    /// 截图正好落在「**盘已经列出来、数据还没收尾**」那个窗口里 ——
+    /// 于是走查图拍到的是**中途状态**，而设计稿画的是稳态。
     /// 连跑三次指纹完全一致（`4fde925d31bc`、峰值 161），是**确定性**的，不是随机。
     ///
-    /// 出图侧因此改成传 `skipsInitialRefresh: true` 渲染 —— 走查图于是停在**稳态**，
-    /// 右上角是设计稿里的箭头。
+    /// 出图侧因此改成传 `skipsInitialRefresh: true` 渲染 —— 走查图于是停在**稳态**。
+    ///
+    /// ℹ️ **2026-09-30 补**：这段注释原先还说「右上角画的是 spinner、设计稿里是箭头」。
+    /// 刷新按钮已经搬进 `NSToolbar`（见 `AppDelegate/makeMainWindow()`），
+    /// 本视图里没有刷新按钮了 —— 但开关本身仍然必要，理由就是上面那句更一般的
+    /// 「别拍中途状态」。
     ///
     /// 磁盘列表**不需要**额外准备：``DiskListStore/shared`` 的 `private init()` 会同步填一次
     /// `fetchExternalDisks()`，访问 `.shared` 时列表就是满的。
@@ -147,8 +156,7 @@ struct ContentView: View {
     /// ## 它是什么
     ///
     /// 与 ``DiskListStore`` 的 `monitoring:`、``OccupancyStore`` 的 `autoStart:` 同一种
-    /// 「给测试/出图留的注入口」，不是顺手加的生产开关。**不要再加第二个** ——
-    /// 想覆盖「刷新中」的观感请直接渲染 ``RefreshTitleBarButton``（`RefreshButtonTests` 就是这么做的）。
+    /// 「给测试/出图留的注入口」，不是顺手加的生产开关。**不要再加第二个**。
     let skipsInitialRefresh: Bool
 
     /// - Parameters:
@@ -181,57 +189,25 @@ struct ContentView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            titleBar
             bannerArea
             scrollRegion
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        // **两层 frame 分工不同，别合并成一层**（2026-09-15 的「标题栏露底」就是这么来的）：
-        // - 内层 = **设计稿尺寸** 800×520，内容按它排版；
-        // - 外层 = **填满宿主**（窗口），``backgroundLayer`` 铺在这一层上。
+        // **只「填满宿主」，不再给设计稿尺寸的 frame。**
         //
-        // 之前只有一层 `frame(width:height:)` 挂在最外面，玻璃挂在它**里面**，
-        // 于是「玻璃铺满整窗」这件事**依赖「窗口高度恰好等于内容高度」这个巧合**。
-        // 一旦窗口被撑高（当时是 552），玻璃就只拿到 520，顶部 32pt 露出桌面。
-        // 实测（`/tmp/winprobe`）：老结构在「宿主 552 + 无安全区」下玻璃是 y 16…536，
-        // 新结构在宿主 520 / 552 / 600 × 有无安全区的六种组合下**全部铺满**。
-        .frame(
-            width: DesignTokens.Size.mainWindow.width,
-            height: DesignTokens.Size.mainWindow.height
-        )
+        // 这里原先还有一层 `frame(800 × 520)`，理由是「内容按设计稿排版」。
+        // v3 之后那件事不成立了：详情区的可用宽 = 窗口 800 − 侧栏 200 = 600，
+        // 再钉一个 800 会把内容撑到窗口外。窗口尺寸由 ``AppDelegate/makeMainWindow()``
+        // 的 `contentRect` 与 `minSize` 保证，这里只管填满分到的那一块。
+        //
+        // ⚠️ **玻璃也不在这里挂了** —— 它是**整窗一块**（侧栏浮岛四边内缩的那 8pt
+        // 也要吃到材质）。挂在详情区上的话，侧栏那一圈会露出没有材质的窗口底。
+        // 挂点见 ``AppDelegate/makeMainWindow()``。
+        //
+        // ⚠️ **`.ignoresSafeArea()` 一并删了**：它当年是为了兜住「宿主报出标题栏
+        // 安全区」那件事，而现在宿主自己就关掉了安全区（`NSHostingController` 的
+        // `safeAreaRegions = []`）—— 留着它反而是个没人验证的兜底。
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(backgroundLayer)
-        // 保险，不是主机制：宿主若报出安全区（如 `.fullSizeContentView` 的顶部 32pt），
-        // 这一句让上面那层「填满」也跟着吃进安全区。
-        //
-        // **它单独并不够** —— 实测：安全区为 0 时它是 no-op；而内容若被内层 frame 定死，
-        // 它也无处可扩展（老结构 + 宿主 552 就是 16…536 露底）。
-        // 真正负责「窗口尺寸正确」的是 ``AppDelegate/makeMainWindow()`` 里的
-        // `hosting.safeAreaRegions = []`。
-        //
-        // **不是** `sizingOptions = []` —— 那个听起来像「窗口尺寸归 AppKit 管」，
-        // 实测却是把窗口的 `minSize`/`maxSize` **清成默认值**（`minSize` → 0×0），
-        // 会静默清掉刚设好的 `minSize`。详见那里的注释。
-        .ignoresSafeArea()
-        // **这里只剩「内容视图自己的圆角」。**
-        //
-        // 窗口层面的配置（透明标题栏、`.fullSizeContentView`、`backgroundColor = .clear`、
-        // `isOpaque`、min/max 尺寸、首焦点）全部搬到了 ``AppDelegate/makeMainWindow()`` ——
-        // 那里是**确定生效**的时机，也才能被单测断言。
-        //
-        // 为什么搬：`WindowAccessor` 的 `configure` 走一次 `DispatchQueue.main.async`，
-        // 实测在离屏环境里**推了布局又跑 run loop 也不会执行**（`MainWindowTests` 抓到）。
-        // 把「窗口是玻璃还是一块不透明白板」交给它，等于交给运气。
-        //
-        // 圆角留在这里，是因为它要设在**已经进过窗口**的 `contentView` 上。
-        .background(
-            WindowAccessor { window in
-                // 主窗口外框圆角（设计稿 12px）
-                window.contentView?.wantsLayer = true
-                window.contentView?.layer?.cornerRadius = DesignTokens.Radius.window
-                window.contentView?.layer?.masksToBounds = true
-            }
-        )
         .task {
             // 启动后立即同步探测一次 FDA 授权状态——`.task` 会在视图首次出现前异步执行，
             // 但本探测调用本身是同步的（探针只读 TCC 受保护目录的元数据，毫秒级返回），
@@ -310,104 +286,6 @@ struct ContentView: View {
         }
     }
 
-    // MARK: - 子层
-
-    /// 窗口背景层：**与菜单面板、设置面板共用的同一块玻璃** —— ``GlassSurface``。
-    ///
-    /// 这里曾经只有 `VisualEffectBackground()`（裸系统材质，没有 `--bg-glass` 叠加色），
-    /// 于是主窗口显示为系统材质那层偏冷的灰（离屏实测 RGB 240,240,240），
-    /// 而设计稿 `.win` 是 `--bg-glass`（浅色 `rgba(255,255,255,.72)`）铺在模糊之上的一层暖白。
-    /// 同时它也少了 `.win` 的 `0.5px var(--border-strong)` 外描边 ——
-    /// 浅色壁纸下窗口边缘完全溶进背景。
-    ///
-    /// **挂法**：`.background(backgroundLayer)`，挂在 body 里那层 **「填满宿主」的 frame** 上
-    /// （不是挂在定死 800×520 的内层上），**不要**放进 `ZStack`（理由见
-    /// ``GlassSurface`` 的注释：离屏量测时会把 1.79e308 送进 AppKit 约束并崩掉进程）。
-    ///
-    /// **别指望 `.ignoresSafeArea()` 替你铺满**：它只在「宿主报出安全区」时才有可扩展的量，
-    /// 而且扩展的是**它修饰的那一层**。玻璃要铺满，靠的是「它铺在填满宿主的那层上」。
-    private var backgroundLayer: some View {
-        GlassSurface(cornerRadius: DesignTokens.Radius.window)
-    }
-
-    // MARK: - 标题栏（设计稿 `.titlebar`，高 52）
-
-    /// 上下文标题栏：左让位给红绿灯，中间是「外置磁盘 · N 块」，右侧刷新 / 设置。
-    ///
-    /// **为什么标题栏要有内容**：旧版标题栏是空的（只让位给红绿灯 + 两个图标按钮），
-    /// 用户看不出这块区域有什么用。改成上下文标题后，它回答「我正在看什么」——
-    /// 这也是 macOS 原生应用的惯例。
-    ///
-    /// **高度与对齐**：设计稿 `.titlebar` 是 `height: 52px; align-items: center` ——
-    /// DOM 探针实测红绿灯 / 标题 / 图标按钮的中心**全在距顶 26pt**。
-    /// 所以内容带就是整个 52pt（留白 0），内容居中后中心 26pt。
-    ///
-    /// 系统画的交通灯本来在中心 16pt（标准 28pt 标题栏的位置），由
-    /// ``AppDelegate/alignTrafficLights(in:)`` 在装配窗口时挪到 26pt ——
-    /// **不是**把标题拉下去迁就系统。理由与实测见
-    /// ``DesignTokens/Size/titleBarBandHeight``。
-    ///
-    /// ⚠️ 这里历史上改过三次，每次都是「凭印象写数字」：`28 + 24`（猜灯在 14pt）、
-    /// `32 + 20`（实测灯在 16pt，于是让标题迁就灯）、到现在的 `52 + 0`（按设计稿，把灯挪过来）。
-    /// **不要再凭印象改** —— 现在有真机断言守着（`--preview-main-window-keys`）。
-    private var titleBar: some View {
-        HStack(spacing: DesignTokens.Spacing.md) {
-            // 让位给 macOS 红绿灯（系统绘制，宽约 52pt）+ 左边距 20pt。
-            Color.clear.frame(width: 52)
-
-            Text(L10n.tr(.externalDisksTitle))
-                .font(.system(size: DesignTokens.FontSize.title, weight: .semibold))
-                .foregroundStyle(DesignTokens.Palette.foreground)
-                .lineLimit(1)
-
-            if !store.disks.isEmpty {
-                Text(String(format: L10n.tr(.diskCountFormat), store.disks.count))
-                    .font(.system(size: DesignTokens.FontSize.caption))
-                    .monospacedDigit()
-                    .foregroundStyle(DesignTokens.Palette.mutedForeground)
-                    .lineLimit(1)
-            }
-
-            Spacer(minLength: 0)
-
-            HStack(spacing: 2) {
-                // 刷新中**就地换 spinner**，不是把按钮藏起来 —— 见 ``RefreshTitleBarButton``
-                // 的文档：旧写法把 `.opacity` 排在 `.overlay` 之后，spinner 被一起调透明，
-                // 那块位置在刷新期间是空的（用户 2026-09-16 报告）。
-                RefreshTitleBarButton(
-                    label: L10n.tr(.refresh),
-                    isRefreshing: isRefreshing,
-                    action: { Task { await refreshDisks() } }
-                )
-
-                titleBarButton(
-                    systemName: "gear",
-                    label: L10n.tr(.settings),
-                    action: { openSettings() }
-                )
-            }
-        }
-        .padding(.leading, DesignTokens.Spacing.xl)
-        .padding(.trailing, DesignTokens.Spacing.titleBarTrailing)
-        .frame(height: DesignTokens.Size.titleBarBandHeight)
-        .padding(.bottom, DesignTokens.Size.titleBarBandBottomPadding)
-        // 设计稿 `.titlebar { border-bottom: 0.5px solid var(--hairline) }`。
-        // 用 overlay 而不是加一条 `Hairline` 进 VStack：后者会占 1pt 高度，
-        // 把下面的内容整体推低，标题栏也就不是 52pt 了。
-        .overlay(alignment: .bottom) { Hairline() }
-        .accessibilityElement(children: .contain)
-        .accessibilityAddTraits(.isHeader)
-    }
-
-    /// 标题栏 28×28 图标按钮。
-    private func titleBarButton(
-        systemName: String,
-        label: String,
-        action: @escaping () -> Void
-    ) -> some View {
-        TitleBarIconButton(systemName: systemName, label: label, action: action)
-    }
-
     // MARK: - 横幅区
 
     /// 顶部横幅：未授权时是琥珀色引导，刚授权完是绿色正反馈。
@@ -478,21 +356,7 @@ struct ContentView: View {
     /// 于是同一个「设置」在两个入口下是两种东西，其中一种还拖不动。
     /// 现在统一成独立窗口，顺带删掉了一整套 `.sheet` 分支。
     ///
-    /// `assert` 是「接线断了要立刻知道」：`sendAction` 找不到接收者时只是**安静返回 false**，
-    /// 表现成「齿轮点了没反应」——正是本项目最忌讳的静默失败。
-    ///
-    /// **不要为此再加一条 `AppDelegate.instancesRespond(to: #selector(...))` 的测试**：
-    /// `#selector` 表达式本身就要编译通过，那种断言恒为真、拦不住任何东西（原先有一条，已删）。
-    /// 这条线真正靠的是这里的 `assert` + 编译期解析的 `#selector`；理由详见
-    /// `SettingsWindowTests` 里 `// MARK: - 入口` 那段说明。
-    private func openSettings() {
-        let delivered = NSApp.sendAction(#selector(AppDelegate.showSettings), to: nil, from: nil)
-        assert(delivered, "设置入口没接上：AppDelegate.showSettings 必须存在且是 @objc")
-    }
-
     private func refreshDisks() async {
-        isRefreshing = true
-        defer { isRefreshing = false }
         // **刷的是 `store` 自己，不是 `.shared`**：两者在出图/自检里可能是不同实例，
         // 写 `.shared` 会让「刷新」刷新一个本视图没在观察的对象（界面纹丝不动）。
         await store.refresh()
@@ -629,123 +493,5 @@ struct DiskListRegion: View {
             }
         }
         .accessibilityLabel(L10n.tr(.loadingDisks))
-    }
-}
-
-// MARK: - 标题栏按钮（独立子视图以便管理 @State hover 状态）
-
-/// 标题栏 28 × 28 图标按钮（刷新 / 设置）。
-///
-/// **hover 底色比按钮盒子小一圈**：``DesignTokens/Size/hoverBackgroundInset``（3pt）
-/// → 22 × 22、圆角取同心值 ``DesignTokens/Radius/concentric(inset:)``（3）。
-/// 点击区域仍是整个 28 × 28（靠 ``contentShape``）—— 底色是视觉，命中区不该跟着缩。
-///
-/// ⚠️ **`.padding` 只能加在 `.background` 里的形状上**，不能把 `.frame` 挪到它前面：
-/// 那样会把 `foregroundStyle(hovering ? …)` 的作用范围一起改掉，
-/// 图标颜色就不随 hover 变了（这是「只改一层」时最容易踩的坑）。
-struct TitleBarIconButton: View {
-    let systemName: String
-    let label: String
-    let action: () -> Void
-
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var hovering = false
-
-    var body: some View {
-        Button(action: action) {
-            Image(systemName: systemName)
-                .font(.system(size: 14, weight: .medium))
-                .foregroundStyle(hovering ? DesignTokens.Palette.foreground : DesignTokens.Palette.mutedForeground)
-                .frame(
-                    width: DesignTokens.Size.titleBarIconButton,
-                    height: DesignTokens.Size.titleBarIconButton
-                )
-                .background(HoverBackground(color: hovering ? DesignTokens.Palette.subtle : Color.clear))
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        // **去 SwiftUI 默认 focus 环**：启动时第一个 Button 会被自动 focus，
-        // 蓝色环套在 RefreshButton 上看着像「按钮被高亮选中」——但用户没点任何按钮。
-        .focusable(false)
-        .disableFocusRing()
-        .onHover { hovering = $0 }
-        .animation(
-            DesignTokens.Motion.animation(DesignTokens.Motion.fast, reduceMotion: reduceMotion),
-            value: hovering
-        )
-        .help(label)
-        .accessibilityLabel(label)
-    }
-}
-
-/// 标题栏的「刷新」按钮：**刷新中就地换成 spinner**，而不是把按钮藏起来。
-///
-/// 设计稿的语言是「按钮就地变为 spinner、**保留原尺寸（换成 spinner 后不能塌陷）**、
-/// 禁用重复点击」（`06-states.html` 的「推出中」；应用里 ``DiskRow`` 已经是这个写法）。
-///
-/// ## 为什么要单独抽一个类型
-///
-/// 原写法是：
-///
-/// ```swift
-/// titleBarButton(…)
-///     .overlay { if isRefreshing { ProgressView().controlSize(.small) } }
-///     .opacity(isRefreshing ? 0 : 1)   // ← 排在 .overlay 之后
-/// ```
-///
-/// `.opacity` 在 `.overlay` **之后**，所以它把 overlay 里的 spinner **一起**调成了透明。
-/// 结果是：点一下刷新，箭头消失、spinner 也看不见，那块位置**什么都没有**，
-/// 刷新完成后箭头又冒出来 —— 用户 2026-09-16 报告：
-/// 「主窗口的刷新点击就消失了，刷新完成后就又出现了」。
-///
-/// **离屏实测**（`.build/probe/spinneropacity.swift`，判据是墨迹像素数）：
-///
-/// | 写法 | 墨迹 |
-/// |---|---|
-/// | 旧写法（`.overlay` 之后才 `.opacity`） | **0** |
-/// | `.opacity` 提到 `.overlay` 之前 | 162 |
-/// | 本类型的 if/else | 162 |
-/// | 对照组 · 纯图标不透明 | 224 |
-/// | 对照组 · 空视图 | 0 |
-///
-/// **对照组不可省**：「0 命中」有两种含义 —— 真的没有，或**渲染通路根本没通**
-/// （`NSProgressIndicator` 是动画视图，`cacheDisplay` 有可能抓不到）。
-/// 纯图标那组量到 224 才证明这个 0 是「真的没有」。
-///
-/// ## 改成 if/else 的两个额外好处
-///
-/// 1. 结构上**不可能**再被后续 modifier 误伤（`.overlay` + `.opacity` 那种写法，
-///    谁在后面加一句 `.opacity` / `.blur` / `.saturation` 都会重演同一个 bug）。
-/// 2. `isRefreshing` 变成**入参**，于是可以离屏断言 ——
-///    旧写法的状态藏在 `@State private var` 里，测试根本够不着（这正是它逃过测试的原因）。
-struct RefreshTitleBarButton: View {
-    let label: String
-    let isRefreshing: Bool
-    let action: () -> Void
-
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-    var body: some View {
-        Group {
-            if isRefreshing {
-                // 尺寸显式钉住 28 × 28：换 spinner 后不能塌陷（设计稿的硬要求）。
-                ProgressView()
-                    .controlSize(.small)
-                    .frame(
-                        width: DesignTokens.Size.titleBarIconButton,
-                        height: DesignTokens.Size.titleBarIconButton
-                    )
-                    // 别留一个没标签的 spinner —— VoiceOver 只会念「忙」或干脆跳过，
-                    // 用户听不出在忙什么（与 ``DiskRow`` 同一条教训）。
-                    .accessibilityLabel(label)
-            } else {
-                TitleBarIconButton(systemName: "arrow.clockwise", label: label, action: action)
-            }
-        }
-        .disabled(isRefreshing)
-        .animation(
-            DesignTokens.Motion.animation(DesignTokens.Motion.fast, reduceMotion: reduceMotion),
-            value: isRefreshing
-        )
     }
 }

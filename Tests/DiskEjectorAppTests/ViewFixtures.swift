@@ -70,7 +70,7 @@ enum ViewFixtures {
     ///   - disks: 要渲染的磁盘列表，默认一块 ``disk``。传 `[]` 即渲染空状态。
     ///   - skipsInitialRefresh: 默认 `true`。**注入列表时必须为 `true`** ——
     ///     否则 `.task` 会真的去枚举本机磁盘，把注入的列表覆盖掉。
-    ///     需要测「刷新中」的观感请直接渲染 ``RefreshTitleBarButton``，别把这个开关关掉。
+    ///     需要测「刷新中」的观感请直接渲染 ``ContentView`` 的刷新态，别把这个开关关掉。
     static func mainWindow(
         disks: [DiskInfo]? = nil,
         skipsInitialRefresh: Bool = true

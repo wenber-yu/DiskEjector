@@ -48,13 +48,18 @@ import AppKit
 /// 唯一的硬证据是调试器断点 —— `Scripts/catch-beep.sh` 把 `NSBeep` 设成断点，
 /// 修前投一次 ⌘C 会命中、修后同一次投递应当**零命中**（见 `DESIGN-SPEC.md` §8.15）。
 ///
-/// ## 为什么**不能**是 `final`
+/// ## 为什么现在是 `final`
 ///
-/// ``SettingsWindow`` 继承它 —— 设置面板既要「不敲钟」，又要「藏掉三个系统按钮」，
-/// 而那两件事都是窗口级的。Swift 单继承，所以只能让本类可继承，
-/// 而不是把 `noResponderFor(_:)` 在子类里再抄一遍（抄一遍就迟早漂移，
-/// 正是 ``EjectAlertPanel`` 那份重复实现要面对的问题）。
-class KeySilentWindow: NSWindow {
+/// 曾经不能 `final`：独立设置窗口 ``SettingsWindow``（v3 已随窗口合并退役，
+/// 移出仓库）继承它 —— 设置面板既要「不敲钟」，又要「藏掉三个系统按钮」，
+/// 而那两件事都是窗口级的。Swift 单继承，所以当时只能让本类可继承，
+/// 而不是把 `noResponderFor(_:)` 在子类里再抄一遍（抄一遍就迟早漂移）。
+///
+/// v3 起**没有子类了**（`DiskEjectorApp` 两处都是直接构造），`final` 化把
+/// 「又冒出一个没过 `shouldSwallowSilently` 闸门的子类」拦在编译期。
+/// 共用规则的另一半（`NSPanel` 那边）走 ``EjectAlertPresenter`` 的静态函数，
+/// 不依赖继承。
+final class KeySilentWindow: NSWindow {
 
     /// 这个 selector 走到兜底时，是否应当**静默吞掉**（而不是交给 `super` 去敲钟）。
     ///

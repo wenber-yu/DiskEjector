@@ -120,13 +120,6 @@
         "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "紫色" } }
       }
     },
-    "done" : {
-      "localizations" : {
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "完成" } },
-        "en" : { "stringUnit" : { "state" : "translated", "value" : "Done" } },
-        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "完成" } }
-      }
-    },
     "eject" : {
       "localizations" : {
         "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "推出" } },
@@ -853,20 +846,6 @@
         "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "剩余" } },
         "en" : { "stringUnit" : { "state" : "translated", "value" : "Free" } },
         "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "剩餘" } }
-      }
-    },
-    "on" : {
-      "localizations" : {
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "开" } },
-        "en" : { "stringUnit" : { "state" : "translated", "value" : "On" } },
-        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "開" } }
-      }
-    },
-    "off" : {
-      "localizations" : {
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "关" } },
-        "en" : { "stringUnit" : { "state" : "translated", "value" : "Off" } },
-        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "關" } }
       }
     },
     "menuFile" : {

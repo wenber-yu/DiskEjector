@@ -26,7 +26,7 @@ import Testing
 /// ## 为什么用两个方向守
 ///
 /// 1. **规则本身**（``无人接管的按键被静默吞掉``）：纯函数，能穷举 selector。
-/// 2. **规则有没有接到类上**（``窗口类确实覆盖了兜底方法`` / ``四个窗口都用了不敲钟的窗口类``）：
+/// 2. **规则有没有接到类上**（``窗口类确实覆盖了兜底方法`` / ``三个窗口都用了不敲钟的窗口类``）：
 ///    override 被删掉、或者某个窗口改回 `NSWindow(...)`，第 1 条都不会红 —— 那正是
 ///    「看着在守其实守不住」的典型（本项目踩过：拿 `SettingsMetrics.headerTitleMinX`
 ///    那类**从被测对象自己算出来的常量**去比 —— 删掉视图里那句让位它照样是绿的。
@@ -92,20 +92,25 @@ struct KeySilentWindowTests {
         assertOverridesNoResponder(EjectAlertPanel.self, base: NSPanel.self, label: "EjectAlertPanel")
     }
 
-    // MARK: - 3. 四个窗口都接上了
+    // MARK: - 3. 三个窗口都接上了
 
-    /// **这一条是防止「新窗口忘了用」**：四个窗口的构造点分散在三个文件里，
+    /// **这一条是防止「新窗口忘了用」**：窗口的构造点分散在几个文件里，
     /// 任何一处写回 `NSWindow(...)` / `NSPanel(...)`，规则就静默失效 ——
     /// 而且失效的表现只是「偶尔响一声」，没有断言的话谁也不会发现。
-    @Test func 四个窗口都用了不敲钟的窗口类() {
+    ///
+    /// ## v3 起从「四个」变「三个」
+    ///
+    /// 独立设置窗口已退役（主窗口与设置合并成「侧栏 + 详情区」，见
+    /// `Design/ui/v3/HANDOFF.md`）⇒ 这一条里原先那句
+    /// `AppDelegate.makeSettingsWindow()` 连同它的断言一起删除。
+    /// **不是漏了**：v3 之后设置内容住在主窗口的详情区里，
+    /// 它用的就是下面这第一个窗口对象，没有第二个窗口需要检查。
+    @Test func 三个窗口都用了不敲钟的窗口类() {
         // 走 `ViewFixtures` 而不是裸调 `AppDelegate.makeMainWindow()`：
         // 后者两个 store 都是生产单例，会真的去枚举本机磁盘（见 `ViewFixtures` 文件头）。
         // 这里要验的是**窗口类**，与磁盘数据无关。
         let main = ViewFixtures.mainWindowHandle()
         #expect(main is KeySilentWindow, "主窗口没走 KeySilentWindow —— ⌘C 会重新开始敲钟")
-
-        let settings = AppDelegate.makeSettingsWindow()
-        #expect(settings is KeySilentWindow, "设置窗口没走 KeySilentWindow —— ⌘C 会重新开始敲钟")
 
         let onboarding = AppDelegate.makeOnboardingPanel(
             root: OnboardingView(accent: .default, onOpenSettings: {}, onLater: {})

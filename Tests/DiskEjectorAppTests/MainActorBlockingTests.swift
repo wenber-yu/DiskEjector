@@ -363,6 +363,12 @@ struct MainActorBlockingTests {
     /// - ① 有文件级 `@MainActor` 但**不在表里** ⇒ 红：新加的必须先回答「**哪一行**真的需要
     ///   主 actor」并登记理由；
     /// - ② 在表里但**已经没有**文件级 `@MainActor` ⇒ 红：回来划掉（防「安静地烂在表里」）。
+    ///
+    /// ⚠️ **v3（2026-09-30）从本表里划掉了三个文件** —— 它们是随「主窗口与设置合并」
+    /// 一起**移出仓库**的测试（不是改了标注）：
+    /// `RefreshButtonTests.swift`、`SettingsWindowTests.swift`、`TrafficLightAlignmentTests.swift`
+    /// （分别守着自绘标题栏刷新按钮、独立设置窗口、红绿灯手动对齐 —— 三样都已退役）。
+    /// 若哪天有人把它们加回来，② 那一向会立刻报红、要求重新登记理由。
     private static let fileLevelMainActor: [String: String] = [
         "AlertLayoutTests.swift": "弹窗版式的离屏渲染 + `NSHostingController` 装配（`NSApplication.shared` 也要）",
         "EjectFlowControllerTests.swift":
@@ -391,12 +397,9 @@ struct MainActorBlockingTests {
         "OnboardingWindowTests.swift": "建真 `NSWindow` + `AppDelegate` 主 actor",
         "ProcessAppResolverTests.swift": "`enrich` / `icon` 只能主 actor（`NSWorkspace` / `NSRunningApplication`）",
         "ProcessChipLayoutTests.swift": "离屏渲染 `OffscreenRender` —— 量进程芯片",
-        "RefreshButtonTests.swift": "`OffscreenRender` + `ViewFixtures`",
         "SettingsLayoutTests.swift": "离屏渲染（`NSBitmapImageRep`）+ `UpdateController` 主 actor",
-        "SettingsWindowTests.swift": "建真 `NSWindow` + `AppDelegate` 主 actor",
         "SnapshotRenderTests.swift": "走查图出图：`ViewFixtures` + AppKit 渲染 + 多个主 actor store",
         "TitleBarBaselineTests.swift": "离屏渲染 + `ViewFixtures` —— 量标题栏基线",
-        "TrafficLightAlignmentTests.swift": "离屏渲染 + `ViewFixtures` + `AppDelegate` 真窗口",
         "ViewFixtures.swift": "夹具本体：建真 `NSWindow`、注入 `DiskListStore` / `OccupancyStore`",
     ]
 

@@ -5,7 +5,7 @@
    来源：Sources/Localization/Localizable.xcstrings
        + Design/ui/v2/assets/i18n-extra.json
    ----------------------------------------------------------------------------
-   源指纹 e05642ac354932c51a605b579070c6bd6e1d3f4bd6d9d1bebea5ddf16c9809a6
+   源指纹 4dd5355470a0acb25cd0b0972d5c4ed9058de23f1df1143d4247a46860017394
      = sha256(xcstrings + extra + 本脚本) —— 任一方变了它就是旧的，
        由 DesignDraftIntegrityTests 拦下「改了源忘了重跑」。
    ----------------------------------------------------------------------------

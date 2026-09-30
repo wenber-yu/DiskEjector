@@ -113,10 +113,15 @@ struct DesignTokenConsumerTests {
         // 解析器的**anchors**：几种声明形态各取一个已知令牌 ——
         // `let` 带类型（`full`）、`let` 无类型（`sm`）、`var` 单行计算属性（`raised`）、
         // `var` **多行**计算属性（`subtle`，走的是花括号配平那条路）、
-        // 嵌套枚举里的（`window`）、`e1`。
+        // 嵌套枚举里的（`mainWindow` / `mainSidebarWidth`）、`e1`。
         // 少了它们说明「收声明」的逻辑退化了（例如 `static var` 整类没收到），
         // 而那种情况下「未登记」会**空着** —— 通过得毫无意义。
-        let anchors = ["full", "sm", "display", "window", "raised", "subtle", "e1"]
+        //
+        // ⚠️ **别再用 `window` 当锚点**：那是 ``Radius/window``（我们自己给窗口画的 12pt
+        // 外圆角），**v3 已删**（窗口圆角归窗口服务器，HANDOFF §3.7.2）。
+        // 拿一个已退役的令牌当锚点，是把自己的守卫绑在别人的生命周期上 ——
+        // 令牌一删，这条就红在「解析器坏了」上，而真正的退化点反而看不出来。
+        let anchors = ["full", "sm", "display", "mainWindow", "mainSidebarWidth", "raised", "subtle", "e1"]
         let missingAnchors = anchors.filter { !declared.contains($0) }.sorted()
         #expect(missingAnchors.isEmpty, "解析器漏掉了这些已知令牌：\(missingAnchors) —— 收声明的逻辑退化了，下面的结论作废")
 

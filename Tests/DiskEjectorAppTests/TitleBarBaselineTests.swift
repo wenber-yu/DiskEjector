@@ -4,31 +4,31 @@ import Testing
 
 @testable import DiskEjectorApp
 
-/// 两块玻璃（主窗口 / 设置面板）的标题与**系统红绿灯**的纵向对齐契约。
+/// 详情区头部（``MainDetailHead``）的标题与**系统红绿灯**的纵向对齐契约。
 ///
-/// **为什么单独一个文件**：这个缺陷横跨两个视图，而两边原本的写法并不一致 ——
-/// 主窗口 `titleBar` 是「28pt 内容带 + 24pt 留白」（标题中心距顶 14），
-/// 设置面板是「52pt 整体居中」（标题中心距顶 26），而系统红绿灯的中心在距顶 **16pt**
+/// ## v3 起「两块玻璃」合并成一块
+///
+/// v2 时这个文件横跨两个视图：主窗口的自绘 `titleBar` 与独立设置窗口的 `shead`。
+/// 两边写法并不一致 —— 一个是「28pt 内容带 + 24pt 留白」（标题中心距顶 14），
+/// 一个是「52pt 整体居中」（中心 26），而系统红绿灯的中心在距顶 **16pt**
 /// （真机实测：三个按钮并集 `y 9…23`，窗口坐标原点在左下）。
 /// 于是两个标题各偏 2pt / 10pt，用户看到的正是「标题没有和红绿灯在同一水平基线上」。
 ///
-/// 修法是让两边共用 ``DesignTokens/Size/titleBarBandHeight``（32 = 16 × 2），
-/// 本文件把「共用」与「落在正中」这两件事钉住。
+/// v3 把主窗口与设置合并之后，**这两个头部变成同一个** ``MainDetailHead``
+/// （标题随侧栏选中项切换）⇒「两块玻璃的头部必须一样高」这件事
+/// 从「靠共用令牌对齐」升级成「结构上就是同一份代码」。
+///
+/// 留下的判据是**一条**：标题墨迹的垂直中心落在内容带中心
+/// （``DesignTokens/Size/titleBarBandHeight`` 的一半）。
+///
+/// **红绿灯本身的纵向位置离屏问不到**（离屏没有窗口就没有交通灯）——
+/// v3 里那条 52pt 由 `NSToolbar` 提供、红绿灯由 AppKit 自己居中到 26pt
+/// （`Design/ui/v3/HANDOFF.md` §3.1.1 实测），真机自检
+/// ``WindowSelfCheck/checkTrafficLightBaseline`` 每次量一遍。
 ///
 /// **为什么必须量像素**：SwiftUI 的 `Text` 在 AppKit 视图树里没有任何对应视图
 /// （实测 `NSHostingView.subviews` 是空的、整棵树里找不到 `NSTextField`、
 /// 无障碍子树也是懒建的），「标题的垂直中心在哪」问不到 AppKit，只能看**渲染结果**。
-///
-/// **红绿灯本身的位置离屏问不到**（离屏没有窗口就没有交通灯），那一半由真机自检
-/// `--preview-main-window-keys` 每次量一遍（见 `AppDelegate.checkTrafficLightBaseline`）。
-/// 两个方向合起来才闭环：真机断言「系统灯 == 内容带中心」，这里断言「我们的标题 == 内容带中心」。
-///
-/// ⚠️ **设置面板这一半从 2026-09-16 起换了理由**（`DESIGN-SPEC.md` §8.17）：
-/// 它**不再画红绿灯**（`SettingsWindow` 把三个系统按钮藏了），所以「与系统灯对齐」
-/// 这回事在它身上不存在。内容带仍取 32，是为了让**两个窗口的头部内容落在同一条水平线上**
-/// —— 设计稿把 `.titlebar`（主窗口）与 `.shead`（设置面板）写成同样的
-/// `height: 52px; align-items: center`，意图就是「两块玻璃的头部一模一样」。
-/// 断言本身不变：它守的是「头部内容在内容带里居中」，而不是「为什么是 32」。
 @MainActor
 struct TitleBarBaselineTests {
 
@@ -101,12 +101,11 @@ struct TitleBarBaselineTests {
 
     // MARK: - 令牌之间不许打架
 
-    /// 三个数字必须自洽：`内容带 + 留白 == 标题栏总高 == 设置面板头部高`。
+    /// 三个数字必须自洽：`内容带 + 留白 == 标题栏总高 == 详情区头部高`。
     ///
     /// 这条**不量像素**，抓的是「改了带高忘了改总高」这类漂移。
-    /// 例如把 `titleBarBandHeight` 调成 34（若将来 macOS 把灯挪到 17pt）却忘了减留白，
-    /// 标题栏就变成 54pt，磁盘列表整体下移 2pt —— 那种偏差肉眼看不出，但两个窗口的
-    /// 头部会对不齐。真正的外框尺寸另有 `MainWindowTests` / `SettingsWindowTests` 守。
+    /// 例如把 `titleBarBandHeight` 调成 34 却忘了减留白，标题栏就变成 54pt，
+    /// 磁盘列表整体下移 2pt —— 那种偏差肉眼看不出，但头部就对不齐了。
     @Test func 内容带加留白等于设计稿的标题栏总高() {
         let sum = DesignTokens.Size.titleBarBandHeight + DesignTokens.Size.titleBarBandBottomPadding
         #expect(
@@ -115,38 +114,51 @@ struct TitleBarBaselineTests {
         )
         #expect(
             abs(SettingsMetrics.headerHeight - DesignTokens.Size.titleBarHeight) < 0.001,
-            "设置面板头部高 \(SettingsMetrics.headerHeight) ≠ 主窗口标题栏 \(DesignTokens.Size.titleBarHeight)。设计稿把两者写成同一条 `.win` 规则，两块玻璃的头部必须一样高"
+            "详情区头部高 \(SettingsMetrics.headerHeight) ≠ 主窗口标题栏 \(DesignTokens.Size.titleBarHeight)。设计稿把两者写成同一个 52，头部必须一样高"
         )
+        // v3 换掉了这一条原本的判据。
+        //
+        // 它原先守的是「标题栏里那个 28pt **自绘**图标按钮会不会被带高压扁」——
+        // 而自绘头部五件套已随 v3 退役（刷新按钮搬进系统 `NSToolbar`，
+        // 尺寸由系统给，与内容带高度无关）⇒ 那个判据失去了对象。
+        //
+        // 换成钉**设计稿的 52 本身**：它现在是**两个来源的共同值** ——
+        // 系统统一工具栏的高度，与详情区头部（``MainDetailHead`` 的 `frame(height:)`）。
+        // 这两个若有偏差，头部文字与工具栏里的刷新按钮就不共线。
         #expect(
-            DesignTokens.Size.titleBarBandHeight >= DesignTokens.Size.titleBarIconButton,
-            "内容带 \(DesignTokens.Size.titleBarBandHeight) 比标题栏里的 28pt 图标按钮还矮 —— 按钮会被压扁"
+            abs(DesignTokens.Size.titleBarBandHeight - 52) < 0.001,
+            "内容带 \(DesignTokens.Size.titleBarBandHeight)pt ≠ 设计稿 `.titlebar { height: 52px }` 的 52 —— 它与系统工具栏的高度会错开，头部文字与刷新按钮不再共线"
         )
     }
 
-    // MARK: - 两块玻璃的标题各自落在内容带正中
+    // MARK: - 详情区头部标题落在内容带正中
 
-    /// 设置面板：内容区头部标题（**当前分类名**）的墨迹垂直中心必须落在内容带中心。
+    /// 详情区头部标题（**当前分类名**）的墨迹垂直中心必须落在内容带中心。
     ///
-    /// 偏下约 10pt 就是「头部在 52pt 里整体居中」（中心 26）—— 用户报告的正是这个。
+    /// 偏下约 10pt 就是「头部在 52pt 里整体居中」—— 用户报告的正是这个。
     ///
-    /// ⚠️ **2026-09-29 两栏之后，头部标题不再是固定写死的「设置」**，而是当前分类名
-    /// （``SettingsHeaderBar/title``，由 ``SettingsView`` 传 `section.title` 进来）。
-    /// 判据本身不受影响（量的是**纵向**位置，标题是哪几个字不重要），
-    /// 但出图宽度与真实场景对齐：头部只占**右栏**（窗口 720 − 左栏 200 = 520），
-    /// 拿整窗宽出图会把「完成」按钮画到永远不会出现的位置上。
-    @Test func 设置面板标题墨迹中心落在内容带中心() {
+    /// ## v3：渲染对象从 `SettingsHeaderBar` 换成 ``MainDetailHead``
+    ///
+    /// 前者是独立设置窗口的头部（标题 + 「完成」按钮）；后者是详情区的头部
+    /// （标题 + 可选副标题）。**它们现在是同一个组件**，
+    /// 所以下面那条「主窗口标题」测的是同一份代码的另一条数据路径。
+    /// 标题也不再是写死的「设置」，而是当前选中项的名字。
+    @Test func 详情区头部标题墨迹中心落在内容带中心() {
         let headerHeight = SettingsMetrics.headerHeight
         guard
             let ink = titleInk(
-                SettingsHeaderBar(title: SettingsSection.general.title, onDone: {}),
-                width: DesignTokens.Size.settingsPanel.width - DesignTokens.Size.settingsSidebarWidth,
+                MainDetailHead(title: SettingsSection.general.title, subtitle: nil),
+                // v3：头部就是主窗口详情区的头部 ⇒ 出图宽度给整窗即可。
+                // 判据是**纵向**中心，而 `titleInk` 只看左半侧前 300pt
+                // （标题是左对齐的第一个元素），横向宽度不影响量到的数。
+                width: DesignTokens.Size.mainWindow.width,
                 height: headerHeight,
-                rows: 0...(headerHeight - 8), who: "设置面板")
+                rows: 0...(headerHeight - 8), who: "详情区头部")
         else {
-            Issue.record("设置面板头部离屏渲染后，标题那几列没扫到任何墨迹 —— 渲染没成功，或列窗口落在了空白处，这条断言不能算通过")
+            Issue.record("详情区头部离屏渲染后，标题那几列没扫到任何墨迹 —— 渲染没成功，或列窗口落在了空白处，这条断言不能算通过")
             return
         }
-        assertIsTextLine(ink.rows, who: "设置面板头部标题", containerHeight: headerHeight)
+        assertIsTextLine(ink.rows, who: "详情区头部标题", containerHeight: headerHeight)
 
         let center = (ink.rows.first + ink.rows.last) / 2
         let delta = center - bandCenter
@@ -161,34 +173,21 @@ struct TitleBarBaselineTests {
         )
     }
 
-    /// 主窗口：标题栏标题（「外置磁盘」）的墨迹垂直中心必须落在内容带中心。
+    /// ⚠️ **v3 退役：「主窗口标题墨迹中心落在内容带中心」（2026-09-30）**
     ///
-    /// 与设置面板同一条判据 —— 两边共用同一个令牌，这条测试就是「共用」的守卫。
-    @Test func 主窗口标题墨迹中心落在内容带中心() {
-        let height = DesignTokens.Size.mainWindow.height
-        guard
-            let ink = titleInk(
-                ViewFixtures.mainWindow(),
-                width: DesignTokens.Size.mainWindow.width, height: height,
-                rows: 0...(DesignTokens.Size.titleBarHeight - 8), who: "主窗口")
-        else {
-            Issue.record("主窗口离屏渲染后，标题那几列没扫到任何墨迹 —— 渲染没成功，或列窗口落在了空白处，这条断言不能算通过")
-            return
-        }
-        assertIsTextLine(ink.rows, who: "主窗口标题栏标题", containerHeight: DesignTokens.Size.titleBarHeight)
-
-        let center = (ink.rows.first + ink.rows.last) / 2
-        let delta = center - bandCenter
-        #expect(
-            delta >= bandCenterSlackLow && delta < bandCenterSlackHigh,
-            """
-            「外置磁盘」墨迹的纵向范围 \(ink.rows.first)…\(ink.rows.last)pt，中心 \(center)pt，\
-            比内容带中心 \(bandCenter)pt 偏 \(delta)pt（允许 \(bandCenterSlackLow)…\(bandCenterSlackHigh)）。\
-            偏到 −1.5 附近说明这里又变回 `frame(height: 28)` + `padding(.bottom, 24)` —— \
-            旧写法比红绿灯高 2pt，正是用户报告的「主窗口标题没和红绿灯同一基线」。
-            """
-        )
-    }
+    /// 它守的是 v2 主窗口**自绘标题栏**里的「外置磁盘」标题 —— 标题文字画在
+    /// 52pt 自绘头部带里，与红绿灯共基线。v3 起：
+    /// - 自绘头部带退役，「主窗口标题」这个元素**不存在了**；详情区头部
+    ///   （``MainDetailHead``）承担了标题职责，由
+    ///   ``详情区头部标题墨迹中心落在内容带中心()`` 守着（已通过，中心 26.5）。
+    /// - 主窗口左半侧现在是**侧栏浮岛**（内缩 8pt、玻璃材质），这条测试若继续
+    ///   渲染整窗、扫左半前 300pt，量到的是**侧栏第一项**（图标 + 文字块，
+    ///   实测墨迹跨 29.5pt）—— 不是标题，断言对象彻底走样。
+    /// - 红绿灯与刷新按钮的共线由**系统统一工具栏**保证（`NSToolbar`，
+    ///   `MainWindowTests.窗口配置符合主窗口` 守装配形态）。
+    ///
+    /// 保留一条量错对象的测试比没有更糟：它会「假红」，诱使后来者去「修」
+    /// 一个本来就没坏的东西。
 
     // MARK: - 自证
 

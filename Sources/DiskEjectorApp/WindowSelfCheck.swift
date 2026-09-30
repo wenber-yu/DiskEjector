@@ -6,11 +6,15 @@ import AppKit
 /// 做成 `static func` 之后这件事就由**编译器**保证（`static` 里没有 `self`）——
 /// 而不是靠「我扫过一遍」。想加一个读应用状态的函数，**别放这里**。
 ///
-/// 搬出来的那一半是 7 个（按源文件顺序）：``trafficLightUnion`` /
-/// ``checkTrafficLightBaseline`` / ``checkTitleBarHorizontalSymmetry`` /
+/// 搬出来的那一半（按源文件顺序）：``trafficLightUnion`` / ``checkTrafficLightBaseline`` /
 /// ``measureRedLightInk`` / ``checkRedLightInkShape`` / ``checkEmptyStateInsteadOfSkeleton`` /
-/// ``dumpSettingsWindowState`` / ``waitUntilAppIsActive``；
+/// ``checkSplitAssembly`` / ``checkLiquidGlassBackdrop`` / ``waitUntilAppIsActive``；
 /// 需要读窗口/状态属性的入口与 `dump*` 仍在 `DiskEjectorApp.swift` 里。
+///
+/// ⚠️ **v3 退役了两条**（主窗口与设置合并时）：``checkTitleBarHorizontalSymmetry``
+/// （比的是「红灯中心」与「标题栏里那颗齿轮按钮的中心」——那颗齿轮随 v3 一起删了，
+/// 设置已经搬进侧栏）与 ``dumpSettingsWindowState``（整个设置窗口都没了）。
+/// **不是能力退步**：「窗口左右两侧的光学对称」在那之后由 26pt 基线 + 侧栏浮岛几何承担。
 ///
 /// ⚠️ 判据是**实测**的（SPEC §8.101.4–§8.101.5）：同一份测量连踩过三次「口径错」，
 /// 最终以「能不能编译成 `static func`」为准 —— 编译器是这件事唯一的裁判。
@@ -88,20 +92,28 @@ enum WindowSelfCheck {
             .reduce(NSRect.null) { $0.union($1) }
     }
 
-    /// 核对「系统交通灯的垂直中心」与「标题栏内容带的中心」是否重合，并打印数字。
+    /// 核对「系统交通灯的垂直中心」与「内容区头部带的中心」是否重合，并打印数字。
     ///
     /// **为什么这条断言必须存在**：交通灯的位置由 AppKit 决定，而内容带高度
-    /// ``DesignTokens/Size/titleBarBandHeight`` 是**设计稿给的** 52。两边靠
-    /// ``alignTrafficLights(in:)`` 主动对齐 —— 那是一次「改系统按钮 frame」的操作，
-    /// AppKit 哪天改了行为（或某个 macOS 把灯挪了），代码不会自己知道 ——
-    /// 只有真机量一遍才会红。
+    /// ``DesignTokens/Size/titleBarBandHeight`` 是**设计稿给的** 52（三者共用同一条
+    /// 基线这件事的判据见 `MainDetailHead`）。
+    ///
+    /// ## v3 之后它守的东西**更重要了**，而不是更少了
+    ///
+    /// v2 时代我们靠 ``AppDelegate/alignTrafficLights(in:)`` 手工把灯挪到 26pt，
+    /// 于是这条断言守的是「那个机关有没有生效」。v3 起那个机关退役了 ——
+    /// 灯的位置**完全由 AppKit 按「这个窗口有没有工具栏」决定**（实测有工具栏 26pt、
+    /// 去掉工具栏立刻掉到 16pt）。⇒ 这条断言现在守的是
+    /// **「工具栏还在不在」**：它一旦被去掉，这里会立刻红，而界面上只是「标题与红绿灯
+    /// 差 10pt」那种不显眼的错位（HANDOFF §3.1.1 的四行代价表）。
+    ///
     /// 而**离屏出图结构上测不到**这件事：离屏没有窗口，也就没有交通灯。
     ///
     /// 断言的是**两个数**：交通灯中心距窗口顶的距离，与内容带高度的一半。
     /// 前者不对时，把 ``DesignTokens/Size/systemTrafficLightCenterFromTop``
     /// 改成失败信息里的实测值即可。
     ///
-    /// - Returns: 交通灯并集（取不到时为 `.null`），供调用方接着做横向判断。
+    /// - Returns: 交通灯并集（取不到时为 `.null`），供调用方接着做别的判断。
     @discardableResult
     static func checkTrafficLightBaseline(
         window: NSWindow, label: String, mismatches: inout [String]
@@ -120,70 +132,12 @@ enum WindowSelfCheck {
             mismatches.append(
                 "\(label) 交通灯垂直中心距顶 \(centerFromTop)pt，内容带中心 \(expected)pt，"
                     + "相差 \(centerFromTop - expected)pt —— 标题与红绿灯不在同一条基线上。"
-                    + "对齐是**幂等**的（``alignTrafficLights(in:)`` 量出当前位置再补差额），"
-                    + "所以这里红通常意味着它没被调用，或被后续布局拨回 —— "
-                    + "检查调用时机，而不是去改某个补偿常量")
+                    + "v3 起这个位置**全由 AppKit 按「窗口有没有工具栏」决定**"
+                    + "（实测：有工具栏 26pt / 去掉工具栏 16pt，差的就是这 10pt）"
+                    + "⇒ 先查 ``AppDelegate/makeMainWindow()`` 里那句 `win.toolbar` 还在不在、"
+                    + "`toolbarStyle = .unified` 有没有被改，而不是去补一个补偿常量")
         }
         return lights
-    }
-
-    /// 核对「红灯中心距窗口左边」与「设置按钮中心距窗口右边」是否**对称**。
-    ///
-    /// **为什么这条断言必须存在**：红灯的位置由 AppKit 决定（我们只在竖直方向挪过它，
-    /// 见 ``alignTrafficLights(in:)``），设置按钮的位置由 SwiftUI 的 `padding` 决定 ——
-    /// **两边来源不同**，凭印象对齐一定会对错。设计稿 DOM 探针实测（2026-09-17）：
-    /// 红灯中心距左 **26.5pt**、设置按钮中心距右 **26.5pt**，即设计意图是**镜像对称**。
-    ///
-    /// ⚠️ **不要拿「按钮盒边缘」去比「圆点边缘」** —— 红灯是 12pt 圆点，
-    /// 设置按钮是 28pt 的盒（里面 14pt 图标）。盒边缘距边 12.5、圆点边缘距边 20.5，
-    /// 看着差 8pt，但**光学上是齐的**。判据只能用**中心**。
-    ///
-    /// - Returns: `红灯中心距左 − 设置按钮中心距右`，供调用方接着判断。
-    @discardableResult
-    static func checkTitleBarHorizontalSymmetry(
-        window: NSWindow, label: String, ink: RedLightInk?, mismatches: inout [String]
-    ) -> CGFloat {
-        guard let close = window.standardWindowButton(.closeButton) else {
-            mismatches.append("\(label) 取不到关闭按钮（红灯），无法核对水平对称")
-            return .nan
-        }
-        // `NSTitlebarView` 的坐标与窗口一致（原点左下），x 方向不用翻转。
-        let light = close.convert(close.bounds, to: nil)
-        let lightCenter = light.midX
-        // 设置按钮是 SwiftUI 画的，布局是确定的，不必量渲染：
-        // 右边距（trailing padding）+ 28pt 按钮盒的一半。
-        let gearCenter =
-            DesignTokens.Spacing.titleBarTrailing + DesignTokens.Size.titleBarIconButton / 2
-        let delta = lightCenter - gearCenter
-        print(
-            "    红灯中心距左=\(lightCenter)pt（按钮 frame=\(light)） "
-                + "设置按钮中心距右=\(gearCenter)pt 差=\(delta)pt")
-        if abs(delta) > 1 {
-            mismatches.append(
-                "\(label) 标题栏左右不对称：红灯中心距左 \(lightCenter)pt，"
-                    + "设置按钮中心距右 \(gearCenter)pt，相差 \(delta)pt。"
-                    + "设计稿两侧都是 \(DesignTokens.Size.titleBarInsetCenter)pt —— "
-                    + "调 DesignTokens.Spacing.titleBarTrailing 或 "
-                    + "DesignTokens.Size.systemTrafficLightCenterFromLeft 使其相等")
-        }
-
-        // **绝对断言兜底**：上面比的两个数里，红灯那个是我们自己改出来的 frame ——
-        // 同源比较守不住「改歪了」。这里用真机像素独立确认红灯**画**在哪。
-        //
-        // ⚠️ 墨迹由**调用方**量好传进来（`ink`），**不要在本函数里再抓一次图**：
-        //    `measureRedLightInk` 里有重试循环（最多 3s），量两遍纯属浪费；
-        //    更要紧的是**两次抓图可能落在不同状态上**（一次灯是灰的），
-        //    于是两个断言各说各话。一次抓图，多处断言。
-        if let ink {
-            let anchor = DesignTokens.Size.titleBarInsetCenter
-            if abs(ink.centerX - anchor) > 1.5 {
-                mismatches.append(
-                    "\(label) 红灯**渲染**出来的中心距左 \(ink.centerX)pt，设计稿锚点 \(anchor)pt —— "
-                        + "frame 层面是对齐的，但画出来的位置不是 —— "
-                        + "检查 alignTrafficLights 是否真的作用到了被绘制的那个视图")
-            }
-        }
-        return delta
     }
 
     /// 红灯在**真机渲染出来的像素**里的墨迹范围（图像坐标，**原点在左上**）。
@@ -206,16 +160,21 @@ enum WindowSelfCheck {
 
     /// 从**真机渲染的像素**里量红灯的墨迹范围，兜住「frame 对了但画出来的不对」。
     ///
-    /// **为什么必须有这条**：``checkTitleBarHorizontalSymmetry`` 比较的是
-    /// 「红灯 frame 中心」与「设置按钮中心」，而红灯的 frame **正是我们自己改的**
-    /// （``alignTrafficLights(in:)``）—— 这是典型的自证陷阱：
-    /// 断言与被断言的对象同源，改歪了它可能照样是绿的。
+    /// **为什么必须有这条**：``checkTrafficLightBaseline`` 量的是三个按钮 **`frame`**
+    /// 的并集中心 —— 那是 AppKit 的布局数据，不是屏幕上的墨迹。两者在 2026-09-23
+    /// 那次缺陷里**明确分叉**（frame 一直是 26.0pt、画出来的是半圆）。
     /// 这里绕开 frame，直接**数屏幕上的红色像素**，是独立的一条证据。
+    ///
+    /// ⚠️ v3 起它多了一层含义：交通灯的 frame 已经**不再由我们改**（``alignTrafficLights``
+    /// 退役），所以「frame 与墨迹分叉」的旧根因没了 —— 但这条**仍然要留着**：
+    /// 它现在是「标题栏那 52pt 区域有没有被裁」的唯一判据，而那个高度由**工具栏**提供。
+    /// 工具栏一旦消失，灯掉到 16pt 且照样被裁成半圆。
     ///
     /// **扫描范围为什么只取左上角那一块**：主窗口里有 `.btn--danger` 红色按钮
     /// （「关闭并推出」），全窗口扫红色会把那些按钮也算进来 —— 与「量不到」
     /// 一样会让数字失去意义。那块按钮在内容区，所以「左上角 200pt × 内容带高」
     /// 这个框里只可能是红灯。
+    /// ⚠️ v3 起侧栏浮岛顶边距窗顶 8pt、红绿灯浮在**它上面**，横向仍在 200pt 以内 ⇒ 框不用改。
     ///
     /// ⚠️ **y 的范围是 0…内容带高，不是「内容带中心 ± 7」**（2026-09-23 改）。
     /// 原来那 ±7pt 的窄条**恰好把「被裁」这个形状裁掉了**：灯的下缘掉出 33pt 时，
@@ -325,12 +284,13 @@ enum WindowSelfCheck {
     /// | 既有守卫 | 为什么看不见 |
     /// |---|---|
     /// | ``checkTrafficLightBaseline`` | 量的是三个按钮 `frame` 并集的中心 ⇒ **一直 26.0pt** |
-    /// | ``checkTitleBarHorizontalSymmetry`` | 只量**水平**中心 ⇒ 竖直方向被裁它不管 |
     /// | 离屏快照 | 离屏**没有窗口**，也就没有系统画的灯 |
     ///
     /// 而缺陷是**绘制**层面的：macOS 标题栏只有 28pt 且 `masksToBounds = true`，
     /// 把灯的下半部分裁掉。真机实测墨迹 **24×16 px**（本该 24×24）。
-    /// ⇒ 修法见 ``AppDelegate/enlargeTitleBar(in:)``（把标题栏区域加高到 52pt）。
+    /// ⇒ v2 的修法是把标题栏区域手工加高到 52pt（``AppDelegate/enlargeTitleBar(in:)``，
+    /// 已退役）；**v3 起这 52pt 由 `NSToolbar` 给**，我们不再写任何一行去撑它
+    /// —— 但**判据原样留着**：它现在守的是「工具栏还在不在」。
     ///
     /// ## 判据（纯函数 ⇒ 可以离屏单测）
     ///
@@ -358,8 +318,9 @@ enum WindowSelfCheck {
                     + "宽比高大 \(ink.width - ink.height)pt。这是「标题栏把灯裁掉了」的形状："
                     + "`NSTitlebarView` 只有 28pt 高且 masksToBounds=true，"
                     + "而中心 26pt 的灯要占到 34pt ⇒ 下缘被裁。"
-                    + "检查 ``AppDelegate/enlargeTitleBar(in:)`` 有没有被调用、"
-                    + "有没有被 AppKit 重排拨回（`showMainWindow()` 里那次收敛不能删）")
+                    + "v3 起那 52pt 由 `NSToolbar` 提供 ⇒ 检查 "
+                    + "``AppDelegate/makeMainWindow()`` 里 `win.toolbar` / "
+                    + "`toolbarStyle = .unified` 还在不在（去掉工具栏实测灯会掉到 16pt）")
         }
         if abs(ink.centerYFromTop - expected) > 1.5 {
             mismatches.append(
@@ -391,8 +352,15 @@ enum WindowSelfCheck {
     /// **这个「跳过」曾经是常态**（2026-09-17 查明）：列表来源硬编码 `.shared`，
     /// 而开发者本机长期插着盘 —— 于是这条断言只在少数时候执行。
     /// 注入点就位后，它在**任何硬件状态下**都能跑。
+    /// ⚠️ **`detailLeftInset` 必须由调用方给准**（v3 新增）：侧栏也在画文字，
+    /// 而且它**恒有** 7 行内容 ⇒ 全窗口扫「深色像素」时侧栏会稳定贡献数千个，
+    /// 把下面那条 2000 的阈值彻底架空（骨架层 + 侧栏一起也能过）。
+    /// ⇒ 判据只在**详情区**那一块里量：`x ≥ detailLeftInset`。
+    /// 实测（macOS 26）详情区左缘 = **208pt**（侧栏面板本体 200 + 系统内缩 8），
+    /// 见 `Design/ui/v3/HANDOFF.md` §3.3。
     static func checkEmptyStateInsteadOfSkeleton(
-        window: NSWindow, diskStore: DiskListStore, label: String, mismatches: inout [String]
+        window: NSWindow, diskStore: DiskListStore, detailLeftInset: CGFloat = 0,
+        label: String, mismatches: inout [String]
     ) {
         let diskCount = diskStore.disks.count
         guard diskCount == 0 else {
@@ -422,14 +390,15 @@ enum WindowSelfCheck {
         let scale = window.backingScaleFactor
         let band = DesignTokens.Size.titleBarBandHeight
 
-        /// 数指定 y 带里的深色像素。
+        /// 数指定 y 带、**详情区那一列**里的深色像素。见 `detailLeftInset` 的说明。
+        let x0 = max(0, Int(detailLeftInset * scale))
         func darkCount(fromTop y0: CGFloat, to y1: CGFloat) -> Int {
             let a = max(0, Int(y0 * scale))
             let b = min(rep.pixelsHigh, Int(y1 * scale))
-            guard a < b else { return 0 }
+            guard a < b, x0 < rep.pixelsWide else { return 0 }
             var n = 0
             for y in a..<b {
-                for x in 0..<rep.pixelsWide {
+                for x in x0..<rep.pixelsWide {
                     guard let c = rep.colorAt(x: x, y: y) else { continue }
                     if c.redComponent < 0.75 || c.greenComponent < 0.75 || c.blueComponent < 0.75 {
                         n += 1
@@ -439,12 +408,15 @@ enum WindowSelfCheck {
             return n
         }
 
-        // **自证**：标题栏必须先有墨迹（标题「外置磁盘」），否则是玻璃没渲染完 ——
-        // 那种情况下列表区也一定是空的，会把「没渲染」误读成「骨架层」。
+        // **自证**：头部那条带里必须先有墨迹（标题「外置磁盘」+ 右上刷新图标），
+        // 否则是玻璃没渲染完 —— 那种情况下列表区也一定是空的，会把「没渲染」误读成「骨架层」。
+        //
+        // ⚠️ v3 起这块带在**详情区顶部**（x ≥ 208），不再是「整个标题栏那一横条」；
+        // 侧栏那 52pt 里第一行还没开始（第一行落在下方 44pt 处），量不到任何东西。
         let titleInk = darkCount(fromTop: 0, to: band)
         guard titleInk > 50 else {
             mismatches.append(
-                "\(label) 标题栏只数到 \(titleInk) 个深色像素 —— 窗口玻璃还没渲染完，"
+                "\(label) 详情区顶部那条带里只数到 \(titleInk) 个深色像素 —— 窗口还没渲染完，"
                     + "这次的列表区结果不可信（不能当作「画了骨架」）")
             return
         }
@@ -468,6 +440,105 @@ enum WindowSelfCheck {
                     + "判据见 ContentView.showsSkeleton —— 骨架只能由「首屏加载结束」关闭，"
                     + "不能依赖 onChange(of: disks)（无盘时列表永远不变，那个回调不会触发）")
         }
+    }
+
+    /// 真机判据：**v3 那条工具栏还在不在、侧栏 / 详情区装配对不对**，并返回详情区左缘。
+    ///
+    /// ## 为什么这几条必须真机量
+    ///
+    /// 它们都**只有上屏之后**才成立（离屏搭不出窗口 → 没有工具栏 → 侧栏不浮、灯不在 26pt）。
+    /// 而它们每一条**去掉都不会编译错**，只会让界面悄悄变旧：
+    ///
+    /// | 判据 | 去掉它的后果 |
+    /// |---|---|
+    /// | `window.toolbar != nil` + `toolbarStyle == .unified` | 红绿灯 26→**16pt**、侧栏浮岛上内缩 8→**32pt**（HANDOFF §3.1.1 实测四行） |
+    /// | 侧栏是 `.sidebar` 行为的 split item | 侧栏变**贴边通高**、浮岛圆角与材质全没（拿不到系统那层外观） |
+    /// | 侧栏 min == max == 200 | 用户能拖宽/拖窄，而设计稿是锁定宽度 |
+    /// | `canCollapse == false` | 折叠钮已删，折起来之后**没有任何 UI 能把用户救回来** |
+    /// | **详情区 view 顶距窗口顶 = 0** | 52pt 头部带整条下移 ⇒ 标题与红绿灯差一条带子（v3 实测：不关安全区时头部带量成 104pt、标题中心掉到 78pt） |
+    ///
+    /// ## 侧栏几何**故意不作为判据、只打印**
+    ///
+    /// macOS 26 上它是「四边内缩 8pt 的圆角浮岛」，14–15 上按官方表述是**贴边通高**——
+    /// **两代都对**（HANDOFF §7）。把 8pt 写成断言，等于给 14–15 发一张
+    /// 「永远红、且红得没有意义」的票。⇒ 只断言两代都成立的「侧栏本体至少 200pt 宽」，
+    /// 另外把量到的内缩打出来供人眼核对。
+    ///
+    /// - Returns: 详情区左缘（窗口坐标，pt）。**拿不到时返回 0**（此时已经报了 mismatch），
+    ///   调用方拿它当 ``checkEmptyStateInsteadOfSkeleton(detailLeftInset:)`` 的入参。
+    @discardableResult
+    static func checkSplitAssembly(
+        window: NSWindow, content: MainWindowContentController, label: String,
+        mismatches: inout [String]
+    ) -> CGFloat {
+        if window.toolbar == nil {
+            mismatches.append(
+                "\(label) 主窗口没有工具栏 —— v3 的那条 52pt 安全带、让头部带透出来、"
+                    + "拖拽区、以及**红绿灯居中到 26pt** 全靠它。"
+                    + "实测去掉后红绿灯掉到 16pt、侧栏浮岛上内缩从 8 变 32（HANDOFF §3.1.1）")
+        }
+        if window.toolbarStyle != .unified {
+            mismatches.append(
+                "\(label) toolbarStyle = \(window.toolbarStyle)（\(window.toolbarStyle.rawValue)），"
+                    + "设计稿要的是 `.unified` —— 圆角与浮岛形态都按这一档实测（§3.7.1）")
+        }
+
+        let items = content.splitViewItems
+        guard items.count == 2 else {
+            mismatches.append("\(label) split 应有 2 个 item（侧栏 + 详情区），实得 \(items.count)")
+            return 0
+        }
+        let sidebar = items[0]
+        let detail = items[1]
+
+        if sidebar.behavior != .sidebar {
+            mismatches.append(
+                "\(label) 侧栏 item 的 behavior 是 \(sidebar.behavior)，不是 `.sidebar` —— "
+                    + "浮岛 / 圆角 / 玻璃 / 选中态全靠它（拿 `NSSplitViewItem(viewController:)` "
+                    + "建出来的只是普通分栏，外观会退回老形态）")
+        }
+        let lockWidth = DesignTokens.Size.mainSidebarWidth
+        if abs(sidebar.minimumThickness - lockWidth) > 0.5
+            || abs(sidebar.maximumThickness - lockWidth) > 0.5
+        {
+            mismatches.append(
+                "\(label) 侧栏宽度没有锁死：min=\(sidebar.minimumThickness) "
+                    + "max=\(sidebar.maximumThickness)，应为 \(lockWidth)/\(lockWidth)（设计稿锁宽）")
+        }
+        if sidebar.canCollapse {
+            mismatches.append(
+                "\(label) 侧栏 `canCollapse = true` —— 折叠钮在 v3 已删，折起来之后"
+                    + "没有任何 UI 能把用户救回来（设计稿第 3 轮定案不给折叠）")
+        }
+
+        // 几何：转成窗口坐标（原点左下）再比。
+        // ⚠️ 侧栏 / 详情区的 view 是 `NSHostingView`，**是 flipped 的** ——
+        // 直接读 `bounds` 会与窗口坐标 y 轴相反（同 `dumpMainWindowState` 里那条提醒）。
+        let windowHeight = window.frame.height
+        let sideRect = sidebar.viewController.view.convert(sidebar.viewController.view.bounds, to: nil)
+        let detailRect = detail.viewController.view.convert(detail.viewController.view.bounds, to: nil)
+        let sideTop = windowHeight - sideRect.maxY
+        let detailTop = windowHeight - detailRect.maxY
+        print(
+            String(
+                format: "    装配：侧栏 x∈[%.1f, %.1f] 顶距=%.1f 宽=%.1f | 详情区 左缘=%.1f 顶距=%.1f 宽=%.1f | 窗口高=%.1f",
+                sideRect.minX, sideRect.maxX, sideTop, sideRect.width, detailRect.minX,
+                detailTop, detailRect.width, windowHeight))
+
+        if abs(detailTop) > 0.5 {
+            mismatches.append(
+                "\(label) 详情区 view 的顶距是 \(detailTop)pt，应为 0（内容延伸进标题栏）—— "
+                    + "它一不对，头部那 52pt 带就整条下移、标题与红绿灯差一条带子。"
+                    + "查 `styleMask` 里的 `.fullSizeContentView`、以及那两个宿主控制器的 "
+                    + "`safeAreaRegions`（详情区必须关掉，侧栏**故意不关**）")
+        }
+        if sideRect.width < lockWidth - 0.5 {
+            mismatches.append(
+                "\(label) 侧栏面板本体只有 \(sideRect.width)pt，应 ≥ \(lockWidth) —— "
+                    + "面板太窄时文字会被截断（「设置」那五个分类名放不下）")
+        }
+
+        return detailRect.minX
     }
 
     /// 真机判据：macOS 26 起，**真机**上玻璃底衬必须走 Liquid Glass。
@@ -498,155 +569,4 @@ enum WindowSelfCheck {
         }
     }
 
-    /// 把设置窗口的状态打到终端，并就地核对。
-    ///
-    /// 四条断言各有明确后果：
-    /// 1. 窗口必须是设计稿的 **720 × 440**（`DesignTokens.Size.settingsPanel`）——
-    ///    这条抓的是「`NSHostingView` 把 800+32 的固有尺寸回推给窗口」（实测会撑到 832）；
-    /// 2. **玻璃必须覆盖整个窗口内容区**（含 52pt 头部那一带）—— 与主窗口同款的露底捕手。
-    ///    判据不是看颜色（离屏取不到桌面），而是问玻璃底衬在窗口里占多大：走
-    ///    ``NSView/glassBackdrops``，**只认 ``GlassBackdrop/isOurs`` 的那块**
-    ///    （14–25 认材质 `.underWindowBackground`，26 起认 ``GlassIdentifiers/surface``），
-    ///    系统标题栏自带的那块不算 —— 它算进来会替我们那块把「没铺满」补上；
-    /// 3. 系统标题栏的标题必须隐藏 —— 否则窗口上会出现**两个标题**
-    ///    （面板自己的头部画着当前分类名，系统再画一次「设置」，层级含混）；
-    /// 4. **三个系统按钮必须都藏着**（``SettingsWindow``）—— 设计稿的左栏里没有
-    ///    `traffic`，红绿灯的关窗与头部的「完成」是**同一个动作的两个出口**
-    ///    （用户 2026-09-16 报告）。
-    ///
-    /// 第 4 条**只能真机验**：`standardWindowButton(_:)` 是「窗口」才有的东西，
-    /// 离屏没有窗口，也就没有按钮可问（返回 `nil`）。
-    ///
-    /// ⚠️ 这里**曾经**有第 4、5 两条量交通灯的断言（垂直基线、横向不压标题）。
-    /// 设置面板不再画红绿灯之后它们失去意义 —— 但**不是删掉了**：
-    /// 主窗口仍然在画，那两条原样留在 ``dumpMainWindowState`` / ``checkTrafficLightBaseline``
-    /// 里，继续守着「内容带高度 32」这个从灯的实测位置反推出来的常数。
-    @MainActor
-    static func dumpSettingsWindowState(
-        label: String, window: NSWindow, mismatches: inout [String]
-    ) {
-        let hosting = window.contentView
-        // ⚠️ **两边都必须转成窗口坐标再比**。`NSHostingView` 是 flipped 的
-        // （`isFlipped == true`，原点在左上），它的 `bounds` 与 `glassBackdrops`
-        // 返回的窗口坐标（原点在左下）**y 轴方向相反** —— 直接比会得到荒谬的结论。
-        let contentRect = hosting?.convert(hosting?.bounds ?? .zero, to: nil) ?? .zero
-        let glasses = window.glassBackdrops
-        let ours = glasses.filter { $0.kind.isOurs }
-        let covered = ours.map(\.frame).reduce(CGRect.null) { $0.union($1) }
-        checkLiquidGlassBackdrop(glasses, label: label, mismatches: &mismatches)
-        // 显式写类型：在字符串插值里 `.zero` 没有上下文类型可推，Swift 会去猜
-        // （实测猜成 `Int.zero`），然后在一个莫名其妙的地方报运算符不匹配。
-        let insets: NSEdgeInsets = hosting?.safeAreaInsets ?? NSEdgeInsetsZero
-        let size = "\(window.frame.width)×\(window.frame.height)"
-
-        print(
-            "  \(label)：上屏=\(window.isVisible) 尺寸=\(size) "
-                + "内容区(窗口坐标)=\(contentRect) 安全区=\(insets)"
-        )
-        print(
-            "    标题栏透明=\(window.titlebarAppearsTransparent) "
-                + "标题隐藏=\(window.titleVisibility == .hidden) "
-                + "背景 alpha=\(window.backgroundColor.alphaComponent) "
-                + "不透明=\(window.isOpaque)"
-        )
-        for (index, glass) in glasses.enumerated() {
-            print("    玻璃[\(index)] \(glass.kind.label) frame=\(glass.frame)")
-        }
-        print("    自定义玻璃并集=\(covered)")
-
-        // 设置窗口底部那行「版本 x · 构建 y」——用户报 bug 时唯一能给出的定位信息。
-        //
-        // ⚠️ **这个值取决于跑法**：`.app` 里读到的是 Info.plist 的真值；
-        // 直接跑 `.build/debug/DiskEjectorApp`（本自检的常规跑法）时 `Bundle.main`
-        // 没有那两个键，界面会落到兜底值 `1.0.0` / `1` —— **这是预期，不是 bug**。
-        // 所以这里只**打印**并说明来源，不当断言（否则每次跑自检都会假红）。
-        // 真值的守卫在 `AppVersionInfoTests`（含一条读打包产物的断言）。
-        // ⚠️ 「（兜底）」只能标在**真的用了兜底值**的那一项上。
-        // 第一版把后缀无条件拼在 `?? "1.0.0"` 之后，读到真值时也显示「兜底」——
-        // 一条会骗人的诊断输出比没有诊断更糟。
-        let short = AppVersionInfo.shortVersion()
-        let build = AppVersionInfo.build()
-        let source =
-            Bundle.main.bundleIdentifier == nil
-            ? "裸可执行，读不到 Info.plist，界面显示兜底值（预期）"
-            : "从 .app 的 Info.plist 读取"
-        print(
-            "    版本行：\(short ?? "1.0.0")\(short == nil ? "（兜底）" : "")"
-                + " · \(build ?? "1")\(build == nil ? "（兜底）" : "")"
-                + " · bundle=\(Bundle.main.bundlePath)（\(source)）")
-
-        // 版本行下方那条「本次构建含 N 处未提交改动」——只在 `DEBuildDirtyCount > 0` 时出现。
-        //
-        // 与版本行同理：裸可执行读不到这两个键 → 不显示，**这是预期**，所以只打印不当断言。
-        // 这条输出真正的价值在于**从 `/Applications/DiskEjector.app` 跑**时能看到它确实会显示 ——
-        // 也就是证明「版本号看着像 tag 那次正式构建、实际跑的却是工作区」这件事
-        // 在界面上被说清楚了。不打印的话，这个功能从命令行完全看不出有没有生效。
-        if let dirty = AppVersionInfo.dirtyCount() {
-            if dirty > 0 {
-                print(
-                    "    脏构建提示行："
-                        + String(
-                            format: L10n.tr(.versionDirtyNoticeFormat), dirty,
-                            AppVersionInfo.commit() ?? "—"))
-            } else {
-                print("    脏构建提示行：不显示（工作区干净，dirty=0）")
-            }
-        } else {
-            print("    脏构建提示行：不显示（读不到 DEBuildDirtyCount —— 裸可执行下预期）")
-        }
-
-        // 1 · 窗口尺寸
-        let expected = DesignTokens.Size.settingsPanel
-        if abs(window.frame.width - expected.width) > 0.5
-            || abs(window.frame.height - expected.height) > 0.5
-        {
-            mismatches.append(
-                "A 窗口应为 \(expected.width)×\(expected.height)，实得 "
-                    + "\(window.frame.width)×\(window.frame.height)"
-                    + "（多出来的高度就是标题栏安全区 32pt）")
-        }
-
-        // 2 · 玻璃铺满整个内容区。留 0.5pt 容差给坐标取整。
-        let tolerance: CGFloat = 0.5
-        if ours.isEmpty || contentRect.height <= 0 {
-            mismatches.append("A 没找到设置窗口的自定义玻璃（material=.underWindowBackground）—— 背景没铺上")
-        } else {
-            let covers =
-                covered.minX <= contentRect.minX + tolerance
-                && covered.minY <= contentRect.minY + tolerance
-                && covered.maxX >= contentRect.maxX - tolerance
-                && covered.maxY >= contentRect.maxY - tolerance
-            if !covers {
-                mismatches.append(
-                    "A 玻璃只覆盖 \(covered)，未铺满内容区 \(contentRect) —— "
-                        + "上/下缺口 \(contentRect.minY - covered.minY) / "
-                        + "\(contentRect.maxY - covered.maxY)pt（顶部 32pt 安全区就是红绿灯那一带）")
-            }
-        }
-
-        // 3 · 系统标题栏的标题必须隐藏
-        if window.titleVisibility != .hidden {
-            mismatches.append(
-                "A 系统标题栏标题未隐藏（titleVisibility=\(window.titleVisibility.rawValue)）—— "
-                    + "会与面板自己头部的「设置」重复")
-        }
-
-        // 4 · 三个系统按钮必须都藏着（照设计稿：设置面板不画红绿灯）。
-        //
-        // **只能真机验**：`standardWindowButton(_:)` 属于「窗口」，离屏没有窗口就没有按钮可问。
-        // 而它恰恰是本轮要守的东西 —— 一旦被改回可见，用户看到的就又是「红灯 + 完成」
-        // 两个功能相同的出口。
-        let traffic = zip(["红", "黄", "绿"], SettingsWindow.hiddenButtonTypes).map {
-            name, type -> String in
-            guard let button = window.standardWindowButton(type) else { return "\(name)=无此按钮" }
-            return "\(name)=\(button.isHidden ? "已隐藏" : "仍在画")"
-        }
-        print("    系统按钮=\(traffic.joined(separator: " "))")
-        if !SettingsWindow.standardButtonsAreHidden(in: window) {
-            mismatches.append(
-                "A 设置窗口还在画系统交通灯（\(traffic.joined(separator: " "))）—— "
-                    + "设计稿的 `.shead` 里没有 traffic，红绿灯的关窗与头部的「完成」是"
-                    + "同一个动作的两个出口（用户 2026-09-16 报告）")
-        }
-    }
 }

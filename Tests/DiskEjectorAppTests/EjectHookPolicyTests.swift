@@ -632,27 +632,60 @@ struct TakeOverAvailabilityTests {
 
     // MARK: 接线守卫（扫源码 —— 纯函数守不住「视图有没有用它」）
 
-    /// 「接管访达的推出」那一行必须**三处都过闸门**：点击动作、开关值、说明文字。
+    /// 「接管访达的推出」那一行必须**三处都过闸门**：可点性、开关值、说明文字。
     ///
     /// **为什么只能扫源码**：``TakeOverAvailability`` 的单测守的是**推导**，
-    /// 守不住「视图有没有真的用它」。把 `onTap: takeOverTapAction` 写回
-    /// `onTap: toggleTakeOverFinderEject`，上面所有断言**仍然是绿的** ——
+    /// 守不住「视图有没有真的用它」。把开关值写回用户意愿、或顺手把「不可用」那一支
+    /// 也画成可点的开关，上面所有断言**仍然是绿的** ——
     /// 而用户又能点一个永远不会生效的开关了（「看着在守其实守不住」的典型，
     /// 本仓库记过好几例）。
+    ///
+    /// ## v3 换了写法，三处闸门的位置跟着换（HANDOFF §3.4 / §3.5）
+    ///
+    /// v2 那一行是自绘的 `line(onTap: takeOverTapAction, …)`：闸门藏在
+    /// «`takeOverTapAction` 条件返回 `nil`» 与「手补的 `accessibilityValue`」里。
+    /// v3 把开关交还系统的 `Toggle`、并且**整行按可用性分流**（可用 = 系统开关行；
+    /// 不可用 = 只读行 + 「打开系统设置」按钮）⇒ 闸门现在是：
+    ///
+    /// | 闸门 | v3 的写法 |
+    /// |---|---|
+    /// | 可点性 | `if takeOverAvailability.isUsable {` 分流两支 |
+    /// | 开关值 | `get: { takeOverOn }`（**生效值**，不是 `takeOverFinderEject` 意愿值） |
+    /// | 说明文字 | `description: takeOverDescription`（随状态走） |
+    ///
+    /// ⚠️ v2 那条 `accessibilityValue: L10n.tr(takeOverOn ? .on : .off)` 断言**随之退休**：
+    /// 那是给自绘开关补的（它当时 `accessibilityHidden`，不补就永远读不出开/关）。
+    /// 系统的 `Toggle` 自带值语义、读的就是它的 `isOn` ⇒ 只要 `isOn` 取 `takeOverOn`，
+    /// 看不见的用户听到的就与实际生效一致 —— 本条第二个 `#expect` 守的正是这一点。
     @Test func 接管行三处都过闸门() throws {
         let source = try String(
             contentsOf: Self.repoRoot.appendingPathComponent("Sources/Views/SettingsView.swift"),
             encoding: .utf8)
 
+        // ① 可点性：整行按可用性分流。少了它，未授权时整行又变成可点的。
         #expect(
-            source.contains("onTap: takeOverTapAction"),
-            "接管那一行的 onTap 不再走闸门 —— 未授权时整行又变成可点的了")
+            source.contains("if takeOverAvailability.isUsable {"),
+            "接管那一行不再按可用性分流 —— 未授权时整行又变成可点的了")
+
+        // ② 开关值：必须是**生效值**。用户意愿（`takeOverFinderEject`）与生效值
+        //    在未授权时恰好相反，把意愿直接喂给 `Toggle` 会画出一个「开着却不生效」的开关。
         #expect(
-            !source.contains("onTap: toggleTakeOverFinderEject"),
-            "接管那一行把 `toggleTakeOverFinderEject` 直接传给了 line(...) —— 绕过了可用性闸门")
+            source.contains("get: { takeOverOn }"),
+            """
+            接管那一行的开关值不再取生效值（`takeOverOn`）——
+            它必须走 `AppSettings.TakeOverAvailability.effectiveIsOn`，
+            而不是直接把用户意愿当成开关的当前值。
+            """)
         #expect(
-            source.contains("accessibilityValue: L10n.tr(takeOverOn ? .on : .off)"),
-            "无障碍值读的是用户偏好而不是生效值 —— 看不见的用户会听到「开」，而它并没有生效")
+            !source.contains("get: { takeOverFinderEject }"),
+            "接管那一行把用户意愿直接当开关值 —— 未授权时会画成「开」，而它并没有生效")
+        // 未授权那一态画的那颗 `Toggle` 同样要取生效值（此时恒为假），
+        // 否则「拨不动」与「看着是开的」会同时出现。
+        #expect(
+            source.contains("Toggle(\"\", isOn: .constant(takeOverOn))"),
+            "未授权那一态画的不是生效值 —— 它必须画 `takeOverOn`，否则会画成「开」")
+
+        // ③ 说明文字随状态走。
         #expect(
             source.contains("description: takeOverDescription"),
             "说明文字不再随状态走 —— 未授权时用户只会看到一个拨不动、也不说为什么的开关")

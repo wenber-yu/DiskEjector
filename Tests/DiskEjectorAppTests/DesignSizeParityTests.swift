@@ -85,71 +85,37 @@ struct DesignSizeParityTests {
             key: "--w-popover", constant: "menuPopoverWidth", locator: .token("--w-popover:"),
             actual: { DesignTokens.Size.menuPopoverWidth },
             label: "菜单栏面板宽", why: "设计稿 `--w-popover: 360px`"),
-        Pair(
-            key: "--w-settings", constant: "settingsPanel", locator: .token("--w-settings:"),
-            actual: { DesignTokens.Size.settingsPanel.width },
-            label: "设置面板宽",
-            why: """
-                设计稿 `--w-settings: 720px`（两栏形态：左栏 200 + 右栏 520）。
-                ⚠️ 单栏时代是 480 —— 600 与 720 之间的那次切换是**形态切换本身**，不是微调。
-                """),
-        Pair(
-            key: "--h-settings", constant: "settingsPanel", locator: .token("--h-settings:"),
-            actual: { DesignTokens.Size.settingsPanel.height },
-            label: "设置面板高",
-            why: """
-                设计稿 `--h-settings: 440px`。单栏时代是 920（= 五组纵向相加的英文最坏 916.20 + 余量）；
-                两栏之后高度只由**最高的那一页**决定，440 = 设计稿最高帧 384.22 + 余量 55.78。
-                """),
+        // ⚠️ 这里原有 `--w-settings`（720）/ `--h-settings`（440）两条，**v3 删除**：
+        // 它们钉的是 `settingsPanel` —— v2 **独立设置窗口**的尺寸。
+        // v3 把设置并进主窗口详情区之后没有「面板尺寸」这个量：画布由窗口
+        // （``mainWindow``）与侧栏（``mainSidebarWidth``）决定，高度由工具栏决定，
+        // 内容超出走滚动（HANDOFF §5：「这条夹逼约束整个作废」）。
+        // 两个令牌也已从 `DesignTokens` 删除。
+        // ds.css 里它们仍在（v3 稿子整份沿用了 v2 的令牌表）⇒ 已登记进 ``retiredSizeTokens``。
         Pair(
             key: "--h-titlebar", constant: "titleBarHeight", locator: .token("--h-titlebar:"),
             actual: { DesignTokens.Size.titleBarHeight },
             label: "标题栏高", why: "设计稿 `--h-titlebar: 52px`"),
-        // ---- 设置面板左栏（两栏形态） ----
+        // ---- 侧栏（v3：主窗口的分类栏） ----
         //
-        // ⚠️ 这一组的六个数字在 `ds.css` 里**都是字面量、不是令牌**（`.sside { width: 200px }`），
-        // 所以它们**不在**「设计稿新声明的尺寸令牌必须登记进同源表」那条守卫的射程内 ——
-        // 是 `SettingsLayoutTests.左栏几何符合设计稿()` 量到 208 之后才被发现的。
-        // **主动登记**（而不是等守卫报错）的理由：左栏宽 200 反推出右栏可用宽 480，
-        // 而 480 是所有折行的前提 ⇒ 它一漂，一整片高度契约跟着漂，而**没有任何东西会报错**。
+        // ⚠️ **同一个 `.sside` 类在两代稿子里是两样东西**：
+        // v2 的 `09-settings-split.html` 里它是**设置窗口**的左栏（自绘 —— 所以要算项高、
+        // 图标、间距、内边距）；v3 稿子里它是**主窗口**的侧栏
+        // （`NSSplitViewItem(sidebarWithViewController:)` + `List(selection:)`），几何全归系统。
+        //
+        // ⇒ 只有**宽度**这一条还值得钉：它决定详情区有多宽，而详情区宽是所有折行的前提 ——
+        // 一漂，一整片高度契约跟着漂，而**没有任何东西会报错**。
+        // 项高 / 图标 / 间距 / 内边距那 5 条随 `settingsSidebar*` 令牌一起删除：
+        // 那些数字现在由 AppKit 排版，我们一行外观代码都不写（HANDOFF §3.3）。
         Pair(
-            key: ".sside width", constant: "settingsSidebarWidth",
+            key: ".sside width", constant: "mainSidebarWidth",
             locator: .rule(".sside", "width:"),
-            actual: { DesignTokens.Size.settingsSidebarWidth },
-            label: "设置面板左栏宽", why: "设计稿 `.sside { width: 200px }`"),
-        Pair(
-            key: ".sside__item height", constant: "settingsSidebarItemHeight",
-            locator: .rule(".sside__item", "height:"),
-            actual: { DesignTokens.Size.settingsSidebarItemHeight },
-            label: "分类项高", why: "设计稿 `.sside__item { height: 28px }`"),
-        Pair(
-            key: ".sside__item svg width", constant: "settingsSidebarItemIcon",
-            locator: .rule(".sside__item svg", "width:"),
-            actual: { DesignTokens.Size.settingsSidebarItemIcon },
-            label: "分类项图标边长", why: "设计稿 `.sside__item svg { width: 15px }`"),
-        Pair(
-            key: ".sside__item gap", constant: "settingsSidebarItemGap",
-            locator: .rule(".sside__item", "gap:"),
-            actual: { DesignTokens.Size.settingsSidebarItemGap },
-            label: "分类项图标与文字间距", why: "设计稿 `.sside__item { gap: 9px }`"),
-        Pair(
-            key: ".sside gap", constant: "settingsSidebarItemSpacing",
-            locator: .rule(".sside", "gap:"),
-            actual: { DesignTokens.Size.settingsSidebarItemSpacing },
-            label: "分类项之间的间距",
+            actual: { DesignTokens.Size.mainSidebarWidth },
+            label: "侧栏面板宽",
             why: """
-                设计稿 `.sside { gap: 1px }`。
-                ⚠️ 它是**子项之间**的间距、不含末尾 —— 实现侧曾因为在 `VStack` 末尾多放一个
-                `Spacer` 而多出 1pt（`Spacer` 也算一个子项），整列从 208 变 209。
-                """),
-        Pair(
-            key: ".sside padding", constant: "settingsSidebarPaddingH",
-            locator: .rule(".sside", "padding:", nth: 2),
-            actual: { DesignTokens.Size.settingsSidebarPaddingH },
-            label: "左栏左右内边距",
-            why: """
-                设计稿 `.sside { padding: 52px 10px 12px }` 的**第二个**值（nth=2）——
-                52 是顶部（与内容区头部齐平）、12 是底部，只有 10 是左右。
+                设计稿 `.sside { width: 200px }`。⚠️ 200 是**面板本体**，不是外沿 ——
+                系统再整体内缩 8pt（统一工具栏 + 全高布局），外沿因此落在 8→208pt，
+                详情区左缘是 208 而不是 200。
                 """),
         Pair(
             key: ".win border", constant: "glassBorderWidth",
@@ -356,11 +322,9 @@ struct DesignSizeParityTests {
             label: "空状态图标", why: "设计稿 `.empty__art svg { width: 36px }`"),
 
         // ---- 其它组件 ----
-        Pair(
-            key: ".iconbtn width (标题栏)", constant: "titleBarIconButton",
-            locator: .rule(".iconbtn", "width:"),
-            actual: { DesignTokens.Size.titleBarIconButton },
-            label: "标题栏图标按钮", why: "设计稿 `.iconbtn { width: 28px }`（与面板那个同一个类）"),
+        // ⚠️ 这里原有 `.iconbtn width (标题栏)` ↔ `titleBarIconButton`（28），**v3 删除**：
+        // 自绘的标题栏图标按钮已退役（刷新搬进系统 `NSToolbar`，位置与尺寸由系统给），
+        // 令牌随之删除。面板那个 `.iconbtn`（``popoverIconButton``）另有登记，不受影响。
         Pair(
             key: ".empty__art width", constant: "emptyArtSize",
             locator: .rule(".empty__art", "width:"),
@@ -422,21 +386,15 @@ struct DesignSizeParityTests {
             actual: { DesignTokens.Size.titleBarBandBottomPadding },
             label: "内容带下留白",
             why: "0：实现侧的对齐补偿，设计稿没有这一项"),
-        Pair(
-            key: "–", constant: "titleBarInsetCenter", locator: nil,
-            actual: { DesignTokens.Size.titleBarInsetCenter },
-            label: "交通灯对齐中心",
-            why: "26 来自「设计稿四部件**中心**」的实测（交通灯对齐），CSS 里没有声明"),
+        // ⚠️ 这里原有 `titleBarInsetCenter`（26）与 `systemTrafficLightCenterFromLeft`（16）
+        // 两条，**v3 删除**（令牌一起删的）：它们钉的是「**我们自己**把交通灯与标题栏按钮
+        // 对齐到 26pt 中心」这件事 —— v3 之后那件事整个归了 AppKit
+        // （统一工具栏下系统自己把灯居中到 26pt）。理由见 `DesignTokens` 里对应位置的说明。
         Pair(
             key: "–", constant: "systemTrafficLightCenterFromTop", locator: nil,
             actual: { DesignTokens.Size.systemTrafficLightCenterFromTop },
             label: "系统交通灯纵向位置",
             why: "**系统实测值**（标准 28pt 标题栏那套），不是设计稿给的数"),
-        Pair(
-            key: "–", constant: "systemTrafficLightCenterFromLeft", locator: nil,
-            actual: { DesignTokens.Size.systemTrafficLightCenterFromLeft },
-            label: "系统交通灯横向位置",
-            why: "同上，**系统实测值**"),
         Pair(
             key: "–", constant: "hoverBackgroundInset", locator: nil,
             actual: { DesignTokens.Size.hoverBackgroundInset },
@@ -595,13 +553,15 @@ struct DesignSizeParityTests {
             declared.count >= 6,
             "只扫到 \(declared.count) 个 --w-* / --h-* 令牌 —— 解析口径失效（假绿）")
 
-        let orphans = declared.subtracting(Self.sizeTokenKeys).sorted()
+        let orphans = declared.subtracting(Self.sizeTokenKeys)
+            .subtracting(Self.retiredSizeTokens).sorted()
         #expect(
             orphans.isEmpty,
             """
             ds.css 声明了这些尺寸令牌，但同源表里没有：\(orphans.joined(separator: "、"))。
             要么给它在 `DesignTokens.Size` 里配一个常量并登记进 `pairs`，
             要么说明它为什么不需要两边一致 —— **不要**放着不管，那正是 §8.43 的病。
+            （若它属于「设计稿仍声明、而 v3 已确认不再需要」，登记进 `retiredSizeTokens`。）
             """)
     }
 
@@ -723,6 +683,28 @@ struct DesignSizeParityTests {
         }
         return out
     }
+
+    /// **设计稿仍声明、而实现已经没有对应物**的尺寸令牌 —— 显式注销，不再要求两边同数。
+    ///
+    /// ## 为什么需要这张表（v3，2026-09-30）
+    ///
+    /// `ds.css` 是**设计系统**的令牌表，而 v3 稿子是「复制 v2 再改」⇒ 令牌表被整份沿用，
+    /// 它**仍然声明着** `--w-settings` / `--h-settings`。但 v3 已经**没有独立设置窗口**，
+    /// `DesignTokens` 里的 `settingsPanel` 也随之删除（见那里的注释）。
+    ///
+    /// 这两条**不是**「有人忘了登记」，是「设计稿侧还留着历史令牌」：
+    /// 让它们留在 `pairs` 里做不到（常量已不存在，`actual` 无物可指），
+    /// 而直接删条目又会让 ``设计稿新声明的尺寸令牌必须登记进同源表()`` 变红
+    /// （它们会从差集里冒出来）。⇒ 显式注销：守卫继续拦**真的新**令牌，账记在这里。
+    ///
+    /// ⚠️ **往这里加东西要慎重** —— 它等于「放弃两边同数」。
+    /// 只在「设计稿仍声明、而 v3 已确认不再需要」时写，并说清原因。
+    private static let retiredSizeTokens: Set<String> = [
+        // v2 独立设置窗口的尺寸。v3 把设置并进主窗口详情区 ⇒ 没有「面板尺寸」这个量
+        // （HANDOFF §5：「这条夹逼约束整个作废」）。
+        "--w-settings",
+        "--h-settings",
+    ]
 
     private static func value(_ locator: Locator, in css: String) -> Double? {
         switch locator {

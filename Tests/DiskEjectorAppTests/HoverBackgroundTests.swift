@@ -25,7 +25,14 @@ import Testing
 @MainActor
 struct HoverBackgroundTests {
 
-    private let box = DesignTokens.Size.titleBarIconButton  // 28
+    /// 量测用的盒子边长（28）—— 与设计稿 `.iconbtn { width: 28px }` 同一档。
+    ///
+    /// ⚠️ v3 之前这里取的是 ``DesignTokens/Size/titleBarIconButton``，那个令牌已随
+    /// **自绘标题栏按钮**退役（刷新按钮搬进系统 `NSToolbar`，尺寸由系统给）。
+    /// 而 ``HoverBackground`` 本身**还在用**（菜单面板的图标按钮、弹窗里的按钮等），
+    /// 所以这里留一个与设计稿同档的**字面量** —— 它只是**量测用的画布**，
+    /// 不指向任何生产常量：挂到令牌上反而会让这条测试跟着令牌一起漂。
+    private let box: CGFloat = 28
 
     /// 纯黑底色的包围盒 —— **必须用纯色**：`subtle` 在浅色底上接近白，
     /// 阈值怎么定都说不清；纯黑才让「覆盖到哪」是确定的。

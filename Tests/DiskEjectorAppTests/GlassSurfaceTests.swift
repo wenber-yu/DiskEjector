@@ -128,10 +128,15 @@ struct GlassSurfaceTests {
 
     // MARK: 几何令牌
 
-    @Test("设置面板外框圆角与主窗口同为 12")
-    func 设置面板圆角与主窗口一致() {
-        #expect(DesignTokens.Radius.window == 12, "设计稿 .win { border-radius: var(--r-window) }")
-        #expect(DesignTokens.Radius.settings == DesignTokens.Radius.window, "设置面板就是 .win，圆角不该是 16")
+    @Test("窗口圆角不自绘 —— 归窗口服务器")
+    func 窗口圆角归系统() {
+        // v3：这里原先断言 `Radius.window == 12` 与 `Radius.settings == Radius.window`。
+        // 那两个令牌**已随 v3 删除** —— 窗口圆角归窗口服务器，而它既不是常数
+        // （同机实测 31.5pt / 17.5pt 两档，只差窗口配置）也读不到
+        // （`NSThemeFrame.layer.cornerRadius` 恒 0，HANDOFF §3.7.1 + 红线 R6）。
+        // 自绘一个 12pt 只会在四角切出比窗口更小的圆、把窗口底露出来。
+        //
+        // 留下的是**仍然有效的那一档**：菜单面板 / 弹窗 / 引导面板的圆角。
         #expect(DesignTokens.Radius.lg == 14, "面板是 --r-lg")
     }
 

@@ -82,7 +82,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     ///
     /// `nil` 表示窗口是用生产路径建的（等价于 ``DiskListStore/shared``）。
     private var mainWindowStore: DiskListStore?
-    private var settingsWindow: NSWindow?
+
+    /// 主窗口的**内容控制器**（v3 起它同时是侧栏 / 详情区那套 split 装配）。
+    ///
+    /// **为什么从 `mainWindow` 反推而不另存一个字段**：`makeMainWindow()` 是 `static`
+    /// （窗口装配没有实例状态可依），另存一个字段就得让那个工厂把控制器「顺手」回填进来 ——
+    /// 于是同一份引用有两个来源、可以各自被写成不同值。反推只有一个来源：窗口。
+    private var mainWindowContent: MainWindowContentController? {
+        mainWindow?.contentViewController as? MainWindowContentController
+    }
+
     /// 「完全磁盘访问」引导面板（设计稿 `04-onboarding.html`）。
     ///
     /// **它必须能在主窗口没打开时弹出来**：直发版可能被设为「只驻留菜单栏」，
@@ -256,11 +265,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         // 主窗口预览：把主窗口**真的上屏**。
         //
-        // **为什么离屏出图不够**：主窗口是 `.fullSizeContentView` + 透明标题栏，
-        // SwiftUI 会从窗口拿到一个 52pt 的**顶部安全区**。「玻璃有没有连标题栏一起铺满」
-        // 离屏**结构上测不到**（离屏没有窗口就没有安全区）。实测踩过：
-        // 玻璃从 `ZStack` 挪到 `.background(...)` 时丢了 `.ignoresSafeArea()`，
-        // 真机上标题栏整条露出桌面，而离屏快照仍是满窗玻璃、全绿。
+        // **为什么离屏出图不够**：主窗口是 `.fullSizeContentView` + 透明标题栏 + 统一工具栏，
+        // 三件事**只有上屏之后才存在** —— 工具栏那条 52pt 安全带、侧栏的浮岛形态、
+        // 以及由此决定的红绿灯 26pt 基线。离屏搭不出窗口，这些**结构上测不到**。
+        // 实测踩过（v2）：玻璃从 `ZStack` 挪到 `.background(...)` 时丢了
+        // `.ignoresSafeArea()`，真机上标题栏整条露出桌面，而离屏快照仍是满窗玻璃、全绿。
         let autoMainWindowEmptyKeys = CommandLine.arguments.contains("--preview-main-window-empty-keys")
         let autoMainWindowKeys = CommandLine.arguments.contains("--preview-main-window-keys")
         // **空状态版优先**：两个都传时只跑空状态版 —— 否则会连做两遍断言并各调一次 `exit`。
@@ -274,15 +283,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             delegate.runMainWindowPreview(autoKeys: autoMainWindowKeys)
         }
 
-        // 设置窗口预览：把设置窗口**真的上屏**。
+        // 设置页预览：把**主窗口的「设置 · 通用」页**真的上屏。
         //
-        // **为什么离屏出图不够**：与主窗口同源 —— 设置窗口也是 `.fullSizeContentView`
-        // + 透明标题栏，`NSHostingView` 会把「内容 566 + 标题栏安全区 32」当固有尺寸
-        // **回推给窗口**。离屏没有窗口就没有安全区，窗口也不会被回推（实测离屏恒为设计稿高），
-        // 所以「窗口高是不是设计稿的 566」「玻璃有没有连标题栏一起铺满」两件事离屏测不到。
-        //
-        // 实测（2026-09-16 补齐前）：上屏后是 **440×598**（当时尺寸），玻璃只拿到内容的 566，
-        // 底部 32pt 露成平色；系统标题栏的「设置」还与面板头部的「设置」重复。
+        // **为什么离屏出图不够**：v3 起设置不再是独立窗口，它就是主窗口详情区的一页
+        // ⇒ 能验的东西变成「**有没有多开一个窗口**」与「侧栏选中项有没有被拨到设置·通用」，
+        // 这两件事**离屏结构上测不到**（离屏连窗口都没有，更谈不上"有几个窗口"）。
+        // 任何一条老入口漏改都会「设置照旧开一个新窗」，而界面看上去完全正常。
         let autoSettingsKeys = CommandLine.arguments.contains("--preview-settings-keys")
         // 「接管可用性」那两个注入口也各自算一次「要开设置窗口」——
         // 否则 `--preview-settings-no-fda` 会被忽略掉（这里是**逐字**比较，不是前缀匹配）。
@@ -1249,11 +1255,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             guard autoKeys else {
                 print("人工核对模式：主窗口已上屏（本模式不会推出任何磁盘）。")
                 print("  核对要点：")
-                print("    ① 标题栏（红绿灯那一条）是否与下方内容共用同一张玻璃 ——")
-                print("       若标题栏露出桌面/其它窗口，说明玻璃没有铺满整窗；")
-                print("    ② 标题「外置磁盘」的视觉中线，是否与左边三个红绿灯的圆心在同一水平线上。")
+                print("    ① 左侧是**四边内缩的圆角浮岛**（26 上），右侧内容区贴边 ——")
+                print("       不是「贴边通高的一条深色栏」；")
+                print("    ② 三条基线共线：红绿灯圆心 / 右上刷新按钮 / 「外置磁盘」标题，垂直中心应一致；")
+                print("    ③ 侧栏「设置」那一组下面有五项（通用/外观/更新/诊断/关于），")
+                print("       点任一项右侧头部标题应跟着变；")
+                print("    ④ 窗口顶部**没有任何一段**露出比内容区头部带更低的空带。")
                 if emptyDisks {
-                    print("    ③ 【空状态模式】列表区画的必须是「空状态」（图标 + 标题 + 说明 + 按钮），")
+                    print("    ⑤ 【空状态模式】列表区画的必须是「空状态」（图标 + 标题 + 说明 + 按钮），")
                     print("       不能是首屏骨架层的浅灰圆角块 —— 见 SPEC §8.25。")
                 }
                 print("  核对完 ⌘Q 退出。")
@@ -1263,7 +1272,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             print("预览结束（未对任何真实磁盘执行操作）")
             if mismatches.isEmpty {
                 let scope = emptyDisks ? "空状态（注入空磁盘列表）" : "真实磁盘列表"
-                print("✅ 主窗口真机自检通过：窗口 800×520、玻璃覆盖整窗（含标题栏）、标题与交通灯同一基线、\(scope)")
+                print(
+                    "✅ 主窗口真机自检通过：窗口 800×520、玻璃覆盖整窗（含标题栏）、"
+                        + "侧栏锁宽 200 且详情区顶距 0、标题与交通灯同一 26pt 基线（红灯画出来是圆）、"
+                        + "\(scope)")
                 exit(0)
             }
             for line in mismatches { print("❌ \(line)") }
@@ -1280,17 +1292,26 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// 把主窗口状态打到终端，并就地核对。
     ///
-    /// 三条断言各有明确后果：
-    /// 1. 窗口必须是设计稿的 **800 × 520**（`01-main-window.html` 的 `.win--main`）——
-    ///    这条抓的是「`NSHostingView` 把 520+32 的固有尺寸回推给窗口」；
-    /// 2. **玻璃必须覆盖整个窗口**（含 52pt 标题栏那一带）—— 这条是「标题栏露底」的捕手。
-    ///    判据不是看颜色（离屏取不到桌面），而是**问 AppKit 那块 `NSVisualEffectView` 在窗口里占多大**：
-    ///    ``GlassSurface`` 用的材质是 `.underWindowBackground`，系统标题栏自带的不是这一档，
-    ///    所以能精确挑出「我们自己画的那块玻璃」；
-    /// 3. **交通灯与标题栏内容带必须在同一条水平基线上**（见 ``checkTrafficLightBaseline``）——
-    ///    内容带高度 32 是从交通灯实测位置反推的常数，AppKit 挪了灯只有真机量得出来。
+    /// 六条断言各有明确后果：
+    /// 1. 窗口必须是设计稿的 **800 × 520**（`_10-combined-draft.html` 的 `.win--v3`）——
+    ///    这条抓的是「宿主把 520 + 工具栏安全区 52 的固有尺寸回推给窗口」；
+    /// 2. **玻璃必须覆盖整个窗口**（含标题栏那一条）—— 这条是「标题栏露底」的捕手。
+    ///    判据不是看颜色（离屏取不到桌面），而是**问 AppKit 那块底衬在窗口里占多大**：
+    ///    ``GlassSurface`` 走的是我们自己那块（``GlassBackdrop/isOurs``），
+    ///    系统的侧栏玻璃 / 标题栏玻璃不算 —— 它们算进来会替我们那块把「没铺满」补上；
+    /// 3. **v3 的装配**（``WindowSelfCheck/checkSplitAssembly``）：工具栏在不在、
+    ///    侧栏是不是 `.sidebar` 行为且锁宽 200、详情区 view 顶距是不是 0；
+    /// 4. **交通灯与内容区头部带在同一条水平基线上**（``checkTrafficLightBaseline``）——
+    ///    v3 起这 26pt 由 AppKit 按「窗口有没有工具栏」给；
+    /// 5. **红灯画出来是圆的**（``checkRedLightInkShape``）—— 抓「标题栏把灯裁掉」；
+    /// 6. 无外置磁盘时必须画**空状态**而不是骨架层（仅磁盘页；见 `checksDisksEmptyState`）。
+    ///
+    /// - Parameter checksDisksEmptyState: 第 6 条是否要跑。设置页里根本没画磁盘列表，
+    ///   那种情况下「列表区墨迹」量到的是设置行 —— 结论没有意义（会假绿）。
     @MainActor
-    private func dumpMainWindowState(label: String, mismatches: inout [String]) {
+    private func dumpMainWindowState(
+        label: String, checksDisksEmptyState: Bool = true, mismatches: inout [String]
+    ) {
         guard let window = mainWindow else {
             mismatches.append("A 主窗口不存在")
             return
@@ -1347,51 +1368,67 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                     + "\(contentRect.maxY - covered.maxY)pt（顶部安全区 32pt 就是标题栏那一带）")
         }
 
-        // 3 · 交通灯与标题栏内容带在同一条水平基线上。
+        // 3 · v3 的装配：工具栏还在不在、侧栏 / 详情区对不对。
         //
-        // ⚠️ **这条离屏出图测不到**：离屏没有窗口就没有交通灯。而内容带高度是从交通灯
-        // 位置反推的常数（见 ``DesignTokens/Size/titleBarBandHeight``）——
-        // AppKit 哪天把灯挪了，只有这里会红。
+        // ⚠️ **这几条离屏出图全测不到**（离屏没有窗口 ⇒ 没有工具栏 ⇒ 侧栏不浮、灯不在 26pt）。
+        // 返回值是详情区左缘，下面那条空状态判据要用它把扫描框限制在详情区里。
+        var detailLeft: CGFloat = 0
+        if let content = mainWindowContent {
+            detailLeft = WindowSelfCheck.checkSplitAssembly(
+                window: window, content: content, label: "A", mismatches: &mismatches)
+        } else {
+            mismatches.append(
+                "A 主窗口的 contentViewController 不是 MainWindowContentController —— "
+                    + "v3 的侧栏 / 详情区装配整个没接上（见 ``AppDelegate/makeMainWindow()``）")
+        }
+
+        // 4 · 交通灯与内容区头部带在同一条水平基线上（= 26pt）。
+        //
+        // v3 起这个位置**完全由 AppKit 按「窗口有没有工具栏」决定**，我们不再改灯的 frame。
+        // ⇒ 这条现在守的是「工具栏还在不在」：它一旦没了，灯会掉到 16pt。
         WindowSelfCheck.checkTrafficLightBaseline(window: window, label: "A", mismatches: &mismatches)
 
-        // 4 · 红灯**画出来**的位置与形状。
+        // 5 · 红灯**画出来**的位置与形状 —— 「标题栏那 52pt 有没有把灯裁掉」的唯一判据。
         //
-        // ⚠️ **墨迹只抓一次图、喂给两条断言**（`ink`）：`measureRedLightInk` 里有重试循环
-        // （最多 3s），抓两遍纯属浪费；更要紧的是**两次抓图可能落在不同状态上**
-        // （一次灯是灰的）⇒ 两条断言各说各话，读的人无从分辨。
-        //
-        // 4a 左右两个边缘部件**光学中心对称**（红灯 vs 设置按钮）：这两个部件来源不同
-        //    （红灯 AppKit 画、设置按钮 SwiftUI 的 padding 定），凭印象对齐一定会对错。
-        // 4b **墨迹必须是圆**（`checkRedLightInkShape`）：这条守的是「标题栏把灯裁掉
-        //    下半部分」—— 2026-09-23 用户反馈的那个缺陷，上面所有 `frame` 判据对它全瞎。
-        let redInk = WindowSelfCheck.measureRedLightInk(
-            window: window, label: "A", mismatches: &mismatches)
-        WindowSelfCheck.checkTitleBarHorizontalSymmetry(
-            window: window, label: "A", ink: redInk, mismatches: &mismatches)
-        WindowSelfCheck.checkRedLightInkShape(ink: redInk, label: "A", mismatches: &mismatches)
+        // `frame` 层面的判据（第 4 条）对「被裁」这件事**全瞎**（它量的是布局数据，
+        // 不是墨迹）；只有这里数屏幕上的红色像素才看得见形状。
+        WindowSelfCheck.checkRedLightInkShape(
+            ink: WindowSelfCheck.measureRedLightInk(
+                window: window, label: "A", mismatches: &mismatches),
+            label: "A", mismatches: &mismatches)
 
-        // 5 · 没有外置磁盘时必须显示**空状态**，不能卡在首屏骨架层。
+        // 6 · 没有外置磁盘时必须显示**空状态**，不能卡在首屏骨架层。
         //
         // 离屏出图测不到这条（`cacheDisplay` 不跑 `.task`），只能真机量。
         // store 取 ``mainWindowStore``（建窗时记下的那一份），不是调用方传的 —— 见那里的说明。
+        // `detailLeftInset` 见 ``WindowSelfCheck/checkEmptyStateInsteadOfSkeleton``：
+        // v3 起侧栏恒有 7 行文字，不全窗口扫的话那条阈值会被侧栏的墨迹架空。
+        guard checksDisksEmptyState else { return }
         WindowSelfCheck.checkEmptyStateInsteadOfSkeleton(
-            window: window, diskStore: mainWindowStore ?? .shared, label: "A", mismatches: &mismatches)
+            window: window, diskStore: mainWindowStore ?? .shared, detailLeftInset: detailLeft,
+            label: "A", mismatches: &mismatches)
     }
 
-    // MARK: - 设置窗口真机自检
+    // MARK: - 设置页真机自检
 
-    /// 把设置窗口真的上屏，核对**离屏出图覆盖不到**的部分。
+    /// 把**主窗口的「设置 · 通用」页**真的上屏，核对离屏出图覆盖不到的部分。
     ///
-    /// **为什么需要它**：设置窗口与主窗口同源 —— `.fullSizeContentView` + 透明标题栏，
-    /// `NSHostingView` 会把「内容 566 + 标题栏安全区 32」当固有尺寸**回推给窗口**。
-    /// 离屏没有窗口就没有安全区，窗口也不会被回推（实测离屏恒为设计稿高）——
-    /// 「窗口高是不是设计稿的 566」「玻璃有没有连标题栏一起铺满」两件事离屏测不到。
+    /// ## v3 起设置不再是独立窗口
     ///
-    /// 实测（2026-09-16 补齐前）：上屏后是 **440×598**（当时尺寸，多 32pt），玻璃只拿到内容的 566，
-    /// 底部露成平色；系统标题栏的「设置」还与面板头部的「设置」重复。
-    /// 这几条当时**一个断言都没有** —— 改掉任何一条，测试与自检都不会红。
+    /// 三个入口（内容区齿轮 / 主菜单 ⌘, / 菜单栏面板的「设置…」）现在都落在
+    /// 「显示主窗口 + 选中设置·通用」上（``showSettings()``）。所以这个自检要回答的是
+    /// **两个 v3 特有的问题**：
     ///
-    /// **只读**：不动任何磁盘、不写偏好；点「完成」只会关窗。
+    /// 1. **没有第二个窗口冒出来** —— v2 时代设置是独立 `NSWindow`。任何一条老路径漏改
+    ///    都会「设置照旧开一个新窗」，而界面看上去**完全正常**（用户看到两个窗口，
+    ///    以为设置还能单独摆着）。判据 = 进程里的可见窗口集合。
+    /// 2. **侧栏选中项真的被拨到「设置 · 通用」** —— 三条入口共用 ``AppDelegate/showSettings()``
+    ///    里那一句 `model.selection = .settings(.general)`；漏了它，齿轮 / ⌘, 会打开主窗口
+    ///    却停在「外置磁盘」页，用户以为设置按钮坏了。
+    ///
+    /// 另外复用主窗口那几条真机判据（装配 / 交通灯 / 玻璃铺满），因为**它就是同一个窗口**。
+    ///
+    /// **只读**：不动任何磁盘、不写偏好。
     ///
     /// 跑法：
     /// - 人工核对：`DiskEjectorApp --preview-settings`（窗口留在屏幕上，核对完 ⌘Q）
@@ -1404,31 +1441,60 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         Task {
             var mismatches: [String] = []
 
-            // 走**真实路径**：`showSettings()` 里就是 `makeSettingsWindow()`。
-            // 另写一份「预览专用的建窗代码」等于什么都没验。
+            // 走**真实路径**：三个入口用的都是 ``showSettings()``。
+            // 另写一份「预览专用的代码」等于什么都没验。
             showSettings()
             await WindowSelfCheck.waitUntilAppIsActive()
+            await waitUntilMainWindowIsKey()
             // 等窗口上屏并把 SwiftUI 的视图树建好（玻璃是 `NSViewRepresentable`，
             // 要等 AppKit 那一层真的建出来才找得到）。
             try? await Task.sleep(nanoseconds: 600_000_000)
 
-            guard let window = settingsWindow else {
-                print("❌ 设置窗口没有建起来")
+            guard let window = mainWindow, let content = mainWindowContent else {
+                print("❌ 主窗口 / 内容控制器没有建起来")
                 exit(1)
             }
-            WindowSelfCheck.dumpSettingsWindowState(label: "A · 设置窗口", window: window, mismatches: &mismatches)
+
+            // 1 · **不该有第二个窗口。**
+            let visible = NSApp.windows.filter(\.isVisible)
+            let others = visible.filter { $0 !== window }
+            print("    可见窗口数=\(visible.count)（主窗口之外还有 \(others.count) 个）")
+            for extra in others {
+                print("      多余窗口：title=\(extra.title) class=\(type(of: extra))")
+            }
+            if !others.isEmpty {
+                mismatches.append(
+                    "A 打开设置之后进程里多出 \(others.count) 个可见窗口（"
+                        + others.map { "\(type(of: $0))" }.joined(separator: "、")
+                        + "）—— v3 已把设置合并进主窗口详情区，不该再有独立设置窗口。"
+                        + "多半是某条老入口还在建窗（查 ``AppDelegate/showSettings()``）")
+            }
+
+            // 2 · **选中项必须是「设置 · 通用」。**
+            let selection = content.model.selection
+            print("    侧栏选中项=\(selection.id)（标题「\(selection.title)」）")
+            if selection != .settings(.general) {
+                mismatches.append(
+                    "A 打开设置后侧栏选中项是 \(selection.id)，应为 settings.general —— "
+                        + "齿轮 / ⌘, / 菜单栏面板三处都靠 ``AppDelegate/showSettings()`` 里那一句 "
+                        + "`model.selection = .settings(.general)`；漏了它，用户会看到"
+                        + "「点设置打开了主窗口，却停在磁盘页」")
+            }
+
+            // 3 · 它**就是**主窗口 ⇒ 主窗口那几条真机判据原样适用
+            //     （只是不该在这里判「空状态」—— 设置页根本没画磁盘列表）。
+            dumpMainWindowState(
+                label: "A · 主窗口（设置页）", checksDisksEmptyState: false,
+                mismatches: &mismatches)
 
             guard autoKeys else {
-                print("人工核对模式：设置窗口已上屏（本模式不会改动任何设置）。")
+                print("人工核对模式：设置页已上屏（本模式不会改动任何设置）。")
                 print("  核对要点：")
-                print(
-                    "    ① 窗口高应是 \(Int(DesignTokens.Size.settingsPanel.height))（设计稿），"
-                        + "不是 \(Int(DesignTokens.Size.settingsPanel.height) + 32)；")
-                print("    ② 标题栏那一条应与下方内容共用同一张玻璃，不是一块平色；")
-                print("    ③ 顶部只应有一个「设置」—— 系统标题栏那个应被隐藏；")
-                print("    ④ **不该看到任何红绿灯** —— 设计稿的 `.shead` 里只有「设置」+「完成」，")
-                print("       左「设置」右「完成」，两侧各留 16（红绿灯会和「完成」功能重复）；")
-                print("    ⑤ 「设置」的视觉中线应与主窗口标题在同一条水平线上（纵向，距顶 16）。")
+                print("    ① 侧栏「设置」那一组的五项里应有一项被选中（通用），右侧头部写着「通用」；")
+                print("    ② 右侧**不该有「完成」按钮** —— 设置是常驻面板，v3 里没有这个概念；")
+                print("    ③ 开关是系统样式（26 上为胶囊 + Liquid Glass），且**整行**（含文字区）都能点；")
+                print("    ④ 切换侧栏分类，右侧头部标题应跟着变；")
+                print("    ⑤ 桌面上**只有这一个窗口**（设置不再单独开窗）。")
                 print("  核对完 ⌘Q 退出。")
                 return
             }
@@ -1436,10 +1502,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             print("预览结束（未改动任何设置）")
             if mismatches.isEmpty {
                 print(
-                    "✅ 设置窗口真机自检通过：窗口 "
-                        + "\(Int(DesignTokens.Size.settingsPanel.width))×"
-                        + "\(Int(DesignTokens.Size.settingsPanel.height))、玻璃覆盖整窗（含标题栏）、"
-                        + "三个系统按钮都已隐藏（无红绿灯）")
+                    "✅ 设置页真机自检通过：未多开窗口、侧栏选中「设置 · 通用」、"
+                        + "主窗口装配 / 玻璃 / 交通灯基线全部成立")
                 exit(0)
             }
             for line in mismatches { print("❌ \(line)") }
@@ -1946,293 +2010,55 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         win.backgroundColor = .clear
         win.isOpaque = false
 
-        // **内容宿主必须关掉安全区。**
+        // **内容装配整块搬到了 ``MainWindowContentController``**（v3：主窗口与设置合并）。
         //
-        // `.fullSizeContentView` 的窗口会告诉 SwiftUI「顶部这 32pt 被标题栏占着」，
-        // SwiftUI 于是把内容**整体下推 32pt**，并把「内容 520 + 安全区 32」当成固有尺寸
-        // 回推给窗口 —— 窗口**在上屏那一刻被撑到 800×552**（设计稿 520）。
-        // 与引导面板同一处理（见 ``makeOnboardingPanel(root:)``，那里踩过 380×503 → 532）。
-        //
-        // ⚠️ **只要这一句，别顺手加 `sizingOptions = []`**。它不是「什么都不做」，而是把窗口的
-        // `minSize`/`maxSize` **清成默认**（实测 `minSize` → 0×0、`maxSize` → 1.79e308），
-        // 会静默清掉下面刚设好的 `minSize`。而关掉安全区之后固有尺寸本来就是 520，
-        // `sizingOptions` 的默认行为恰好把 `minSize` 同步成 800×520 —— 正是想要的。
-        //
-        // **这件事离屏出图结构上测不到**：离屏没有窗口就没有安全区，窗口也不会被回推撑高
-        // （实测离屏窗口恒为 520）。守卫在 `MainWindowTests` 与真机自检
-        // `--preview-main-window-keys`（量真实窗口尺寸）。
-        let hosting = NSHostingView(
-            rootView: ContentView(
-                skipsInitialRefresh: skipsInitialRefresh, store: store,
-                occupancyStore: occupancyStore))
-        if #available(macOS 13.3, *) { hosting.safeAreaRegions = [] }
-        win.contentView = hosting
+        // 搬走的理由不是「文件太长」，是那三件事**必须一起对**、而它们各自都只在运行时
+        // 才暴露出错：① 玻璃挂在 `NSSplitViewController.view` 的最底层；
+        // ② 侧栏交还系统（浮岛 / 圆角 / 材质零代码）；③ **两个窗格对安全区的要求相反**
+        // （详情区必须关、侧栏必须不关）。三条都记在那个类的抬头里，附实测数据。
+        let content = MainWindowContentController(
+            store: store,
+            skipsInitialRefresh: skipsInitialRefresh,
+            occupancyStore: occupancyStore,
+            // ⚠️ 与 `--preview-settings-no-fda` / `-has-fda` 两个旗标同源：
+            // 本机能给到的只有一半的 TCC 状态，另一半必须在自检里强制出来。
+            takeOverAvailabilityOverride: previewTakeOverAvailability)
+        win.contentViewController = content
+
+        // **工具栏那条 52pt 带子不是「装按钮的容器」**（HANDOFF §3.1.1）。
+        // 去掉它实测要付四条代价、其中两条**手工补不齐**：红绿灯垂直中心 26→16pt、
+        // 侧栏浮岛的上内缩 8→32pt。详见 ``MainWindowContentController`` 与
+        // `Design/ui/v3/HANDOFF.md` §3.1.1 的四行对照表。
+        win.toolbarStyle = .unified
+        win.toolbar = content.makeToolbar()
 
         // **避免 SwiftUI 启动时第一个 Button 自动获得焦点环**：
-        // SwiftUI 主窗口首屏显示时，焦点环默认套在第一个 Button 上（这里是刷新按钮），
+        // SwiftUI 主窗口首屏显示时，焦点环默认套在第一个 Button 上，
         // 看着像「按钮被高亮选中」。`initialFirstResponder = nil` 让首焦点为空。
-        // 必须在 `contentView` 赋值之后设 —— 否则会被随后的赋值重置掉。
+        // 必须在 `contentViewController` 赋值之后设 —— 否则会被随后的赋值重置掉。
         win.initialFirstResponder = nil
 
-        // **先把标题栏区域加高到 52pt，再把灯挪到设计稿要的位置。**
-        //
-        // ⚠️ **顺序有意义**：`enlargeTitleBar` 会改变灯在窗口坐标里的位置，而
-        // `alignTrafficLights` 是「量当前位置补差额」—— 先加高才量得到最终位置。
-        // （两者都幂等，顺序错了也不会坏，只是白多一次校正。）
-        // 不加高的话灯会被标题栏裁掉下半部分，见 ``enlargeTitleBar(in:)``。
-        enlargeTitleBar(in: win)
-        //
-        // 灯默认落在中心距顶 16pt、中心距左 16pt（标准 28pt 标题栏的位置），
-        // 而设计稿是 52pt 里居中（中心 26pt）、且红灯要与右侧设置按钮对称
-        // （中心距左也 26pt）。两个方向都差 10pt。
-        // 详见 ``DesignTokens/Size/trafficLightNudgeY`` 与 ``trafficLightNudgeX``。
-        alignTrafficLights(in: win)
-
-        // **让「加高」扛得住 AppKit 的重排。**
-        //
-        // ⚠️ 上面这两行**只保证「此刻是对的」**。窗口已经在屏幕上时切换深/浅色外观，
-        // AppKit 会把标题栏拨回 28pt（灯又被裁成半圆），而 `showMainWindow()` 里那次收敛
-        // 只发生在「显示窗口」时 ⇒ 窗口一直开着就没人管。真机实测见
-        // ``watchTitleBarResets(in:)``。
-        watchTitleBarResets(in: win)
-
         win.center()
-        // 窗口**没有** `.resizable`，用户拉不动，所以尺寸实际上由 `contentRect` 与这条
-        // `minSize` 一起保证。
+        // **尺寸保证**：`contentRect` 只是建窗起手值，`contentViewController` 赋值会把它
+        // 覆盖掉（见 ``MainWindowContentController/viewDidLoad()`` 里那条约束的说明 ——
+        // v3 实测这一句会把窗口吸成 500×500）。所以尺寸由**三处**一起保证，缺一不可：
         //
-        // 不设 `maxSize`：`NSHostingView` 的默认 `sizingOptions` 会把内容的 `maxSize`
-        // （`.frame(maxWidth:.infinity)` → 无限大）推给窗口，设了也会被覆盖 —— 写一句
-        // 注定失效的代码只会误导后来者。
+        // 1. `MainWindowContentController` 里那两条宽高约束 —— 长期稳定，管住 AppKit
+        //    后续任何一次「fit 到内容」；
+        // 2. 下面这一句 `setContentSize` —— **建窗瞬间**就正确。单测读的正是这一刻的
+        //    `frame`（不上屏，约束还没走到 layout），所以少了它 `MainWindowTests` 会红；
+        // 3. 这条 `minSize` —— 用户侧的表达（本窗口没有 `.resizable`，实际拖不动）。
+        //
+        // 不设 `maxSize`：`sizingOptions` 会把内容视图的 `maxSize`（`.frame(maxWidth:
+        // .infinity)` → 无限大）推给窗口，设了也会被覆盖 —— 写一句注定失效的代码
+        // 只会误导后来者。
+        win.setContentSize(DesignTokens.Size.mainWindow)
         win.minSize = NSSize(
             width: DesignTokens.Size.mainWindow.width,
             height: DesignTokens.Size.mainWindow.height
         )
         win.isReleasedWhenClosed = false
         return win
-    }
-
-    /// 把系统画的三个交通灯**在竖直与水平两个方向**都挪到设计稿的位置。
-    ///
-    /// **为什么需要它**：macOS 把交通灯固定在「标准 28pt 标题栏」的位置 ——
-    /// 中心距顶 16pt、**中心距左 16pt**（真机实测 `frame=(9, 487, 14, 14)`）。
-    /// 而设计稿 `.titlebar` 要的是 52pt 里居中（中心距顶 26pt），
-    /// 且红灯与右侧设置按钮**光学对称**（中心距边都 26pt）。两个方向都差 10pt。
-    ///
-    /// **两个方向是同一个 bug**（2026-09-17 分两次暴露）：先修的竖直方向
-    /// （用户反馈「与窗口顶部的距离不一致」），水平方向到用户反馈
-    /// 「红灯距左边框与设置按钮距右边框不一致」才补上。
-    /// **教训**：这类「迁就系统默认值」的根因，要把同一来源的所有方向一次查完。
-    ///
-    /// **为什么可以这么改**：`standardWindowButton(_:)` 返回的是普通的 `NSButton`（父视图
-    /// 是 `NSTitlebarView`），改它的 `frame` 用的是公开 API，不涉及任何私有视图层级。
-    /// **实测（2026-09-17）改完不会被拨回去**：连续跑 run loop、反复 resign/makeKey、
-    /// 移动窗口之后，中心都稳定停在新位置。
-    ///
-    /// ⚠️ **两个已知会把灯拨回原位的时刻**（都是 AppKit 自己重排）：
-    /// ① `NSHostingView` 上屏时的重排（x 被拨回 4pt，y 不受影响）；
-    /// ② **窗口 resize**（实测 `setContentSize` 后 x 直接回到原始的 9pt）。
-    /// 主窗口是固定尺寸（没有 `.resizable`），② 目前触发不到。
-    ///
-    /// ✅ **② 的补法已经就位**（2026-09-23）：``watchTitleBarResets(in:)`` 盯住标题栏的
-    /// `frameDidChangeNotification`，而 resize **一定会改标题栏宽度**（离屏实测 800 → 700 → 640）
-    /// ⇒ 通知必响 ⇒ 本函数与 ``enlargeTitleBar(in:)`` 会一起重跑（两者都幂等）。
-    /// ⇒ **哪天真给窗口加上 `.resizable`，这里不需要再补一次**（原先那条「必须在这里补」已作废）。
-    ///
-    /// ⚠️ **方向**：`NSTitlebarView` 不是 flipped（原点在左下），所以「往下挪」是 `dy` 取负；
-    /// 水平方向没有翻转问题，「往右挪」就是 `dx` 取正。
-    /// 挪反了会差 20pt，`--preview-main-window-keys` 会立刻红。
-    ///
-    /// **补偿量是「量出来」的，不是写死的** —— 这条是踩出来的：
-    /// 早期用 `trafficLightNudge = 10` 这种编译期常量去偏移，结果 `NSHostingView`
-    /// 上屏时的重排把灯的 x **拨回 4pt**（请求 +10、实得 +6），而 y 不受影响 ——
-    /// 写死的常量无法察觉「只生效了一部分」。改成先量当前位置、再补差额之后，
-    /// 无论系统把灯放在哪、中途被拨回多少，多次调用都会收敛到目标（**幂等**）。
-    ///
-    /// - Parameter currentCenter: 红灯（close button）中心，**窗口坐标**（原点左下）。
-    /// - Parameter windowHeight: 窗口高度，用来把「距顶 26pt」换算成窗口坐标。
-    /// - Returns: 直接可传给 `NSRect.offsetBy` 的偏移。
-    ///   `dy` 已含符号：窗口坐标与 `NSTitlebarView`（非 flipped）**y 同向**，
-    ///   所以「往下挪」自然得到负值，不要再取负。
-    static func trafficLightNudge(
-        currentCenter: CGPoint, windowHeight: CGFloat
-    ) -> CGSize {
-        let target = CGPoint(
-            x: DesignTokens.Size.titleBarInsetCenter,
-            y: windowHeight - DesignTokens.Size.titleBarBandHeight / 2
-        )
-        return CGSize(width: target.x - currentCenter.x, height: target.y - currentCenter.y)
-    }
-
-    /// - Returns: 实际被挪动的按钮数（0 表示没取到灯 —— 真机自检会因此报错，不要静默）。
-    @discardableResult
-    static func alignTrafficLights(in window: NSWindow) -> Int {
-        guard let close = window.standardWindowButton(.closeButton) else { return 0 }
-        // ⚠️ 必须 `convert` 到窗口坐标再量：按钮的 `frame` 是 `NSTitlebarView` 的坐标。
-        let current = close.convert(close.bounds, to: nil)
-        let nudge = trafficLightNudge(
-            currentCenter: CGPoint(x: current.midX, y: current.midY),
-            windowHeight: window.frame.height
-        )
-        guard abs(nudge.width) > 0.01 || abs(nudge.height) > 0.01 else { return 0 }
-        var moved = 0
-        for type in [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton] {
-            guard let button = window.standardWindowButton(type) else { continue }
-            button.frame = button.frame.offsetBy(dx: nudge.width, dy: nudge.height)
-            moved += 1
-        }
-        return moved
-    }
-
-    /// 把标题栏**区域**加高到设计稿的内容带高度（52pt）。
-    ///
-    /// ## 为什么必须加高（2026-09-23，用户反馈「红绿灯下半部分被挡住」）
-    ///
-    /// macOS 的标准标题栏只有 **28pt** 高（`NSTitlebarView.frame.height == 28`，
-    /// 窗口的安全区顶部也是 28），而它的 `masksToBounds == true` ⇒ **超出这个高度的
-    /// 子视图被裁掉**。设计稿要的是「三个灯的中心距顶 26pt」
-    /// （``DesignTokens/Size/titleBarInsetCenter``），而一个 16pt 高的按钮居中在 26pt
-    /// 时占 y ∈ [18, 34] —— **底部 6pt 落在 28pt 之外**。
-    ///
-    /// 真机实测（改前）：红灯墨迹 **24×16 px**，本该是 24×24 px ⇒ 三个灯都画成了「半圆」。
-    /// ⚠️ **frame 层面的判据对此完全失明**：``checkTrafficLightBaseline`` 量的是
-    /// 「三个按钮的并集中心距顶 26pt」，那**一直是 26.0pt、一直是绿的** ——
-    /// 因为被裁的是**绘制**，不是 frame。这正是本仓库记过多次的「frame 对了但画出来不对」。
-    ///
-    /// ⇒ 把 `NSTitlebarView` 与它的容器一起加高到 52pt（= 设计稿 `.titlebar` 的高度），
-    /// **顶部对齐窗口顶** ⇒ 26pt 落进区域内部，不再被裁。
-    /// 52 这个数不是新拍的：它就是 ``DesignTokens/Size/titleBarBandHeight``，
-    /// 内容带本来就按它排版 —— 加高之后**系统标题栏区域与设计稿的内容带重合**。
-    ///
-    /// ## 为什么可以这么改
-    ///
-    /// 与 ``alignTrafficLights(in:)`` 同款：`NSTitlebarView` /
-    /// `NSTitlebarContainerView` 都是普通 `NSView`，只改 `frame`，
-    /// 不涉及任何私有视图层级，也不碰按钮的 action/target
-    /// ⇒ 关闭/最小化/缩放、悬停图标、⌘W 全都还是系统的。
-    ///
-    /// ## ⚠️ 幂等，且必须「每次上屏后再来一次」
-    ///
-    /// 量当前高度再补差额，所以可以反复调用。AppKit 在窗口状态变化时会重排标题栏
-    /// （与「resize 会把灯拨回系统位置」是同一类行为，见 ``alignTrafficLights(in:)``）
-    /// ⇒ `showMainWindow()` 里那次**不是重复调用**，是收敛。别删。
-    ///
-    /// - Returns: 实际被调整的视图数（0 = 没找到标题栏，或本来就对 ——
-    ///   真机自检会因此报错，不要静默）。
-    @discardableResult
-    static func enlargeTitleBar(in window: NSWindow) -> Int {
-        guard let close = window.standardWindowButton(.closeButton),
-            let titlebar = close.superview,
-            let container = titlebar.superview
-        else { return 0 }
-        let band = DesignTokens.Size.titleBarBandHeight
-        var moved = 0
-        // 容器：顶部贴住窗口顶，高度改成内容带高度。
-        // ⚠️ **必须是「顶部对齐」**（改 `origin.y` 而不只是改高度）：
-        //    只加高不改原点的话，标题栏会往**下**长，灯反而被推到更下面。
-        if abs(container.frame.height - band) > 0.01 {
-            var f = container.frame
-            f.origin.y = window.frame.height - band
-            f.size.height = band
-            container.frame = f
-            moved += 1
-        }
-        // 标题栏视图：填满容器（它就是那个 `masksToBounds = true` 的裁剪框）。
-        if abs(titlebar.frame.height - band) > 0.01 {
-            var f = titlebar.frame
-            f.origin.y = 0
-            f.size.height = band
-            titlebar.frame = f
-            moved += 1
-        }
-        return moved
-    }
-
-    /// 盯住标题栏的 frame 变化，**每当 AppKit 重排就再收敛一次**。
-    ///
-    /// ## 为什么必须有它（2026-09-23 真机实测）
-    ///
-    /// ``enlargeTitleBar(in:)`` 加高到 52pt **不是一劳永逸的**：窗口**已经在屏幕上**时
-    /// 切换深/浅色外观，AppKit 会重排标题栏、把它拨回 **28pt** ⇒ 灯又被裁成半圆。
-    ///
-    /// 受控实验（本进程只读，外观由**外部**改 —— 与真实用户动作同形，每轮都打印
-    /// `effectiveAppearance` 当自证）：
-    ///
-    /// | 帧 | 外观 | 标题栏高 | 红灯墨迹 |
-    /// |---|---|---|---|
-    /// | 1–5 | Aqua | 52.0 | 12.0 × 12.0 |
-    /// | 6 起 | DarkAqua | **28.0** | **12.0 × 8.0** |
-    /// | 17 起（切回 Aqua） | Aqua | **28.0** | 12.0 × 8.0 |
-    ///
-    /// ⚠️ **最后一行最要紧**：切回原外观**也不会自己恢复** ⇒ 一旦发生，用户得重启才看得见完整的灯。
-    /// 而 `showMainWindow()` 里那次收敛只发生在「显示窗口」时 —— 窗口一直开着就没人管。
-    ///
-    /// ## 为什么用「frame 变化通知」而不是别的
-    ///
-    /// 同一次实验里试了四条路，只有最后一条**有效**：
-    ///
-    /// | 路 | 结果 |
-    /// |---|---|
-    /// | `NSApp.effectiveAppearance` 的 KVO | 会响，但补完**被随后的重排覆盖** |
-    /// | `window.effectiveAppearance` 的 KVO | 同上 |
-    /// | 分布式通知 `AppleInterfaceThemeChangedNotification` | 同上 |
-    /// | **标题栏视图的 `frameDidChangeNotification`** | ✅ **响在 AppKit 改完之后** |
-    ///
-    /// 前三条问的是「外观是不是要变了」，回答在 AppKit 动手**之前** ⇒ 我们写的 52pt
-    /// 立刻被它按回 28pt。第四条问的是「**它是不是刚动过**」，天然排在它后面。
-    /// 这是**事件驱动**，不是「等 0.5 秒再补」那种时序赌博（本仓库吃过那个亏）。
-    ///
-    /// ## 不会死循环
-    ///
-    /// ``enlargeTitleBar(in:)`` 幂等（量当前值再补差额）⇒ 我们补完之后高度就对，
-    /// 自己的写入再触发一次通知时它报「改动 0 处」、什么都不做。
-    /// 实测每次重排**只响 2 次**（一次自己的回声 + 一次真的补回），然后安静。
-    ///
-    /// ## 顺带覆盖的其它触发（2026-09-23 实测了 resize 那条）
-    ///
-    /// 任何让 AppKit 重排标题栏的动作都走这条路（改外观、窗口尺寸变化、切屏……），
-    /// 不必为每种触发各写一次收敛 —— **可观测的触发源只有「frame 变了」这一个**。
-    ///
-    /// **resize 实测**（离屏：`setContentSize(700×480)` 与 `setFrame(640×460)` 各一次）：
-    /// 标题栏宽度跟着窗口走（800 → 700 → 640）、高度一直保持 52pt，而且**视图对象没有被重建**
-    /// （`before === after` 为真）⇒ 观察者不会因为换了个对象而**静默失效**。
-    /// 「宽度一定跟着变」这一点就足以保证通知**必响** —— 即使 AppKit 顺手把高度拨回去，
-    /// 也会被立刻补回来。守卫：`MainWindowTests.resize之后观察者盯的还是同一个标题栏`。
-    ///
-    /// ⚠️ 主窗口**没有 `.resizable`**，用户拉不动 ⇒ 真机上这条目前走不到
-    /// （``alignTrafficLights(in:)`` 的文档里原先记着「哪天加上 `.resizable` 必须补一次
-    /// resize 后的重对齐」—— 那个补法现在已经在收敛里了）。
-    ///
-    /// ## 令牌为什么是 `static`
-    ///
-    /// 调用方 ``makeMainWindow()`` 是 `static`（窗口装配没有实例状态可依）⇒ 这里也只能是 `static`。
-    /// 它在 `@MainActor` 类型上，所以并发上是安全的；写入只发生在主 actor 上。
-    ///
-    /// ## 为什么要「先摘旧的」
-    ///
-    /// `makeMainWindow()` 在**单测里会被反复调用**（每个用例各建一次窗口）。
-    /// 不摘的话观察者会越挂越多，各自绑在已经没人用的旧标题栏上 —— 那是一次静默的泄漏。
-    private static var titleBarWatchToken: NSObjectProtocol?
-
-    private static func watchTitleBarResets(in window: NSWindow) {
-        if let old = titleBarWatchToken {
-            NotificationCenter.default.removeObserver(old)
-            titleBarWatchToken = nil
-        }
-        guard let titlebar = window.standardWindowButton(.closeButton)?.superview else { return }
-        titleBarWatchToken = NotificationCenter.default.addObserver(
-            forName: NSView.frameDidChangeNotification, object: titlebar, queue: .main
-        ) { [weak window] _ in
-            // `queue: .main` 已保证回调在主线程执行，用 assumeIsolated 把这一事实告知编译器，
-            // 否则 Swift 6 严格并发会拒绝在 `@Sendable` 闭包里触碰 @MainActor 隔离的东西。
-            // （同款写法见 ``setupStatusItem()`` 里那条屏幕参数通知。）
-            MainActor.assumeIsolated {
-                guard let window else { return }
-                // 两件都要做，顺序同装配时（见 ``makeMainWindow()``）：先加高、再对齐灯的 x。
-                // 实测外观切换只把**高度**拨回去、x 没动 —— 但重贴一遍是幂等的，不必分开判。
-                AppDelegate.enlargeTitleBar(in: window)
-                AppDelegate.alignTrafficLights(in: window)
-            }
-        }
     }
 
     /// 显示主窗口。菜单栏弹窗的「打开主窗口」、菜单里的「显示主窗口」（⌘O）与
@@ -2251,126 +2077,55 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         mainWindow.makeKeyAndOrderFront(nil)
         mainWindow.orderFrontRegardless()
         activateApp()
-        // 上屏之后再收敛一次（**两件都要做，顺序同装配时**）：
-        //
-        // ① ``enlargeTitleBar(in:)`` —— AppKit 会在窗口状态变化时重排标题栏
-        //    （上屏、切换 key、改外观都会），重排后标题栏会退回 28pt ⇒ 灯又被裁。
-        // ② ``alignTrafficLights(in:)`` —— `NSHostingView` 上屏时的重排会把灯的
-        //    **x 拨回 4pt**（实测请求 +10、实得 +6）。
-        //
-        // 装配时那一次只保证「初始大致对」，这一次才收敛到「52pt 区域 + 中心 26pt」。
-        // ⚠️ 别把这行删掉当成「重复调用」—— 删了红灯会停在 22pt，真机自检会红。
-        Self.enlargeTitleBar(in: mainWindow)
-        Self.alignTrafficLights(in: mainWindow)
+        // ⚠️ v3 起这里**不再有**「上屏后再收敛一次标题栏」那两行
+        // （``enlargeTitleBar(in:)`` / ``alignTrafficLights(in:)``，已随工具栏一起退役）：
+        // 52pt 那条带子现在由 `NSToolbar` 提供、红绿灯由 AppKit 自己居中到 26pt。
+        // 两者都**幂等且由系统负责**，没有我们的事了（HANDOFF §3.2）。
     }
 
     // MARK: - 刷新磁盘列表
 
-    /// 重新枚举外接磁盘（主菜单 ⌘R）。
+    /// 重新枚举外接磁盘（主菜单 ⌘R）。**转发给窗口内容控制器**，与工具栏那颗刷新按钮同路。
     ///
-    /// **为什么需要它**：菜单栏面板的动作行按设计稿要标出 `⌘R`，而 macOS 的 ⌘ 快捷键
-    /// 只能经**主菜单**的 `keyEquivalent` 分发 —— 不在这里开一个 action，
+    /// **为什么需要这条 action**：菜单栏面板的动作行按设计稿要标出 `⌘R`，而 macOS 的 ⌘
+    /// 快捷键只能经**主菜单**的 `keyEquivalent` 分发 —— 不在这里开一个 action，
     /// 面板上那个 `⌘R` 就只是画上去的装饰，按下去毫无反应。
     ///
-    /// 主窗口与面板都 `@ObservedObject` 同一份 ``DiskListStore``，刷新完自动收敛，
-    /// 不需要在这里回调任何视图。
+    /// ## 为什么转发而不是自己刷一遍
+    ///
+    /// 刷新的落点与「窗口在看哪一份 ``DiskListStore``」绑定：注入过 store 的窗口
+    /// （空状态自检、离屏出图）读的不是 `.shared`。这里若写 `DiskListStore.shared.refresh()`，
+    /// 注入场景下就会出现「⌘R 刷新了另一份列表」—— 界面上**什么都没变**，
+    /// 而工具栏那颗按钮（走控制器）却是好的。⇒ 收敛到一条实现。
+    ///
+    /// 没有主窗口时（直发版可以只驻留菜单栏）退回刷 `.shared` —— 那正是生产路径那一份。
     @objc func refreshDisks() {
-        Task { @MainActor in
-            await DiskListStore.shared.refresh()
+        guard let content = mainWindowContent else {
+            Task { @MainActor in await DiskListStore.shared.refresh() }
+            return
         }
+        content.refreshDisks()
     }
 
-    // MARK: - 设置窗口
+    // MARK: - 设置
 
-    /// 显示设置窗口（与主窗口独立，可与主窗口共存）。
+    /// 打开设置：**显示主窗口 + 选中「设置 · 通用」**。
+    ///
+    /// ## v3 起设置不再是独立窗口
+    ///
+    /// 设计稿把主窗口与设置合并成「单侧栏导航 + 详情区」（`Design/ui/v3/`），
+    /// 所以三个入口（内容区齿轮 / 主菜单 ⌘, / 菜单栏面板的「设置…」）落点完全一致：
+    /// 把主窗口亮出来，再把侧栏选中项拨到「设置 · 通用」。
+    ///
+    /// ⚠️ **必须走 ``showMainWindow()`` 而不是自己 `makeKeyAndOrderFront`**：
+    /// 那条路里有「最小化态先 `deminiaturize`」——菜单栏模式下 App 没有 Dock 图标，
+    /// 窗口被 ⌘M 缩进 Dock 后用户没有任何办法点回来（同 ``showMainWindow()`` 的说明）。
+    /// 设置入口是仅次于 Dock 图标的那条恢复路径，不能是唯一的例外。
     ///
     /// `@objc` 是为了能被主菜单的「设置…」（⌘,）直接指定为 action。
     @objc func showSettings() {
-        if settingsWindow == nil {
-            settingsWindow = Self.makeSettingsWindow()
-        }
-        guard let window = settingsWindow else { return }
-        window.makeKeyAndOrderFront(nil)
-        window.orderFrontRegardless()
-        activateApp()
-    }
-
-    /// 建设置窗口。**与 ``makeMainWindow()`` 同一套处理** —— 设计稿把主窗口与设置面板
-    /// 写成**同一条 `.win` 规则**（`--bg-glass` + `blur(30) saturate(180%)` + 圆角 12 + 0.5px 描边），
-    /// 所以两块玻璃在窗口层面也必须一致。
-    ///
-    /// ## 这里原先缺了一整排配置（2026-09-16 补齐）
-    ///
-    /// 之前 `showSettings()` 只有五行装配（`contentRect` / `styleMask` / `contentView` /
-    /// `center` / `isReleasedWhenClosed`），主窗口那套一个都没做。后果（逐条实测/推断）：
-    ///
-    /// | 缺的东西 | 后果 |
-    /// |---|---|
-    /// | `safeAreaRegions = []` | **上屏前 480×920 → 上屏后 480×952**（多 32pt）※ 这组数字是在单栏尺寸上量的；两栏改成 720×440 之后是 **440 → 472**，机制不变（`.fullSizeContentView` 把内容下推 32pt 并按「内容 + 32」回推固有尺寸） |
-    /// | `backgroundColor = .clear` + `isOpaque = false` | 窗口不透明 → `.underWindowBackground` 的毛玻璃**糊不到桌面**，看起来是平色块 |
-    /// | `titleVisibility = .hidden` | 系统标题栏的「设置」与面板自己头部的「设置」**重复** |
-    /// | `contentView.layer.cornerRadius` | 玻璃卡片是 12pt 圆角、窗口底角却是直角，两者不重合 |
-    ///
-    /// **一个断言都没有** —— 上面任何一条被改掉，测试与自检都不会红。
-    /// 现在有 `SettingsWindowTests`（配置 + 玻璃铺满 + 交通灯已隐藏）与
-    /// `--preview-settings-keys`（真机尺寸 + 玻璃 + 无交通灯）。
-    ///
-    /// ## 窗口类用 ``SettingsWindow``，不是 ``KeySilentWindow``（2026-09-16 追加）
-    ///
-    /// 它继承 ``KeySilentWindow``（于是「没人接管的按键不敲钟」继续成立），
-    /// 并且**在 `init` 里就把三个系统按钮藏掉** —— 设计稿的 `.shead` 里没有 `traffic`，
-    /// 红绿灯会和「完成」变成两个功能相同的出口（用户报告，见 `DESIGN-SPEC.md` §8.17）。
-    static func makeSettingsWindow() -> NSWindow {
-        let win = SettingsWindow(
-            contentRect: NSRect(
-                x: 0, y: 0,
-                width: DesignTokens.Size.settingsPanel.width,
-                height: DesignTokens.Size.settingsPanel.height
-            ),
-            styleMask: [.titled, .closable, .fullSizeContentView],
-            backing: .buffered,
-            defer: false
-        )
-        win.title = L10n.tr(.settings)
-        // 标题栏不绘制标题文字：面板自己有一条 52pt 头部（「设置」+「完成」），
-        // 系统再画一次就是同一个词出现两遍。`title` 字符串仍保留 —— 窗口菜单、
-        // Mission Control、辅助功能读到的仍是它。
-        win.titleVisibility = .hidden
-        // 透明标题栏 + 内容铺满整窗，玻璃才能像主窗口那样一直盖到顶（含标题栏那一条）。
-        win.titlebarAppearsTransparent = true
-        win.isMovableByWindowBackground = true
-        win.defaultButtonCell = nil
-        // **毛玻璃关键**：清掉 NSWindow 自带的 windowBackgroundColor 半透明白底，
-        // 否则 NSVisualEffectView(.underWindowBackground, .behindWindow) 会被它盖住，
-        // 桌面透不上来 —— 设置面板会看起来只是一块平的浅色，而不是玻璃。
-        win.backgroundColor = .clear
-        win.isOpaque = false
-
-        // 独立窗口没有 SwiftUI 的 presentation 上下文，`@Environment(\.dismiss)`
-        // 在这里是空操作 —— 必须由宿主把「完成」接到关窗上，否则按钮点了没反应。
-        // `fillsHost: true` —— 独立窗口要「玻璃铺满整窗」。`false` 是给 `.sheet`
-        // 与离屏出图用的（它们要的是理想尺寸 720×440），详见 ``SettingsView/fillsHost``。
-        let hosting = NSHostingView(
-            rootView: SettingsView(
-                onDone: { [weak win] in win?.close() },
-                fillsHost: true,
-                takeOverAvailabilityOverride: Self.previewTakeOverAvailability))
-        // 与主窗口、引导面板同一句：`.fullSizeContentView` 会让 SwiftUI 把内容整体下推 32pt，
-        // 并把「内容 + 32」当固有尺寸回推给窗口（窗口上屏时被撑高）。
-        if #available(macOS 13.3, *) { hosting.safeAreaRegions = [] }
-        win.contentView = hosting
-
-        // 避免首屏给第一个控件套上焦点环（与主窗口同理）。必须在 `contentView` 之后设。
-        win.initialFirstResponder = nil
-        // 玻璃卡片的外圆角（设计稿 12px）。窗口现在是非不透明的，
-        // 给 contentView 的 layer 设圆角 + 遮罩，窗口四角才会真的跟着圆。
-        win.contentView?.wantsLayer = true
-        win.contentView?.layer?.cornerRadius = DesignTokens.Radius.window
-        win.contentView?.layer?.masksToBounds = true
-
-        win.center()
-        win.isReleasedWhenClosed = false
-        return win
+        showMainWindow()
+        mainWindowContent?.model.selection = .settings(.general)
     }
 
     // MARK: - 关闭/退出

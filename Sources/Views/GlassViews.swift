@@ -375,20 +375,16 @@ extension View {
     }
 }
 
-/// 窗口配置器：把标题栏变成透明、内容延伸到标题栏、支持拖动窗口背景移动。
-/// 与 ProxyGenerator 的 WindowAccessor 一致，一次性配置不重复执行。
-struct WindowAccessor: NSViewRepresentable {
-    var configure: (NSWindow) -> Void
-
-    func makeNSView(context: Context) -> NSView {
-        let view = NSView()
-        DispatchQueue.main.async { [weak view] in
-            if let window = view?.window {
-                configure(window)
-            }
-        }
-        return view
-    }
-
-    func updateNSView(_ nsView: NSView, context: Context) {}
-}
+// ⚠️ 这里原有 ``WindowAccessor``（`NSViewRepresentable`，挂进视图树后拿到 `NSWindow`
+// 再跑一段配置闭包），**v3 删除**。
+//
+// 它服务的是「窗口层面的外观」：把标题栏设透明、让内容延伸到标题栏、支持拖动窗口背景 ——
+// 主窗口与设置窗口各挂一个，顺带设 `contentView.layer` 的 12pt 圆角。
+//
+// v3 之后这些配置**全部搬到了 ``AppDelegate/makeMainWindow()`` 里**
+// （那个函数本来就有完整的一套窗口配置，注释里写着「窗口层面的外观，全部在这里定死 ——
+// 不要挪回 `ContentView` 的 `WindowAccessor`」）；
+// 而「给 `contentView` 设 12pt 圆角」那一项随 ``DesignTokens/Radius`` 的
+// `window` / `settings` 两个令牌一起退役 —— 窗口圆角归**窗口服务器**，
+// 自绘一个只会在四角切出比窗口更小的圆（HANDOFF §3.7.2 第 1 类）。
+// ⇒ 整个类型零引用，删掉它不会有任何界面变化。

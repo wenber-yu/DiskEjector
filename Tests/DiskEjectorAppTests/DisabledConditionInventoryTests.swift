@@ -66,33 +66,32 @@ struct DisabledConditionInventoryTests {
     private static let inventory: [Entry] = [
         Entry(
             file: "Sources/Views/SettingsView.swift",
-            snippet: "private var autoCheckUpdateTapAction: (() -> Void)? {",
+            snippet: ".disabled(!isEnabled)",
             reason:
-                "宿主能力判据（`updater != nil`），与开关自己的值**无关** —— §8.113.14 修的就是这里"),
+                "**v3（2026-09-30）从三条自绘开关的 tap action 合并而来**：v2 的开关是自绘的，"
+                + "「不可拨」靠 `autoCheckUpdateTapAction` / `autoDownloadTapAction` 返回 `nil`；"
+                + "v3 把开关交还系统的 `Toggle`（HANDOFF §3.4），判据写法随之变成 `.disabled(!isEnabled)`"
+                + "（`SettingsSectionPane.toggleLine` 里那一句，两处调用方共用）。"
+                + "两处实参的来源和原来逐条对应，且**都不读被禁控件自己的值**：\n"
+                + "① `canAutoUpdate`（`updater != nil`）—— 宿主能力判据，与开关自己的值无关；\n"
+                + "② `autoDownloadUpdateEnabled`（『自动检查更新』关着时为假）—— 读的是**另一个**开关，"
+                + "表达的是真实因果：Sparkle 的 `automaticallyDownloadsUpdates` setter 在"
+                + "`allowsAutomaticUpdates` 为假时是空操作，检查不做、下载根本写不进去。"
+                + "**且不是死路**：检查行永远可点，用户的出口一直在；"
+                + "「禁用时必须说明原因」由 `UpdateSettingsTests.下载行的可点性与说明必须同源` 钉住"),
         Entry(
             file: "Sources/Views/SettingsView.swift",
-            snippet: "private var autoDownloadTapAction: (() -> Void)? {",
+            snippet: ".disabled(true)",
             reason:
-                "⚠️ **这一条确实读了另一个开关的值**（`autoCheckUpdateOn`），但与 §8.113.14 不冲突："
-                + "那里禁止的是「拿开关自己的值当『有没有这个能力』」（关一次就锁死，因为能力其实与它无关）；"
-                + "这里表达的是**真实因果** —— Sparkle 的 `automaticallyDownloadsUpdates` setter 在"
-                + "`allowsAutomaticUpdates` 为假时是空操作，检查不做，下载根本写不进去。"
-                + "**且不是死路**：检查行永远可点，用户的出口一直在（2026-09-28 拆行时定，"
-                + "并由 `UpdateSettingsTests.下载行的可点性与说明必须同源` 钉住「禁用时必须说明原因」）"),
-        Entry(
-            file: "Sources/Views/SettingsView.swift",
-            snippet: "private var takeOverTapAction: (() -> Void)? {",
-            reason:
-                "宿主/环境能力判据（本机给没给「完全磁盘访问」），与开关自己的值**无关**"
-                + "（判据读 `takeOverAvailability`，不读 `takeOverFinderEject`）。"
-                + "且未授权那一态**不是死路**：那一行的行尾就是「打开系统设置」，"
+                "**v3 从 `takeOverTapAction` 搬过来的同一条判据**：没授「完全磁盘访问」时，"
+                + "``SettingsSectionPane/takeOverUnavailableControl`` 里那颗 `Toggle` 恒不可点。"
+                + "判据是**宿主/环境能力**（读 `takeOverAvailability`），与开关自己的值"
+                + "（`takeOverFinderEject`）无关。\n"
+                + "⚠️ 这一条**必须**挡，理由比 v2 更硬：那颗 `Toggle` 的 `isOn` 是"
+                + "`.constant(takeOverOn)`（常量 binding）—— 若允许命中，拨一下开关**视觉会动、值不会落**，"
+                + "正是「允许点击 → 什么都不发生 / 再弹错」的反面形态。"
+                + "且未授权那一态**不是死路**：同一行行尾就是「打开系统设置」，"
                 + "授权回来（`didBecomeActive`）这一行当场恢复可点"),
-        Entry(
-            file: "Sources/Views/ContentView.swift",
-            snippet: ".disabled(isRefreshing)",
-            reason:
-                "瞬态：`defer` 复位（无 throw / 提前 return），且两条 `await` 都有上界"
-                + "（`lsofTimeout` 5+3s；`fetchExternalDisks` 是同步 DA 调用、不走子进程）"),
         Entry(
             file: "Sources/Views/DesignSystemComponents.swift",
             snippet: ".disabled(!isEnabled)",
@@ -108,13 +107,6 @@ struct DisabledConditionInventoryTests {
             file: "Sources/Views/GlassViews.swift",
             snippet: ".allowsHitTesting(false)",
             reason: "纯背景层（玻璃底），不吃点击，**不是状态判据**"),
-        Entry(
-            file: "Sources/Views/SettingsView.swift",
-            snippet: ".allowsHitTesting(false)",
-            reason:
-                "纯装饰层（左栏右边界那条 0.5pt `Hairline`，2026-09-29 两栏新增），不吃点击，**不是状态判据**。"
-                + "⚠️ 它**必须**留着：那条线是 `.overlay` 内嵌的，若允许命中，它会在左栏最右侧盖出一条"
-                + "1pt 宽的「死区」—— 分类项的圆角右边缘正好落在那里，点上去看着像没反应。"),
     ]
 
     // MARK: - 断言

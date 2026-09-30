@@ -339,13 +339,16 @@ struct UpdateSettingsTests {
     /// - 「关检查时顺手关下载」仍在 ⇒ **那一步的顺序必须原样保留**。
     ///
     /// ⚠️ **别把它删成「没什么可测的了」**：删掉之后，下一个重写
-    /// `toggleAutoCheckUpdate` 的人把两行对调，`SUAutomaticallyUpdate` 就会停在旧值 ——
+    /// `setAutoCheckUpdate` 的人把两行对调，`SUAutomaticallyUpdate` 就会停在旧值 ——
     /// 而**有效行为完全正常**（getter 与 `allowsAutomaticUpdates` 相与，把它掩盖成「没生效」），
     /// 既不报错也没有任何用户抱怨，只有读 UserDefaults 的人会中招。
     /// 这正是本仓库反复记的那类缺陷：**存储与意图不一致，而断言是唯一的眼睛**。
+    ///
+    /// ⚠️ v3 只改了被扫的签名（`toggleAutoCheckUpdate()` → `setAutoCheckUpdate(_:)`），
+    /// 见「两个开关各自只驱动自己那个标志」的说明。
     @Test func 关掉检查时先关下载再关检查() throws {
         let source = try contents("Sources/Views/SettingsView.swift")
-        let code = codeOnly(try functionBody("private func toggleAutoCheckUpdate()", in: source))
+        let code = codeOnly(try functionBody("private func setAutoCheckUpdate(", in: source))
 
         // ⚠️ **顺序也是判据**（2026-09-21 真机实测，§8.113.15）：
         // Sparkle 的 downloads setter 在 `allowsAutomaticUpdates` 为假时**空操作**，
@@ -487,13 +490,19 @@ struct UpdateSettingsTests {
     /// （§8.113.15）。拆开之后顺序问题本该自然消失 —— 但只有「各自只写自己那个」
     /// 才真的消失：谁顺手把另一个也写了，两件事就又绑回去，
     /// 而**界面上完全看不出来**（两行各自显示自己的值，却互相偷改对方的存储）。
+    ///
+    /// ⚠️ **v3 改了这两个函数的签名，这条断言跟着改**：参数从「拨一下」变成
+    /// 「目标值」（`toggleAutoCheckUpdate()` → `setAutoCheckUpdate(_ newValue: Bool)`）。
+    /// 原因见源码注释：`Toggle` 的 binding 给的是新值，再由 binding 去猜当前值，
+    /// **快速连点时会写反**。这条断言守的东西没变（各自只写自己那个标志），
+    /// 变的只是被扫的签名 —— 别把「签名变了」误判成「守卫失效了」而把断言放宽。
     @Test func 两个开关各自只驱动自己那个标志() throws {
         let source = try contents("Sources/Views/SettingsView.swift")
 
-        let check = codeOnly(try bracedBody("private func toggleAutoCheckUpdate()", in: source))
+        let check = codeOnly(try bracedBody("private func setAutoCheckUpdate(", in: source))
         #expect(
             check.contains("automaticallyChecksForUpdates ="),
-            "toggleAutoCheckUpdate 没写「自动检查」那个标志 —— 这一行拨了等于没拨")
+            "setAutoCheckUpdate 没写「自动检查」那个标志 —— 这一行拨了等于没拨")
         #expect(
             !check.contains("automaticallyDownloadsUpdates = true"),
             "「自动检查更新」把「自动下载」也打开了 —— 两行又绑回一起了")
@@ -506,10 +515,10 @@ struct UpdateSettingsTests {
             现状：\(check)
             """)
 
-        let download = codeOnly(try bracedBody("private func toggleAutoDownloadUpdate()", in: source))
+        let download = codeOnly(try bracedBody("private func setAutoDownloadUpdate(", in: source))
         #expect(
             download.contains("automaticallyDownloadsUpdates ="),
-            "toggleAutoDownloadUpdate 没写「自动下载」那个标志 —— 这一行拨了等于没拨")
+            "setAutoDownloadUpdate 没写「自动下载」那个标志 —— 这一行拨了等于没拨")
         #expect(
             !download.contains("automaticallyChecksForUpdates"),
             "「自动下载更新」去改「自动检查」那个标志了 —— 那一行显示的东西会与它实际做的事不一致")
@@ -526,10 +535,17 @@ struct UpdateSettingsTests {
     /// ⚠️ **这条同时钉可点性与文案，因为它们是「一对」**：只钉可点性的话，
     /// 下一个改文案的人会把「缺什么」那句删掉，用户看到的是一个拨不动、
     /// 也不说为什么的开关 —— 处置方式换了，症状与 §8.113.14 那个单向开关逐字相同。
+    ///
+    /// ⚠️ **v3 换了可点性的写法**：v2 的自绘开关用 `autoDownloadTapAction` 返回 `nil`
+    /// 来表达「拨不动」，v3 把开关交还系统 `Toggle`（HANDOFF §3.4）之后，
+    /// 判据收敛成一个纯计算属性 ``autoDownloadUpdateEnabled``，
+    /// 由 `toggleLine(isEnabled:)` 传给 `.disabled`。
+    /// 断言的内容没变（判据必须同时要求 `canAutoUpdate` 与 `autoCheckUpdateOn`），
+    /// 变的是被扫的那个成员名。
     @Test func 下载行的可点性与说明必须同源() throws {
         let source = try contents("Sources/Views/SettingsView.swift")
 
-        let tap = codeOnly(try bracedBody("private var autoDownloadTapAction: (() -> Void)?", in: source))
+        let tap = codeOnly(try bracedBody("private var autoDownloadUpdateEnabled: Bool", in: source))
         #expect(
             tap.contains("canAutoUpdate") && tap.contains("autoCheckUpdateOn"),
             """

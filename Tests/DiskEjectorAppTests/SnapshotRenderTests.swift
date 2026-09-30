@@ -41,6 +41,23 @@ struct SnapshotRenderTests {
 
     private let outDir = "/tmp/de-snapshots"
 
+    /// 设置页出图的**画布宽度** —— v3 详情区宽 = 主窗口 800 − 侧栏本体 200 − 浮岛左内缩 8。
+    ///
+    /// ⚠️ 与 `SettingsLayoutTests/detailWidth` 同一口径，理由见那里的长注释：
+    /// 那 8pt 是**本机（macOS 26）实测**的侧栏浮岛内缩，14–15 上没有浮岛、内缩为 0。
+    /// `Design/ui/v3/HANDOFF.md` §5 按「800 − 200 = 600」粗算，少算了这 8pt。
+    private var detailWidth: CGFloat {
+        DesignTokens.Size.mainWindow.width - DesignTokens.Size.mainSidebarWidth - 8
+    }
+
+    /// 设置页出图的**画布高度** —— 详情区高 = 主窗口 − 系统工具栏（52）。
+    ///
+    /// v2 用的是「独立设置窗口的 440」（由内容夹逼出来）；v3 的设置住在详情区里，
+    /// 高度由窗口与工具栏决定，内容超出走滚动。
+    private var detailHeight: CGFloat {
+        DesignTokens.Size.mainWindow.height - DesignTokens.Size.titleBarBandHeight
+    }
+
     private let disk = DiskInfo(
         id: "/Volumes/My Passport",
         bsdName: "disk4s2",
@@ -587,19 +604,20 @@ struct SnapshotRenderTests {
         ]
         for (slug, state) in updateRowStates {
             try dump(
-                SettingsView(
-                    updateStateOverride: state, autoUpdateRowsOverride: designAutoUpdate,
-                    takeOverAvailabilityOverride: .usable,
-                    // ⚠️ **必须显式指到「更新」页**（2026-09-29 两栏之后补）：
+                SettingsDetailPage(
+                    // ⚠️ **必须显式指到「更新」页**：
                     // 默认页是「通用」，而这一行状态机**只画在「更新」页上** ——
                     // 不指的话这十几张图会全部拍到「通用」，图上**一条更新行都没有**，
                     // 而文件名还叫 `settings-update-*`。看的人只会得出
                     // 「更新行画不出来」这种错误结论，甚至更糟：以为画过了。
-                    // 这是两栏形态带来的一类**新**陷阱 —— 单栏时代所有内容都在同一页上，
-                    // 「拍到哪一页」这个维度根本不存在。
-                    initialSection: .updates),
-                width: DesignTokens.Size.settingsPanel.width,
-                height: DesignTokens.Size.settingsPanel.height,
+                    // 设置在 v3 变成「按分类切换的一页」之后，「拍到哪一页」
+                    // 是一个必须说清的维度 —— 单页时代所有内容都在同一屏上，
+                    // 它根本不存在。
+                    section: .updates,
+                    updateStateOverride: state, autoUpdateRowsOverride: designAutoUpdate,
+                    takeOverAvailabilityOverride: .usable),
+                width: detailWidth,
+                height: detailHeight,
                 name: "settings-update-\(slug)-light")
         }
 
@@ -619,12 +637,12 @@ struct SnapshotRenderTests {
         ]
         for (slug, state) in autoUpdateRows {
             try dump(
-                SettingsView(
-                    autoUpdateRowsOverride: state, takeOverAvailabilityOverride: .usable,
+                SettingsDetailPage(
                     // 同上：这两行在「更新」页上。
-                    initialSection: .updates),
-                width: DesignTokens.Size.settingsPanel.width,
-                height: DesignTokens.Size.settingsPanel.height,
+                    section: .updates,
+                    autoUpdateRowsOverride: state, takeOverAvailabilityOverride: .usable),
+                width: detailWidth,
+                height: detailHeight,
                 name: "settings-auto-update-\(slug)-light")
         }
 
@@ -635,9 +653,9 @@ struct SnapshotRenderTests {
         // ⇒ 必须显式注入 + 单独出图，否则它的排版与文案永远没人看过。
         // 同源理由见 ``SettingsSectionPane/updateStateOverride``。
         try dump(
-            SettingsView(takeOverAvailabilityOverride: .needsFullDiskAccess, initialSection: .general),
-            width: DesignTokens.Size.settingsPanel.width,
-            height: DesignTokens.Size.settingsPanel.height,
+            SettingsDetailPage(section: .general, takeOverAvailabilityOverride: .needsFullDiskAccess),
+            width: detailWidth,
+            height: detailHeight,
             name: "settings-take-over-needs-fda-light")
 
         // ---- 五个分类各一张 + 登录项第三态（两栏形态，2026-09-29）----
@@ -650,10 +668,10 @@ struct SnapshotRenderTests {
         for section in SettingsSection.allCases {
             for dark in [false, true] {
                 try dump(
-                    SettingsView(
-                        takeOverAvailabilityOverride: .usable, initialSection: section),
-                    width: DesignTokens.Size.settingsPanel.width,
-                    height: DesignTokens.Size.settingsPanel.height,
+                    SettingsDetailPage(
+                        section: section, takeOverAvailabilityOverride: .usable),
+                    width: detailWidth,
+                    height: detailHeight,
                     name: "settings-page-\(section.rawValue)-\(dark ? "dark" : "light")",
                     dark: dark)
             }
@@ -670,12 +688,12 @@ struct SnapshotRenderTests {
         // 令牌与设计稿逐值相等由 `PaletteColorParityTests` 守，但**渲染结果**只能看图。
         for dark in [false, true] {
             try dump(
-                SettingsView(
+                SettingsDetailPage(
+                    section: .general,
                     takeOverAvailabilityOverride: .usable,
-                    launchAtLoginStateOverride: .requiresApproval,
-                    initialSection: .general),
-                width: DesignTokens.Size.settingsPanel.width,
-                height: DesignTokens.Size.settingsPanel.height,
+                    launchAtLoginStateOverride: .requiresApproval),
+                width: detailWidth,
+                height: detailHeight,
                 name: "settings-launch-approval-\(dark ? "dark" : "light")",
                 dark: dark)
         }
@@ -690,10 +708,10 @@ struct SnapshotRenderTests {
         // 上面两张深色图与这两张设置面板图都要**显式注入接管可用性**：
         // 走查图要与设计稿并排看，而设计稿画的是「开关可用」的那一版。
         try dump(
-            SettingsView(takeOverAvailabilityOverride: .usable),
-            width: DesignTokens.Size.settingsPanel.width, name: "settings-light")
+            SettingsDetailPage(section: .general, takeOverAvailabilityOverride: .usable),
+            width: detailWidth, name: "settings-light")
         try dump(
-            SettingsView(takeOverAvailabilityOverride: .usable),
-            width: DesignTokens.Size.settingsPanel.width, name: "settings-dark", dark: true)
+            SettingsDetailPage(section: .general, takeOverAvailabilityOverride: .usable),
+            width: detailWidth, name: "settings-dark", dark: true)
     }
 }

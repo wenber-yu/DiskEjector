@@ -1,262 +1,72 @@
 import AppKit
 import SwiftUI
 
-/// 设置面板 —— **左右两栏**（设计稿 `09-settings-split.html`，2026-09-29 采纳）。
+/// 设置内容（v3：**主窗口详情区的一页**，不再是独立窗口）。
 ///
-/// **设计稿规格**：720 × 440，圆角 **12**（与主窗口同一个 `--r-window`），毛玻璃
-/// （`.win` 规则：`--bg-glass` + `blur(30) saturate(180%)` + `0.5px var(--border-strong)`）；
-/// 左栏 200（分类：通用 / 外观 / 更新 / 诊断 / 关于）、右栏 520（头部 52 + 内容区）。
+/// ## 这个文件现在是什么
 ///
-/// ## 为什么是两栏（形态切换的动机，不是口味）
+/// v3 把主窗口与设置窗口合并：设置不再是独立窗口、也没有自己的左栏与头部，
+/// 而是主窗口详情区里**按分类切换的一页**（侧栏在 `MainWindowNavigation.swift`，
+/// 头部是 ``MainDetailHead``）。所以本文件里**没有**窗口尺寸、没有左栏、
+/// 也没有「完成」按钮 —— 那三样分别归窗口、``MainSidebarView``、
+/// 以及「v3 里根本不存在这个概念（设置是常驻面板，没有『完成』）」。
 ///
-/// 单栏版（480 × 920，设计稿 `05-settings.html`）把五组内容**纵向堆叠**，
-/// 于是窗口高度成了「最长那门语言」的函数 —— 2026-09-28 实测英文最坏 `916.20`
-/// / 容器 `920`，**只剩 3.8pt**，再加一行说明就得先做一轮压缩文案的手术。
-/// 两栏把高度从「五组之和」降成「**最高的那一组**」：以后加内容只动宽度预算。
-/// 完整推导与实量见 ``DesignTokens/Size/settingsPanel``。
+/// 组成：
+/// - ``SettingsPrompt``：拨完开关之后必须说的那句话（弹窗状态挂在 ``MainDetailView`` 上）；
+/// - ``SettingsMetrics`` / ``SettingsLineTone``：排版度量与行的色调（测试共用同一份数字）；
+/// - ``SettingsSection``：五个分类，**声明顺序即侧栏顺序**；
+/// - ``SettingsSectionPane``：一个分类页的内容，本文件的主体；
+/// - 页内控件：分段控件 / 色板 / 行内进度 / 下拉 / 关于页。
 ///
-/// **背景与主窗口、菜单面板共用同一个 ``GlassSurface``**。这里曾经叠了三层：
-/// `--bg-glass-thick`（0.86，比设计稿白一档）+ SwiftUI `.ultraThinMaterial`
-/// （又一种与 `NSVisualEffectView` 不同的材质）+ 圆角 16 + `--border`（0.10）描边 ——
-/// 于是同一份设计稿里的三块玻璃出现了三种色温和两种圆角。
+/// ⚠️ **开关交还系统**：v3 之后开关不再自绘（曾经有一个 `SettingsSwitch`：
+/// `Capsule` + `Circle` + 阴影，还配一层 `SettingsLineButton` 来把命中区扩到整行）。
+/// 现在走 ``SettingsSectionPane/toggleLine(label:description:isOn:isEnabled:divider:tone:)``，
+/// 里面就是系统的 `Toggle` + `.toggleStyle(.switch)`；「整行可点」由 `Toggle` 的 label
+/// 天然承担，颜色是唯一由我们给的东西（HANDOFF §3.4 / §3.6）。
+
+// MARK: - 设置里的一次提示
+
+/// 设置里的一次提示（标题 + 正文 + 可选的「打开系统设置」出口）。
 ///
-/// **不变量**：
-/// - 偏好键由 ``AppSettings.Key`` 提供、`@AppStorage` 实时持久化
-/// - 强调色由 ``AccentColor`` 提供（4 种，与设计稿一致）
-/// - 登录启动用 ``LaunchAtLoginManager``，错误按原因分三类提示
+/// **为什么把登录项失败与辅助功能引导合成一个类型，而不是挂两个 `.alert`**：
+/// 同一个视图上叠两个 alert 修饰符时，「究竟哪一个弹得出来」取决于 SwiftUI 内部的
+/// 呈现优先级 —— 那是**没有文档保证**的行为，而这里两种提示都是
+/// 「用户拨动开关之后必须看到」的。合成一条通道后，「同一时刻最多一个弹窗」
+/// 在类型层面就成立了，不必去赌框架行为。
 ///
-/// **类型分工**（``SettingsView`` / ``SettingsSidebar`` / ``SettingsHeaderBar`` /
-/// ``SettingsSectionPane``）：面板尺寸是常量，内容一旦放不下就会被折叠线藏在滚动区外
-/// （用户实测反馈过「设置界面排版不好看」，根因正是内容远高于面板）。
-/// 拆开后单测能**分别渲染内容区头部与每一个分类页、量出它们需要的真实高度**，
-/// 把「头部 + 任何一页 ≤ 面板高度」钉成契约（见 `SettingsLayoutTests`）。
-/// SPM 工程没有 Xcode 预览，这是让排版可验证的唯一手段。
-struct SettingsView: View {
+/// - `openSettings == nil`：这个提示只能「知道了」（如登录项的失败原因），
+///   此时 `dismissTitle` 就是唯一的按钮。
+///
+/// ⚠️ **它是文件级的**（曾经是 `SettingsView` 的私有嵌套类型）：v3 之后
+/// 弹窗状态挂在 ``MainDetailView`` 上（切换设置分类会替换掉下层视图，
+/// 挂在分类页里状态会被一起丢掉），而 ``SettingsDetailPage`` 也要上抛同一种提示。
+struct SettingsPrompt: Identifiable {
+    let id = UUID()
+    let title: String
+    let message: String
+    /// 「打开系统设置」那个出口；`nil` 表示没有出口。
+    ///
+    /// ⚠️ **类型上的 `@MainActor` 不是装饰，是必须的**：生产路径上这个出口指向
+    /// ``LaunchAtLoginManager/openSystemSettings()``，而 ``LaunchAtLoginManager``
+    /// 整个类型是 `@MainActor` 的（它要调 `SMAppService` 并驱动设置界面）。
+    /// 声明成裸的 `() -> Void` 等于要求把主 actor 隔离「擦掉」——
+    /// 在 Swift 6 严格并发下这是**编译错误**（`loses global actor 'MainActor'`），
+    /// 不是可以忽略的警告。
+    ///
+    /// 声明成 `@MainActor` 才是诚实的：这个出口**只**从 SwiftUI 的 alert action 里调，
+    /// 而那里本来就在主 actor 上。另一处赋值 ``AppSettings/openAccessibilitySettings()``
+    /// 是 `nonisolated` 的，赋给带隔离的类型合法 —— 方向是「非隔离 → 隔离」，
+    /// 属于放宽而不是收紧。
+    let openSettings: (@MainActor () -> Void)?
+    /// 关闭按钮的文案。**两种提示用的不是同一个词**：登录项失败是「确定」（一条通知），
+    /// 辅助功能是「暂不」（一个选择 —— 用户有权不授权，按钮就该这么说）。
+    let dismissTitle: String
+}
 
-    /// 「完成」按钮的动作。
-    ///
-    /// **所有真实入口都传它**（`AppDelegate.makeSettingsWindow()` 里接的是关窗）。
-    /// `nil` 时退回 SwiftUI 的 `dismiss` —— 只给离屏出图与单测用：那里没有窗口，
-    /// 也不会有人去点「完成」。
-    ///
-    /// 这里曾经有**第二种真实场景**：主窗口齿轮按钮弹的 `.sheet`（有 presentation 上下文，
-    /// `dismiss` 有效）。2026-09-16 那条路删掉了 —— 实测 sheet 的 `_isDraggable = false`、
-    /// 任何位置都拖不动，用户报告「设置窗口无法移动」。现在齿轮 / 菜单栏 / ⌘, 三条入口
-    /// 统一打开同一个独立窗口（见 ``ContentView/openSettings()``）。
-    var onDone: (() -> Void)?
+extension SettingsPrompt {
 
-    /// 是否让**玻璃铺满宿主**（而不是刚好等于设计稿的 720×440）。
-    ///
-    /// - `true`：**独立窗口**用（`AppDelegate.makeSettingsWindow()`）。窗口可能因为
-    ///   标题栏安全区被撑高，玻璃必须跟着铺满 —— 否则多出来的那一条会露出桌面。
-    ///   实测（2026-09-16，补齐前）：窗口 598、玻璃只有 566（当时的尺寸），**上下各露 16pt**。
-    /// - `false`（默认）：离屏出图与单测用。这时要的正是**理想尺寸 720×440**。
-    ///   ⚠️ 这条路径**不能**开 `true` —— `.frame(maxHeight: .infinity)` 会让
-    ///   `sizeThatFits(in: …greatestFiniteMagnitude)` 量出**无穷高**，
-    ///   `writePNG` 里 `Int(∞ * 2)` 直接 SIGTRAP（快照那套代码的注释里记着这个坑）。
-    var fillsHost: Bool = false
-
-    /// ⚠️ **仅供离屏出图**：见 ``SettingsSectionPane/updateStateOverride``。
-    ///
-    /// 透传到 ``SettingsSectionPane``，让「更新」组那七态各出一张走查图。
-    /// 真实入口（`AppDelegate.makeSettingsWindow()`）不传 → 走真实状态。
-    var updateStateOverride: UpdateController.CheckRowState?
-
-    /// ⚠️ **仅供离屏出图**：见 ``SettingsSectionPane/autoUpdateRowsOverride``。
-    var autoUpdateRowsOverride: AutoUpdateRowsState?
-
-    /// ⚠️ **仅供离屏出图 / 单测**：见 ``SettingsSectionPane/takeOverAvailabilityOverride``。
-    ///
-    /// 真实入口（`AppDelegate.makeSettingsWindow()`）不传 → 打开面板那一刻实时探测 FDA。
-    var takeOverAvailabilityOverride: AppSettings.TakeOverAvailability?
-
-    /// ⚠️ **仅供离屏出图 / 单测**：见 ``SettingsSectionPane/launchAtLoginStateOverride``。
-    ///
-    /// 真实入口不传 → 读 ``LaunchAtLoginManager/state`` 的真实值。
-    var launchAtLoginStateOverride: LaunchAtLoginState?
-
-    /// 打开面板时**选中哪个分类**（设计稿 09 页第 1 帧是「通用」）。
-    ///
-    /// ⚠️ **仅供离屏出图 / 单测**：真实入口（`AppDelegate.makeSettingsWindow()`）不传 ⇒ 走「通用」。
-    /// 五个分类各出一张走查图时没有这个口子就只能拍到首帧 —— 那就等于**其余四页没人看过**
-    /// （同 ``SettingsSectionPane/updateStateOverride`` 的理由）。
-    var initialSection: SettingsSection = .general
-
-    @Environment(\.dismiss) private var dismiss
-
-    /// 当前选中的分类。
-    @State private var section: SettingsSection
-
-    /// 本面板上**唯一**的弹窗状态。
-    @State private var prompt: SettingsPrompt?
-
-    /// 设置面板里的一次提示（标题 + 正文 + 可选的「打开系统设置」出口）。
-    ///
-    /// **为什么把登录项失败与辅助功能引导合成一个类型，而不是挂两个 `.alert`**：
-    /// 同一个视图上叠两个 alert 修饰符时，「究竟哪一个弹得出来」取决于 SwiftUI 内部的
-    /// 呈现优先级 —— 那是**没有文档保证**的行为，而这里两种提示都是
-    /// 「用户拨动开关之后必须看到」的。合成一条通道后，「同一时刻最多一个弹窗」
-    /// 在类型层面就成立了，不必去赌框架行为。
-    ///
-    /// - `openSettings == nil`：这个提示只能「知道了」（如登录项的失败原因），
-    ///   此时 `dismissTitle` 就是唯一的按钮。
-    private struct SettingsPrompt: Identifiable {
-        let id = UUID()
-        let title: String
-        let message: String
-        /// 「打开系统设置」那个出口；`nil` 表示没有出口。
-        let openSettings: (() -> Void)?
-        /// 关闭按钮的文案。**两种提示用的不是同一个词**：登录项失败是「确定」（一条通知），
-        /// 辅助功能是「暂不」（一个选择 —— 用户有权不授权，按钮就该这么说）。
-        let dismissTitle: String
-    }
-
-    /// **显式 init 存在的唯一理由**：给 ``section`` 这个 `@State` 一个
-    /// **调用方指定**的初值（``initialSection``）。
-    ///
-    /// 合成出来的逐个成员 init 只能给属性写默认表达式，而默认表达式**没法区分**
-    /// 「调用方指定了分类」与「没指定」—— 合成 init 只会把 ``initialSection``
-    /// 当成一个普通属性存下来，`@State` 仍然按自己的默认值起步，
-    /// 于是出图拍到的五张里四张都是「通用」（且**看起来完全正常**）。
-    /// 同 ``SettingsSectionPane/init`` 那条的理由。
-    init(
-        onDone: (() -> Void)? = nil,
-        fillsHost: Bool = false,
-        updateStateOverride: UpdateController.CheckRowState? = nil,
-        autoUpdateRowsOverride: AutoUpdateRowsState? = nil,
-        takeOverAvailabilityOverride: AppSettings.TakeOverAvailability? = nil,
-        launchAtLoginStateOverride: LaunchAtLoginState? = nil,
-        initialSection: SettingsSection = .general
-    ) {
-        self.onDone = onDone
-        self.fillsHost = fillsHost
-        self.updateStateOverride = updateStateOverride
-        self.autoUpdateRowsOverride = autoUpdateRowsOverride
-        self.takeOverAvailabilityOverride = takeOverAvailabilityOverride
-        self.launchAtLoginStateOverride = launchAtLoginStateOverride
-        self.initialSection = initialSection
-        _section = State(initialValue: initialSection)
-    }
-
-    var body: some View {
-        // **左右两栏**（设计稿 09 页）：左分类栏 + 右内容区。
-        //
-        // ⚠️ 两栏**共用下面那一层 `.frame(width:height:)`**，别拆成「左栏写 200、右栏写 520」——
-        // 窗口尺寸必须只有一个来源（``DesignTokens/Size/settingsPanel``），
-        // 否则改尺寸时要记住两处，而漏掉一处的结果是「窗口看着对、内容挤在一起」。
-        HStack(spacing: 0) {
-            SettingsSidebar(selection: $section)
-
-            VStack(spacing: 0) {
-                SettingsHeaderBar(title: section.title) {
-                    if let onDone {
-                        onDone()
-                    } else {
-                        dismiss()
-                    }
-                }
-                ScrollView {
-                    SettingsSectionPane(
-                        section: section,
-                        updateStateOverride: updateStateOverride,
-                        autoUpdateRowsOverride: autoUpdateRowsOverride,
-                        takeOverAvailabilityOverride: takeOverAvailabilityOverride,
-                        launchAtLoginStateOverride: launchAtLoginStateOverride,
-                        onLaunchAtLoginError: { error in
-                            prompt = makePrompt(for: error)
-                        },
-                        onTakeOverEnabled: handleTakeOverEnabled
-                    )
-                }
-                .scrollContentBackground(.hidden)
-            }
-            .frame(maxWidth: .infinity)
-        }
-        // **两层 frame 分工不同，别合并成一层**（与 ``ContentView`` 同一处理，
-        // 主窗口的「标题栏露底」就是这么来的）：
-        // - 内层 = **设计稿尺寸** 720×440，内容按它排版；
-        // - 外层 = **填满宿主**（窗口），``GlassSurface`` 铺在这一层上。
-        //   少了外层，「玻璃铺满整窗」就退化成依赖「窗口高恰好等于内容高」这个巧合 ——
-        //   巧合一破（窗口被安全区撑到 598）就上下各露 16pt。
-        //
-        // 外层只在独立窗口里加：`maxWidth/maxHeight` 传 `nil` 是 no-op，
-        // 于是离屏出图与单测拿到的仍是理想尺寸 720×440（理由见 ``fillsHost``）。
-        .frame(
-            width: DesignTokens.Size.settingsPanel.width,
-            height: DesignTokens.Size.settingsPanel.height
-        )
-        .frame(
-            maxWidth: fillsHost ? .infinity : nil,
-            maxHeight: fillsHost ? .infinity : nil
-        )
-        .background(GlassSurface(cornerRadius: DesignTokens.Radius.window))
-        .clipShape(RoundedRectangle(cornerRadius: DesignTokens.Radius.window, style: .continuous))
-        .alert(item: $prompt) { prompt in
-            guard let openSettings = prompt.openSettings else {
-                return Alert(
-                    title: Text(prompt.title),
-                    message: Text(prompt.message),
-                    dismissButton: .default(Text(prompt.dismissTitle)))
-            }
-            return Alert(
-                title: Text(prompt.title),
-                message: Text(prompt.message),
-                primaryButton: .default(Text(L10n.tr(.openSystemSettings)), action: openSettings),
-                secondaryButton: .cancel(Text(prompt.dismissTitle)))
-        }
-    }
-
-    /// 用户刚打开「推出时提醒占用」—— 两件「要跟用户说话」的事都在这里做完。
-    ///
-    /// 1. **申请通知授权**：用户此刻刚打开功能，弹系统授权框有上下文
-    ///    （``EjectNotificationService/start(onOpenPanel:)`` 同一条理由）。
-    /// 2. **提示那项可选的辅助功能权限**，见 ``suggestAccessibilityIfNeeded()``。
-    ///
-    /// 之所以由宿主而不是内容列来做：两件事都要往屏幕上放东西，
-    /// 而弹窗状态在本视图上。
-    private func handleTakeOverEnabled() {
-        EjectNotificationService.shared.requestAuthorization()
-        suggestAccessibilityIfNeeded()
-    }
-
-    /// 打开开关时**顺带**告诉用户还有一项可选权限（辅助功能）。
-    ///
-    /// ## 为什么这件事必须让用户知道
-    ///
-    /// 关掉系统那张「占用中」的框有两条路：有辅助功能授权时**按下它自己的按钮**
-    /// （精确到哪一块盘），没有时只能**结束弹框进程**（粗糙，但一样有效）。
-    /// ⇒ **不授权功能也照常工作**，界面因此完全看不出这项权限存在 —— 而它是
-    /// self-signed 分发下**每次重新构建都会掉**的那种授权。用户没有任何机会知道它，
-    /// 除非我们主动说一次（并且说清「不给也行」）。
-    ///
-    /// ## 为什么是「每次打开开关都提」而不是像 FDA 那样「只提一次」
-    ///
-    /// FDA 那条走的是「只提一次 + 主窗口常驻横幅」：**没有 FDA，功能就废了**
-    /// （列不出占用者），横幅是它的持续落点。辅助功能正好相反 —— 它**不影响可用性**，
-    /// 所以不该为它占一条常驻横幅；可也正因为不影响，「只提一次」的那个一次被点掉之后
-    /// 信息就永久消失（叠加「每次构建都掉授权」，用户会被静默降级到底）。
-    /// ⇒ 落点跟着**用户拨动这个开关的动作**走，不再额外占用界面面积。
-    ///
-    /// ⚠️ **这不是「再加一行说明」的替代品**：面板是固定高度，英文侧只剩约 4pt 余量
-    /// （``SettingsLayoutTests`` 实量 916.2 / 920）—— 那一行的说明文字**一个字符都加不动**，
-    /// 加了就是「英文比中文多折一行 ⇒ 面板高度无解」。这也是这里选弹窗的根本原因。
-    ///
-    /// 实际观感接近一次性：这个开关设完就不会再去动它；而**授权之后这个提示永不出现**
-    /// （判据见 ``SystemEjectDialogDismisser/shouldSuggestAccessibility(isTrusted:)``）。
-    private func suggestAccessibilityIfNeeded() {
-        guard
-            SystemEjectDialogDismisser.shouldSuggestAccessibility(
-                isTrusted: SystemEjectDialogDismisser.isAccessibilityTrusted)
-        else { return }
-        prompt = SettingsPrompt(
-            title: L10n.tr(.accessibilityOnboardingTitle),
-            message: String(format: L10n.tr(.accessibilityOnboardingMessage), L10n.tr(.appName)),
-            openSettings: AppSettings.openAccessibilitySettings,
-            dismissTitle: L10n.tr(.notNow))
-    }
-
-    /// 登录项错误 → 提示内容（三类原因各自文案）。
-    private func makePrompt(for error: LaunchAtLoginError) -> SettingsPrompt {
+    /// 登录项失败 → 提示内容（三类原因各自文案）。
+    static func launchAtLogin(_ error: LaunchAtLoginError) -> SettingsPrompt {
         switch error {
         case .requiresApproval:
             return SettingsPrompt(
@@ -278,6 +88,42 @@ struct SettingsView: View {
                 openSettings: nil,
                 dismissTitle: L10n.tr(.ok))
         }
+    }
+
+    /// 用户刚打开「推出时提醒占用」时，那项**可选**权限的提示；已授权时为 `nil`。
+    ///
+    /// ## 为什么这件事必须让用户知道
+    ///
+    /// 关掉系统那张「占用中」的框有两条路：有辅助功能授权时**按下它自己的按钮**
+    /// （精确到哪一块盘），没有时只能**结束弹框进程**（粗糙，但一样有效）。
+    /// ⇒ **不授权功能也照常工作**，界面因此完全看不出这项权限存在 —— 而它是
+    /// self-signed 分发下**每次重新构建都会掉**的那种授权。用户没有任何机会知道它，
+    /// 除非我们主动说一次（并且说清「不给也行」）。
+    ///
+    /// ## 为什么是「每次打开开关都提」而不是像 FDA 那样「只提一次」
+    ///
+    /// FDA 那条走的是「只提一次 + 主窗口常驻横幅」：**没有 FDA，功能就废了**
+    /// （列不出占用者），横幅是它的持续落点。辅助功能正好相反 —— 它**不影响可用性**，
+    /// 所以不该为它占一条常驻横幅；可也正因为不影响，「只提一次」的那个一次被点掉之后
+    /// 信息就永久消失（叠加「每次构建都掉授权」，用户会被静默降级到底）。
+    /// ⇒ 落点跟着**用户拨动这个开关的动作**走，不再额外占用界面面积。
+    ///
+    /// ⚠️ **这不是「再加一行说明」的替代品**：设置页的宽度预算同样吃紧，
+    /// 那一行的说明文字加不动 —— 加了就是「英文比中文多折一行」，而这正是这里
+    /// 选弹窗的根本原因。
+    ///
+    /// 实际观感接近一次性：这个开关设完就不会再去动它；而**授权之后这个提示永不出现**
+    /// （判据见 ``SystemEjectDialogDismisser/shouldSuggestAccessibility(isTrusted:)``）。
+    static func accessibilityOnboarding() -> SettingsPrompt? {
+        guard
+            SystemEjectDialogDismisser.shouldSuggestAccessibility(
+                isTrusted: SystemEjectDialogDismisser.isAccessibilityTrusted)
+        else { return nil }
+        return SettingsPrompt(
+            title: L10n.tr(.accessibilityOnboardingTitle),
+            message: String(format: L10n.tr(.accessibilityOnboardingMessage), L10n.tr(.appName)),
+            openSettings: AppSettings.openAccessibilitySettings,
+            dismissTitle: L10n.tr(.notNow))
     }
 }
 
@@ -302,7 +148,7 @@ enum SettingsMetrics {
     /// 单栏时代这里**也曾经是 20**，理由完全不同 —— 那时设置面板画着系统红绿灯，
     /// 前导要加到 20 才能让两个窗口的标题都落在 x = 80；2026-09-16 去掉红绿灯后回到 16。
     /// 现在 20 是**两栏设计稿自己写的值**（左栏 200 之后头部从 20 起排），
-    /// 与红绿灯无关 —— 那个让位块早已删除（见 ``SettingsWindow`` 与 §8.17）。
+    /// 与红绿灯无关 —— 那个让位块早已删除，v3 起设置更是并进了主窗口详情区。
     static let headerPaddingLeading: CGFloat = DesignTokens.Spacing.xl
     /// 头部**尾随**内边距（设计稿同样是 16，不跟主窗口的 12）。
     static let headerPaddingTrailing: CGFloat = DesignTokens.Spacing.lg
@@ -338,9 +184,11 @@ enum SettingsMetrics {
 /// 设计稿把「受阻」收敛成一个**类变体**而不是另写一套行 —— 两页的琥珀行与普通行
 /// 共用 `.sline` 基类的全部布局（`padding: 11px 12px`、`min-height: 44px`、
 /// `.sline + .sline` 的分隔线），只差两处：**整行底色**与**标签色**。
-/// 产品侧照这个模型来 —— 给 ``SettingsSectionPane/line(label:description:progress:descriptionAccent:divider:tone:onTap:accessibilityValue:control:)``
-/// 加一个色调参数，而不是复制一份布局。复制的代价不是多写几行，而是
-/// **两套布局会各自漂**：改了普通行的高度，受阻行不会跟着改，而它们在同一张卡片里。
+/// 产品侧照这个模型来 —— ``SettingsSectionPane/line(label:description:progress:descriptionAccent:divider:tone:control:)``
+/// 与 ``SettingsSectionPane/toggleLine(label:description:isOn:isEnabled:divider:tone:)``
+/// 共用同一个 ``SettingsSectionPane/lineFrame(tone:divider:content:)``，而不是各复制一份布局。
+/// 复制的代价不是多写几行，而是**两套布局会各自漂**：改了普通行的高度，受阻行不会跟着改，
+/// 而它们在同一张卡片里。
 ///
 /// ## 为什么是「色调」而不是「是不是警告」（`isWarning: Bool`）
 ///
@@ -362,65 +210,6 @@ enum SettingsLineTone {
     /// 三个条件同时成立才用这个色调。判据外的语义（比如「下载失败」，
     /// 它下次启动会自动重试）**不许**借这个色调。
     case warning
-}
-
-// MARK: - 内容区头部（当前分类标题 + "完成"）
-
-/// 右栏内容区头部（设计稿 `.sdetail__head`）。
-///
-/// **单独抽出来是为了可测**：``SettingsSectionPane`` 的可用高度 = 面板高 − 本视图高，
-/// 契约测试要分别量出两者，才能断言「内容不会被折叠线藏起来」。
-///
-/// **横向**：左「当前分类标题」、右「完成」、中间弹性空档；
-/// 前导 20 / 尾随 16（设计稿 `.sdetail__head { padding: 0 16px 0 20px }`）。
-///
-/// ⚠️ **标题是「当前分类名」，不再是固定写死的「设置」**（两栏形态的关键改动）：
-/// 分类已经由左栏的选中项表达，头部再写「设置」就是同一屏出现两个层级的标题。
-/// 这也是 ``title`` 必须由调用方传进来、不能再自己读 `L10n.tr(.settings)` 的原因。
-///
-/// **纵向对齐**：头部总高 52，内容就在 52 里**居中**，中心距顶 26pt。
-/// 本面板**自己不画红绿灯**（``SettingsWindow`` 把三个系统按钮整个藏掉了），
-/// 这个 26pt 单纯来自设计稿 —— 与主窗口 `.titlebar` 共用
-/// ``DesignTokens/Size/titleBarBandHeight`` 一个数字（主窗口侧的数字来源见那里的说明）。
-struct SettingsHeaderBar: View {
-
-    /// 当前分类的显示名（``SettingsSection/title``）。
-    let title: String
-    let onDone: () -> Void
-
-    @AppStorage(AppSettings.Key.accentColor) private var accentColorRaw = AccentColor.default.rawValue
-
-    var body: some View {
-        HStack(spacing: SettingsMetrics.headerSpacing) {
-            Text(title)
-                .font(.system(size: DesignTokens.FontSize.title, weight: .semibold))
-                .foregroundStyle(DesignTokens.Palette.foreground)
-                .lineLimit(1)
-            Spacer(minLength: 0)
-            ActionButton(
-                title: L10n.tr(.done),
-                variant: .outline,
-                size: .small,
-                accent: AccentColor(rawValue: accentColorRaw) ?? .default,
-                action: onDone
-            )
-        }
-        .padding(.leading, SettingsMetrics.headerPaddingLeading)
-        .padding(.trailing, SettingsMetrics.headerPaddingTrailing)
-        // **内容带 + 下方留白**，不是直接 `.frame(height: 52)`。
-        //
-        // 保留「带 + 留白」这个结构是为了让「头部总高」只有一个来源：
-        // 留白现在是 0，内容带吃满 52 —— 于是标题居中到距顶 **26pt**，
-        // 与设计稿 `.sdetail__head`、也与主窗口（交通灯已被
-        // ``AppDelegate/alignTrafficLights(in:)`` 挪到 26）一致。
-        // 数字只写在 ``DesignTokens/Size/titleBarBandHeight`` 一处。
-        .frame(height: DesignTokens.Size.titleBarBandHeight)
-        .padding(.bottom, DesignTokens.Size.titleBarBandBottomPadding)
-        .overlay(alignment: .bottom) {
-            Hairline()
-        }
-        .accessibilityAddTraits(.isHeader)
-    }
 }
 
 // MARK: - 左栏（分类）
@@ -471,183 +260,6 @@ enum SettingsSection: String, CaseIterable, Identifiable {
         case .about: "info.circle"
         }
     }
-
-    /// 方向键在分类间移动（设计稿 §8.152.5：**↑/↓ 在分类间移动**，macOS 侧栏惯例）。
-    ///
-    /// **两端夹住、不回绕**：Finder 与系统设置在顶/底按方向键就是**不动**。
-    /// 回绕读起来像「更周到」，实际会让「按住 ↑ 到顶」这个动作在五项之间跳一次圈 ——
-    /// 用户的手已经停了，选中项却还在动。
-    ///
-    /// **抽成纯函数是为了可测**：`.onMoveCommand` 那条接线只能靠真机按方向键验证
-    /// （`swift test` 里没有窗口、也没有可信的方向键注入），
-    /// 但「走两格越界之后落在哪」这个**算术**可以逐条断言 + 变异测试。
-    /// 于是这条功能的正确性不全押在「跑一遍看看」上。
-    static func moved(from current: SettingsSection, step: Int) -> SettingsSection {
-        let all = allCases
-        // `?? 0` 在构造上走不到（`current` 必是 `allCases` 的一员），
-        // 留着是为了让函数**处处有定义**，而不是被迫在这里 `!`。
-        let index = all.firstIndex(of: current) ?? 0
-        return all[min(max(index + step, 0), all.count - 1)]
-    }
-}
-
-/// 左栏（分类栏，设计稿 `.sside`）。
-///
-/// **不画系统红绿灯**（``SettingsWindow`` 把三个按钮整个藏掉了），
-/// 但顶部内边距仍然留 52 —— 那是为了让**第一个分类项与右栏头部标题落在同一条水平带**上。
-///
-/// `role="tablist"` / `role="tab"` 那一套在 SwiftUI 侧对应的就是
-/// ``SettingsSidebarItem`` 上的 `.isSelected` trait 与 `.accessibilityAddTraits`；
-/// **↑/↓ 在分类间移动**由本视图的 `.onMoveCommand` 承担（macOS 侧栏惯例），
-/// 算术在 ``SettingsSection/moved(from:step:)``。
-///
-/// ⚠️ **这句注释曾经是假的**（2026-09-29 自查发现）：它当时就写着「由 `.onMoveCommand` 承担」，
-/// 而全 `Sources/` 里 `.onMoveCommand` **一处都不存在** —— 注释替一个不存在的实现背了书，
-/// 下一个人据此会以为这条已经做完。这次连同实现与测试一起补上，而不是把这句话删掉。
-///
-/// **方向键归属左栏容器**（而不是每一项）也是照着设计稿的 ARIA 模型来的：
-/// `.sside` 是 `role="tablist"`，方向键属于 tablist，由它移动选中项。
-struct SettingsSidebar: View {
-
-    @Binding var selection: SettingsSection
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: DesignTokens.Size.settingsSidebarItemSpacing) {
-            ForEach(SettingsSection.allCases) { item in
-                SettingsSidebarItem(item: item, isSelected: selection == item) {
-                    selection = item
-                }
-            }
-            // 这里**没有** `Spacer()` —— 曾经有一个，2026-09-29 删掉，两条理由：
-            //
-            // 1. **它是多余的**：下面那句 `.frame(maxHeight: .infinity, alignment: .topLeading)`
-            //    已经把整列顶到上边，`Spacer` 再撑一次不改变任何可见结果。
-            // 2. **它会白吃 1pt**：`VStack(spacing:)` 的间距是**子项之间**，
-            //    而 `Spacer` 也算一个子项 ⇒ 末尾多出一个 1pt 的空档，
-            //    整列自然高变成 209，而设计稿 `.sside { gap: 1px }` 只有 4 个缝 = 208。
-            //    这 1pt 在真机上永远看不见（那一列余量一大把），但会让
-            //    `SettingsLayoutTests.左栏几何符合设计稿()` 里的「整数相等」变成
-            //    「差 1pt」—— 而那条断言一旦被迫放宽成 ±1，就再也抓不住「加了半个项间距」。
-            //    ⇒ **宁可让结构对上，也不要把容差放宽**（本仓库反复出现的那条纪律）。
-        }
-        .padding(.top, SettingsMetrics.headerHeight)
-        .padding(.horizontal, DesignTokens.Size.settingsSidebarPaddingH)
-        .padding(.bottom, DesignTokens.Spacing.md)
-        .frame(width: DesignTokens.Size.settingsSidebarWidth, alignment: .topLeading)
-        .frame(maxHeight: .infinity, alignment: .topLeading)
-        // 左栏底 `--bg-sunken`（设计稿 `.sside { background: var(--bg-sunken) }`）。
-        // 它是**半透明**的一层，叠在窗口那张 `GlassSurface` 上 —— 于是两栏之间
-        // 不止靠一条线分隔，还有一层很淡的明度差（Finder / 系统设置同款）。
-        .background(DesignTokens.Palette.sunken)
-        // 右边界 `inset -0.5px 0 0 var(--hairline)`：**内嵌**，不占宽度。
-        // 用 `.overlay` 而不是「加一条 0.5pt 宽的 HStack 子项」—— 后者会从 200pt 里
-        // 吃掉 0.5pt，而设计稿的 200 是**含**这条线的。
-        .overlay(alignment: .trailing) {
-            Rectangle()
-                .fill(DesignTokens.Palette.hairline)
-                .frame(width: 0.5)
-                .allowsHitTesting(false)
-                .accessibilityHidden(true)
-        }
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel(L10n.tr(.settings))
-        // ---- 键盘：↑/↓ 在分类间移动（设计稿 §8.152.5）----
-        //
-        // ❗ **`.focusable()` 非有不可**：`.onMoveCommand` 只在**焦点落在本视图内**时才收到
-        // 方向键。少了这一句，整段照样编译、运行时不报错、不崩溃，而 ↑/↓
-        // **只是什么也不发生** —— 与本仓库反复吃亏的那一类症状
-        // （「少了东西不会报错」）逐字相同。
-        //
-        // ❗ **不加 `.focusEffectDisabled()`** 会得到一圈包住**整列**的系统焦点环，
-        // 而设计稿要的反馈是**选中项自己的实底高亮**（Finder 的方向键就是移动选择，
-        // 没有第二个环）⇒ 关掉系统环，让选中态当反馈。
-        //
-        // ⚠️ 能自动验证的只有算术（``SettingsSection/moved(from:step:)``）；
-        // 「按 ↓ 真的会动」这一段要真机按一下 —— `swift test` 里既没有窗口，
-        // 也没有可信的方向键注入（合成 `NSEvent` 会被 SwiftUI 的字段校验丢掉）。
-        .focusable()
-        .focusEffectDisabled()
-        .onMoveCommand { direction in
-            // ⚠️ **`@unknown default` 与 `.left, .right` 两句缺一不可**，这不是啰嗦：
-            //
-            // - 只写 `.up` / `.down`（想「反正左右不用管」）⇒ 报
-            //   「switch covers known cases, but 'MoveCommandDirection' may have
-            //   additional unknown values」—— 它是 SwiftUI 的**非 frozen 枚举**；
-            // - 只写 `.up` / `.down` + `@unknown default`（想「一句兜住」）⇒ 报
-            //   「switch must be exhaustive」。**`@unknown default` 不是通配 `default`**：
-            //   它只兜「将来版本新增」的 case，**不兜当前已知但没写的那两个**。
-            //
-            // 两句都给齐之后没有警告 —— 而警告在本仓库是**硬故障**
-            //（CI 带 `-Xswiftc -warnings-as-errors`）：本地能跑、推上去就红。
-            switch direction {
-            case .up: selection = SettingsSection.moved(from: selection, step: -1)
-            case .down: selection = SettingsSection.moved(from: selection, step: 1)
-            case .left, .right: break
-            @unknown default: break
-            }
-        }
-    }
-}
-
-/// 左栏的一个分类项（设计稿 `.sside__item`：高 28、圆角 6、左右内边距 8、图标 15、图标-文字间距 9）。
-///
-/// **选中态 = 强调色实底 + 白字**（macOS 侧栏惯例，Finder 与系统设置都这样）。
-/// ⚠️ 刻意**不用** `accentSoft` 底 + 强调色前景：那个组合在浅色下只有约 **3.4:1**，
-/// 低于 AA 的 4.5:1；而实底白字是「图形化高亮」，可辨识性来自底色差异而非文字对比度，
-/// 与周围底色的差值远超非文本组件的 3:1 门槛（设计稿 09 页把这条写成了硬规则）。
-private struct SettingsSidebarItem: View {
-
-    let item: SettingsSection
-    let isSelected: Bool
-    let onTap: () -> Void
-
-    @AppStorage(AppSettings.Key.accentColor) private var accentColorRaw = AccentColor.default.rawValue
-    @State private var hovering = false
-
-    private var accent: AccentColor { AccentColor(rawValue: accentColorRaw) ?? .default }
-
-    /// 选中项的底色；悬停时用同一强调色（设计稿 `--accent-hover`，产品侧没有这个令牌 ——
-    /// 见下面 `.onHover` 的说明）。
-    private var background: Color {
-        if isSelected { return accent.swiftUIColor }
-        return hovering ? DesignTokens.Palette.subtle : .clear
-    }
-
-    var body: some View {
-        Button(action: onTap) {
-            HStack(spacing: DesignTokens.Size.settingsSidebarItemGap) {
-                Image(systemName: item.systemImage)
-                    .font(.system(size: DesignTokens.FontSize.caption))
-                    .frame(
-                        width: DesignTokens.Size.settingsSidebarItemIcon,
-                        height: DesignTokens.Size.settingsSidebarItemIcon
-                    )
-                Text(item.title)
-                    .font(
-                        .system(
-                            size: DesignTokens.FontSize.body,
-                            weight: isSelected ? .medium : .regular)
-                    )
-                    .lineLimit(1)
-                Spacer(minLength: 0)
-            }
-            .foregroundStyle(
-                isSelected ? Color.white : DesignTokens.Palette.foreground
-            )
-            .padding(.horizontal, DesignTokens.Spacing.sm)
-            .frame(height: DesignTokens.Size.settingsSidebarItemHeight)
-            .background(
-                RoundedRectangle(cornerRadius: DesignTokens.Radius.sm, style: .continuous)
-                    .fill(background)
-            )
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .focusable(false)
-        .disableFocusRing()
-        .onHover { hovering = $0 }
-        .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
-    }
 }
 
 // MARK: - 四组内容
@@ -694,7 +306,8 @@ struct AutoUpdateRowsState: Equatable {
 ///
 /// 旧类型一次渲染**五组**并把它们纵向堆起来，高度 = 五组之和；
 /// 新类型只渲染**一个分类**，高度只由这一页决定 —— 这正是两栏形态能解决
-/// 「高度被最长语言挟持」的地方（见 ``DesignTokens/Size/settingsPanel``）。
+/// 「高度被最长语言挟持」的地方（v3 起设置并入主窗口详情区，高度契约由
+/// `SettingsLayoutTests` 的逐页基准表钉住）。
 ///
 /// ⚠️ **分组标题（`.sgroup`）在这一形态里没有了**：单栏版每组头上有个大写小标题，
 /// 两栏版把它提到了内容区头部（``SettingsHeaderBar``）—— 同一句话不再写两遍。
@@ -1038,8 +651,12 @@ struct SettingsSectionPane: View {
     /// 而 getter 与 `allowsAutomaticUpdates` 相与会把它掩盖成「没生效」——
     /// 有效行为是对的，但**存储与意图不一致**，读 defaults 的人会被它骗
     /// （§8.113.15 记的就是这件事，我自己中过一次）。
-    private func toggleAutoCheckUpdate() {
-        let newValue = !autoCheckUpdateOn
+    ///
+    /// ⚠️ **接的是 `Toggle` 的 binding（新值直给），不是「拨一下」**：v3 把开关
+    /// 交还系统 `Toggle` 之后，驱动方向由控件决定 —— 留一个 toggle 语义的函数
+    /// 再由 binding 去猜当前值，会在快速连点时写反（用户连点两次，第二次读到的
+    /// 可能还是旧值）。所以这里与下面那个都收**目标值**。
+    private func setAutoCheckUpdate(_ newValue: Bool) {
         if newValue {
             UpdateController.shared.automaticallyChecksForUpdates = true
         } else {
@@ -1053,30 +670,22 @@ struct SettingsSectionPane: View {
         autoCheckUpdateOverride = newValue
     }
 
-    /// 拨动「自动下载更新」。**只在检查开着时可达**（见 ``autoDownloadTapAction``）。
-    private func toggleAutoDownloadUpdate() {
-        let newValue = !autoDownloadUpdateOn
+    /// 拨动「自动下载更新」。**只在检查开着时可达**（见 ``autoDownloadUpdateEnabled``）。
+    private func setAutoDownloadUpdate(_ newValue: Bool) {
         UpdateController.shared.automaticallyDownloadsUpdates = newValue
         autoDownloadUpdateOverride = newValue
     }
 
-    /// 「自动检查更新」那一行的点击动作；updater 没建起来时为 `nil`（整行不可点）。
-    private var autoCheckUpdateTapAction: (() -> Void)? {
-        guard canAutoUpdate else { return nil }
-        return { toggleAutoCheckUpdate() }
-    }
-
-    /// 「自动下载更新」那一行的点击动作。
+    /// 「自动下载更新」那一行此刻**能不能拨** —— 它比别的行多一个禁用原因。
     ///
     /// ⚠️ **这里的判据确实读了开关自己的值**（`autoCheckUpdateOn`），而 §8.113.14
     /// 立的是「判据不许读开关自己的值」—— 两条**不冲突**：那条禁止的是
     /// 「拿开关自己的值当『有没有这个能力』」（关一次就锁死，因为能力其实与它无关）；
     /// 而这里表达的是一个**真实的因果**：检查不做，下载根本写不进去
-    /// （见 ``toggleAutoCheckUpdate``）。锁死的风险不存在 ——
-    /// 检查行**永远可点**，用户的出口一直在。
-    private var autoDownloadTapAction: (() -> Void)? {
-        guard canAutoUpdate, autoCheckUpdateOn else { return nil }
-        return { toggleAutoDownloadUpdate() }
+    /// （见 ``setAutoCheckUpdate``）。锁死的风险不存在 ——
+    /// 检查行**永远可拨**，用户的出口一直在。
+    private var autoDownloadUpdateEnabled: Bool {
+        canAutoUpdate && autoCheckUpdateOn
     }
 
     /// 「更新」组的第二行 —— **一个状态机，七种画法**（设计稿 `08-update.html` B 段 + C 段矩阵）。
@@ -1346,7 +955,7 @@ struct SettingsSectionPane: View {
     ///
     /// **为什么是 switch 而不是给 ``SettingsSection`` 挂一个 `@ViewBuilder` 属性**：
     /// 这五页用的全是本类型自己的私有计算属性与 `@State`（`languageControl` /
-    /// `updateCheckLine` / `takeOverControl` …），把渲染挪到枚举上就得把那些东西
+    /// `updateCheckLine` / `takeOverUnavailableControl` …），把渲染挪到枚举上就得把那些东西
     /// 整体上提或再包一层容器 —— 换来的只是少一个 switch。
     @ViewBuilder
     private var paneContent: some View {
@@ -1401,21 +1010,21 @@ struct SettingsSectionPane: View {
             // 于是整行 44 → 59，四组内容比设计稿高出 15pt，
             // 当时的面板（566pt）装不下，「关于」又被挤出滚动区。
             // 「在 Dock 中显示图标」本身已经说清了后果，不需要再解释一遍。
-            line(
+            toggleLine(
                 label: L10n.tr(.showDockIcon),
-                onTap: { showDockIcon.toggle() },
-                accessibilityValue: L10n.tr(showDockIcon ? .on : .off)
-            ) {
-                SettingsSwitch(isOn: showDockIcon, accent: accentColor)
-            }
-            line(
+                isOn: $showDockIcon
+            )
+            toggleLine(
                 label: L10n.tr(.launchAtLogin),
                 description: launchAtLoginDescription,
-                onTap: toggleLaunchAtLogin,
-                accessibilityValue: L10n.tr(launchAtLogin ? .on : .off)
-            ) {
-                SettingsSwitch(isOn: launchAtLogin, accent: accentColor)
-            }
+                // ⚠️ **不能直接把 `$launchAtLogin` 交给 `Toggle`**：这一行有副作用 ——
+                // ``LaunchAtLoginManager/setEnabled(_:)`` 会失败（未签名 / 找不到登录项），
+                // 失败时必须把用户拨过去的那一格**摇回去**并弹提示。
+                // 用 `Binding` 把「读」与「写」分开，副作用留在 ``setLaunchAtLogin(_:)`` 里。
+                isOn: Binding(
+                    get: { launchAtLogin },
+                    set: { setLaunchAtLogin($0) })
+            )
             // 第三态（已注册、等系统批准）紧跟一行**受阻提示行**（设计稿第 2 帧的形态）。
             //
             // **为什么紧跟在登录行下面、而不是并进那一行**：它是一个**待办**，
@@ -1433,13 +1042,24 @@ struct SettingsSectionPane: View {
             // （2026-09-28）：没授「完全磁盘访问」时，它画成「不可用 + 去授权引导」。
             // 那是本功能唯一会「开着却什么都不做」的情形 ——
             // 见 ``AppSettings/TakeOverAvailability`` 与 ``takeOverDescription``。
-            line(
-                label: L10n.tr(.takeOverFinderEject),
-                description: takeOverDescription,
-                onTap: takeOverTapAction,
-                accessibilityValue: L10n.tr(takeOverOn ? .on : .off)
-            ) {
-                takeOverControl
+            // 可用时是**系统的开关行**（整行可点）；不可用时退化成普通行 +
+            // 「打开系统设置」按钮 —— 那一行里放不下第二个可点控件，
+            // 而「去哪把它打开」正是用户卡住的地方（见 ``takeOverUnavailableControl``）。
+            if takeOverAvailability.isUsable {
+                toggleLine(
+                    label: L10n.tr(.takeOverFinderEject),
+                    description: takeOverDescription,
+                    isOn: Binding(
+                        get: { takeOverOn },
+                        set: { setTakeOverFinderEject($0) })
+                )
+            } else {
+                line(
+                    label: L10n.tr(.takeOverFinderEject),
+                    description: takeOverDescription
+                ) {
+                    takeOverUnavailableControl
+                }
             }
         }
     }
@@ -1479,36 +1099,31 @@ struct SettingsSectionPane: View {
             // 『有新版本时自动下载』、实际走弹窗路」，三句话各说各的。
             // 拆开后每一行的显示、可点性、说明三者同源，不需要解释「开关开着
             // 为什么没自动下载」。
-            line(
+            toggleLine(
                 label: L10n.tr(.autoCheckUpdate),
                 description: autoCheckUpdateDescription,
-                divider: false,
-                // updater 没起来时**整行不可点** —— 否则用户点一下、
+                // updater 没起来时**整行不可拨** —— 否则用户拨一下、
                 // 开关动一下、实际什么都没发生（没人会去写那两个标志）。
                 //
                 // ⚠️ **这个条件不许读开关自己的值**（2026-09-21 真机修的 bug）：
                 // 读了就变成单向开关 —— 关一次就再也打不开（§8.113.14）。
-                //
-                // ⚠️ 抽成属性而不是在这里写三元：`onTap` 的类型是 `(() -> Void)?`，
-                // 三元的两个分支是「方法引用」与 `nil`，编译器推不出那个可选闭包的
-                // 类型，于是整段 `body` 报 `failed to produce diagnostic for expression`
-                // —— 错误位置指在 `var body` 上，与真正的病根隔着 200 行。
-                onTap: autoCheckUpdateTapAction,
-                accessibilityValue: L10n.tr(autoCheckUpdateOn ? .on : .off)
-            ) {
-                SettingsSwitch(isOn: autoCheckUpdateOn, accent: accentColor)
-            }
-            line(
+                isOn: Binding(
+                    get: { autoCheckUpdateOn },
+                    set: { setAutoCheckUpdate($0) }),
+                isEnabled: canAutoUpdate,
+                divider: false
+            )
+            toggleLine(
                 label: L10n.tr(.autoDownloadUpdate),
                 description: autoDownloadUpdateDescription,
-                // ⚠️ 不可点的第二个原因见 ``autoDownloadTapAction``：
+                // ⚠️ 不可拨的第二个原因见 ``autoDownloadUpdateEnabled``：
                 // 「自动检查更新」关着时 Sparkle 会**静默丢弃**这次写入，
-                // 所以这时整行不可点，且说明文字会换成「需先打开上面的…」。
-                onTap: autoDownloadTapAction,
-                accessibilityValue: L10n.tr(autoDownloadUpdateOn ? .on : .off)
-            ) {
-                SettingsSwitch(isOn: autoDownloadUpdateOn, accent: accentColor)
-            }
+                // 所以这时整行不可拨，且说明文字会换成「需先打开上面的…」。
+                isOn: Binding(
+                    get: { autoDownloadUpdateOn },
+                    set: { setAutoDownloadUpdate($0) }),
+                isEnabled: autoDownloadUpdateEnabled
+            )
             // 第三行是**一个状态机**（七种画法），见 ``updateCheckLine``。
             updateCheckLine
         }
@@ -1538,28 +1153,104 @@ struct SettingsSectionPane: View {
         .clipShape(RoundedRectangle(cornerRadius: DesignTokens.Radius.md, style: .continuous))
     }
 
-    /// 一行设置项（设计稿 `.sline`）：左侧标签 + 可选说明，右侧控件。
-    ///
-    /// `divider` 只应给**卡片内第二行起**的行设为 `true` —— 设计稿的规则是
-    /// `.sline + .sline`，首行上方不该顶着一条横线（那会让卡片看起来被切成两半）。
-    ///
-    /// `onTap` 用于开关行 —— **整行可点**，不只是那 38×22 的小开关。
-    /// 只把小开关做成命中区时，用户瞄准「开关」稍有偏差就点空、什么都不发生，
-    /// 主观感受就是「点了没反应 / 没有切换」；macOS 系统设置的开关行同样整行可点。
-    ///
-    /// `accessibilityValue` 专给开关行用（「开 / 关」）。**必须传**：``SettingsSwitch``
-    /// 自己是 `accessibilityHidden`（它只是块视觉图形），不补这一句，
-    /// VoiceOver 用户只会听到「显示 Dock 图标」而**永远不知道当前是开还是关** ——
-    /// 看得见的人扫一眼就知道，看不见的人却拿不到这个信息。
+    /// 行的左侧文字块：标签 + 可选说明 / 进度条。**普通行与开关行共用**。
     ///
     /// `progress` 给「后台下载中」那一行用（设计稿 B3）：说明位换成一个**固定 16pt 高**
     /// 的行内进度条。**高度必须固定** —— 与说明行同高，下载中这一行就不会被撑高，
     /// 于是整块面板在下载过程中不会跳一下。
     ///
     /// `descriptionAccent` 给「发现新版本」那一行用（设计稿 B2 的 `style="color:var(--accent)"`）。
+    @ViewBuilder
+    private func lineLabel(
+        label: String,
+        description: String?,
+        progress: Double? = nil,
+        descriptionAccent: Bool = false,
+        tone: SettingsLineTone
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(label)
+                .font(.system(size: DesignTokens.FontSize.body))
+                // 受阻行的标签换成琥珀字（设计稿 `.sline--warn .sline__label`）。
+                // ⚠️ **这一处不能省**：只加底色不改字色，浅琥珀底上仍是黑字 ——
+                // 画面上「看着做了、其实没做」，正是本仓库那条红线
+                // （样式没生效与本来没写逐字相同）。设计稿在 `.sline--warn` 的注释里
+                // 特意点了同一件事，两边是同一个坑。
+                .foregroundStyle(
+                    tone == .warning
+                        ? DesignTokens.Palette.warningText
+                        : DesignTokens.Palette.foreground
+                )
+                .designLineHeight(
+                    DesignTokens.LineHeight.base, fontSize: DesignTokens.FontSize.body
+                )
+                .fixedSize(horizontal: false, vertical: true)
+            if let progress {
+                SettingsProgressLine(fraction: progress, accent: accentColor)
+            } else if let description {
+                Text(description)
+                    .font(.system(size: DesignTokens.FontSize.footnote))
+                    .foregroundStyle(
+                        descriptionAccent
+                            ? accentColor.swiftUIColor
+                            : DesignTokens.Palette.mutedForeground
+                    )
+                    .designLineHeight(
+                        DesignTokens.LineHeight.base, fontSize: DesignTokens.FontSize.footnote
+                    )
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// 一行的**外框**：内边距 + 最小高 + 受阻底色 + 顶部分隔线。
+    ///
+    /// 抽出来只为一件事：**普通行与开关行必须长得一模一样**（设计稿里它们同是 `.sline`）。
+    /// 而「高度预算」在本页是硬约束（面板高度按英文最坏情况夹逼而成），
+    /// 两处各写一遍 padding，改了其中一处就会得到「某些行 44、某些行 43」——
+    /// 这种偏差只在最坏语言下暴露。
+    ///
+    /// ⚠️ **分隔线必须在底色之上**：`.overlay` 排在 `.background` 之后，
+    /// 与设计稿 `.sline + .sline { box-shadow: inset … }`（同样是「背景之上再压一条线」）
+    /// 同序。反过来的话受阻行顶上那条线会被吃掉。
+    @ViewBuilder
+    private func lineFrame<Content: View>(
+        tone: SettingsLineTone,
+        divider: Bool,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        content()
+            .padding(.horizontal, SettingsMetrics.linePaddingH)
+            .padding(.vertical, SettingsMetrics.linePaddingV)
+            .frame(minHeight: SettingsMetrics.lineMinHeight)
+            // 底色加在**整行的盒子**上（含上面那圈内边距），与设计稿 `.sline--warn`
+            // 覆盖整个 `padding: 11px 12px` 盒一致 —— 加在内边距之前会缩成一小块色斑。
+            .background(tone == .warning ? SettingsMetrics.warnRowBackground : Color.clear)
+            .overlay(alignment: .top) {
+                if divider { Hairline() }
+            }
+    }
+
+    /// 一行设置项（设计稿 `.sline`）：左侧标签 + 可选说明，右侧控件。
+    ///
+    /// `divider` 只应给**卡片内第二行起**的行设为 `true` —— 设计稿的规则是
+    /// `.sline + .sline`，首行上方不该顶着一条横线（那会让卡片看起来被切成两半）。
+    ///
+    /// ## 它现在只服务**非开关**行
+    ///
+    /// 开关行走 ``toggleLine(label:description:isOn:isEnabled:divider:tone:)`` —— v3 把开关
+    /// 交还系统的 `Toggle` 之后，「整行可点」由 `Toggle` 的 label 天然承担，
+    /// 不再需要这里自绘一层按钮容器（那层 `SettingsLineButton` 已随本轮退役）。
+    ///
+    /// ⇒ 本方法**同时删掉了 `onTap` 与 `accessibilityValue` 两个参数**：
+    /// 前者的语义曾是「传 `nil` 就不包可点容器」（既有约定：控件不可用优先靠**结构**实现），
+    /// 现在没有可点容器了，那条约定由各控件自己承担（开关行走 `.disabled`）；
+    /// 后者是专门给自绘开关补「开 / 关」语义的，系统 `Toggle` 自带。
     ///
     /// `tone` 给**受阻行**用（设计稿 `.sline--warn`：琥珀浅底 + 琥珀标签）。
-    /// 只换颜色、**不动布局** —— 布局仍走下面同一个 `row`，理由见 ``SettingsLineTone``。
+    /// 只换颜色、**不动布局** —— 布局仍走同一个 ``lineFrame(tone:divider:content:)``，
+    /// 理由见 ``SettingsLineTone``。
     @ViewBuilder
     private func line<Control: View>(
         label: String,
@@ -1568,80 +1259,58 @@ struct SettingsSectionPane: View {
         descriptionAccent: Bool = false,
         divider: Bool = true,
         tone: SettingsLineTone = .normal,
-        onTap: (() -> Void)? = nil,
-        accessibilityValue: String? = nil,
         @ViewBuilder control: () -> Control
     ) -> some View {
-        let row = HStack(alignment: .center, spacing: DesignTokens.Spacing.md) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(label)
-                    .font(.system(size: DesignTokens.FontSize.body))
-                    // 受阻行的标签换成琥珀字（设计稿 `.sline--warn .sline__label`）。
-                    // ⚠️ **这一处不能省**：只加底色不改字色，浅琥珀底上仍是黑字 ——
-                    // 画面上「看着做了、其实没做」，正是本仓库那条红线
-                    // （样式没生效与本来没写逐字相同）。设计稿在 `.sline--warn` 的注释里
-                    // 特意点了同一件事，两边是同一个坑。
-                    .foregroundStyle(
-                        tone == .warning
-                            ? DesignTokens.Palette.warningText
-                            : DesignTokens.Palette.foreground
-                    )
-                    .designLineHeight(
-                        DesignTokens.LineHeight.base, fontSize: DesignTokens.FontSize.body
-                    )
-                    .fixedSize(horizontal: false, vertical: true)
-                if let progress {
-                    SettingsProgressLine(fraction: progress, accent: accentColor)
-                } else if let description {
-                    Text(description)
-                        .font(.system(size: DesignTokens.FontSize.footnote))
-                        .foregroundStyle(
-                            descriptionAccent
-                                ? accentColor.swiftUIColor
-                                : DesignTokens.Palette.mutedForeground
-                        )
-                        .designLineHeight(
-                            DesignTokens.LineHeight.base, fontSize: DesignTokens.FontSize.footnote
-                        )
-                        .fixedSize(horizontal: false, vertical: true)
-                }
+        lineFrame(tone: tone, divider: divider) {
+            HStack(alignment: .center, spacing: DesignTokens.Spacing.md) {
+                lineLabel(
+                    label: label, description: description, progress: progress,
+                    descriptionAccent: descriptionAccent, tone: tone)
+                control()
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-
-            control()
         }
-        .padding(.horizontal, SettingsMetrics.linePaddingH)
-        .padding(.vertical, SettingsMetrics.linePaddingV)
-        .frame(minHeight: SettingsMetrics.lineMinHeight)
-        // 底色加在**整行的盒子**上（含上面那圈内边距），与设计稿 `.sline--warn`
-        // 覆盖整个 `padding: 11px 12px` 盒一致 —— 加在内边距之前会缩成一小块色斑。
-        //
-        // ⚠️ **必须在分隔线之下**：下面的 `.overlay(alignment: .top) { Hairline() }`
-        // 画在这层背景之上，与设计稿的 `.sline + .sline { box-shadow: inset … }`
-        // （同样是「背景之上再压一条线」）同序。反过来的话受阻行顶上那条线会被吃掉。
-        .background(
-            tone == .warning ? SettingsMetrics.warnRowBackground : Color.clear
-        )
+    }
 
-        let content =
-            Group {
-                if let onTap {
-                    SettingsLineButton(action: onTap) { row }
-                } else {
-                    row
-                }
+    /// **开关行**：整行可点，开关本体交还系统。
+    ///
+    /// ## 为什么单独一个方法
+    ///
+    /// v3 把开关交还系统（`Toggle` + `.toggleStyle(.switch)`）：形状、玻璃、hover、
+    /// 焦点环、开关动画全部由系统给，我们只负责**颜色**（强调色经 `.tint` 注入）。
+    ///
+    /// ## 「整行可点」必须一起保住（HANDOFF §3.4 点名的最容易做丢的一条）
+    ///
+    /// 既有约定是：只把开关本体做成命中区时，用户瞄准稍有偏差就点空、什么都不发生
+    /// —— 主观感受就是「点了没反应」。所以整行都要能点。
+    ///
+    /// macOS 上 `Toggle` 的 **label 区域本来就是可点的** ⇒ 把整行做成它的 label 即可。
+    /// label 里那句 `frame(maxWidth: .infinity)`（在 ``lineLabel`` 里）是让它**撑满**
+    /// 到开关左侧 —— 否则只有文字那几像素可点，等于没做。
+    /// **不需要**再包一层自绘手势，那会退回自绘老路。
+    ///
+    /// ## 无障碍
+    ///
+    /// 系统的 `Toggle` 自带「开 / 关」的值语义，VoiceOver 会读它 ——
+    /// 这里因此**不再有** `accessibilityValue` 参数（那个参数是给自绘开关补的：
+    /// 它当时是 `accessibilityHidden`，不补就永远读不出当前是开还是关）。
+    @ViewBuilder
+    private func toggleLine(
+        label: String,
+        description: String? = nil,
+        isOn: Binding<Bool>,
+        isEnabled: Bool = true,
+        divider: Bool = true,
+        tone: SettingsLineTone = .normal
+    ) -> some View {
+        lineFrame(tone: tone, divider: divider) {
+            Toggle(isOn: isOn) {
+                lineLabel(label: label, description: description, tone: tone)
             }
-            .overlay(alignment: .top) {
-                if divider {
-                    Hairline()
-                }
-            }
-
-        // 空串会被 VoiceOver 读成「值：空」，所以只在真的有时才挂上去。
-        if let accessibilityValue {
-            content.accessibilityValue(accessibilityValue)
-        } else {
-            content
+            .toggleStyle(.switch)
+            .tint(accentColor.swiftUIColor)
+            // **不可用靠结构**（`.disabled`），不是「允许点一下再弹错」。
+            // 关掉之后整行（含 label）都不响应，这正是要的。
+            .disabled(!isEnabled)
         }
     }
 
@@ -1659,12 +1328,15 @@ struct SettingsSectionPane: View {
     /// 触发时机是刻意的：用户**刚打开**功能，此刻弹框有上下文；
     /// 放在启动时申请，会让从没用过这个功能的用户也挨一个框
     /// （见 ``EjectNotificationService/start(onOpenPanel:)`` 的理由）。
-    /// 具体怎么说是宿主的决定（弹窗状态在 ``SettingsView`` 上）——
+    /// 具体怎么说是宿主的决定（弹窗状态在 ``MainDetailView`` 上）——
     /// 这里只上抛「他打开了」这一个事实。
-    private func toggleTakeOverFinderEject() {
-        takeOverFinderEject.toggle()
+    ///
+    /// ⚠️ **收的是目标值，不是「拨一下」**：交给 `Toggle` 的 binding 驱动之后，
+    /// toggle 语义要靠「读现在的值再取反」，快速连点会写反（同 ``setAutoCheckUpdate(_:)``）。
+    private func setTakeOverFinderEject(_ newValue: Bool) {
+        takeOverFinderEject = newValue
         EjectHookService.syncOccupancyPolling()
-        guard takeOverFinderEject else { return }
+        guard newValue else { return }
         onTakeOverEnabled()
     }
 
@@ -1692,40 +1364,34 @@ struct SettingsSectionPane: View {
             : L10n.tr(.takeOverFinderEjectNeedsFDA)
     }
 
-    /// 接管那一行的点击动作；**不可用时为 `nil`**（整行不可点，也不进兜底敲钟那条路）。
+    /// **不可用**时的行尾：一个画成关的开关（禁用）+「打开系统设置」。
     ///
-    /// ⚠️ **判据只看可用性，不看这个开关自己的值**（2026-09-28）：
-    /// 判据一旦读了开关的值，就会变成「关一次再也开不开」的单向开关 ——
-    /// 自动更新那一行正是这么翻的车（§8.113.14，真机修过一次）。
-    private var takeOverTapAction: (() -> Void)? {
-        guard takeOverAvailability.isUsable else { return nil }
-        return toggleTakeOverFinderEject
-    }
-
-    /// 行尾控件：可用时是那个开关；不可用时是**同一个开关（画成关）+「打开系统设置」**。
-    ///
-    /// **为什么不可用时仍然把开关画出来**：它是「本应用有这么一个设置项」的锚点。
+    /// **为什么仍然把开关画出来**：它是「本应用有这么一个设置项」的锚点。
     /// 整行换成按钮会让用户以为功能被拿掉了，而他要的只是「去哪把它打开」。
+    /// 所以这一态**没有**走 ``toggleLine(label:description:isOn:isEnabled:divider:tone:)``
+    /// —— 那个方法里只有 `Toggle` 一个尾巴，塞不下第二个可点控件。
     ///
     /// **为什么旁边那个按钮是必要的**：说明文字说得出「缺什么」（完全磁盘访问），
     /// 说不出「在哪开」—— 而最后这一步正是绝大多数人会卡住的地方。
     /// `x-apple.systempreferences:` 是**唯一**能直接跳到该子面板的手段，
     /// 全仓只有 ``AppSettings/openFullDiskAccessSettings()`` 一处实现（主窗口横幅同源）。
-    @ViewBuilder
-    private var takeOverControl: some View {
-        if takeOverAvailability.isUsable {
-            SettingsSwitch(isOn: takeOverOn, accent: accentColor)
-        } else {
-            HStack(spacing: DesignTokens.Spacing.sm) {
-                SettingsSwitch(isOn: takeOverOn, accent: accentColor)
-                ActionButton(
-                    title: L10n.tr(.openSystemSettings),
-                    variant: .outline,
-                    size: .small,
-                    accent: accentColor,
-                    action: AppSettings.openFullDiskAccessSettings
-                )
-            }
+    ///
+    /// ⚠️ 开关 `labelsHidden()`：文字已经在左边那一列，`Toggle` 再把空 label 画一遍
+    /// 会在行首留一段莫名缩进。`.disabled(true)` 只作用于这个 `Toggle` 自己
+    /// —— 它与按钮是**兄弟**，不是嵌套。
+    private var takeOverUnavailableControl: some View {
+        HStack(spacing: DesignTokens.Spacing.sm) {
+            Toggle("", isOn: .constant(takeOverOn))
+                .toggleStyle(.switch)
+                .labelsHidden()
+                .disabled(true)
+            ActionButton(
+                title: L10n.tr(.openSystemSettings),
+                variant: .outline,
+                size: .small,
+                accent: accentColor,
+                action: AppSettings.openFullDiskAccessSettings
+            )
         }
     }
 
@@ -1739,8 +1405,10 @@ struct SettingsSectionPane: View {
     }
 
     /// 切换开机启动（失败原因上抛给宿主弹提示）。
-    private func toggleLaunchAtLogin() {
-        let newValue = !launchAtLogin
+    ///
+    /// ⚠️ **收的是目标值**（`Toggle` 的 binding 直给），不再是「拨一下」——
+    /// 见 ``setTakeOverFinderEject(_:)`` 与 ``setAutoCheckUpdate(_:)`` 的同一条理由。
+    private func setLaunchAtLogin(_ newValue: Bool) {
         do {
             try LaunchAtLoginManager.setEnabled(newValue)
             launchAtLogin = newValue
@@ -2230,73 +1898,5 @@ struct SettingsPopUp<Item: Hashable>: View {
         }
         .padding(DesignTokens.Spacing.xs)
         .frame(minWidth: 140)
-    }
-}
-
-// MARK: - 可点的设置行容器
-
-/// 把一整行设置项包成可点区域（用于开关行）。
-///
-/// 命中区从 38×22 的开关本身扩到整行（约 400 × 50），点哪都能切换。
-/// hover 底色用**负内边距向外扩**，让它比行本身宽一圈却**不改变布局** ——
-/// 若改成给行加正内边距，标签会从 12pt 缩进变成 20pt，与其它行错位。
-private struct SettingsLineButton<Content: View>: View {
-    let action: () -> Void
-    @ViewBuilder let content: () -> Content
-
-    @State private var hovering = false
-
-    var body: some View {
-        Button(action: action) {
-            content()
-                .background(
-                    RoundedRectangle(cornerRadius: DesignTokens.Radius.sm, style: .continuous)
-                        .fill(hovering ? DesignTokens.Palette.subtle : Color.clear)
-                        .padding(.horizontal, -6)
-                        .padding(.vertical, -4)
-                )
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .focusable(false)
-        .disableFocusRing()
-        .onHover { hovering = $0 }
-    }
-}
-
-/// 开关本体（纯视觉，不含点击行为 —— 点击由所在设置行承担）。
-///
-/// **滑块位移用 `offset(x:)`，不用 `ZStack(alignment:)`**：两者两端位置完全相同，
-/// 但 `offset` 是明确的几何位移属性，与轨道配色的 `.animation` 处于同一事务；
-/// `alignment` 改的是**布局对齐**，「变化能否插值」取决于 SwiftUI 内部实现，不是可依赖的契约。
-struct SettingsSwitch: View {
-    let isOn: Bool
-    let accent: AccentColor
-
-    private var trackWidth: CGFloat { DesignTokens.Size.switchTrackWidth }
-    private var trackHeight: CGFloat { DesignTokens.Size.switchTrackHeight }
-    private var knobDiameter: CGFloat { DesignTokens.Size.switchKnob }
-    private var knobInset: CGFloat { DesignTokens.Size.switchInset }
-
-    /// 滑块行程 = 轨道宽 − 两侧内缩 − 滑块直径。
-    /// 抽成计算属性而非字面量：改任一尺寸时行程自动跟着变，不会出现「滑块滑出轨道」。
-    private var knobTravel: CGFloat { trackWidth - knobInset * 2 - knobDiameter }
-
-    var body: some View {
-        ZStack(alignment: .leading) {
-            Capsule()
-                .fill(isOn ? accent.swiftUIColor : DesignTokens.Palette.subtleHighlight)
-                .frame(width: trackWidth, height: trackHeight)
-            Circle()
-                .fill(Color.white)
-                .frame(width: knobDiameter, height: knobDiameter)
-                .shadow(color: .black.opacity(0.22), radius: 1.5, y: 1)
-                .padding(.leading, knobInset)
-                .offset(x: isOn ? knobTravel : 0)
-        }
-        .frame(width: trackWidth, height: trackHeight)
-        // 动画挂在开关本身上：轨道配色与滑块位移在同一个事务里插值，不会一前一后。
-        .animation(DesignTokens.Motion.standard, value: isOn)
-        .accessibilityHidden(true)
     }
 }
