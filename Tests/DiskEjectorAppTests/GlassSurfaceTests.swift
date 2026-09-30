@@ -104,13 +104,9 @@ struct GlassSurfaceTests {
         #expect(hex255(dark.r) == 235 && hex255(dark.g) == 235 && hex255(dark.b) == 245)
     }
 
-    @Test("--bg-subtle-hi 明暗两套都是 .14")
-    func subtleHighlight两套同值() {
-        let light = rgba(DesignTokens.Palette.subtleHighlight, dark: false)
-        let dark = rgba(DesignTokens.Palette.subtleHighlight, dark: true)
-        #expect(abs(light.a - 0.14) < 0.005)
-        #expect(abs(dark.a - 0.14) < 0.005, "设计稿两套都是 .14；曾经深色写 .13")
-    }
+    // ⚠️ v3 退役：`--bg-subtle-hi 明暗两套都是 .14`（2026-09-30）——
+    // 它钉的 `Palette.subtleHighlight` 只被自绘按钮的 hover 底用，
+    // 交还系统样式后令牌已删（`DesignTokens` 里有退役说明）。
 
     @Test("--danger-text 深色是 #ff8078")
     func dangerText深色值() {

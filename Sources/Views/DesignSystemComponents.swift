@@ -415,18 +415,15 @@ enum ButtonSize {
     /// 高 26 / 内边距 10 / 字号 12 —— 行内、面板。
     case small
 
-    var height: CGFloat {
+    /// ⚠️ **v3 起高度归系统**（HANDOFF §3.5 实测表）：`.large` = 28 / `.regular` = 24 /
+    /// borderless = 16 —— 自绘的 `height`（34/30/26）与 `paddingH` 已随之退役，
+    /// **别再拿旧值做布局预算**。
+    var controlSize: ControlSize {
         switch self {
-        case .large: return DesignTokens.Size.buttonLargeHeight
-        case .medium: return DesignTokens.Size.buttonMediumHeight
-        case .small: return DesignTokens.Size.buttonSmallHeight
-        }
-    }
-    var paddingH: CGFloat {
-        switch self {
-        case .large: return DesignTokens.Spacing.lg
-        case .medium: return DesignTokens.Spacing.md
-        case .small: return 10
+        // 原自绘 34（弹窗主按钮）与 30（默认）都落系统的 `.large`（28）；
+        // 原 26（行内）落 `.regular`（24）。
+        case .large, .medium: return .large
+        case .small: return .regular
         }
     }
     var fontSize: CGFloat {
@@ -445,52 +442,39 @@ enum ButtonSize {
     }
 }
 
-/// 按钮的 **hover 底色**：一个比按钮盒子向内缩 ``DesignTokens/Size/hoverBackgroundInset``
-/// 的圆角矩形，圆角取同心值。
+/// ⚠️ **v3 退役：`HoverBackground`（2026-09-30）**
 ///
-/// ## 为什么单独一个类型
-///
-/// 三处 hover 底色（标题栏「刷新」、标题栏「设置」、设置面板「完成」）共用同一条规则，
-/// 而「底色到底多大」**必须能被量到**。内联在各自的 `.background(…)` 里的话，
-/// `hovering` 是 `@State private`、只能由真实鼠标移动触发（`.onHover` 需要应用在前台
-/// 且鼠标真的移过去，`NSApp.postEvent` 合成的 NSEvent 走不到窗口服务器），
-/// 离屏测试根本够不着 —— 这条规则就没人守。抽出来之后 ``HoverBackgroundTests``
-/// 可以直接把 `color` 设成纯色、量出它渲染后的真实包围盒。
-///
-/// ## 只负责「底色」这一层
-///
-/// ``ActionButton`` 的 1px 描边是**另一层**（`.overlay`），不能跟着缩 ——
-/// 设置面板的「完成」是 `.outline`，描边一起缩掉它就没有外框了。
-///
-/// ⚠️ **别把 `.padding` 挪到调用方的 `.frame` 之前**：那会把
-/// `foregroundStyle(hovering ? …)` 的作用范围一起改掉（图标颜色就不随 hover 变了）。
-struct HoverBackground: View {
-    /// 底色。
-    ///
-    /// 调用方直接传「当前该显示的颜色」：``ActionButton`` 传它自己的 `background`
-    /// （不 hover 时就是 `.clear`，等于不占视觉），``TitleBarIconButton`` 传
-    /// `hovering ? subtle : .clear`。
-    let color: Color
-    /// 向内缩多少点。
-    ///
-    /// 默认就是用户要的那一档；``ActionButton`` 里「底色一直存在」的变体传 **0**
-    /// —— 那些底色就是按钮本身的形，跟着缩会变成「hover 时按钮缩水」，是另一种效果。
-    var inset: CGFloat = DesignTokens.Size.hoverBackgroundInset
-
-    var body: some View {
-        RoundedRectangle(cornerRadius: DesignTokens.Radius.concentric(inset: inset), style: .continuous)
-            .fill(color)
-            .padding(inset)
-    }
-}
+/// 它过去负责「hover 底色比按钮盒子向内缩一圈」的几何（曾有 5 条离屏测试
+/// `HoverBackgroundTests` 钉着）。v3 交还系统样式后：
+/// - `ActionButton` 的 hover 反馈归系统（macOS 26 = Liquid Glass；14–15 = 系统高亮）；
+/// - 唯一的另一名用户 `TitleBarIconButton` 已随自绘头部五件套退役；
+/// ⇒ 消费者清零，按 HANDOFF §3.5「HoverBackground 若只服务按钮，可一并退役」删除。
+/// 若将来再有「自绘 hover 底」的需求，从 git 历史把它找回来 —— **先问是不是
+/// 又在画系统该给的东西**。
 
 /// 统一按钮。设计稿的 `.btn` 系列。
 ///
-/// **用 SwiftUI `Button` 而不是 `onTapGesture`**：SwiftUI Button 的点击响应在 macOS 上
+/// **v3（HANDOFF §3.5）：形状交还系统** —— `ButtonVariant` / `ButtonSize` 两个枚举
+/// **保留**（调用点不用全改），但语义从「自绘参数」变成了「**到系统样式的映射**」：
+///
+/// | 我们的变体 | 系统样式 | 颜色（唯一由我们给的） |
+/// |---|---|---|
+/// | `primary`（推出） | `.borderedProminent` | `.tint(品牌强调色)` |
+/// | `danger`（关闭并推出） | `.borderedProminent` | `.tint(.red)` |
+/// | `outline`（取消） | `.bordered` | 默认 |
+/// | `neutral`（稍后） | `.bordered` | 默认 |
+/// | `ghost`（了解更多） | `.borderless` | `.tint(品牌强调色)` |
+///
+/// ⇒ 形状 / 圆角 / 玻璃 / hover / 按下反馈 / **焦点环** / 禁用态视觉 **全部由系统给**：
+/// macOS 26 = 全胶囊 + Liquid Glass；14–15 = 传统圆角矩形。**同一份代码系统自己切。**
+///
+/// ⚠️ **高度也归系统**（`fittingSize` 实测，HANDOFF §3.5 表）：
+/// `.large` = 28（原自绘 34）/ `.regular` = 24（原 26）——
+/// **别再拿 ``ButtonSize/height`` 之外的自绘高度做布局预算**。
+///
+/// **仍然用 SwiftUI `Button` 而不是 `onTapGesture`**：SwiftUI Button 的点击响应在 macOS 上
 /// 经过 NSButton 路径，第一次点击立即可触发；`onTapGesture` 在首次渲染后存在约 1 个
 /// runloop tick 的注册延迟，会出现「第一次点击没反应」——这是本项目用户报告过的核心症状。
-///
-/// **去焦点环**：`.buttonStyle(.plain)` + `.focusable(false)` + `disableFocusRing()`。
 struct ActionButton: View {
     let title: String
     var systemImage: String?
@@ -508,10 +492,33 @@ struct ActionButton: View {
     var keyboardShortcut: KeyboardShortcut?
     let action: () -> Void
 
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var hovering = false
-
     var body: some View {
+        button
+            .controlSize(size.controlSize)
+            .keyboardShortcut(keyboardShortcut)
+            .disabled(!isEnabled)
+            .help(title)
+            .accessibilityLabel(accessibilityLabel ?? title)
+    }
+
+    /// 样式映射本体 —— **每个变体一条链**（三种系统 style 是不同类型，
+    /// `@ViewBuilder` 的 switch 是最直白的写法；别用 `AnyView` 包）。
+    @ViewBuilder
+    private var button: some View {
+        switch variant {
+        case .primary:
+            core.buttonStyle(.borderedProminent).tint(accent.swiftUIColor)
+        case .danger:
+            core.buttonStyle(.borderedProminent).tint(.red)
+        case .outline, .neutral:
+            core.buttonStyle(.bordered)
+        case .ghost:
+            core.buttonStyle(.borderless).tint(accent.swiftUIColor)
+        }
+    }
+
+    /// 内容层：图标 + 文字。**只给字号与字重**，底色 / 描边 / 圆角一概不画。
+    private var core: some View {
         Button(action: action) {
             HStack(spacing: 6) {
                 if let systemImage {
@@ -521,67 +528,7 @@ struct ActionButton: View {
                 Text(title)
                     .font(.system(size: size.fontSize, weight: .medium))
             }
-            .foregroundStyle(foreground)
-            .padding(.horizontal, size.paddingH)
-            .frame(height: size.height)
-            .background(HoverBackground(color: background, inset: hoverBackgroundInset))
-            .overlay(
-                RoundedRectangle(cornerRadius: DesignTokens.Radius.sm, style: .continuous)
-                    .strokeBorder(borderColor, lineWidth: 1)
-            )
-            .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
-        .keyboardShortcut(keyboardShortcut)
-        .focusable(false)
-        .disableFocusRing()
-        .onHover { hovering = $0 }
-        .animation(DesignTokens.Motion.animation(DesignTokens.Motion.fast, reduceMotion: reduceMotion), value: hovering)
-        .opacity(isEnabled ? 1 : 0.45)
-        .disabled(!isEnabled)
-        .help(title)
-        .accessibilityLabel(accessibilityLabel ?? title)
-        .accessibilityAddTraits(.isButton)
-    }
-
-    private var background: Color {
-        switch variant {
-        case .primary: return accent.swiftUIColor.opacity(hovering ? 0.86 : 1)
-        case .danger: return DesignTokens.Palette.error.opacity(hovering ? 0.86 : 1)
-        case .outline: return hovering ? DesignTokens.Palette.subtle : .clear
-        case .neutral: return hovering ? DesignTokens.Palette.subtleHighlight : DesignTokens.Palette.subtle
-        case .ghost: return hovering ? accent.swiftUIColor.opacity(0.10) : .clear
-        }
-    }
-
-    /// **底色**相对按钮盒子向内缩多少点（用户 2026-09-16：「hover 效果背景小一点」）。
-    ///
-    /// 只对「底色**悬浮才出现**」的变体生效（``ButtonVariant/outline``、``ButtonVariant/ghost``）：
-    /// 它们常态是 `.clear`，收小底色不会动到任何「常态可见的形」。
-    ///
-    /// ``ButtonVariant/primary`` / ``ButtonVariant/danger`` / ``ButtonVariant/neutral`` 的底色
-    /// **一直存在**，它就是按钮本身的形 —— 跟着缩会让按钮在 hover 时「缩水」一下。
-    /// 那是另一种效果（「按钮变小」），不是用户要的（「hover 的背景小一点」）。
-    ///
-    /// ⚠️ **内缩只加在 `.background` 的形状上**，`.overlay` 的 1px 描边必须留在盒子边缘 ——
-    /// 设置面板的「完成」就是 `.outline`，把描边一起缩掉它就没有外框了。
-    private var hoverBackgroundInset: CGFloat {
-        switch variant {
-        case .outline, .ghost: return DesignTokens.Size.hoverBackgroundInset
-        case .primary, .danger, .neutral: return 0
-        }
-    }
-
-    private var foreground: Color {
-        switch variant {
-        case .primary, .danger: return .white
-        case .outline, .neutral: return DesignTokens.Palette.foreground
-        case .ghost: return accent.swiftUIColor
-        }
-    }
-
-    private var borderColor: Color {
-        variant == .outline ? DesignTokens.Palette.borderStrong : .clear
     }
 }
 

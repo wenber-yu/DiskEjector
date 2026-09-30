@@ -48,16 +48,10 @@ enum DesignTokens {
         // 恒为 0（HANDOFF §3.7.1 与红线 R6）。
         // 自绘一个 12pt 只会在四角切出一个比窗口更小的圆、把窗口底露出来。
 
-        /// **底色内缩后**该用的同心圆角 —— 由内缩量求出。
-        ///
-        /// **为什么不能直接沿用 ``sm``（6）**：hover 底色是**内缩**后贴在按钮盒子里的。
-        /// 圆角不跟着缩的话，小一圈的底色在四角会比外框更「方」，
-        /// 描边与底色之间的缝在**角上比边上宽**，看上去像没对齐。
-        ///
-        /// 写成函数而不是常量，是因为**内缩量因变体而异**：
-        /// ``ActionButton`` 只在「底色悬浮才出现」的变体上内缩（``Size/hoverBackgroundInset``），
-        /// 其余变体不缩（0）—— 两者的圆角必须各自算，不能共用一个写死的数。
-        static func concentric(inset: CGFloat) -> CGFloat { max(0, sm - inset) }
+        // ⚠️ **v3 退役：`concentric(inset:)`（2026-09-30）**
+        // 「底色内缩后圆角跟着缩」的同心圆角函数，唯一消费者是已退役的
+        // `HoverBackground`（见 `Size` 里 `hoverBackgroundInset` 的退役说明）。
+        // hover 反馈交还系统后，这个函数没有调用方了 —— 一并删除。
     }
 
     // MARK: 间距（4pt 基准）
@@ -344,37 +338,13 @@ enum DesignTokens {
         // 判据也没丢：真机自检 ``WindowSelfCheck/checkTrafficLightBaseline`` 每次量三个灯的
         // 中心、仍然钉住 **26pt** —— 它读的是**渲染结果**，不是这几个常量。
 
-        /// **hover 底色相对按钮盒子向内缩多少点。**
-        ///
-        /// ## 这是**有意偏离设计稿**，别再照着设计稿「改回去」
-        ///
-        /// `ds.css` 写的是**整盒**变底色：`.iconbtn:hover { background: var(--bg-subtle) }`
-        /// （`.iconbtn` 是 28 × 28）、`.btn--outline:hover { background: var(--bg-subtle) }`。
-        /// 实现最初照抄了这个写法，用户 2026-09-16 明确要求
-        /// **「设置窗口的完成按钮以及主窗口的刷新、设置按钮的 hover 效果背景小一点」**，
-        /// 于是改成「底色比盒子小一圈」。**用户偏好优先于设计稿字面**，
-        /// 依据记在 `DESIGN-SPEC.md` §8.19。
-        ///
-        /// ## 收小前后的实测（真机截图，2x）
-        ///
-        /// | 按钮 | 盒子 | 改前底色 | 改后底色 |
-        /// |---|---|---|---|
-        /// | 标题栏刷新 / 设置 | 28 × 28 | 28 × 28（整盒） | **22 × 22** |
-        /// | 设置面板「完成」 | 44 × 25 | 44 × 25（整盒） | **38 × 19** |
-        ///
-        /// ## 只缩「底色」那一层
-        ///
-        /// ``ActionButton`` 的 `.background`（填色）与 `.overlay`（1px 描边）是**两层**。
-        /// 设置面板的「完成」是 `.outline` 变体，**描边必须留在盒子边缘**，
-        /// 只把填色内缩 —— 于是底色与描边之间留出一圈缝，这才是「底色小一点」的观感。
-        /// 把描边一起缩掉，按钮就没有外框了。
-        ///
-        /// ## 调大调小
-        ///
-        /// 改这一个数即可（圆角 ``Radius/hoverBackground`` 会自动跟上）。
-        /// 0 = 回到设计稿的整盒写法。真机对照图：
-        /// `.build/probe/make_hover_candidates.py` 生成 `hover-size-candidates.png`。
-        static let hoverBackgroundInset: CGFloat = 3
+        // ⚠️ **v3 退役：`hoverBackgroundInset`（2026-09-30）**
+        // 「hover 底色比按钮盒子内缩 3pt」是一次有意偏离设计稿的用户偏好
+        // （2026-09-16「hover 效果背景小一点」，依据 `DESIGN-SPEC.md` §8.19），
+        // 由 `HoverBackground` 实现。v3 交还系统样式后 hover 反馈归系统
+        // （macOS 26 = Liquid Glass；14–15 = 系统高亮），`HoverBackground`
+        // 与这个内缩量一起失去消费者 —— 删除。若再遇「系统 hover 不合意」，
+        // 先从 git 历史读当时的取舍，别凭空自绘。
 
         /// 磁盘行图标容器（设计稿 40 × 40，圆角 10）。
         static let diskIconContainer: CGFloat = 40
@@ -520,10 +490,12 @@ enum DesignTokens {
         /// 与磁盘行那个固定 34 的口径不同。
         static let settingsProgressLineHeight: CGFloat = 16
 
-        /// 按钮高度：sm 26（行内）/ md 30（弹窗）/ lg 34（主行动）。
+        /// 按钮高度（v3 起只剩这一档还有实现侧消费者：菜单磁盘行的布局预算）。
+        /// ⚠️ **sm 26 / md 30 / lg 34 三档里，md/lg 已随 `ActionButton` 交还系统样式退役**
+        /// （HANDOFF §3.5：系统给高 —— `.large` = 28 / `.regular` = 24），
+        /// 原 `buttonMediumHeight` / `buttonLargeHeight` 两个令牌一并删除。
+        /// **别再拿这里的 26 当 `ActionButton` 的高度预算** —— 它不再服务按钮。
         static let buttonSmallHeight: CGFloat = 26
-        static let buttonMediumHeight: CGFloat = 30
-        static let buttonLargeHeight: CGFloat = 34
 
         // 横幅**没有固定高度**：设计稿里未授权横幅 46 是被右侧 26pt 按钮撑出来的，
         // 授权成功横幅（无按钮）只有 37。曾经有一个 `bannerHeight = 46` 的
@@ -656,17 +628,8 @@ enum DesignTokens {
                 light: NSColor(srgbRed: 120 / 255, green: 120 / 255, blue: 128 / 255, alpha: 0.08),
                 dark: NSColor(white: 1, alpha: 0.08))
         }
-        /// 悬停加深（比 `subtle` 略重一档，用于按下态）。
-        ///
-        /// 设计稿 `--bg-subtle-hi`：浅色 `rgba(120,120,128,.14)`、深色 `rgba(255,255,255,.14)`
-        /// —— **两套都是 .14**。深色曾写 .13，与「两套同值」这句话自相矛盾。
-        /// 它是容量条空槽与开关轨道的底色，透明度差 0.01 单看无感，但会让人在下次核对时
-        /// 重新判断一次哪个才是对的。
-        static var subtleHighlight: Color {
-            adaptive(
-                light: NSColor(srgbRed: 120 / 255, green: 120 / 255, blue: 128 / 255, alpha: 0.14),
-                dark: NSColor(white: 1, alpha: 0.14))
-        }
+        // ⚠️ **v3 退役：`subtleHighlight`（2026-09-30）** —— 「悬停加深一档」
+        // 只被自绘按钮的 hover 底用（`--bg-subtle-hi`），交还系统样式后零消费者。
         /// 证据区、弹窗底栏。
         static var sunken: Color {
             adaptive(

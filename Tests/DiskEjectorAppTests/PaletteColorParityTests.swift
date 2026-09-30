@@ -117,9 +117,9 @@ struct PaletteColorParityTests {
         Pair(
             variable: "--bg-subtle", label: "悬停底 / 分段槽",
             token: { DesignTokens.Palette.subtle }, why: "设计稿 `--bg-subtle`"),
-        Pair(
-            variable: "--bg-subtle-hi", label: "按下态底",
-            token: { DesignTokens.Palette.subtleHighlight }, why: "设计稿 `--bg-subtle-hi`"),
+        // `--bg-subtle-hi` 那条 **v3 删除**（2026-09-30）：实现侧令牌 `subtleHighlight`
+        // 只被自绘按钮的 hover 底用，交还系统样式后零消费者、令牌已删
+        // （`DesignTokens` 里有退役说明）。
         Pair(
             variable: "--bg-sunken", label: "证据区 / 弹窗底栏",
             token: { DesignTokens.Palette.sunken }, why: "设计稿 `--bg-sunken`"),
@@ -218,14 +218,17 @@ struct PaletteColorParityTests {
             "设计稿**文档页**的画布底（`#e8ecf2` / `#16171b`）。产品窗口要么是毛玻璃（`--bg-glass`）、"
             + "要么是实体面（`--bg-base`），**没有「画布」这一层** ⇒ 实现侧不应有对应令牌",
         "--accent-hover":
-            "强调色的 hover 态。实现用 **`.opacity(0.86)` 近似**（`DesignSystemComponents.swift:549`），"
-            + "没有立 hover 令牌 —— 与设计稿的换色做法不同，**登记为已知差异**",
+            "强调色的 hover 态。v2 实现用 `.opacity(0.86)` 近似；v3（2026-09-30）按钮交还系统样式后"
+            + "hover 反馈归系统 —— 与设计稿的换色做法不同，**登记为已知差异**",
         "--danger-hover":
-            "危险按钮的 hover 态。同上：实现用 `.opacity(0.86)` 近似"
-            + "（`DesignSystemComponents.swift:550`），没有立令牌",
+            "危险按钮的 hover 态。同上：v2 用 `.opacity(0.86)` 近似；v3 起 hover 归系统",
         "--on-accent":
             "强调色 / 危险色**上面**的文字（`#ffffff`）。实现直接在视图里写 `.white`"
             + "（`DesignSystemComponents.swift:577`、`DiskRow.swift:880`），**等价但没有令牌**",
+        "--bg-subtle-hi":
+            "v3（2026-09-30）：实现侧令牌 `subtleHighlight` 只被自绘按钮的 hover 底用，"
+            + "交还系统样式后令牌已删（`DesignTokens` 里有退役说明）—— 设计稿侧的声明仍在（v2 冻结稿不改），"
+            + "故登记为设计稿独有",
     ]
 
     /// `--accent` 族由 ``强调色族的基色明暗不分这件事必须钉住()`` 单独管，不进上面两张表。

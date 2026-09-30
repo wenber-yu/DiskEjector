@@ -8,7 +8,7 @@ import Testing
 ///
 /// ## 这不是「测试写错了」，是产品缺陷
 ///
-/// 引导面板设计稿总高 503.3（中文实测），英文下实测 **+56.7pt**。
+/// 引导面板设计稿总高 503.3；v3 起中文实测 498.45（按钮组交还系统样式变矮），英文下实测 **+56.7pt**。
 /// 多出来的部分会被折叠线藏到滚动区外 —— 与「关于」分组曾整个看不见是同一个后果。
 ///
 /// ## 这些测试为什么要「断言缺陷存在」
@@ -49,7 +49,8 @@ struct LanguageLayoutGapTests {
 
     @Test func 英文下引导面板更高_已知缺陷() {
         let width = DesignTokens.Size.onboardingPanelWidth
-        // 设计稿总高 503.3（中文实测）。这里只比较中英差异，不重复断言绝对值。
+        // 设计稿总高 503.3；v3 按钮交还系统样式后中文实测 **498.45**（按钮组 30→28，见
+        // OnboardingLayoutTests.面板总高与设计稿相差不超过4）。这里只比较中英差异，不重复断言绝对值。
         let zh = TestLanguage.with(TestLanguage.design) {
             renderedSize(
                 OnboardingView(accent: .default, onOpenSettings: {}, onLater: {}), width: width
@@ -64,8 +65,8 @@ struct LanguageLayoutGapTests {
 
         #expect(en > zh, "英文文案更长，面板只会更高；若不然说明英文文案被改短了，请复核设计稿")
         #expect(
-            abs(zh - 503.3) <= 4,
-            "中文下应仍是设计稿的 503.3（实际 \(zh)）—— 这属于 OnboardingLayoutTests 的管辖"
+            abs(zh - 498.45) <= 4,
+            "中文下应仍是 v3 实测基准的 498.45（实际 \(zh)）—— 这属于 OnboardingLayoutTests 的管辖"
         )
     }
 }

@@ -695,8 +695,11 @@ struct EjectingButton: View {
                 .font(.system(size: size.fontSize, weight: .medium))
         }
         .foregroundStyle(DesignTokens.Palette.mutedForeground)
-        .padding(.horizontal, size.paddingH)
-        .frame(height: size.height)
+        .padding(.horizontal, 10)
+        // v3：按钮高度归系统（`.controlSize(.regular)` = 24，HANDOFF §3.5 实测）。
+        // 这里的 24 不是自绘预算，是**对齐值** —— 它就地在「推出」按钮的位置上
+        // 换内容，高度必须与系统按钮一致，切换瞬间才不会塌陷/跳动。
+        .frame(height: 24)
         .overlay(
             RoundedRectangle(cornerRadius: DesignTokens.Radius.sm, style: .continuous)
                 .strokeBorder(DesignTokens.Palette.borderStrong, lineWidth: 1)

@@ -395,11 +395,9 @@ struct DesignSizeParityTests {
             actual: { DesignTokens.Size.systemTrafficLightCenterFromTop },
             label: "系统交通灯纵向位置",
             why: "**系统实测值**（标准 28pt 标题栏那套），不是设计稿给的数"),
-        Pair(
-            key: "–", constant: "hoverBackgroundInset", locator: nil,
-            actual: { DesignTokens.Size.hoverBackgroundInset },
-            label: "悬停背景内缩",
-            why: "3：设计稿没有对应声明（实现侧的悬停盒内缩）"),
+        // 1 条，**v3 删除**（令牌一起删的）：`hoverBackgroundInset`（悬停背景内缩 3pt）——
+        // v3 交还系统样式后 hover 反馈归系统，那个内缩量没有对象了。
+        // 理由见 `DesignTokens` 里对应位置的说明。
         Pair(
             key: "–", constant: "diskRowBusyHeight", locator: nil,
             actual: { DesignTokens.Size.diskRowBusyHeight },

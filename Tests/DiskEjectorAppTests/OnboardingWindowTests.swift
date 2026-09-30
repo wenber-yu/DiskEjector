@@ -88,7 +88,9 @@ struct OnboardingWindowTests {
 
     // MARK: - 尺寸
 
-    /// 窗口高 ≈ 设计稿 503.3（口径与 `OnboardingLayoutTests.面板总高与设计稿相差不超过4` 一致）。
+    /// 窗口高 ≈ **498.45**（v3 起的中文实测；口径与
+    /// `OnboardingLayoutTests.面板总高与设计稿相差不超过4` 一致 —— 按钮组交还系统样式后
+    /// 由 503.3 降下来的，别「改回去」）。
     ///
     /// ⚠️ **这条在本文件里抓不到安全区那个缺陷**（撤掉修复跑一遍照样绿，原因见文件头）。
     /// 它有牙的地方是**真机自检** `--preview-onboarding-keys`（那里窗口真的上屏，量到 532）。
@@ -96,8 +98,8 @@ struct OnboardingWindowTests {
     @Test func 窗口高与设计稿相差不超过4() {
         let (window, _) = makePanel()
         #expect(
-            abs(window.frame.height - 503.3) <= 4,
-            "窗口高 \(window.frame.height)，设计稿 503.3 —— 差得远通常意味着标题栏安全区把窗口撑高了")
+            abs(window.frame.height - 498.45) <= 4,
+            "窗口高 \(window.frame.height)，基准 498.45 —— 差得远通常意味着标题栏安全区把窗口撑高了")
     }
 
     @Test func 窗口宽为设计稿的380() {
