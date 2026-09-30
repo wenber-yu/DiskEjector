@@ -109,7 +109,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// 上一次观测的偏好值，用于判断 UserDefaults 变更后是否需要真正响应。
     private var lastShowDockIcon: Bool?
-    private var lastAccentColorRaw: String?
     private var lastVisualStyleRaw: String?
 
     /// popover 显示状态监听，关闭时按钮恢复未选中态。
@@ -596,7 +595,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         lastShowDockIcon = UserDefaults.standard.bool(forKey: AppSettings.Key.showDockIcon)
-        lastAccentColorRaw = UserDefaults.standard.string(forKey: AppSettings.Key.accentColor)
         lastVisualStyleRaw = UserDefaults.standard.string(forKey: AppSettings.Key.visualStyle)
         updateDockIconVisibility()
 
@@ -1815,12 +1813,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             updateDockIconVisibility()
         }
 
-        let accentRaw = UserDefaults.standard.string(forKey: AppSettings.Key.accentColor)
-        if accentRaw != lastAccentColorRaw {
-            lastAccentColorRaw = accentRaw
-            // 强调色变化时，让状态栏按钮 tint 与菜单栏文本色立即跟随
-            applyAccentToStatusItem()
-        }
+        // ⚠️ **强调色变化刻意不响应到菜单栏图标**（2026-10-01 用户报告后移除）：
+        // 曾经在强调色变化时给状态栏按钮设 `contentTintColor`（tint 成强调色），
+        // 但 template 图标一旦染色就被**锁定渲染色、退出系统自适应**——macOS 会按
+        // **壁纸在菜单栏区域的亮度**把未染色的 template 图标自动渲染成黑/白，
+        // 染色后这个行为消失：别的图标都随壁纸反色，本 app 图标永远停在强调色
+        // （浅壁纸上对比度差时看起来就是「颜色错了」）。启动时本就不染色，
+        // 所以症状是「有时对有时错」——改过强调色的那个会话内才错。
+        // 内容区（磁盘行/容量条/按钮）走 `@AppStorage` 自动响应，不需要这里接线。
 
         let visualRaw = UserDefaults.standard.string(forKey: AppSettings.Key.visualStyle)
         if visualRaw != lastVisualStyleRaw {
@@ -1888,12 +1888,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.activate(ignoringOtherApps: true)
         NSRunningApplication(processIdentifier: ProcessInfo.processInfo.processIdentifier)?
             .activate(options: [.activateAllWindows])
-    }
-
-    private func applyAccentToStatusItem() {
-        guard let button = statusItem?.button else { return }
-        let accent = AppSettings.accentColor.appKitColor
-        button.contentTintColor = accent
     }
 
     // MARK: - 菜单动作
