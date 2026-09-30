@@ -270,4 +270,56 @@ struct MainWindowTests {
         WindowSelfCheck.checkRedLightInkShape(ink: nil, label: "T", mismatches: &none)
         #expect(none.isEmpty, "ink 为 nil 时不该报错（原因由量测那半写），实得：\(none)")
     }
+
+    // MARK: - 刷新转圈的项替换（2026-09-30 崩溃 07A1EC0D 的回归测试）
+
+    /// 刷新转圈 = 工具栏上「系统按钮项 ↔ 进度圈项」**整项移除/插入**。
+    ///
+    /// 第一版实现是原地换 `item.view`，真机**必崩**：macOS 26 的
+    /// `NSToolbarItemViewer configureForLayoutInDisplayMode:` 在布局期
+    /// `-[__NSArrayM insertObject:atIndex:]` 抛 nil 插入异常（用户点刷新即闪退）。
+    /// 本测试直接驱动替换实体（``MainWindowContentController/performSpinnerSwap(_:)``，
+    /// 异步包装层泵不动——见该方法的注释），**每步强制布局**——旧实现在第一个
+    /// `layoutIfNeeded` 就会以同样的 ObjC 异常炸掉测试进程，所以这条测试对
+    /// 那一版是**必红**的（变异验证：换回 `item.view = …` 即死）。
+    @Test func 刷新转圈按整项替换且布局不炸() {
+        let window = makeWindow()
+        guard let controller = content(of: window), let toolbar = window.toolbar else {
+            Issue.record("主窗口必须有 MainWindowContentController 与 toolbar")
+            return
+        }
+        // 初始项序：[flexibleSpace, refresh]。
+        #expect(
+            toolbar.items.last?.itemIdentifier == MainWindowContentController.refreshItemIdentifier,
+            "初始尾端应是刷新按钮，实得 \(toolbar.items.map(\.itemIdentifier.rawValue))")
+
+        // 完整走两轮「换出 → 换回」（对应用户连点两次刷新），每步都强制布局。
+        for round in 1...2 {
+            controller.performSpinnerSwap(true)
+            window.layoutIfNeeded()  // ⚠️ 崩溃发生在布局期——这一步就是把雷踩实
+            var ids = toolbar.items.map(\.itemIdentifier)
+            #expect(
+                ids.contains(MainWindowContentController.spinnerItemIdentifier),
+                "第 \(round) 轮换出后必须有进度圈项，实得 \(ids.map(\.rawValue))")
+            #expect(
+                !ids.contains(MainWindowContentController.refreshItemIdentifier),
+                "第 \(round) 轮换出后按钮项必须移除（禁重复点击靠它），实得 \(ids.map(\.rawValue))")
+            #expect(
+                toolbar.items.first?.itemIdentifier == .flexibleSpace,
+                "第 \(round) 轮换出后 flexibleSpace 必须还在头部，实得 \(ids.map(\.rawValue))")
+
+            controller.performSpinnerSwap(false)
+            window.layoutIfNeeded()
+            ids = toolbar.items.map(\.itemIdentifier)
+            #expect(
+                ids.last == MainWindowContentController.refreshItemIdentifier,
+                "第 \(round) 轮换回后按钮必须在尾端原位，实得 \(ids.map(\.rawValue))")
+            #expect(
+                !ids.contains(MainWindowContentController.spinnerItemIdentifier),
+                "第 \(round) 轮换回后圈项必须移除，实得 \(ids.map(\.rawValue))")
+            #expect(
+                toolbar.items.first?.itemIdentifier == .flexibleSpace,
+                "第 \(round) 轮换回后 flexibleSpace 必须还在头部，实得 \(ids.map(\.rawValue))")
+        }
+    }
 }

@@ -202,8 +202,8 @@ final class MainWindowContentController: NSSplitViewController {
     /// 两处若各写一份实现，迟早出现「一个刷了列表、另一个连占用结论一起刷」这种分叉。
     ///
     /// 刷新期间按钮**原地转圈**并天然禁点（``setRefreshSpinning(_:)`` 把系统按钮
-    /// 整个换成进度圈 —— 点不到就不存在「刷新中再点一次」的分支），
-    /// 跑完换回系统按钮（v3 按钮形态归系统，见 ``makeRefreshItem()``）。
+    /// 整**项**换成进度圈项 —— 按钮被移出工具栏，点不到就不存在「刷新中再点一次」的分支），
+    /// 跑完换回（v3 按钮形态归系统，见 ``makeRefreshItem()``）。
     @objc func refreshDisks() {
         guard !isRefreshInFlight else { return }
         isRefreshInFlight = true
@@ -226,36 +226,65 @@ final class MainWindowContentController: NSSplitViewController {
 
     /// 把工具栏上的刷新项在「系统按钮 ↔ 进度圈」之间切换。
     ///
-    /// ## 为什么换 `item.view` 而不是换 `item.image`
+    /// ## 为什么是「整项移除/插入」，**绝不能原地换 `item.view`**
     ///
-    /// `NSImage` 换成圈只是**一张静止的图**；真正的转圈要动画，`NSToolbarItem`
-    /// 自身的 image 路径没有动画位。而 `view = NSProgressIndicator` 是 AppKit
-    /// 标准做法：`startAnimation` 后系统自己转，不需要我们逐帧驱动。
+    /// 第一版在这里对 `isBordered` 的系统按钮项做 `item.view = NSProgressIndicator`
+    /// （再 `view = nil` 换回），真机**稳定闪退**：macOS 26 的
+    /// `-[NSToolbarItemViewer configureForLayoutInDisplayMode:andSizeMode:]` 内部
+    /// `-[__NSArrayM insertObject:atIndex:]` 抛 nil 插入异常（2026-09-30 崩溃报告
+    /// 07A1EC0D 实锤）——带边框项的 viewer 是按「内部系统按钮」布的局，中途塞自定义
+    /// view 会让它的子项数组进入不一致状态，下一次布局必炸。
     ///
-    /// `view = nil` 则回到 ``makeRefreshItem()`` 的系统按钮形态（image + isBordered）。
-    private func setRefreshSpinning(_ spinning: Bool) {
-        guard
-            let item = view.window?.toolbar?.items
-                .first(where: { $0.itemIdentifier == Self.refreshItemIdentifier })
-        else { return }
-        if spinning {
-            let spinner = NSProgressIndicator()
-            spinner.isIndeterminate = true
-            spinner.controlSize = .small
-            // 工具栏按钮那一档的视觉尺寸（`.regular` 按钮 28pt 高，圈取 22 居中）。
-            spinner.translatesAutoresizingMaskIntoConstraints = false
-            NSLayoutConstraint.activate([
-                spinner.widthAnchor.constraint(equalToConstant: 22),
-                spinner.heightAnchor.constraint(equalToConstant: 22),
-            ])
-            spinner.setAccessibilityLabel(L10n.tr(.refreshDisks))
-            item.view = spinner
-            spinner.startAnimation(nil)
-        } else {
-            item.view?.removeFromSuperview()
-            item.view = nil
+    /// 改用 AppKit 动态工具栏的**正路**：`removeItem` / `insertItem` 整项替换——
+    /// 与工具栏自定制拖拽走同一条内部路径，viewer 生命周期是完整重建，不碰
+    /// 系统按钮项的任何属性。进度圈项（``makeSpinnerItem()``）的尺寸由约束量
+    /// （`minSize`/`maxSize` 已废弃）。
+    ///
+    /// 移除/插入**派发到下一个 runloop tick**：本方法可能正处在刷新按钮自己的
+    /// action 调用栈里，同步动工具栏的项容易踩「正在处理事件时改事件源」的坑。
+    /// 替换实体在 ``performSpinnerSwap(_:)``（internal，单测直接驱动——
+    /// swift-testing 的 `@MainActor` 用例里嵌套泵 runloop 带不动 dispatch 块）。
+    ///
+    /// ⚠️ 实体里用 **`removeItem(at:)` 按索引**增删：`removeItem(identifier:)` 是
+    /// macOS 15.0 才有的新名字（部署目标 14 用不了），而按索引还能
+    /// **原位替换**——进度圈出现在刷新按钮原来的位置（flexibleSpace 之后），
+    /// 而不是被挪到别处。
+    func setRefreshSpinning(_ spinning: Bool) {
+        DispatchQueue.main.async { [weak self] in
+            self?.performSpinnerSwap(spinning)
         }
     }
+
+    /// ``setRefreshSpinning(_:)`` 的同步实体。**单独拆出来是因为单测要在
+    /// `@MainActor` 用例里确定性地驱动它**——测试体自身就是主执行器上的一个作业，
+    /// 嵌套 `RunLoop.run` 泵不动 `DispatchQueue.main.async` 的块（2026-09-30 实测）。
+    func performSpinnerSwap(_ spinning: Bool) {
+        guard let toolbar = view.window?.toolbar else { return }
+        let outgoing = spinning ? Self.refreshItemIdentifier : Self.spinnerItemIdentifier
+        let incoming = spinning ? Self.spinnerItemIdentifier : Self.refreshItemIdentifier
+        guard
+            let index = toolbar.items.firstIndex(where: { $0.itemIdentifier == outgoing }),
+            !toolbar.items.contains(where: { $0.itemIdentifier == incoming })
+        else { return }
+        toolbar.removeItem(at: index)
+        toolbar.insertItem(withItemIdentifier: incoming, at: index)
+        if spinning {
+            spinnerIndicator.startAnimation(nil)
+        } else {
+            spinnerIndicator.stopAnimation(nil)
+        }
+    }
+
+    /// 进度圈本体。**全局只有一份**：`NSToolbarDelegate` 可能被多次询问同一标识的项，
+    /// 每次新建会让动画状态各奔东西。
+    private lazy var spinnerIndicator: NSProgressIndicator = {
+        let spinner = NSProgressIndicator()
+        spinner.isIndeterminate = true
+        spinner.controlSize = .small
+        spinner.translatesAutoresizingMaskIntoConstraints = false
+        spinner.setAccessibilityLabel(L10n.tr(.refreshDisks))
+        return spinner
+    }()
 
     // MARK: - 工具栏（那条 52pt 的安全带）
 
@@ -269,6 +298,9 @@ final class MainWindowContentController: NSSplitViewController {
 
     /// 刷新项标识。
     static let refreshItemIdentifier = NSToolbarItem.Identifier("DiskEjector.Refresh")
+
+    /// 刷新**进行中**顶上来占位的进度圈项标识（``setRefreshSpinning(_:)`` 用）。
+    static let spinnerItemIdentifier = NSToolbarItem.Identifier("DiskEjector.Refresh.Spinner")
 
     /// 造这条工具栏。**项序 `[.flexibleSpace, refresh]`** —— 刷新坐**尾端**。
     ///
@@ -336,7 +368,7 @@ extension MainWindowContentController: NSToolbarDelegate {
     }
 
     func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        [.flexibleSpace, Self.refreshItemIdentifier]
+        [.flexibleSpace, Self.refreshItemIdentifier, Self.spinnerItemIdentifier]
     }
 
     func toolbar(
@@ -344,7 +376,41 @@ extension MainWindowContentController: NSToolbarDelegate {
         itemForItemIdentifier itemIdentifier: NSToolbarItem.Identifier,
         willBeInsertedIntoToolbar flag: Bool
     ) -> NSToolbarItem? {
-        guard itemIdentifier == Self.refreshItemIdentifier else { return nil }
-        return makeRefreshItem()
+        switch itemIdentifier {
+        case Self.refreshItemIdentifier:
+            return makeRefreshItem()
+        case Self.spinnerItemIdentifier:
+            return makeSpinnerItem()
+        default:
+            return nil
+        }
+    }
+
+    /// 刷新**进行中**顶上来的进度圈项。**只通过整项移除/插入出现或消失**
+    /// （``setRefreshSpinning(_:)``），它自己的属性一经创建永不改动——
+    /// 这正是第一版原地换 `item.view` 闪退的反面。
+    ///
+    /// ⚠️ `minSize`/`maxSize` 已废弃（macOS 12 起）：自定义 view 项的尺寸改由
+    /// **约束让系统自动量**——28pt 方盒（与旁边 `.regular` 系统按钮同高），
+    /// 圈 16pt（`.small` 固有）居中。废弃前的年代里缺这两个值会在
+    /// `configureForLayoutInDisplayMode` 里布局不一致，约束化之后由系统接管。
+    private func makeSpinnerItem() -> NSToolbarItem {
+        let box = NSView()
+        box.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            box.widthAnchor.constraint(equalToConstant: 28),
+            box.heightAnchor.constraint(equalToConstant: 28),
+        ])
+        let spinner = spinnerIndicator
+        box.addSubview(spinner)
+        NSLayoutConstraint.activate([
+            spinner.centerXAnchor.constraint(equalTo: box.centerXAnchor),
+            spinner.centerYAnchor.constraint(equalTo: box.centerYAnchor),
+        ])
+        let item = NSToolbarItem(itemIdentifier: Self.spinnerItemIdentifier)
+        item.view = box
+        item.label = L10n.tr(.refreshDisks)
+        item.autovalidates = false
+        return item
     }
 }
