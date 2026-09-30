@@ -396,14 +396,20 @@ extension MainWindowContentController: NSToolbarDelegate {
         }
     }
 
-    /// 转圈项的承载盒。**自带 `intrinsicContentSize`（28×28）**：viewer 对
+    /// 转圈项的承载盒。**自带 `intrinsicContentSize`（32×32）**：viewer 对
     /// insertItem 进来的自定义 view 项做 sizing 时读固有尺寸——普通 `NSView`
-    /// 是 noIntrinsicMetric（真机量到 0×18），盒 28×28 与 Auto Layout 约束
+    /// 是 noIntrinsicMetric（真机量到 0×18），盒 32×32 与 Auto Layout 约束
     /// ``makeSpinnerItem()`` 同值（两处同步改；不进 `DesignTokens.Size`：
     /// 实现细节，不是设计稿几何契约）。
+    ///
+    /// ⚠️ **32 不是随便取的**（2026-09-30 真机二分实验，DE_SLOW_REFRESH=1 + 截图）：
+    /// macOS 26 viewer 给该项画的 Liquid Glass **背景宽度跟随盒尺寸**，盒 28 时
+    /// 背景被画成约 12×25 的**竖椭圆**（用户报的「按钮变竖椭圆」真根因——AX 布局
+    /// 读数全正常，只有渲染的背景形状塌了）；放大到 44、32 实测都是**正圆**，
+    /// 取 32 贴近旁边 `.regular` 按钮的大小。改小前必须真机截图复核。
     private final class SpinnerBox: NSView {
         override var intrinsicContentSize: NSSize {
-            NSSize(width: 28, height: 28)
+            NSSize(width: 32, height: 32)
         }
     }
 
@@ -413,14 +419,15 @@ extension MainWindowContentController: NSToolbarDelegate {
     ///
     /// ⚠️ 圈的 **16×16 宽高约束必须显式写**（真机实测，DE_SLOW_REFRESH=1 + AX 量
     /// frame）：只给 center 时，`.small` 固有尺寸在这条 insertItem 路径上不被
-    /// Auto Layout 采纳，圈被量成 **0×18**——这是用户截图里「按钮变成竖椭圆」的
-    /// 一半根因（另一半是漏设 ``spinnerIndicator`` 的 `.spinning`，见该属性注释）。
+    /// Auto Layout 采纳，圈被量成 **0×18**（圈本身不可见；「竖椭圆」主根因是
+    /// 盒尺寸 → 玻璃背景，见 ``SpinnerBox`` 注释；另一处是漏设
+    /// ``spinnerIndicator`` 的 `.spinning`，见该属性注释）。
     private func makeSpinnerItem() -> NSToolbarItem {
         let box = SpinnerBox()
         box.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
-            box.widthAnchor.constraint(equalToConstant: 28),
-            box.heightAnchor.constraint(equalToConstant: 28),
+            box.widthAnchor.constraint(equalToConstant: 32),
+            box.heightAnchor.constraint(equalToConstant: 32),
         ])
         let spinner = spinnerIndicator
         box.addSubview(spinner)

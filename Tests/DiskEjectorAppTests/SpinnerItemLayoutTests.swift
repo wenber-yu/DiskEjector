@@ -16,7 +16,7 @@ import Testing
 ///
 /// 1. `style == .spinning`（漏设 = bar 横条；变异：删该行必红）
 /// 2. 圈 16×16 宽高约束显式存在（漏设 = 0×18 竖线；变异：删约束必红）
-/// 3. 盒固有尺寸 28×28（`SpinnerBox.intrinsicContentSize`，与约束同值）
+/// 3. 盒固有尺寸 32×32（`SpinnerBox.intrinsicContentSize`，与约束同值）
 @MainActor
 struct SpinnerItemLayoutTests {
 
@@ -45,10 +45,10 @@ struct SpinnerItemLayoutTests {
             return
         }
 
-        // ③ 盒固有尺寸 28×28（viewer sizing 的取值来源）。
+        // ③ 盒固有尺寸 32×32（viewer sizing 的取值来源）。
         #expect(
-            box.intrinsicContentSize == NSSize(width: 28, height: 28),
-            "盒固有尺寸必须是 28×28，实得 \(box.intrinsicContentSize)")
+            box.intrinsicContentSize == NSSize(width: 32, height: 32),
+            "盒固有尺寸必须是 32×32，实得 \(box.intrinsicContentSize)")
 
         guard let circle = box.subviews.compactMap({ $0 as? NSProgressIndicator }).first else {
             Issue.record("转圈项的盒里必须有一个 NSProgressIndicator")
