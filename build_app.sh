@@ -48,6 +48,11 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # 仓库根 == SPM 包根（Package.swift 位于仓库根目录，与 FCPX2AAF / ProxyGenerator 布局一致）
 PACKAGE_DIR="$SCRIPT_DIR"
 
+# 修正 LC_BUILD_VERSION 的 sdk 戳：XCBuild 把它错钉成部署目标，macOS 26 按
+# 「链接 SDK」门控新外观（Liquid Glass 浮岛等），不修则发版产物整体退回旧形态。
+# 详见 Scripts/lib/macos_link_version_args.sh 头部说明。
+source "$SCRIPT_DIR/Scripts/lib/macos_link_version_args.sh" "$PACKAGE_DIR"
+
 APP_NAME="DiskEjector"
 # 面向用户的中文显示名：Finder / Dock / 菜单栏 App 菜单 / 关于面板 / 系统设置里
 # 「完全磁盘访问」授权列表展示的都是它。与 APP_NAME 分开的原因——APP_NAME 同时是
@@ -340,6 +345,7 @@ fi
 # 不被上述 broker 拦截），其余步骤一律使用绝对路径（$APP_BUNDLE 等），彻底规避该问题。
 echo "▶ [1/5] Release 构建 ..."
 env -C "$PACKAGE_DIR" swift build -c release --product "$EXECUTABLE" \
+    ${MACOS_LINK_VERSION_ARGS[@]+"${MACOS_LINK_VERSION_ARGS[@]}"} \
     ${SWIFT_BUILD_FLAGS[@]+"${SWIFT_BUILD_FLAGS[@]}"}
 BIN_PATH="$(env -C "$PACKAGE_DIR" swift build -c release --show-bin-path \
     ${SWIFT_BUILD_FLAGS[@]+"${SWIFT_BUILD_FLAGS[@]}"})/$EXECUTABLE"

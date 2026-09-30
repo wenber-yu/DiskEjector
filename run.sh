@@ -65,4 +65,10 @@ echo "▶ 启动 DiskEjector ..."
 # 把改动收在开发入口这一个文件里，发版路径的二进制保持原样（它自己用
 # `install_name_tool -add_rpath @executable_path/../Frameworks` 补，且会回读验证）。
 # exec 让程序直接接管当前终端进程，Ctrl+C 即可退出
-exec swift run -Xlinker -rpath -Xlinker '@loader_path' DiskEjectorApp "$@"
+#
+# `${MACOS_LINK_VERSION_ARGS[@]}`：修正 XCBuild 把 LC_BUILD_VERSION 的 sdk 字段
+# 错钉成部署目标的问题（macOS 26 按「链接 SDK」门控新外观，sdk=14.0 会让
+# 侧栏浮岛 / 玻璃 / hover 整体退回旧形态）——详见该脚本头部说明。
+source "$SCRIPT_DIR/Scripts/lib/macos_link_version_args.sh" "$PACKAGE_DIR"
+exec swift run ${MACOS_LINK_VERSION_ARGS[@]+"${MACOS_LINK_VERSION_ARGS[@]}"} \
+    -Xlinker -rpath -Xlinker '@loader_path' DiskEjectorApp "$@"

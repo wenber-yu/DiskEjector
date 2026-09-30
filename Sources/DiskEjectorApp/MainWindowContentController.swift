@@ -200,13 +200,60 @@ final class MainWindowContentController: NSSplitViewController {
     /// **与 ⌘R 走的是同一条**（``AppDelegate/refreshDisks()`` 转发到这里）：
     /// 「刷新」在界面上只出现两次（工具栏 ✓ 与空状态页那个按钮），
     /// 两处若各写一份实现，迟早出现「一个刷了列表、另一个连占用结论一起刷」这种分叉。
+    ///
+    /// 刷新期间按钮**原地转圈**并天然禁点（``setRefreshSpinning(_:)`` 把系统按钮
+    /// 整个换成进度圈 —— 点不到就不存在「刷新中再点一次」的分支），
+    /// 跑完换回系统按钮（v3 按钮形态归系统，见 ``makeRefreshItem()``）。
     @objc func refreshDisks() {
+        guard !isRefreshInFlight else { return }
+        isRefreshInFlight = true
+        setRefreshSpinning(true)
         Task { @MainActor in
             await store.refresh()
             // 显式再刷一次占用：`DiskListStore.refresh()` 会把新数组赋给 `disks`，
             // 正常情况下 ``OccupancyStore`` 的订阅会跟上；这里 await 一次是为了让
             // 「点刷新 → 界面已是新结论」这条链路在**同一帧**收口。
             await occupancyStore.refresh(disks: store.disks)
+            isRefreshInFlight = false
+            setRefreshSpinning(false)
+        }
+    }
+
+    /// 刷新是否在跑。**本地 UI 态**：只管这颗按钮的转圈与禁重复点击——
+    /// 「刷新中」在界面上的唯一表现就是按钮形态，不值得为它开一个
+    /// 全局 Published 属性（同 ``ContentView/refreshDisks()`` 的口径：状态跟着消费方走）。
+    private var isRefreshInFlight = false
+
+    /// 把工具栏上的刷新项在「系统按钮 ↔ 进度圈」之间切换。
+    ///
+    /// ## 为什么换 `item.view` 而不是换 `item.image`
+    ///
+    /// `NSImage` 换成圈只是**一张静止的图**；真正的转圈要动画，`NSToolbarItem`
+    /// 自身的 image 路径没有动画位。而 `view = NSProgressIndicator` 是 AppKit
+    /// 标准做法：`startAnimation` 后系统自己转，不需要我们逐帧驱动。
+    ///
+    /// `view = nil` 则回到 ``makeRefreshItem()`` 的系统按钮形态（image + isBordered）。
+    private func setRefreshSpinning(_ spinning: Bool) {
+        guard
+            let item = view.window?.toolbar?.items
+                .first(where: { $0.itemIdentifier == Self.refreshItemIdentifier })
+        else { return }
+        if spinning {
+            let spinner = NSProgressIndicator()
+            spinner.isIndeterminate = true
+            spinner.controlSize = .small
+            // 工具栏按钮那一档的视觉尺寸（`.regular` 按钮 28pt 高，圈取 22 居中）。
+            spinner.translatesAutoresizingMaskIntoConstraints = false
+            NSLayoutConstraint.activate([
+                spinner.widthAnchor.constraint(equalToConstant: 22),
+                spinner.heightAnchor.constraint(equalToConstant: 22),
+            ])
+            spinner.setAccessibilityLabel(L10n.tr(.refreshDisks))
+            item.view = spinner
+            spinner.startAnimation(nil)
+        } else {
+            item.view?.removeFromSuperview()
+            item.view = nil
         }
     }
 
@@ -265,9 +312,10 @@ final class MainWindowContentController: NSSplitViewController {
 
     /// 刷新按钮的形态：**普通 `NSToolbarItem` + `image` + `isBordered`**。
     ///
-    /// ⚠️ **没有 spinner**。v2 的标题栏那颗刷新按钮会在刷新时换成进度圈，
-    /// v3 不再有那套自绘 —— 设计稿 `_10-combined-draft.html` 里它就是一个静态图标按钮
-    /// （`.v3refresh`，稿里也没有第二态），照稿实现。
+    /// 刷新**进行中**会临时换成进度圈（``setRefreshSpinning(_:)``），平时永远是
+    /// 这颗系统按钮 —— v3 按钮的形状 / 圆角 / hover / 焦点环全归系统（HANDOFF §3.5），
+    /// 设计稿里它是一个静态图标（`.v3refresh`），第二态是 2026-09-30 按用户反馈加回的
+    /// （设计稿没画「转圈中」，但 v2 有、用户预期也在）。
     private func makeRefreshItem() -> NSToolbarItem {
         let item = NSToolbarItem(itemIdentifier: Self.refreshItemIdentifier)
         item.image = NSImage(

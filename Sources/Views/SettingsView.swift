@@ -179,6 +179,35 @@ enum SettingsMetrics {
     static let warnRowBackground = DesignTokens.Palette.warningSoft
 }
 
+/// 开关行的**行级 hover 底**（设计稿 `--bg-subtle`）。
+///
+/// v3 把开关交还系统 `Toggle` 后，系统**不给**行级 hover
+/// （2026-09-30 用户反馈「开关项 hover 效果没有了」），这里补回。
+/// 底色直接用 ``DesignTokens/Palette/subtle``（= `--bg-subtle`，与分段控件槽 /
+/// 徽标同源），形状与 ``SettingsMetrics/warnRowBackground`` 一致 —— 方形纯色、铺满整行盒。
+///
+/// ## 为什么 `@State` 必须住在**独立的 modifier 实例**里
+///
+/// 若把 hover 态挂在 pane 上，所有开关行**共享一份** hovered —— 悬停一行全体高亮。
+/// `.modifier(ToggleRowHover(...))` 每行各建一份实例，状态天然隔离。
+///
+/// ## 为什么只在**可交互**的开关行启用
+///
+/// 说明行 / 分组标题这类静态行悬停高亮，反而是在暗示「这行可以点」。
+/// 调用点（``SettingsSectionPane/toggleLine(...)``）传 `isEnabled` 进来，
+/// 不可用的开关行（结构禁用）不给 hover —— 不可用就该长得不可用。
+private struct ToggleRowHover: ViewModifier {
+    var interactive: Bool
+
+    @State private var hovered = false
+
+    func body(content: Content) -> some View {
+        content
+            .background(hovered && interactive ? DesignTokens.Palette.subtle : Color.clear)
+            .onHover { hovered = $0 }
+    }
+}
+
 /// 设置行的**色调**（设计稿 `.sline` / `.sline--warn`）。
 ///
 /// 设计稿把「受阻」收敛成一个**类变体**而不是另写一套行 —— 两页的琥珀行与普通行
@@ -1312,6 +1341,12 @@ struct SettingsSectionPane: View {
             // 关掉之后整行（含 label）都不响应，这正是要的。
             .disabled(!isEnabled)
         }
+        // 行级 hover 底（`--bg-subtle`）：v3 把开关交还系统 `Toggle` 后，
+        // 系统**不给**行级 hover（2026-09-30 用户反馈「开关项 hover 效果没有了」），
+        // 这里补回。只在**可交互**的开关行启用 —— 说明 / 分组标题这类静态行
+        // 悬停高亮反而是在暗示「可点」。@State 必须住在独立的 modifier 里：
+        // 若放在 pane 上，所有开关行共享一份 hover 态，悬停一行全体高亮。
+        .modifier(ToggleRowHover(interactive: isEnabled))
     }
 
     /// 切换「接管访达的推出」。
