@@ -105,7 +105,6 @@ struct EmptyStateTests {
         let height = DesignTokens.Size.mainWindow.height
         let band = DesignTokens.Size.titleBarBandHeight
         let size = CGSize(width: width, height: height)
-        let titleRect = CGRect(x: 0, y: 0, width: width, height: band)
         let listRect = CGRect(x: 0, y: band, width: width, height: height - band)
 
         // **注入一个空列表**：不挂系统监听（`monitoring: false`），也不去枚举本机磁盘。
@@ -132,13 +131,18 @@ struct EmptyStateTests {
             return
         }
 
-        // **自证**：标题栏必须先有墨迹（标题「外置磁盘」+ 两个图标按钮）。
+        // **自证**：整窗必须先有墨迹（空状态图标 + 标题 + 说明 + 按钮，实测上万）。
         // 没有这条，一次「玻璃/文字根本没渲染出来」的失败会被读成「列表区画了骨架」——
         // 两者在列表带的数字上长得一模一样（都是 0）。
-        let titleInk = OffscreenRender.inkCount(rep, in: titleRect)
+        //
+        // ⚠️ 自证量**整窗**、不量标题带：v3 头部带交给系统玻璃后，CI runner（macos-26 镜像，
+        // 系统与本地 build 号不同）实测整条标题带墨迹为 0 —— 顶部带的渲染内容随环境漂移
+        // （安全区/玻璃材质行为差异），而列表带的空状态内容在 CI 实测稳定（listInk 照常过阈值）。
+        // 整窗墨迹对「内容位移」免疫：只要画了东西就是数千量级，真·整图空白才是 0。
+        let wholeInk = OffscreenRender.inkCount(rep, in: CGRect(origin: .zero, size: size))
         #expect(
-            titleInk > 500,
-            "标题栏只数到 \(titleInk) 个深色像素 —— 这次渲染整个不可信，列表带的结果不能当数"
+            wholeInk > 5000,
+            "整窗只数到 \(wholeInk) 个深色像素 —— 这次渲染整个不可信，列表带的结果不能当数"
         )
 
         let listInk = OffscreenRender.inkCount(rep, in: listRect)

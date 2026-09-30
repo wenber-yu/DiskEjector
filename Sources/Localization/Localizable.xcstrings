@@ -551,7 +551,7 @@
       "localizations" : {
         "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "需要「完全磁盘访问」才能列出占用者，否则提醒无法显示是谁在占用。" } },
         "en" : { "stringUnit" : { "state" : "translated", "value" : "Listing what holds a disk needs Full Disk Access." } },
-        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "需要「完全磁碟存取權」才能列出佔用者，否則提醒無法顯示是誰在佔用。" } }
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "需要「完全磁碟存取權」，否則無法顯示是誰在佔用。" } }
       }
     },
     "tintedMode" : {

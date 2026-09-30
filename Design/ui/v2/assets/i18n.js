@@ -5,7 +5,7 @@
    来源：Sources/Localization/Localizable.xcstrings
        + Design/ui/v2/assets/i18n-extra.json
    ----------------------------------------------------------------------------
-   源指纹 4dd5355470a0acb25cd0b0972d5c4ed9058de23f1df1143d4247a46860017394
+   源指纹 b1a1791dd93bda6669de0cb1a96aced63a5f06c79464371199942f9bc747c2d5
      = sha256(xcstrings + extra + 本脚本) —— 任一方变了它就是旧的，
        由 DesignDraftIntegrityTests 拦下「改了源忘了重跑」。
    ----------------------------------------------------------------------------
@@ -660,7 +660,7 @@ window.DS_L10N = {
       "showDockIcon": "在 Dock 中顯示圖示",
       "takeOverFinderEject": "退出時提醒佔用",
       "takeOverFinderEjectFootnote": "在 Finder 中點退出、但磁碟正被佔用時，在選單列提醒你是誰在佔用，可一鍵關閉並退出。",
-      "takeOverFinderEjectNeedsFDA": "需要「完全磁碟存取權」才能列出佔用者，否則提醒無法顯示是誰在佔用。",
+      "takeOverFinderEjectNeedsFDA": "需要「完全磁碟存取權」，否則無法顯示是誰在佔用。",
       "tintedMode": "色調模式（系統背景色）",
       "tintedModeShort": "色調",
       "transparentMode": "透明模式（Liquid Glass 毛玻璃）",
