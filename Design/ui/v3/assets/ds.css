@@ -1,0 +1,1413 @@
+/* ============================================================================
+   DiskEjector UI v3 — Design System
+   磁盘推出助手 · 界面设计规范实现层
+   ----------------------------------------------------------------------------
+   设计论点：At-a-glance verdict（一眼判定）
+   用户打开本应用时只问一个问题：「我现在能拔了吗？」
+   界面因此按「判定 → 身份 → 证据 → 动作」四层组织，而非平铺等权重的信息。
+
+   ⚠️⚠️ **本源文件是 v2 的副本，不是同一份文件**（2026-09-30）。
+   ────────────────────────────────────────────────────────────────────────────
+   · 来源：`Design/ui/v2/assets/ds.css`（v2 已冻结，**禁止再改 v2**）
+   · 纪律：**新版本从老版本「复制 → 修改」，老版本一字不动。**
+     这样 v3 与 v2 可以逐行 diff（回流有依据），任何一版都能独立渲染与演进。
+   · 已分叉点（v3 相对 v2 的全部差异，逐条登记在此）：
+       1. 本抬头（v2 → v3）+ 来源声明
+       2. §1 表面令牌：加「L0 系统层 · HTML 模拟值 · 实现禁消费」注（见 `--bg-glass`）
+       3. §1 圆角令牌：加「L1 系统层 · **先查 API 可用版本**（同心 API 是 26+/27+，用不了）·
+          窗口圆角不是常数 · 勿写死 px」注，并给 `--r-window` 加「v2 遗留模拟值、实现禁消费」注
+       4. §? `.sside__item` 选中态注释：订正「Finder 与系统设置都这样」这句在
+          macOS 26 上已不成立（系统设置实测为 `#dddcdb` 灰胶囊）
+       5. §? 新增「集中式圆角口径」段（见文件末尾 §Z）：官方 API 可用性 + 官方原文
+          （含「窗口圆角随样式变」与「侧栏玻璃勿自塞 NSVisualEffectView」两条）+
+          窗口/侧栏圆角**分档实测表** + 四类元素处置口径 + 升级路径
+     → 除以上 5 条，本文件其余部分与 v2 **逐字节相同**。
+
+   代际归属总规范见同目录 `../DESIGN-SPEC.md`（三层归属 + 红线 R1–R7 + §12 圆角与资产纪律）。
+   ========================================================================== */
+
+*, *::before, *::after { box-sizing: border-box; }
+
+/* ============================================================================
+   1. 设计令牌 Design Tokens
+   ========================================================================== */
+
+:root {
+  color-scheme: light;
+
+  /* ---- 表面 Surfaces ----
+     ⚠️⚠️ 代际归属 = **L0 系统层**。这几个「面」色是 **HTML 静态模拟**，
+     实现侧**禁止消费**：macOS 26 上系统会自动渲染 Liquid Glass
+     （`NSSplitViewController` 的 sidebar / inspector item **自带玻璃**），
+     照抄这些 rgba 去自绘会**盖住系统玻璃**。
+     ⛔ 而且**不要再自己塞一个 `NSVisualEffectView` 去「模拟」它** —— 官方原话：
+        「如果你使用 NSVisualEffectView 来显示边栏内的旧版材质，将会导致玻璃材质无法透过。
+         你应该从视图层次中移除这些视觉效果视图。」
+     ⇒ 这一格的正解是**什么都不放**。详见 ../DESIGN-SPEC.md 红线 R1 / **R7** + §12.2.1.1 ②。 */
+  --bg-canvas:      #e8ecf2;                                   /* 设计稿底板（模拟桌面） */
+  --bg-base:        #ffffff;                                   /* 窗口实体面 */
+  --bg-raised:      #ffffff;                                   /* 浮层 / 卡片 */
+  --bg-subtle:      rgba(120, 120, 128, 0.08);                 /* 静默填充 */
+  --bg-subtle-hi:   rgba(120, 120, 128, 0.14);                 /* 静默填充 · 悬停 */
+  --bg-sunken:      rgba(120, 120, 128, 0.055);                /* 凹陷区（证据区） */
+  --bg-glass:       rgba(255, 255, 255, 0.72);                 /* ⚠️ HTML 模拟 · 实现禁消费 */
+  --bg-glass-thick: rgba(255, 255, 255, 0.86);                 /* ⚠️ HTML 模拟 · 实现禁消费 */
+
+  /* ---- 文字 Text ---- */
+  --text-1:         #1d1d1f;                                   /* 主文字 16.1:1 */
+  --text-2:         rgba(60, 60, 67, 0.62);                    /* 次文字 4.6:1 */
+  --text-2-strong:  rgba(60, 60, 67, 0.74);                    /* 小号标题 6.3:1 */
+  --text-3:         rgba(60, 60, 67, 0.38);                    /* 三级 / 装饰 2.2:1 */
+
+  /* ---- 描边 Borders ---- */
+  --border:         rgba(60, 60, 67, 0.10);
+  --border-strong:  rgba(60, 60, 67, 0.18);
+  --hairline:       rgba(60, 60, 67, 0.08);
+
+  /* ---- 强调色 Accent（默认蓝，设置中可切换 4 色） ---- */
+  --accent:         #0a84ff;
+  --accent-hover:   #0071e3;
+  --accent-soft:    rgba(10, 132, 255, 0.10);
+  --accent-ring:    rgba(10, 132, 255, 0.35);
+  --on-accent:      #ffffff;
+
+  /* ---- 语义色 Semantic ---- */
+  /* 琥珀 = 「有事发生，但不是错误」（磁盘被占用）。红色只留给破坏性动作。 */
+  --warn:           #ff9500;
+  --warn-text:      #b25000;   /* 4.65:1 on warn-soft over white — WCAG AA ✓ */
+  --warn-soft:      rgba(255, 149, 0, 0.12);
+  --warn-line:      rgba(255, 149, 0, 0.30);
+
+  --danger:         #ff3b30;
+  --danger-hover:   #e02d23;
+  --danger-text:    #c1190f;   /* 5.1:1 on danger-soft over white — WCAG AA ✓ */
+  --danger-soft:    rgba(255, 59, 48, 0.10);
+  --danger-line:    rgba(255, 59, 48, 0.26);
+
+  --ok:             #34c759;
+  --ok-text:        #1e7a38;   /* 4.94:1 on ok-soft over white — WCAG AA ✓ */
+  --ok-soft:        rgba(52, 199, 89, 0.12);
+  --ok-line:        rgba(52, 199, 89, 0.26);
+
+  /* ---- 圆角 Radius ----
+     ⚠️ 代际归属 = **L1 系统层**，且**是本项目最容易做错的一处**。
+     ★ 结论（2026-09-30 查官方文档 + 本机实测，全文见本文件末尾 §Z）：
+     · 官方要求控件形状 "concentric to their containers"（同心），同心公式 = 父圆角 − 内距；
+       但**同心圆角的 API 在我们支持的系统范围里不存在**（`ConcentricRectangle` = macOS 26.0+、
+       `NSViewCornerConfiguration` = macOS 27.0+，本包最低 14）⇒ **不要去找这个 API**。
+     · **窗口圆角不是常数**（本机实测：普通档 **17.5pt**、unified 档 **31.5pt**，同机同尺寸只差工具栏配置）
+       且**运行时读不到** ⇒ 窗口 / 系统面板 / 系统控件三类**一律自绘都不要**，只有自绘元素要算。
+     · 下面这些静态 px 是 **HTML 模拟值**，实现侧**禁止直接消费**。
+     ⇒ 实现口径（分四类元素）见**本文件末尾 §Z** 与 `../DESIGN-SPEC.md` §12；红线 R3 / R6。 */
+  --r-xs: 4px;  --r-sm: 6px;  --r-md: 10px;  --r-lg: 14px;  --r-xl: 18px;
+  /* ❗`--r-window` 是 v2 遗留的**模拟令牌**：它只是当年随手定的 12px，**既非 26 的值也非老系统的值**。
+     实测 26 上是 17.5pt（普通档）/ 31.5pt（unified 档），且**随窗口配置变**、**运行时读不到**。
+     本稿画的是 unified 档，已在 `_10-combined-draft.html` 用 `31.5px` 显式覆盖；**实现侧一律不消费它**。 */
+  --r-window: 12px;  --r-full: 999px;
+
+  /* ---- 间距 Spacing（4pt 基准） ---- */
+  --s-1: 4px;  --s-2: 8px;  --s-3: 12px;  --s-4: 16px;
+  --s-5: 20px; --s-6: 24px; --s-8: 32px;
+
+  /* ---- 字号 Typography ---- */
+  --fs-11: 11px;  --fs-12: 12px;  --fs-13: 13px;
+  --fs-15: 15px;  --fs-17: 17px;  --fs-20: 20px;
+
+  --font-ui: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue",
+             "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  --font-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+
+  /* ---- 阴影 Elevation ---- */
+  --e1: 0 1px 2px rgba(0, 0, 0, 0.06), 0 0 0 0.5px rgba(0, 0, 0, 0.05);
+  --e2: 0 2px 8px rgba(0, 0, 0, 0.08), 0 1px 2px rgba(0, 0, 0, 0.05);
+  --e3: 0 18px 48px rgba(0, 0, 0, 0.22), 0 4px 12px rgba(0, 0, 0, 0.10);
+
+  /* ---- 动效 Motion ---- */
+  --t-fast: 120ms;  --t-base: 180ms;  --t-slow: 260ms;
+  --ease: cubic-bezier(0.32, 0.72, 0, 1);
+
+  /* ---- 尺寸 Size（与 SwiftUI DesignTokens 对齐） ---- */
+  --w-main: 800px;   --h-main: 520px;
+  --w-popover: 360px;
+  /* 720 × 440 = **两栏形态**（2026-09-29 采纳，`screens/09-settings-split.html`）。
+     单栏版（480 × 920）的高度是「最长那门语言」的函数：2026-09-28 实测英文最坏
+     916.20 / 容器 920，**只剩 3.8pt** —— 再加一行说明就得先做一轮压缩文案的手术。
+     两栏把高度从「五组之和」降成「**最高的那一组**」，而宽度对语言长度不敏感。
+     ⚠️ 判据永远是**最长那门语言**：`Tools/measure_settings_split.py` 实测最高的一帧是
+     「通用 · 登录项等待系统批准」的**英文**态 = 384.22（同帧中文 368.28），
+     取 440 ⇒ 最坏余量 55.78。只量中文会拿到 368.28，按它定 400 就会在英文下
+     把最后一行推进 overflow: hidden —— 而「被裁掉」与「本来就没那么多内容」长得一样。
+     ⚠️ 这两个令牌服务的是**已实现的两栏形态**（`DesignTokens.Size.settingsPanel`），
+     由 `DesignSizeParityTests` 与实现逐一钉死。
+     ⚠️ 页面里的 .win 必须用 var(--w-settings) / var(--h-settings)，不要另写数字 ——
+     两个真相迟早会打架。**唯一例外是 05 页**：它画的是已退役的单栏形态，
+     尺寸就地冻结成内联的 480×920（历史快照，不再跟令牌走，见第 18 节）。 */
+  --w-settings: 720px; --h-settings: 440px;
+  --h-titlebar: 52px;
+  --sz-diskicon: 40px;
+  --sz-chip-icon: 20px;
+}
+
+/* ---- 深色模式 ---- */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --bg-canvas:      #16171b;
+  --bg-base:        #1c1c1e;
+  --bg-raised:      #2c2c2e;
+  --bg-subtle:      rgba(255, 255, 255, 0.08);
+  --bg-subtle-hi:   rgba(255, 255, 255, 0.14);
+  --bg-sunken:      rgba(255, 255, 255, 0.05);
+  --bg-glass:       rgba(38, 38, 42, 0.74);
+  --bg-glass-thick: rgba(44, 44, 48, 0.86);
+
+  --text-1:         #f5f5f7;
+  --text-2:         rgba(235, 235, 245, 0.62);
+  --text-2-strong:  rgba(235, 235, 245, 0.74);
+  --text-3:         rgba(235, 235, 245, 0.36);
+
+  --border:         rgba(255, 255, 255, 0.10);
+  --border-strong:  rgba(255, 255, 255, 0.18);
+  --hairline:       rgba(255, 255, 255, 0.08);
+
+  --accent:         #409cff;
+  --accent-hover:   #5aa9ff;
+  --accent-soft:    rgba(64, 156, 255, 0.16);
+  --accent-ring:    rgba(64, 156, 255, 0.40);
+
+  --warn:           #ff9f0a;
+  --warn-text:      #ffb340;
+  --warn-soft:      rgba(255, 159, 10, 0.16);
+  --warn-line:      rgba(255, 159, 10, 0.30);
+
+  --danger:         #ff453a;
+  --danger-hover:   #ff5f55;
+  --danger-text:    #ff8078;
+  --danger-soft:    rgba(255, 69, 58, 0.16);
+  --danger-line:    rgba(255, 69, 58, 0.30);
+
+  --ok:             #30d158;
+  --ok-text:        #5cdb7c;
+  --ok-soft:        rgba(48, 209, 88, 0.16);
+  --ok-line:        rgba(48, 209, 88, 0.30);
+
+  --e1: 0 1px 2px rgba(0, 0, 0, 0.40), 0 0 0 0.5px rgba(255, 255, 255, 0.06);
+  --e2: 0 2px 10px rgba(0, 0, 0, 0.45), 0 1px 2px rgba(0, 0, 0, 0.30);
+  --e3: 0 20px 56px rgba(0, 0, 0, 0.62), 0 4px 14px rgba(0, 0, 0, 0.35);
+}
+
+/* 强调色主题（由设置驱动） */
+:root[data-accent="purple"] {
+  --accent: #af52de; --accent-hover: #9a3fc9;
+  --accent-soft: rgba(175, 82, 222, 0.12); --accent-ring: rgba(175, 82, 222, 0.35);
+}
+:root[data-accent="orange"] {
+  --accent: #ff9f0a; --accent-hover: #e88c00;
+  --accent-soft: rgba(255, 159, 10, 0.12); --accent-ring: rgba(255, 159, 10, 0.35);
+}
+:root[data-accent="green"] {
+  --accent: #34c759; --accent-hover: #28a745;
+  --accent-soft: rgba(52, 199, 89, 0.12); --accent-ring: rgba(52, 199, 89, 0.35);
+}
+/* ⚠️ 下面三行**必须连 `--accent-soft` / `--accent-ring` 一起声明**（2026-09-21 补）：
+   原先只覆盖了 `--accent` / `--accent-hover`，于是深色 + 紫/橙/绿时，
+   `--accent-soft` / `--accent-ring` 会**继承上面 `:root[data-theme="dark"]` 里蓝色那两个值**
+   （rgba(64,156,255,…)）⇒ 文字/图标是紫色、而浅底与描边是蓝色。
+   透明度档位取实现侧已有的分档（`DesignTokens.Palette.accentSoft/accentRing`）：
+   蓝 0.16 / 0.40，其余 0.12 / 0.35 —— 深色下蓝要更重，否则那块底在 #1c1c1e 上看不出来。 */
+:root[data-theme="dark"][data-accent="purple"] { --accent: #bf6ae8; --accent-hover: #cd85f0; --accent-soft: rgba(191, 106, 232, 0.12); --accent-ring: rgba(191, 106, 232, 0.35); }
+:root[data-theme="dark"][data-accent="orange"] { --accent: #ffb340; --accent-hover: #ffc163; --accent-soft: rgba(255, 179, 64, 0.12); --accent-ring: rgba(255, 179, 64, 0.35); }
+:root[data-theme="dark"][data-accent="green"]  { --accent: #4cd964; --accent-hover: #6ee083; --accent-soft: rgba(76, 217, 100, 0.12); --accent-ring: rgba(76, 217, 100, 0.35); }
+
+/* ============================================================================
+   2. 基础排版 Base
+   ========================================================================== */
+
+body.ds {
+  margin: 0;
+  font-family: var(--font-ui);
+  font-size: var(--fs-13);
+  line-height: 1.45;
+  color: var(--text-1);
+  background: var(--bg-canvas);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* 设计稿底板：模拟桌面，让毛玻璃「有东西可透」 */
+.wallpaper {
+  min-height: 100vh;
+  padding: 56px 32px 96px;
+  background:
+    radial-gradient(900px 620px at 12% -6%,  rgba(120, 170, 255, 0.55), transparent 62%),
+    radial-gradient(760px 560px at 88% 4%,   rgba(255, 160, 200, 0.45), transparent 60%),
+    radial-gradient(820px 700px at 70% 96%,  rgba(140, 230, 200, 0.42), transparent 62%),
+    radial-gradient(600px 500px at 20% 90%,  rgba(180, 160, 255, 0.38), transparent 60%),
+    linear-gradient(168deg, #dfe7f3 0%, #e9eaf1 48%, #e4e9ee 100%);
+}
+:root[data-theme="dark"] .wallpaper {
+  background:
+    radial-gradient(900px 620px at 12% -6%,  rgba(40, 80, 150, 0.55), transparent 62%),
+    radial-gradient(760px 560px at 88% 4%,   rgba(120, 45, 90, 0.42), transparent 60%),
+    radial-gradient(820px 700px at 70% 96%,  rgba(20, 90, 75, 0.40), transparent 62%),
+    radial-gradient(600px 500px at 20% 90%,  rgba(70, 55, 130, 0.38), transparent 60%),
+    linear-gradient(168deg, #101116 0%, #16171d 50%, #121318 100%);
+}
+
+/* ============================================================================
+   3. 毛玻璃 Glass
+   ========================================================================== */
+
+.glass {
+  background: var(--bg-glass);
+  -webkit-backdrop-filter: blur(30px) saturate(180%);
+  backdrop-filter: blur(30px) saturate(180%);
+}
+.glass-thick {
+  background: var(--bg-glass-thick);
+  -webkit-backdrop-filter: blur(34px) saturate(180%);
+  backdrop-filter: blur(34px) saturate(180%);
+}
+
+/* ============================================================================
+   4. 窗口 Window
+   ========================================================================== */
+
+.win {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: var(--r-window);
+  border: 0.5px solid var(--border-strong);
+  box-shadow: var(--e3);
+  background: var(--bg-glass);
+  -webkit-backdrop-filter: blur(30px) saturate(180%);
+  backdrop-filter: blur(30px) saturate(180%);
+  font-family: var(--font-ui);
+  color: var(--text-1);
+}
+.win--main     { width: var(--w-main); height: var(--h-main); }
+.win--popover  { width: var(--w-popover); border-radius: var(--r-lg); }
+.win--settings { width: var(--w-settings); height: var(--h-settings); }
+
+/* ---- 标题栏 ---- */
+.titlebar {
+  flex: none;
+  height: var(--h-titlebar);
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  padding: 0 var(--s-3) 0 var(--s-5);
+  border-bottom: 0.5px solid var(--hairline);
+}
+.traffic { display: flex; gap: 8px; flex: none; }
+.traffic i {
+  width: 12px; height: 12px; border-radius: var(--r-full); display: block;
+  box-shadow: inset 0 0 0 0.5px rgba(0, 0, 0, 0.12);
+}
+.traffic i:nth-child(1) { background: #ff5f57; }
+.traffic i:nth-child(2) { background: #febc2e; }
+.traffic i:nth-child(3) { background: #28c840; }
+
+.titlebar__title {
+  font-size: var(--fs-15); font-weight: 600; letter-spacing: -0.01em;
+  color: var(--text-1); white-space: nowrap;
+}
+.titlebar__sub {
+  font-size: var(--fs-12); color: var(--text-2); white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.titlebar__spacer { flex: 1 1 auto; }
+.titlebar__tools { display: flex; align-items: center; gap: 2px; flex: none; }
+
+/* ---- 圆形工具按钮 ---- */
+.iconbtn {
+  width: 28px; height: 28px; flex: none;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 0; border-radius: var(--r-sm); background: transparent;
+  color: var(--text-2); cursor: pointer;
+  transition: background var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
+}
+.iconbtn:hover { background: var(--bg-subtle); color: var(--text-1); }
+.iconbtn:active { background: var(--bg-subtle-hi); }
+.iconbtn--lg { width: 32px; height: 32px; }
+
+/* ⚠️ **这一条曾经漏掉**（2026-09-16 补）：`ds.js` 水合出来的 `<svg>` 没有内联宽高，
+   没有这条规则时它的计算尺寸是 `0px × 0px` —— 于是**所有页面**的标题栏图标
+   （主窗口的刷新/设置、popover 头部的刷新）在渲染图上**都看不见**，
+   而 HTML 里明明有、`data-i-done` 也是 1。
+   漏掉它的代价不只是「设计稿少画一个图标」：走查时对照图会显示
+   「实现有图标、设计稿没有」，很容易被读成**实现多画了东西**，然后去把实现改错。
+   14px 与 `.btn svg` 一致，也与实现侧 `.font(.system(size: 14, weight: .medium))` 对齐。 */
+.iconbtn svg { width: 14px; height: 14px; }
+
+/* ============================================================================
+   5. 按钮 Button
+   ========================================================================== */
+
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  height: 30px; padding: 0 12px;
+  font-family: var(--font-ui); font-size: var(--fs-13); font-weight: 500;
+  line-height: 1; white-space: nowrap;
+  border: 0; border-radius: var(--r-sm);
+  background: var(--bg-subtle); color: var(--text-1);
+  cursor: pointer; user-select: none;
+  transition: background var(--t-fast) var(--ease), color var(--t-fast) var(--ease),
+              box-shadow var(--t-fast) var(--ease), transform var(--t-fast) var(--ease);
+}
+.btn:active { transform: scale(0.975); }
+.btn svg { width: 14px; height: 14px; flex: none; }
+
+.btn--primary { background: var(--accent); color: var(--on-accent); box-shadow: var(--e1); }
+.btn--primary:hover { background: var(--accent-hover); }
+
+.btn--danger { background: var(--danger); color: #fff; box-shadow: var(--e1); }
+.btn--danger:hover { background: var(--danger-hover); }
+
+.btn--outline {
+  background: transparent; color: var(--text-1);
+  box-shadow: inset 0 0 0 1px var(--border-strong);
+}
+.btn--outline:hover { background: var(--bg-subtle); }
+
+.btn--ghost { background: transparent; color: var(--accent); }
+.btn--ghost:hover { background: var(--accent-soft); }
+
+.btn--sm { height: 26px; padding: 0 10px; font-size: var(--fs-12); }
+.btn--sm svg { width: 13px; height: 13px; }
+.btn--lg { height: 34px; padding: 0 16px; font-size: var(--fs-13); }
+
+/* 链接式按钮 —— 「去做一件事，但不值得占一个按钮的位置」。
+   ⚠️ 2026-09-29 从 `05-settings.html` 的 `<style>` 搬到本文件：两栏版
+   （`09-settings-split.html`）的诊断页要用同一个控件，再抄一份就是第二个副本。
+   值逐字未改，05 页那次搬家是**零视觉变更**。 */
+.linkbtn {
+  border: 0; background: transparent; padding: 0; cursor: pointer;
+  font-family: var(--font-ui); font-size: var(--fs-12); font-weight: 500;
+  color: var(--accent); display: inline-flex; align-items: center; gap: 4px;
+}
+.linkbtn:hover { text-decoration: underline; }
+.linkbtn svg { width: 12px; height: 12px; }
+
+/* 键盘焦点环 —— 仅键盘导航时出现，鼠标点击不出现 */
+.btn:focus-visible, .iconbtn:focus-visible, .chip:focus-visible,
+.actionrow:focus-visible, .swatch:focus-visible, .seg__opt:focus-visible {
+  outline: 2px solid var(--accent-ring);
+  outline-offset: 2px;
+}
+
+/* ============================================================================
+   6. 磁盘行 Disk Row —— 界面的核心单元
+   ----------------------------------------------------------------------------
+   纵向四段：判定条 → 身份行 → 容量条 → 证据区（按需）
+   ========================================================================== */
+
+.disklist { display: flex; flex-direction: column; gap: var(--s-2); }
+
+.row {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-3);
+  padding: var(--s-3);
+  border-radius: var(--r-md);
+  background: transparent;
+  transition: background var(--t-fast) var(--ease);
+}
+.row:hover { background: var(--bg-subtle); }
+
+/* 有占用：左侧琥珀强调条 —— 不读文字也能扫到「哪块盘有问题」 */
+.row--busy::before {
+  content: "";
+  position: absolute; left: 0; top: 10px; bottom: 10px;
+  width: 3px; border-radius: 0 2px 2px 0;
+  background: var(--warn);
+}
+.row--busy:hover { background: var(--warn-soft); }
+
+.row__icon { flex: none; }
+.row__main { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 7px; }
+.row__head { display: flex; align-items: flex-start; gap: var(--s-3); }
+.row__id   { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.row__act  { flex: none; display: flex; align-items: center; gap: var(--s-2); }
+
+/* ---- 磁盘图标 ---- */
+.diskicon {
+  width: var(--sz-diskicon); height: var(--sz-diskicon); flex: none;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: var(--r-md);
+  background: var(--accent-soft);
+  color: var(--accent);
+  box-shadow: inset 0 0 0 0.5px var(--accent-ring);
+}
+.diskicon svg { width: 22px; height: 22px; }
+.diskicon--busy {
+  background: var(--warn-soft); color: var(--warn);
+  box-shadow: inset 0 0 0 0.5px var(--warn-line);
+}
+
+/* ---- 名称行 ---- */
+.row__nameline { display: flex; align-items: baseline; gap: var(--s-2); min-width: 0; }
+.row__name {
+  font-size: var(--fs-15); font-weight: 600; letter-spacing: -0.01em;
+  color: var(--text-1); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.row__fs {
+  flex: none;
+  font-size: var(--fs-11); font-weight: 500; color: var(--text-2);
+  font-variant-numeric: tabular-nums; letter-spacing: 0.01em;
+  padding: 1px 7px; border-radius: var(--r-full);
+  background: var(--bg-subtle);
+}
+.row__meta {
+  font-size: var(--fs-12); color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.row__meta b { font-weight: 500; color: var(--text-1); }
+
+/* ---- 容量条 ---- */
+.meter { display: flex; align-items: center; gap: var(--s-2); }
+.meter__track {
+  flex: 1 1 auto; height: 5px; border-radius: var(--r-full);
+  background: var(--bg-subtle-hi); overflow: hidden;
+}
+.meter__fill {
+  height: 100%; border-radius: var(--r-full);
+  background: var(--accent);
+  transition: width var(--t-slow) var(--ease);
+}
+.meter__pct {
+  flex: none; width: 34px; text-align: right;
+  font-size: var(--fs-11); color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+}
+/* 接近写满时进度条转琥珀，提前预警 */
+.meter--high .meter__fill { background: var(--warn); }
+.meter--high .meter__pct  { color: var(--warn-text); }
+
+/* ============================================================================
+   7. 证据区 Evidence —— 回答「到底是谁占着」
+   ========================================================================== */
+
+.evid {
+  border-radius: var(--r-md);
+  padding: var(--s-2) var(--s-3) var(--s-3);
+  background: var(--bg-sunken);
+  box-shadow: inset 0 0 0 0.5px var(--border);
+}
+.evid--busy {
+  background: var(--warn-soft);
+  box-shadow: inset 0 0 0 0.5px var(--warn-line);
+}
+.evid--unknown {
+  background: var(--bg-sunken);
+  box-shadow: inset 0 0 0 0.5px var(--border);
+}
+.evid--safe {
+  display: flex; align-items: center; gap: 6px;
+  padding: 7px var(--s-3);
+  background: transparent; box-shadow: none;
+}
+
+.evid__head {
+  display: flex; align-items: center; gap: 6px;
+  font-size: var(--fs-12); font-weight: 600;
+  color: var(--warn-text);
+}
+.evid--unknown .evid__head { color: var(--text-2); }
+.evid__count {
+  font-variant-numeric: tabular-nums;
+}
+.evid__hint {
+  margin-left: auto; font-size: var(--fs-11); font-weight: 400; color: var(--text-2);
+}
+
+.evid__chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: var(--s-2); }
+
+/* ---- 进程芯片 ---- */
+.chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  height: 26px; padding: 0 9px 0 5px;
+  border-radius: var(--r-full);
+  background: var(--bg-raised);
+  box-shadow: var(--e1);
+  font-size: var(--fs-12); font-weight: 500; color: var(--text-1);
+  white-space: nowrap; max-width: 190px;
+}
+.chip__name { overflow: hidden; text-overflow: ellipsis; }
+.chip__pid {
+  font-family: var(--font-mono); font-size: var(--fs-11);
+  color: var(--text-2); font-weight: 400;
+}
+.chip--more {
+  padding: 0 10px; background: transparent;
+  box-shadow: inset 0 0 0 1px var(--border-strong);
+  color: var(--text-2); font-weight: 400;
+}
+.chip--plain { padding-left: 9px; box-shadow: var(--e1); }
+
+/* ---- 状态条（安全 / 未知） ---- */
+.statusline {
+  display: flex; align-items: center; gap: 6px;
+  font-size: var(--fs-12); color: var(--ok-text);
+}
+.statusline--unknown { color: var(--text-2); }
+.statusline svg { width: 13px; height: 13px; flex: none; }
+
+/* ---- 应用图标（设计稿占位，真实实现取 ProcessAppResolver 的系统图标） ---- */
+.appicon {
+  width: var(--sz-chip-icon); height: var(--sz-chip-icon); flex: none;
+  border-radius: 5px;
+  display: flex; align-items: center; justify-content: center;
+  color: #fff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.18);
+}
+.appicon svg { width: 12px; height: 12px; }
+.appicon--finder  { background: linear-gradient(180deg, #4fb6ff, #0a84ff); }
+.appicon--photo   { background: linear-gradient(180deg, #ffd54f, #ff9500); }
+.appicon--music   { background: linear-gradient(180deg, #ff6b81, #e8192c); }
+.appicon--code    { background: linear-gradient(180deg, #5ac8fa, #1d6fe0); }
+.appicon--term    { background: linear-gradient(180deg, #4a4a4f, #1c1c1e); }
+.appicon--backup  { background: linear-gradient(180deg, #9f7aea, #6b46c1); }
+.appicon--sync    { background: linear-gradient(180deg, #34d399, #059669); }
+.appicon--doc     { background: linear-gradient(180deg, #7d8ca3, #4b5563); }
+
+/* ============================================================================
+   8. 横幅 Banner
+   ========================================================================== */
+
+.banner {
+  flex: none;
+  display: flex; align-items: center; gap: var(--s-3);
+  padding: 10px var(--s-5);
+  background: var(--warn-soft);
+  box-shadow: inset 0 -0.5px 0 var(--warn-line), inset 0 0.5px 0 var(--warn-line);
+}
+.banner__icon { color: var(--warn); flex: none; display: flex; }
+.banner__icon svg { width: 16px; height: 16px; }
+.banner__text { flex: 1 1 auto; font-size: var(--fs-12); color: var(--text-1); min-width: 0; }
+.banner__text b { font-weight: 600; }
+
+/* ============================================================================
+   9. 滚动区 / 空状态
+   ========================================================================== */
+
+.scrollarea {
+  flex: 1 1 auto; overflow: hidden;
+  padding: var(--s-3) var(--s-4) var(--s-4);
+}
+
+.empty {
+  height: 100%;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  text-align: center; gap: var(--s-2); padding: 0 var(--s-8);
+}
+.empty__art {
+  width: 76px; height: 76px; margin-bottom: var(--s-2);
+  display: flex; align-items: center; justify-content: center;
+  border-radius: var(--r-xl);
+  background: var(--bg-subtle);
+  color: var(--text-3);
+}
+.empty__art svg { width: 36px; height: 36px; }
+.empty__title { font-size: var(--fs-15); font-weight: 600; color: var(--text-1); }
+.empty__desc  { font-size: var(--fs-13); color: var(--text-2); max-width: 320px; line-height: 1.55; }
+.empty__act   { margin-top: var(--s-3); }
+
+/* ============================================================================
+   10. 菜单栏面板 Popover
+   ========================================================================== */
+
+.pop__header {
+  display: flex; align-items: center; gap: var(--s-2);
+  padding: var(--s-3) var(--s-3) 10px var(--s-3);
+}
+.pop__appicon {
+  width: 22px; height: 22px; flex: none; border-radius: var(--r-sm);
+  display: flex; align-items: center; justify-content: center;
+  background: var(--accent); color: var(--on-accent);
+  box-shadow: var(--e1);
+}
+.pop__appicon svg { width: 13px; height: 13px; }
+.pop__appname { font-size: var(--fs-13); font-weight: 600; letter-spacing: -0.01em; }
+.pop__count {
+  font-size: var(--fs-11); font-weight: 500; color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+  padding: 1px 6px; border-radius: var(--r-full); background: var(--bg-subtle);
+}
+.pop__body { padding: 0 var(--s-2) var(--s-2); }
+
+/* 菜单栏紧凑行 */
+.mrow {
+  display: grid;
+  grid-template-columns: 32px 1fr auto;
+  column-gap: 10px;
+  align-items: center;
+  padding: var(--s-2);
+  border-radius: var(--r-md);
+  transition: background var(--t-fast) var(--ease);
+  position: relative;
+}
+.mrow:hover { background: var(--bg-subtle); }
+.mrow--busy:hover { background: var(--warn-soft); }
+.mrow--busy::before {
+  content: ""; position: absolute; left: 0; top: 7px; bottom: 7px;
+  width: 2.5px; border-radius: 0 2px 2px 0; background: var(--warn);
+}
+.mrow__icon {
+  width: 32px; height: 32px; border-radius: var(--r-sm);
+  display: flex; align-items: center; justify-content: center;
+  background: var(--accent-soft); color: var(--accent);
+}
+.mrow__icon svg { width: 17px; height: 17px; }
+.mrow__icon--busy { background: var(--warn-soft); color: var(--warn); }
+.mrow__text { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.mrow__name {
+  font-size: var(--fs-13); font-weight: 500; color: var(--text-1);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.mrow__name span { color: var(--text-3); font-weight: 400; }
+.mrow__cap {
+  font-size: var(--fs-11); color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.mrow__occ {
+  font-size: var(--fs-11); color: var(--warn-text); font-weight: 500;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.mrow__occ--safe { color: var(--ok-text); font-weight: 400; }
+/* 未知态（2026-09-21 补，§8.113）：与 `.statusline--unknown` 同一支中性色 ——
+   ⚠️ 绝不能借 `--ok-text`，否则「未知」会被读成「可安全推出」（06-states.html D 节那两条硬规则）。 */
+.mrow__occ--unknown { color: var(--text-2); font-weight: 400; }
+
+.pop__sep { height: 0.5px; background: var(--hairline); margin: var(--s-2) var(--s-3); }
+
+/* 行内推出按钮：安全 = 幽灵态（安静）；占用 = 常显红底（需要决策） */
+.mbtn {
+  width: 26px; height: 26px; flex: none; padding: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 0; border-radius: var(--r-sm); cursor: pointer;
+  background: transparent; color: var(--text-2);
+  transition: background var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
+}
+.mbtn svg { width: 14px; height: 14px; }
+.mrow:hover .mbtn { background: var(--accent-soft); color: var(--accent); }
+.mbtn--busy { background: var(--danger-soft); color: var(--danger); }
+.mrow--busy:hover .mbtn--busy { background: var(--danger); color: #fff; }
+
+.actionrow {
+  display: flex; align-items: center; gap: 10px;
+  width: 100%; padding: 7px var(--s-3);
+  border: 0; border-radius: var(--r-md); background: transparent;
+  font-family: var(--font-ui); font-size: var(--fs-13); color: var(--text-1);
+  text-align: left; cursor: pointer;
+  transition: background var(--t-fast) var(--ease);
+}
+.actionrow:hover { background: var(--bg-subtle); }
+.actionrow svg { width: 15px; height: 15px; color: var(--text-2); flex: none; }
+.actionrow__key {
+  margin-left: auto; font-family: var(--font-mono); font-size: var(--fs-11);
+  color: var(--text-2);
+}
+.actionrow--danger:hover { background: var(--danger-soft); }
+
+/* ============================================================================
+   11. 弹窗 Alert
+   ========================================================================== */
+
+.alert {
+  width: 400px;
+  border-radius: var(--r-lg);
+  background: var(--bg-glass-thick);
+  -webkit-backdrop-filter: blur(34px) saturate(180%);
+  backdrop-filter: blur(34px) saturate(180%);
+  box-shadow: var(--e3), inset 0 0 0 0.5px var(--border-strong);
+  overflow: hidden;
+  font-family: var(--font-ui);
+  color: var(--text-1);
+}
+.alert__body { padding: var(--s-5) var(--s-5) var(--s-4); }
+.alert__head { display: flex; gap: var(--s-3); align-items: flex-start; }
+.alert__icon {
+  width: 38px; height: 38px; flex: none; border-radius: var(--r-md);
+  display: flex; align-items: center; justify-content: center;
+}
+.alert__icon svg { width: 20px; height: 20px; }
+.alert__icon--warn   { background: var(--warn-soft);   color: var(--warn); }
+.alert__icon--danger { background: var(--danger-soft); color: var(--danger); }
+.alert__icon--info   { background: var(--accent-soft); color: var(--accent); }
+.alert__title { font-size: var(--fs-15); font-weight: 600; letter-spacing: -0.01em; line-height: 1.3; }
+.alert__sub   { font-size: var(--fs-12); color: var(--text-2); margin-top: 3px; line-height: 1.5; }
+
+.alert__section { margin-top: var(--s-4); }
+.alert__label {
+  font-size: var(--fs-11); font-weight: 600; color: var(--text-2-strong);
+  letter-spacing: 0.04em; text-transform: uppercase; margin-bottom: 6px;
+}
+.alert__list { display: flex; flex-direction: column; gap: 2px; }
+.alert__item {
+  display: flex; align-items: center; gap: var(--s-2);
+  padding: 5px 6px; border-radius: var(--r-sm);
+  font-size: var(--fs-13);
+}
+.alert__item:nth-child(odd) { background: var(--bg-sunken); }
+.alert__item .appicon { width: 18px; height: 18px; border-radius: 4px; }
+.alert__item .appicon svg { width: 11px; height: 11px; }
+.alert__item-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.alert__item-pid {
+  font-family: var(--font-mono); font-size: var(--fs-11); color: var(--text-2); flex: none;
+}
+
+.callout {
+  display: flex; gap: var(--s-2); margin-top: var(--s-3);
+  padding: 9px 11px; border-radius: var(--r-sm);
+  background: var(--danger-soft);
+  box-shadow: inset 0 0 0 0.5px var(--danger-line);
+  font-size: var(--fs-12); color: var(--danger-text); line-height: 1.5;
+}
+.callout svg { width: 14px; height: 14px; flex: none; margin-top: 1px; }
+.callout--warn { background: var(--warn-soft); box-shadow: inset 0 0 0 0.5px var(--warn-line); color: var(--warn-text); }
+.callout--info { background: var(--accent-soft); box-shadow: inset 0 0 0 0.5px var(--accent-ring); color: var(--text-1); }
+
+.alert__foot {
+  display: flex; align-items: center; justify-content: flex-end; gap: var(--s-2);
+  padding: var(--s-3) var(--s-5);
+  background: var(--bg-sunken);
+  box-shadow: inset 0 0.5px 0 var(--hairline);
+}
+.alert__foot-note { margin-right: auto; font-size: var(--fs-11); color: var(--text-3); }
+
+/* 更新日志：弹窗里最长的一块文字。12 / 行高 1.55 / 项目间距 6。
+   放在共享 CSS 而不是各页 —— 本页漏定义时它不会报错，只会静默变成一段普通文字。 */
+.changelog {
+  display: flex; flex-direction: column; gap: 6px;
+  font-size: var(--fs-12); color: var(--text-2); line-height: 1.55;
+}
+.changelog > div { display: flex; gap: 8px; }
+.changelog b { color: var(--text-1); font-weight: 500; }
+
+/* ============================================================================
+   12. 设置面板 Settings
+   ========================================================================== */
+
+.settings__body { flex: 1 1 auto; overflow: hidden; padding: var(--s-5) var(--s-5) var(--s-4); }
+.sgroup + .sgroup { margin-top: var(--s-5); }
+.sgroup__title {
+  font-size: var(--fs-11); font-weight: 600; color: var(--text-2-strong);
+  letter-spacing: 0.05em; text-transform: uppercase;
+  padding: 0 var(--s-3) 6px;
+}
+.scard {
+  border-radius: var(--r-md);
+  background: var(--bg-raised);
+  box-shadow: inset 0 0 0 0.5px var(--border), var(--e1);
+  overflow: hidden;
+}
+.sline {
+  display: flex; align-items: center; gap: var(--s-3);
+  padding: 11px var(--s-3);
+  min-height: 44px;
+}
+.sline + .sline { box-shadow: inset 0 0.5px 0 var(--hairline); }
+.sline__text { flex: 1 1 auto; min-width: 0; }
+.sline__label { font-size: var(--fs-13); color: var(--text-1); }
+.sline__desc  { font-size: var(--fs-11); color: var(--text-2); margin-top: 2px; line-height: 1.45; }
+.sline__control { flex: none; display: flex; align-items: center; gap: var(--s-2); }
+/* 受阻态（2026-09-29 收敛成组件，见 DESIGN-SPEC §8.153）——
+   此前 05 / 09 两页是 inline 硬写的，既不进账本、也没法复用：
+   下一个「需要一整行注意」的地方找不到现成的类，只能再手写一遍，
+   语义边界就是这样被悄悄推开的。
+   ⚠️ 第二行不能省：基类的 label 是 `--text-1`，只加背景不改标签色
+   ⇒ 画面上「看着做了、其实没做」（本仓库红线：样式没生效与本来没写逐字相同）。
+   ⚠️ 护栏：**同屏最多一条** —— 琥珀靠「稀少」产生信息量。 */
+.sline--warn { background: var(--warn-soft); }
+.sline--warn .sline__label { color: var(--warn-text); font-weight: 500; }
+
+/* 开关 Switch */
+.switch {
+  width: 38px; height: 22px; border-radius: var(--r-full); flex: none;
+  background: var(--bg-subtle-hi); position: relative; border: 0; padding: 0;
+  cursor: pointer; transition: background var(--t-base) var(--ease);
+}
+.switch::after {
+  content: ""; position: absolute; top: 2px; left: 2px;
+  width: 18px; height: 18px; border-radius: var(--r-full); background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.22), 0 0 0 0.5px rgba(0, 0, 0, 0.06);
+  transition: transform var(--t-base) var(--ease);
+}
+.switch[aria-checked="true"] { background: var(--accent); }
+.switch[aria-checked="true"]::after { transform: translateX(16px); }
+
+/* 分段控件 Segmented */
+
+/* 下拉选择（NSPopUpButton）。**只在「多值且选项会增长」时用** ——
+   「语言」就是典型：开关只能表达二值，分段控件超过 3 项就放不下，
+   而语言列表以后还会加。别拿它去做二值选择，那是开关的活。
+   高度 28 与分段控件一致，同一行里混排不会错落。 */
+.popup {
+  display: inline-flex; align-items: center; gap: 5px;
+  height: 28px; padding: 0 7px 0 10px;
+  border: 0; border-radius: 7px;
+  background: var(--bg-subtle);
+  box-shadow: inset 0 0 0 0.5px var(--border-strong);
+  font-family: var(--font-ui); font-size: var(--fs-12); font-weight: 500;
+  color: var(--text-1); cursor: default;
+}
+.popup > span { white-space: nowrap; }
+/* 箭头比正文小一号、颜色降一级：它是「还能点开」的提示，不是内容。 */
+.popup > i { width: 11px; height: 11px; color: var(--text-3); flex: none; }
+.popup > i svg { width: 11px; height: 11px; stroke-width: 2.2; }
+.seg {
+  display: inline-flex; padding: 2px; gap: 2px;
+  border-radius: 7px; background: var(--bg-subtle);
+}
+.seg__opt {
+  border: 0; background: transparent; cursor: pointer;
+  height: 24px; padding: 0 12px; border-radius: 5px;
+  font-family: var(--font-ui); font-size: var(--fs-12); font-weight: 500;
+  color: var(--text-2);
+  transition: background var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
+}
+.seg__opt[aria-selected="true"] {
+  background: var(--bg-raised); color: var(--text-1); box-shadow: var(--e1);
+}
+
+/* 强调色选择 */
+.swatches { display: flex; gap: var(--s-2); }
+.swatch {
+  width: 22px; height: 22px; border-radius: var(--r-full); border: 0; padding: 0;
+  cursor: pointer; position: relative;
+  box-shadow: inset 0 0 0 0.5px rgba(0, 0, 0, 0.14);
+  transition: transform var(--t-fast) var(--ease);
+}
+.swatch:hover { transform: scale(1.12); }
+.swatch[aria-pressed="true"]::after {
+  content: ""; position: absolute; inset: -4px;
+  border-radius: var(--r-full);
+  box-shadow: 0 0 0 2px var(--accent);
+}
+.swatch--blue   { background: #0a84ff; }
+.swatch--purple { background: #af52de; }
+.swatch--orange { background: #ff9f0a; }
+.swatch--green  { background: #34c759; }
+
+/* 关于区 —— ⚠️ 2026-09-18 实扫删除（§8.52.3）
+
+   这里原有一套 `.about*` / `.about__icon|name|ver|act`（纵向居中、56px 大图标），
+   是**被放弃的旧设计**，且**零消费者**（实扫：9 个 HTML + ds.js 里没有一个元素用它）。
+
+   现行设计是横向一行的 `.aboutrow*`（图标 44×44、padding 13px 16px），
+   ⚠️ 它的样式定义在 **`screens/05-settings.html` 的 `<style>` 块里，不在本文件** ——
+   本文件是「令牌 + 全部组件样式」的官方位置，这处不一致本身就是隐患。
+   实现侧 `SettingsView` 引用的也是 `.aboutrow`（`// MARK: 关于（横向一行，设计稿 .aboutrow）`）。
+
+   实测确认删掉这 5 个类后 05-settings.html 渲染不变（`.aboutrow` 仍是 70pt 高、padding 13px）。*/
+
+/* ============================================================================
+   13. 授权引导 Onboarding
+   ========================================================================== */
+
+/* ⚠️ 这里原来是 `width: 380px` —— 和父级 .win 的 380 重复了一遍，
+   而 .win 有 1px 边框、内容盒只有 378，于是宽出 2px（探针抓到 .win X 380>378）。
+   **同一个尺寸写两遍，改一处就一定会漏另一处**，所以改成填满父级。 */
+.onboard { width: 100%; padding: var(--s-6) var(--s-5) var(--s-5); }
+.onboard__icon {
+  width: 52px; height: 52px; margin: 0 auto var(--s-3);
+  border-radius: var(--r-lg);
+  display: flex; align-items: center; justify-content: center;
+  background: var(--accent-soft); color: var(--accent);
+}
+.onboard__icon svg { width: 26px; height: 26px; }
+.onboard__title { font-size: var(--fs-17); font-weight: 600; text-align: center; letter-spacing: -0.01em; }
+.onboard__desc {
+  font-size: var(--fs-13); color: var(--text-2); text-align: center;
+  line-height: 1.6; margin-top: var(--s-2);
+}
+.steps { display: flex; flex-direction: column; gap: 0; margin-top: var(--s-5); }
+.step { display: flex; gap: var(--s-3); align-items: flex-start; }
+.step__rail { display: flex; flex-direction: column; align-items: center; flex: none; }
+.step__dot {
+  width: 22px; height: 22px; border-radius: var(--r-full); flex: none;
+  display: flex; align-items: center; justify-content: center;
+  font-size: var(--fs-11); font-weight: 600;
+  background: var(--accent); color: var(--on-accent);
+}
+.step__line { width: 1.5px; flex: 1 1 auto; min-height: 16px; background: var(--border-strong); margin: 2px 0; }
+.step__text { padding-bottom: var(--s-3); font-size: var(--fs-12); color: var(--text-1); line-height: 1.5; }
+.step__text small { display: block; color: var(--text-2); font-size: var(--fs-11); margin-top: 2px; }
+.path {
+  font-family: var(--font-mono); font-size: var(--fs-11);
+  background: var(--bg-subtle); padding: 1px 5px; border-radius: var(--r-xs);
+  color: var(--text-1);
+}
+
+/* ============================================================================
+   14. 设计稿容器 / 标注
+   ========================================================================== */
+
+.frame { display: flex; flex-direction: column; align-items: center; }
+.frame__label {
+  font-family: var(--font-mono); font-size: var(--fs-11); color: var(--text-3);
+  margin-bottom: 10px; letter-spacing: 0.02em;
+}
+.artboard { display: flex; flex-wrap: wrap; gap: 48px; align-items: flex-start; }
+.spec-note {
+  margin-top: var(--s-4); max-width: 400px;
+  font-size: var(--fs-12); color: var(--text-2); line-height: 1.6;
+}
+.spec-note b { color: var(--text-1); font-weight: 600; }
+.spec-note code {
+  font-family: var(--font-mono); font-size: var(--fs-11);
+  background: var(--bg-subtle); padding: 1px 5px; border-radius: var(--r-xs);
+}
+
+/* ============================================================================
+   15. 无障碍 / 降低动态效果
+   ========================================================================== */
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* 仅供屏幕阅读器 */
+.sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+
+/* ============================================================================
+   16. 设计文档页面骨架 Doc Chrome（仅设计稿使用，不进产品）
+   ========================================================================== */
+
+.doc {
+  max-width: 1180px;
+  margin: 0 auto;
+}
+.doc__nav {
+  display: flex; align-items: center; gap: var(--s-2);
+  flex-wrap: wrap; margin-bottom: var(--s-6);
+}
+.doc__nav a {
+  font-size: var(--fs-12); color: var(--text-2); text-decoration: none;
+  padding: 5px 11px; border-radius: var(--r-full);
+  background: rgba(255, 255, 255, 0.55);
+  box-shadow: inset 0 0 0 0.5px var(--border-strong);
+  transition: background var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
+  -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
+}
+.doc__nav a:hover { background: rgba(255, 255, 255, 0.9); color: var(--text-1); }
+.doc__nav a[aria-current="page"] {
+  background: var(--accent); color: var(--on-accent);
+  box-shadow: none; font-weight: 500;
+}
+:root[data-theme="dark"] .doc__nav a { background: rgba(255, 255, 255, 0.10); }
+:root[data-theme="dark"] .doc__nav a:hover { background: rgba(255, 255, 255, 0.18); }
+
+/* ---- 语言切换栏 ----
+   由 `ds.js` 自动生成并插到 `.doc__nav` 后面 —— **页面 HTML 里没有**。
+   放在共享 CSS 而不是各页：本页漏定义时它不会报错，只会静默变成一堆裸按钮。 */
+.langbar {
+  display: flex; align-items: center; gap: var(--s-2); flex-wrap: wrap;
+  margin: -8px 0 var(--s-5); padding: 7px 10px;
+  border-radius: var(--r-full);
+  background: rgba(255, 255, 255, 0.55);
+  box-shadow: inset 0 0 0 0.5px var(--border-strong);
+  -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
+}
+.langbar__label {
+  font-size: var(--fs-11); font-weight: 600; letter-spacing: 0.04em;
+  text-transform: uppercase; color: var(--text-3); padding-left: 4px;
+}
+.pill {
+  height: 26px; padding: 0 12px; border: 0; border-radius: var(--r-full);
+  font-family: var(--font-ui); font-size: var(--fs-12); font-weight: 500;
+  background: transparent; color: var(--text-2); cursor: pointer;
+  transition: background var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
+}
+.pill:hover { background: var(--bg-subtle); color: var(--text-1); }
+.pill[aria-pressed="true"] { background: var(--accent); color: var(--on-accent); }
+.pill:focus-visible { outline: 2px solid var(--accent-ring); outline-offset: 2px; }
+.langbar__hint { margin-left: auto; font-size: var(--fs-11); color: var(--text-3); }
+@media (max-width: 620px) { .langbar__hint { display: none; } }
+:root[data-theme="dark"] .langbar { background: rgba(255, 255, 255, 0.10); }
+
+.doc__eyebrow {
+  font-size: var(--fs-11); font-weight: 600; letter-spacing: 0.1em;
+  text-transform: uppercase; color: var(--text-3); margin-bottom: 6px;
+}
+.doc__title {
+  font-size: 26px; font-weight: 700; letter-spacing: -0.022em;
+  margin: 0 0 var(--s-2); color: var(--text-1);
+}
+.doc__lede {
+  font-size: var(--fs-13); color: var(--text-2); line-height: 1.65;
+  max-width: 720px; margin: 0 0 var(--s-6);
+}
+.doc__section { margin-top: 56px; }
+.doc__h2 {
+  font-size: var(--fs-17); font-weight: 600; letter-spacing: -0.01em;
+  margin: 0 0 var(--s-1); display: flex; align-items: baseline; gap: var(--s-2);
+}
+.doc__h2 em {
+  font-style: normal; font-family: var(--font-mono); font-size: var(--fs-11);
+  color: var(--text-3); font-weight: 400;
+}
+.doc__h2desc { font-size: var(--fs-12); color: var(--text-2); margin: 0 0 var(--s-5); max-width: 760px; line-height: 1.6; }
+.doc__h3 {
+  font-size: var(--fs-13); font-weight: 600; margin: var(--s-5) 0 var(--s-3);
+  color: var(--text-1);
+}
+
+/* 说明区列表（设计稿自己的论述文字，**不翻** —— 见 noteClassTokens）。
+   ⚠️ 2026-09-29 收拢到本文件：此前 9 个页面各在自己的 `<style>` 里抄了一份，
+   其中 `index.html` 那份与其余 8 份**行距不同**（`1.75 / 7px` vs `1.7 / 6px`）——
+   而**没有任何东西会报错**，总览页的说明列表就是比每一屏松一点。
+   9 份副本**已全部删除**（含 `index.html` 那份）：本文件是唯一真相。
+   ⚠️ 反面教材的形态：这类「同一段 CSS 抄 N 份」在没有任何守卫盯着时，
+   漂移**不会报错**，只会让某一页看起来「差一点点」—— 而那最容易被当成设计意图。
+   新页面直接用本类，别再复制。 */
+.note-list { margin: 0; padding-left: 18px; font-size: var(--fs-12); color: var(--text-2); line-height: 1.7; }
+.note-list li { margin-bottom: 6px; }
+.note-list b { color: var(--text-1); }
+.note-list code {
+  font-family: var(--font-mono); font-size: var(--fs-11);
+  background: var(--bg-subtle); padding: 1px 5px; border-radius: var(--r-xs);
+}
+
+.panel {
+  background: rgba(255, 255, 255, 0.62);
+  -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px);
+  border-radius: var(--r-lg);
+  box-shadow: inset 0 0 0 0.5px var(--border-strong), var(--e1);
+  padding: var(--s-5);
+}
+:root[data-theme="dark"] .panel { background: rgba(40, 40, 44, 0.62); }
+
+.grid2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s-4); }
+.grid3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--s-4); }
+.grid4 { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--s-3); }
+@media (max-width: 900px) { .grid2, .grid3, .grid4 { grid-template-columns: 1fr; } }
+
+/* ============================================================================
+   17. 高密度行 Compact Row
+   ----------------------------------------------------------------------------
+   ≥ 4 块磁盘时自动启用：单行布局，去掉容量条（数字已表达同一信息）。
+   行高从 112 降到 46，一屏可见 8 块盘。
+   ========================================================================== */
+
+.crow {
+  position: relative;
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 10px;
+  border-radius: var(--r-md);
+  transition: background var(--t-fast) var(--ease);
+}
+.crow:hover { background: var(--bg-subtle); }
+.crow--busy::before {
+  content: ""; position: absolute; left: 0; top: 8px; bottom: 8px;
+  width: 3px; border-radius: 0 2px 2px 0; background: var(--warn);
+}
+.crow--busy:hover { background: var(--warn-soft); }
+
+.crow__icon {
+  width: 30px; height: 30px; flex: none; border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--accent-soft); color: var(--accent);
+}
+.crow__icon svg { width: 17px; height: 17px; }
+.crow__icon--busy { background: var(--warn-soft); color: var(--warn); }
+
+.crow__name {
+  font-size: var(--fs-13); font-weight: 600; color: var(--text-1);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  max-width: 190px; flex: none;
+}
+.crow__meta {
+  font-size: var(--fs-11); color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.crow__status {
+  flex: none; display: inline-flex; align-items: center; gap: 4px;
+  font-size: var(--fs-11); font-weight: 500; color: var(--warn-text);
+  white-space: nowrap;
+}
+.crow__status svg { width: 12px; height: 12px; }
+.crow__status--safe { color: var(--ok-text); font-weight: 400; }
+.crow__status--unknown { color: var(--text-2); font-weight: 400; }
+.crow__btn { flex: none; margin-left: 2px; }
+.crow__grow { flex: 1 1 auto; min-width: 12px; }
+
+/* 骨架屏 */
+.skeleton {
+  border-radius: var(--r-sm);
+  background: linear-gradient(90deg, var(--bg-subtle) 25%, var(--bg-subtle-hi) 37%, var(--bg-subtle) 63%);
+  background-size: 400% 100%;
+  animation: sk 1.4s ease-in-out infinite;
+}
+@keyframes sk { 0% { background-position: 100% 50% } 100% { background-position: 0 50% } }
+
+.spin { animation: spin 900ms linear infinite; display: inline-flex; }
+@keyframes spin { to { transform: rotate(360deg) } }
+
+/* ============================================================================
+   18. 两栏设置 Split Settings
+   ----------------------------------------------------------------------------
+   设置面板的形态：左分类栏 + 右内容区（macOS 系统设置 / Xcode 偏好面板的标准形态）。
+   2026-09-29 **已采纳并实现**（产品侧 `SettingsView`）。旧形态（单栏 480 × 920）
+   见 `screens/05-settings.html` —— 那一页保留在册：它是「高度预算见底」那套约束下的
+   正确答案，不是做错的版本。
+
+   它解决的是**高度**：单栏把五组内容纵向堆叠，面板高度就成了「最长那门语言」
+   的函数 —— 英文一折行就顶破窗口（实测只剩 3.8pt 余量）。两栏之后，
+   高度只由**最高的那一组**决定，加一页内容的代价从「高度」转移到「宽度」，
+   宽度对语言长度不敏感。
+
+   ⚠️ 尺寸走令牌 `--w-settings` / `--h-settings`（= 720 / 440），与实现侧
+   `DesignTokens.Size.settingsPanel` 由 `DesignSizeParityTests` 钉死 ——
+   所以下面 `.win--split` **只写令牌不提供的那个属性**，尺寸一个数字都不重复写。
+
+   ⚠️ 颜色**零新增令牌**：侧栏底走 `--bg-sunken`、选中态走 `--accent` / `--on-accent`，
+   全都有现成的深色取值 ⇒ 深色模式不需要为两栏补任何一帧样式。
+   ========================================================================== */
+
+/* ---- 窗口 ---- */
+/* 尺寸**走令牌**（`.win--settings` 已提供 `--w-settings` / `--h-settings`），
+   这里只补 `.win` 本身没有的那个属性：横向排布。
+   ⚠️ 别在这里再写一遍 720 / 440 —— 那正是「两个真相」的开端。 */
+.win--split {
+  flex-direction: row;          /* 覆盖 .win 的 column */
+}
+
+/* 窗口控制点浮在侧栏顶部（与 `.sdetail__head` 同一条水平带） */
+.traffic--float { position: absolute; left: 20px; top: 20px; z-index: 2; }
+
+/* ---- 左：分类栏 ---- */
+.sside {
+  flex: none;
+  width: 200px;
+  display: flex; flex-direction: column; gap: 1px;
+  padding: 52px 10px 12px;      /* 顶部 52 = 给窗口控制点让位，与内容区头齐平 */
+  background: var(--bg-sunken);
+  box-shadow: inset -0.5px 0 0 var(--hairline);
+}
+.sside__item {
+  display: flex; align-items: center; gap: 9px;
+  height: 28px; padding: 0 8px;
+  border: 0; border-radius: var(--r-sm);
+  background: transparent; cursor: pointer;
+  font-family: var(--font-ui); font-size: var(--fs-13); font-weight: 400;
+  color: var(--text-1); text-align: left; white-space: nowrap;
+  transition: background var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
+}
+.sside__item svg { width: 15px; height: 15px; flex: none; color: var(--text-2); }
+.sside__item:hover { background: var(--bg-subtle); }
+/* 选中态 = 强调色实底 + 白字。
+   ⚠️⚠️ 代际归属 = **L1 系统层**（2026-09-30 实测订正）：
+   本条注释原文写「Finder 与系统设置都这样」，但 **macOS 26 的「系统设置」实测为
+   `#dddcdb` 中性灰胶囊**（与强调色无关）⇒ 该惯例只对老代际成立。
+   实现侧请走**系统列表/侧栏选择样式**（SwiftUI `List(selection:)` / AppKit source list），
+   **勿写死 --accent 实底** —— 写死就把选择样式锁死在某一代。
+   详见 `../DESIGN-SPEC.md` 红线 R2。下面保留现值仅供 HTML 出图（模拟值）。
+   ⚠️ 不用 `--accent-soft` + accent 前景：那个组合在浅色下只有 ~3.4:1，
+   **低于 4.5:1**；而实底白字是「图形化高亮」，可辨识性不依赖文字对比度，
+   且它与周围底色的差值远超 3:1（非文本组件门槛）。*/
+.sside__item[aria-selected="true"] {
+  background: var(--accent); color: var(--on-accent); font-weight: 500;
+}
+.sside__item[aria-selected="true"] svg { color: var(--on-accent); }
+.sside__item[aria-selected="true"]:hover { background: var(--accent-hover); }
+.sside__item:focus-visible { outline: 2px solid var(--accent-ring); outline-offset: 2px; }
+
+/* ---- 右：内容区 ---- */
+.sdetail { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
+.sdetail__head {
+  flex: none; height: 52px;
+  display: flex; align-items: center; gap: var(--s-3);
+  padding: 0 var(--s-4) 0 var(--s-5);
+  box-shadow: inset 0 -0.5px 0 var(--hairline);
+}
+.sdetail__title {
+  flex: 1 1 auto; min-width: 0;
+  font-size: var(--fs-15); font-weight: 600; letter-spacing: -0.01em;
+}
+.sdetail__body { flex: 1 1 auto; overflow: hidden; padding: var(--s-5) var(--s-5) var(--s-4); }
+
+/* ---- 关于页：居中大图标 ---- */
+/* ⚠️ 这一块**只在两栏形态里成立**。单栏形态（05）里同样信息被压成 70pt 的横排
+   `.aboutrow` —— 不是设计口味变了，是高度预算见底时被迫的取舍。
+   两栏之后「关于」独占一页，macOS 的标准居中形态才重新变得划算。 */
+.aboutpane {
+  display: flex; flex-direction: column; align-items: center; text-align: center;
+  padding-top: var(--s-6);
+}
+.aboutpane__icon {
+  width: 76px; height: 76px; border-radius: var(--r-lg);
+  display: flex; align-items: center; justify-content: center;
+  background: linear-gradient(160deg, var(--accent), var(--accent-hover));
+  color: #fff; box-shadow: var(--e2);
+}
+.aboutpane__icon svg { width: 40px; height: 40px; }
+.aboutpane__name { font-size: var(--fs-17); font-weight: 600; letter-spacing: -0.01em; margin-top: var(--s-4); }
+.aboutpane__ver {
+  font-size: var(--fs-12); color: var(--text-2);
+  margin-top: 5px; font-variant-numeric: tabular-nums;
+}
+
+/* ============================================================================
+   §Z. 跨版本圆角口径（给实现工程师，2026-09-30 定）
+   ----------------------------------------------------------------------------
+   触发：评审提出「系统组件的圆角要按实际系统版本定义 —— macOS 26 的窗口圆角比较大，
+        26 以下比较小」。结论与证据如下。
+
+   ── Z.1 官方事实（全部来自 Apple 官方文档 / WWDC 转写 / SDK 头文件）──────────
+   | API | 所属 | 可用版本 | 官方出处 |
+   |---|---|---|---|
+   | `ConcentricRectangle` / `containerShape(_:)` / `Edge.Corner.Style.concentric` | SwiftUI | **macOS 26.0+** | developer.apple.com/documentation/swiftui/concentricrectangle |
+   | `NSViewCornerConfiguration` / `NSViewCornerRadius.containerConcentric` | AppKit | **macOS 27.0+** | developer.apple.com/documentation/appkit/nsviewcornerconfiguration |
+   | `NSView.LayoutRegion`（角适配布局区域） | AppKit | **macOS 26.0+** | SDK `NSViewLayoutRegion.h`；WWDC25-310 |
+   | `NSGlassEffectView` | AppKit | macOS 26.0+ | SDK 头文件 `NSGlassEffectView.h` |
+
+   ★ **同心公式（官方原文，`concentric(minimum:)` Discussion）**：
+     "When a corner is concentric to its container, the system calculates the corner
+      radius to **equal the container shape's corner radius minus the distance between
+      corners**. If the radius that the system calculates is less than the minimum radius
+      you provide, the system uses the minimum radius. When the system calculates a
+      zero radius, the corner is square."
+     ⇒ 即 `子圆角 = max(父圆角 − 内距, 最小圆角)`。
+
+   ★ **「别硬编码」是官方明文要求**（Adopting Liquid Glass）：
+     "…If you use standard controls from system frameworks and **don't hard-code their
+      layout metrics**, your app adopts changes to shapes and sizes automatically."
+
+   ★ **窗口圆角随窗口样式变 —— 官方亲口说的**（WWDC25-310《Build an AppKit app with
+     the new design》中文转写）：
+     「带有工具栏的窗口现在使用**更大的半径**……**只带有标题栏的窗口仍使用较小的圆角
+       半径**。半径会缩放以匹配工具栏的尺寸。」
+     ⇒ 与 Z.2 实测的 31.5 / 17.5 两档一一对应。**这是「窗口圆角不是常数」的官方出处。**
+
+   ★ **侧栏的形状由 AppKit 给 —— 而且不许我们自己塞材质**（同一场 WWDC25-310）：
+     「边栏显示为一块玻璃窗格，**悬浮在窗口内容上方**……当你创建具有边栏或检查器行为的
+       `NSSplitViewItem` 时，**AppKit 会自动向它们提供相应的玻璃材质**。」
+     ⛔ 同场次明确否定另一条路：「由于边栏现在显示在玻璃上，就不再需要旧版边栏材质。
+       **如果你使用 `NSVisualEffectView` 来显示边栏内的旧版材质，将会导致玻璃材质无法
+       透过。你应该从视图层次中移除这些视觉效果视图。**」
+     ⇒ **侧栏里不要放 `NSVisualEffectView`**（含 `.sidebar` 材质的那个）。
+       这条同时否掉了「自绘底色 + 自己加材质」的整个思路。
+
+   ★ **侧栏必须走 `NSSplitViewController`**（Apple 框架工程师，开发者论坛 thread 797087）：
+     "To get the standard sidebar design, instead of directly building a `NSSplitView`
+      you must use the higher-level `NSSplitViewController` and create a split item using
+      the sidebar behavior."
+
+   ── Z.2 本机实测（macOS 26，2026-09-30；脚本 .build/probe/window_radius_spike/）
+   手法：`screencapture -x -o -l<窗口ID>` 截窗，**alpha 通道即窗口轮廓**
+        （窗口自身圆角被系统裁掉 ⇒ 角外 alpha=0）；
+        面板边界用「与窗口底色的色差」定，**窗口底色必须设成强对比色**才量得准
+        （默认底色下面板 #f7f7f7 与窗口底 #ffffff 只差 8/255，阈值法直接失效 —— 本类量测最易踩的坑）。
+        ⚠️ 侧栏若用**系统材质**（半透明）⇒ 底色会被材质染色、零对比 ⇒ 量不到。
+           要量形状就用**不透明填充**做被测对象（`sidebar_variants.swift` 的 A/B/C/D/E 档）。
+
+   Z.2.1 窗口圆角 —— 两种配置两档（已用单窗口复核排除截图污染）
+   | 窗口配置 | 窗口圆角 |
+   |---|---|
+   | 仅标题栏窗口（无工具栏） | **17.5pt** |
+   | 统一工具栏窗口（`.unified`） | **31.5pt** |
+   | 真机「系统设置」2x 截图独立复核 | **31.5pt**（顶行 alpha 边界 = 63px） |
+   ★ ❗❗ **最硬的一条结论：窗口圆角不是常数。**
+     同机、同版本、同宽 800pt，**只差「有没有统一工具栏」就差 14pt**。
+     ⇒ 任何「按系统给一个圆角数值」的做法都是错的；连「26 = 某个数」也不成立。
+     官方出处见 Z.1（不是我们的推测）。
+
+   Z.2.2 侧栏面板圆角 —— **也不是常数**（第 12 轮补测，5 档）
+   | 窗口配置 | 窗口圆角 | 侧栏面板圆角 | 面板内缩（左/上/下） |
+   |---|---|---|---|
+   | 统一工具栏 + FSCV + 全高 **← 本产品形态** | 31.5pt | **17.5pt** | 8 / 8 / 8 pt |
+   | 同上，但 `allowsFullHeightLayout = false` | 31.5pt | **0pt**（直角，浮岛消失） | 8 / 52 / 8 pt |
+   | 统一工具栏，无 FSCV（不延伸进标题栏） | 31.5pt | 17.5pt | 8 / 52 / 8 pt |
+   | 仅标题栏窗口 + FSCV | 17.5pt | **6.5pt** | 8 / 32 / 8 pt |
+   | 仅标题栏窗口，无 FSCV | 17.5pt | **6.5pt** | 8 / 32 / 8 pt |
+   | 真机「系统设置」2x 截图独立复核 | 31.5pt（63px） | **17.5pt**（35px） | 7.5 / 8 / — pt |
+
+   ★ **读数用两种独立算法交叉验证**（连续曲率下「半径」不是单值）：
+     Rv = 逐行取面板左缘、到达最左那一行距面板顶的行数；
+     Rh = 逐列取面板顶缘、到达最顶那一列距面板左的列数。
+     本产品形态档：**Rv = 17.5 / Rh = 17.0**；仅标题栏档：**Rv = Rh = 6.5**。
+   ★ **17.5pt 由两条独立路径一致得出**：真机「系统设置」2x 截图（35px ÷ 2）与自建 unified
+     spike。上一轮记的 16.5pt 来自另一套阈值读法，低 1pt，**已订正为 17.5**。
+   ★ ⚠️ **面板圆角 ≠ 窗口圆角 − 内距**（两档都不成立）：
+     31.5 − 8 = 23.5 ≠ 17.5 ； 17.5 − 8 = 9.5 ≠ 6.5。
+     ⇒ 浮岛圆角是**侧栏面板样式**自己的值，**不要反推、也不要试图「修正」它**。
+   ★ ✅ **我们自绘底色不会丢掉圆角**：被测对象涂满不透明蓝，面板边界仍被容器裁成 17.5pt 圆角
+     ⇒ 形状由**容器裁切**保证。丢的是**材质**（那才是官方禁止自绘的理由，见 Z.1）。
+   ★ ⚠️ 形状**不是正圆**：窗口轮廓到圆心距离偏离 r 最多 0.70pt（且偏「外」）⇒ 连续曲率（squircle）。
+     所以「半径」是名义值，拿它做正交几何推导会偏，别当圆的半径用。
+     1pt 量级的读数差属此列 —— **别把量测噪声当规格差异**。
+   ★ ❗**窗口圆角运行时读不到（无公共 API）**：
+     `win.contentView?.superview`（即 `NSThemeFrame`）`.layer?.cornerRadius = 0.0`、
+     `layer?.mask = nil`、`maskedCorners = 全部` ⇒ 圆角是**窗口服务器裁的**，不是 CALayer 圆角。
+     `NSWindow` 也没有任何圆角属性。（脚本 `.build/probe/window_radius_spike/read_radius.swift`）
+   ★ ❗**侧栏圆角更没有任何 API**：`NSSplitViewItem` 的全部可设项
+     （`behavior` 起、到 `allowsFullHeightLayout` / `titlebarSeparatorStyle`）里，
+     **圆角相关的一个都没有**。AppKit 全库的圆角入口只有四处（`NSBox.cornerRadius` 10.5+、
+     `NSGlassEffectView.cornerRadius` 26+、`NSView.LayoutRegion` 26+、`NSViewCornerConfiguration` 27+），
+     **没有一处是给侧栏用的** ⇒ 侧栏圆角 100% 系统所有。
+
+   ── Z.3 ⇒ 结论：口径不是「两代各给一个数值」，而是「分四类元素各自处置」──────
+   | 元素类别 | 26 上 | 14–15 上 | 我们做什么 |
+   |---|---|---|---|
+   | **窗口圆角** | 17.5 或 31.5pt（**随窗口配置变**，见 Z.2.1） | 另一档（本机测不到，见 Z.4） | **什么都不做**。`NSWindow` 自己画。**禁止**把 `--r-window` 那类值写进实现 |
+   | **侧栏浮岛面板** | 内缩 8pt + 圆角 17.5pt（全高档；**随配置变**，见 Z.2.2） | 自动为老形态（贴边、无浮岛） | **什么都不做**。`NSSplitViewItem(sidebarWithViewController:)` 自动。**两个风险**：① 自绘背景/圆角盖掉它 ② 往里塞 `NSVisualEffectView`（官方明令移除） |
+   | **系统控件**（按钮 / 开关 / 选择态） | 系统形态（胶囊 / 玻璃） | 系统形态（老一代） | **什么都不做**。用系统控件、只注入颜色 |
+   | **我们自绘的元素**（卡片 / 徽章 / 行 / 图标底） | **同一个值** | **同一个值** | 用下面 Z.3.1 的公式自己算 —— **不要试图跟系统代际变** |
+
+   ── Z.3.1 自绘元素的圆角（唯一需要写代码的一条）──────────────────────────
+   ① 若父容器**是我们自己画的**（我们知道父圆角）⇒ 按官方公式算，**任何系统版本都能跑**：
+        `子圆角 = max(父圆角 − 内距, 最小圆角)`
+        建议最小圆角：徽章/小图标底 4pt，卡片内嵌元素 6pt。
+   ② 若父容器**是系统画的**（窗口 / 浮岛面板 / 系统控件）⇒ 我们**拿不到**父圆角
+        ⇒ **规则是「位置约束」而不是「数值」**：
+        自绘的圆角元素**不得贴着窗口或面板的角**（保持内缩 ≥ 12pt），
+         使「我们的小圆角」与「容器的大圆角」在视觉上不同现一帧。
+        （官方在 26 上给了 `NSView.LayoutRegion` 的角适配来做这件事，但它 **26.0+** ⇒ 我们用不了。）
+   ③ 为什么不能用 `ConcentricRectangle` / `NSViewCornerConfiguration` 一劳永逸：
+        前者 **26.0+**、后者 **27.0+**，而本包最低支持 **macOS 14**
+        ⇒ 必然写 `if #available` ⇒ 违反红线 R5，且在 14–15 上是空转。
+
+   ── Z.4 ⚠️ 14–15 的圆角：本机测不到，别编数 ────────────────────────────────
+   本机只能跑 macOS 26。上一代的值**没有官方文档公开**（SDK 里也没有可读 API，见 Z.2），
+   网传的 10/20/24 全是第三方推算，**不能当规格**。
+   ⇒ 需要那个数时，**在那台机器上跑同一套脚本取真值**：
+        cd .build/probe/window_radius_spike
+        swiftc -O -o window_radius_spike main.swift -framework AppKit        # 窗口圆角
+        swiftc -O -o concentric_probe   concentric.swift -framework AppKit  # 窗口 + 面板（两配置）
+        swiftc -O -o sidebar_probe      sidebar_variants.swift -framework AppKit # 面板圆角 5 档
+        ./window_radius_spike <输出目录> ；./concentric_probe <输出目录> ；./sidebar_probe <输出目录>
+      （`sidebar_probe` 自己读像素算半径并打印，不用事后拟合。）
+   ⇒ 但**先读 Z.3**：四类元素里只有第 4 类需要数值，而那类我们用的是**自己的父圆角**，
+      与系统窗口/面板圆角无关 ⇒ 14–15 的窗口与侧栏圆角**在本产品里其实用不到**。
+      换句话说：**没有那个数，也不该有任何一行代码因此写不出来。**
+
+   ── Z.5 升级路径（将来若把最低版本提到 26 / 27）───────────────────────────
+   · 提到 **macOS 26**：SwiftUI 侧可把自绘形状换成 `ConcentricRectangle`，
+     并给容器加 `.containerShape(_:)`；贴角内容可改用 `NSView.LayoutRegion` 的角适配。
+     此时 Z.3.1 ① 的手算可以退役。
+   · 提到 **macOS 27**：AppKit 侧可改用 `NSViewCornerConfiguration` +
+     `NSViewCornerRadius.containerConcentric(_:)`（注意**要设 minimum**，否则远角会算成 0 = 直角）。
+   · 在此之前：Z.3.1 ①② 是本项目唯一合法的圆角做法。
+
+   ── 取证（第 12 轮）──────────────────────────────────────────────────────
+   | 文件 | 内容 |
+   |---|---|
+   | `.workbuddy/verify/v3-radius-evidence.png` | 圆角总证据图（API 可用性 + 实测 + 口径） |
+   | `.workbuddy/verify/v3-sidebar-radius-evidence.png` | **侧栏圆角证据图**（官方原文 + 5 档实测 + 角部对照 + 口径） |
+   | `.workbuddy/verify/sb-z-{real,unified,plain,nofull}.png` | 角部对照四片（放大 7 倍，同角点位置） |
+   | `.build/probe/window_radius_spike/sidebar_variants.swift` | 侧栏 5 档探针（进程内读像素、双算法求半径、自检） |
+   ========================================================================== */
