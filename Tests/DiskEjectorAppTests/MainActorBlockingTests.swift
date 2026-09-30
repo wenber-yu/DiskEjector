@@ -397,6 +397,7 @@ struct MainActorBlockingTests {
         "ProcessAppResolverTests.swift": "`enrich` / `icon` 只能主 actor（`NSWorkspace` / `NSRunningApplication`）",
         "ProcessChipLayoutTests.swift": "离屏渲染 `OffscreenRender` —— 量进程芯片",
         "SettingsLayoutTests.swift": "离屏渲染（`NSBitmapImageRep`）+ `UpdateController` 主 actor",
+        "SpinnerItemLayoutTests.swift": "驱动 `performSpinnerSwap` 换入转圈项并读 `NSProgressIndicator`（AppKit 主 actor）",
         "SnapshotRenderTests.swift": "走查图出图：`ViewFixtures` + AppKit 渲染 + 多个主 actor store",
         "TitleBarBaselineTests.swift": "离屏渲染 + `ViewFixtures` —— 量标题栏基线",
         "ViewFixtures.swift": "夹具本体：建真 `NSWindow`、注入 `DiskListStore` / `OccupancyStore`",

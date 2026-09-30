@@ -210,6 +210,11 @@ final class MainWindowContentController: NSSplitViewController {
         setRefreshSpinning(true)
         Task { @MainActor in
             await store.refresh()
+            // DE_SLOW_REFRESH=1：把转圈态拖住 5 秒——真机验证 spinner 项布局用的
+            // 调试开关（正常刷新太快，截图/AX 都抓不到中间态）。
+            if ProcessInfo.processInfo.environment["DE_SLOW_REFRESH"] == "1" {
+                try? await Task.sleep(nanoseconds: 5_000_000_000)
+            }
             // 显式再刷一次占用：`DiskListStore.refresh()` 会把新数组赋给 `disks`，
             // 正常情况下 ``OccupancyStore`` 的订阅会跟上；这里 await 一次是为了让
             // 「点刷新 → 界面已是新结论」这条链路在**同一帧**收口。
@@ -279,6 +284,11 @@ final class MainWindowContentController: NSSplitViewController {
     /// 每次新建会让动画状态各奔东西。
     private lazy var spinnerIndicator: NSProgressIndicator = {
         let spinner = NSProgressIndicator()
+        // ⚠️ **必须显式 `.spinning`**：`NSProgressIndicator()` 默认是 **bar（横条）**形态——
+        // 真机实测（DE_SLOW_REFRESH=1 + 连拍 md5）：不设这条，16×16 的圈渲染成一条
+        // **横线**（强调色横条，用户看到的「按钮变形」其实是它）；配上早期缺宽高约束
+        // 的 0×18，就是第一轮截图里那条竖椭圆。`.spinning` 才是转圈。
+        spinner.style = .spinning
         spinner.isIndeterminate = true
         spinner.controlSize = .small
         spinner.translatesAutoresizingMaskIntoConstraints = false
@@ -386,16 +396,27 @@ extension MainWindowContentController: NSToolbarDelegate {
         }
     }
 
+    /// 转圈项的承载盒。**自带 `intrinsicContentSize`（28×28）**：viewer 对
+    /// insertItem 进来的自定义 view 项做 sizing 时读固有尺寸——普通 `NSView`
+    /// 是 noIntrinsicMetric（真机量到 0×18），盒 28×28 与 Auto Layout 约束
+    /// ``makeSpinnerItem()`` 同值（两处同步改；不进 `DesignTokens.Size`：
+    /// 实现细节，不是设计稿几何契约）。
+    private final class SpinnerBox: NSView {
+        override var intrinsicContentSize: NSSize {
+            NSSize(width: 28, height: 28)
+        }
+    }
+
     /// 刷新**进行中**顶上来的进度圈项。**只通过整项移除/插入出现或消失**
     /// （``setRefreshSpinning(_:)``），它自己的属性一经创建永不改动——
     /// 这正是第一版原地换 `item.view` 闪退的反面。
     ///
-    /// ⚠️ `minSize`/`maxSize` 已废弃（macOS 12 起）：自定义 view 项的尺寸改由
-    /// **约束让系统自动量**——28pt 方盒（与旁边 `.regular` 系统按钮同高），
-    /// 圈 16pt（`.small` 固有）居中。废弃前的年代里缺这两个值会在
-    /// `configureForLayoutInDisplayMode` 里布局不一致，约束化之后由系统接管。
+    /// ⚠️ 圈的 **16×16 宽高约束必须显式写**（真机实测，DE_SLOW_REFRESH=1 + AX 量
+    /// frame）：只给 center 时，`.small` 固有尺寸在这条 insertItem 路径上不被
+    /// Auto Layout 采纳，圈被量成 **0×18**——这是用户截图里「按钮变成竖椭圆」的
+    /// 一半根因（另一半是漏设 ``spinnerIndicator`` 的 `.spinning`，见该属性注释）。
     private func makeSpinnerItem() -> NSToolbarItem {
-        let box = NSView()
+        let box = SpinnerBox()
         box.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
             box.widthAnchor.constraint(equalToConstant: 28),
@@ -406,6 +427,8 @@ extension MainWindowContentController: NSToolbarDelegate {
         NSLayoutConstraint.activate([
             spinner.centerXAnchor.constraint(equalTo: box.centerXAnchor),
             spinner.centerYAnchor.constraint(equalTo: box.centerYAnchor),
+            spinner.widthAnchor.constraint(equalToConstant: 16),
+            spinner.heightAnchor.constraint(equalToConstant: 16),
         ])
         let item = NSToolbarItem(itemIdentifier: Self.spinnerItemIdentifier)
         item.view = box
