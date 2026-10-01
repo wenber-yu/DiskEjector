@@ -5,7 +5,7 @@
    来源：Sources/Localization/Localizable.xcstrings
        + Design/ui/v2/assets/i18n-extra.json
    ----------------------------------------------------------------------------
-   源指纹 b1a1791dd93bda6669de0cb1a96aced63a5f06c79464371199942f9bc747c2d5
+   源指纹 59aefbfc648efed0f41b1f0fddf31a80a1d87fe7fb9bacdc2a1f34d0bf8ac63c
      = sha256(xcstrings + extra + 本脚本) —— 任一方变了它就是旧的，
        由 DesignDraftIntegrityTests 拦下「改了源忘了重跑」。
    ----------------------------------------------------------------------------
@@ -183,6 +183,9 @@ window.DS_L10N = {
       "noRemovableDisks": "没有可移动磁盘",
       "notNow": "稍后",
       "notifEjectBlockedBody": "%@ 正在使用这块磁盘。点按这条通知，可在%@里关闭它并推出。",
+      "notifEjectResultFailureTitle": "「%@」推出失败",
+      "notifEjectResultSuccessBody": "磁盘已推出，现在可以安全拔下了。",
+      "notifEjectResultSuccessTitle": "「%@」已安全推出",
       "occupiedProcessesTitle": "占用程序:",
       "off": "关",
       "ok": "确定",
@@ -408,6 +411,9 @@ window.DS_L10N = {
       "noRemovableDisks": "No Removable Disks",
       "notNow": "Later",
       "notifEjectBlockedBody": "%@ is using this disk. Click this notification to close it and eject from %@.",
+      "notifEjectResultFailureTitle": "Couldn’t eject “%@”",
+      "notifEjectResultSuccessBody": "The disk was ejected. You can safely unplug it now.",
+      "notifEjectResultSuccessTitle": "“%@” ejected safely",
       "occupiedProcessesTitle": "Occupied by:",
       "off": "Off",
       "ok": "OK",
@@ -633,6 +639,9 @@ window.DS_L10N = {
       "noRemovableDisks": "沒有可卸除式磁碟",
       "notNow": "稍後",
       "notifEjectBlockedBody": "%@ 正在使用這顆磁碟。點一下這則通知，可在%@裡關閉它並退出。",
+      "notifEjectResultFailureTitle": "「%@」退出失敗",
+      "notifEjectResultSuccessBody": "磁碟已退出，現在可以安全拔下了。",
+      "notifEjectResultSuccessTitle": "「%@」已安全退出",
       "occupiedProcessesTitle": "佔用程式:",
       "off": "關",
       "ok": "確定",

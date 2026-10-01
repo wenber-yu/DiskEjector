@@ -1,5 +1,6 @@
 import AppKit
 import Testing
+
 @testable import DiskEjectorApp
 
 /// 刷新**转圈项**的形态与尺寸判据（2026-09-30 真机修复的回归）。

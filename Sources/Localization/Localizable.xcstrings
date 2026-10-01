@@ -141,6 +141,27 @@
         "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "%@ 正在使用這顆磁碟。點一下這則通知，可在%@裡關閉它並退出。" } }
       }
     },
+    "notifEjectResultFailureTitle" : {
+      "localizations" : {
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "「%@」推出失败" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Couldn\u2019t eject \u201c%@\u201d" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "「%@」退出失敗" } }
+      }
+    },
+    "notifEjectResultSuccessBody" : {
+      "localizations" : {
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "磁盘已推出，现在可以安全拔下了。" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "The disk was ejected. You can safely unplug it now." } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "磁碟已退出，現在可以安全拔下了。" } }
+      }
+    },
+    "notifEjectResultSuccessTitle" : {
+      "localizations" : {
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "「%@」已安全推出" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "\u201c%@\u201d ejected safely" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "「%@」已安全退出" } }
+      }
+    },
     "ejectFailedInUseReason" : {
       "localizations" : {
         "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "磁盘仍然被占用。有一个程序在这块盘上打开了文件，请关闭它后重试。" } },

@@ -18,8 +18,10 @@ import UserNotifications
 ///
 /// ## 不打扰没开这个功能的用户
 ///
-/// 授权**只在** ``AppSettings/takeOverFinderEject`` 为真时才申请
-/// （启动时若已开着、以及用户当场打开开关时）—— 没开功能的用户永远见不到系统授权框。
+/// 授权**只在**真正要用通知的时刻申请（见 ``requestAuthorization()`` 的调用点说明）：
+/// 占用提醒走 ``AppSettings/takeOverFinderEject``（启动时已开 / 用户当场打开），
+/// 推出结果通知走「用户从本应用发起推出」的那一刻（``EjectUI/eject(disk:cachedOccupancy:)``）
+/// —— 两条路都不在启动时无条件弹框。
 ///
 /// ## 降级
 ///
@@ -69,12 +71,23 @@ final class EjectNotificationService {
         if AppSettings.takeOverFinderEject { requestAuthorization() }
     }
 
-    /// 申请通知授权（`.alert` + `.sound`）。
+    /// 申请通知授权（`.alert` + `.sound`）。**进程内只发一次系统调用**。
     ///
-    /// **幂等**：系统只会在第一次弹授权框；之后调用只是拿回既有结论。
-    /// 调用点两处：``start(onOpenPanel:)``（启动时开关已开）、设置面板打开开关的那一刻。
+    /// **幂等**：系统只会在第一次弹授权框；之后调用只是拿回既有结论 ——
+    /// 但每次推出都白跑一趟系统 API 没有意义，所以本类自己再记一道
+    /// ``hasRequestedAuthorization``（拒绝后重调也无意义：用户只能去系统设置里开）。
+    ///
+    /// 调用点三处：
+    /// 1. ``start(onOpenPanel:)`` —— 启动时占用提醒开关已开；
+    /// 2. 设置面板打开「推出提醒」开关的那一刻；
+    /// 3. ``EjectUI/eject(disk:cachedOccupancy:)`` —— 用户**第一次从本应用发起推出**
+    ///    的时刻（2026-10-01 新增，为推出结果通知申请）。这正是「在用户操作上下文
+    ///    触发权限请求」：他正在用推出功能，此刻问「要不要结果通知」名正言顺；
+    ///    反过来，从没推出过任何盘的用户不该见到这个框。
+    ///    第一次推出时框刚弹、结论未定 ⇒ 那一次通知缺席，从第二次起正常。
     func requestAuthorization() {
-        guard isStarted else { return }
+        guard isStarted, !hasRequestedAuthorization else { return }
+        hasRequestedAuthorization = true
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) {
             granted, error in
             if let error {
@@ -85,6 +98,9 @@ final class EjectNotificationService {
             }
         }
     }
+
+    /// 是否已经申请过授权（**进程内去重**，见 ``requestAuthorization()``）。
+    private var hasRequestedAuthorization = false
 
     /// 投一条「这块盘被占用」的通知。
     ///
@@ -110,6 +126,51 @@ final class EjectNotificationService {
             }
         }
         logger.notice("已投递占用通知 盘=\(attention.disk.mountPath, privacy: .public)")
+    }
+
+    /// 投一条「这块盘的推出结果」通知（成功 / 失败；2026-10-01 用户需求）。
+    ///
+    /// ## 与占用通知的分工
+    ///
+    /// ``post(_:)`` 说的是「**还没推出** —— 盘被挡下了」；本方法说的是
+    /// 「**推出这件事落定了**，成没成」。两条通知的 identifier 前缀不同
+    /// （`result:` vs 挂载路径本身），不会互相覆盖、也不会一起撤回。
+    ///
+    /// ## 为什么 `.busy` 不投（判据在 ``ResultNotificationContent/make(diskName:outcome:)``）
+    ///
+    /// 「忙」是流程的**中间态**：弹窗正等用户决定，之后「关闭并推出」的最终结果
+    /// 会再次回到 ``handle(_:disk:)`` → 本方法 —— 中间态若也发一条，
+    /// 用户必然为同一次推出收到两条通知。
+    ///
+    /// ## 幂等口径
+    ///
+    /// 与占用通知不同，这里**不做「同盘只发一条」去重**：每次推出都是独立事件，
+    /// 推出 → 插回 → 再推出，两次结果都该送达。防刷屏靠 identifier 的
+    /// `result:` + 挂载路径 —— 同一块盘的新结果会**覆盖**通知中心里的旧结果。
+    func postResult(_ outcome: EjectOutcome, disk: DiskInfo) {
+        guard isStarted else { return }
+        guard
+            let content = ResultNotificationContent.make(
+                diskName: disk.displayName, outcome: outcome)
+        else { return }
+
+        let payload = UNMutableNotificationContent()
+        payload.title = content.title
+        payload.body = content.body
+        if content.playsSound { payload.sound = .default }
+
+        let request = UNNotificationRequest(
+            identifier: "result:" + disk.mountPath, content: payload, trigger: nil)
+        UNUserNotificationCenter.current().add(request) { error in
+            if let error {
+                Self.loggerForCallback.error(
+                    "投递结果通知失败: \(error.localizedDescription, privacy: .public)")
+            }
+        }
+        let isFailure: Bool
+        if case .failed = outcome { isFailure = true } else { isFailure = false }
+        logger.notice(
+            "已投递结果通知 盘=\(disk.mountPath, privacy: .public) 失败=\(isFailure)")
     }
 
     /// 撤回某块盘的通知（盘已推出 / 提醒已清除），并**允许**它下次重新投递。
@@ -151,6 +212,50 @@ struct EjectNotificationPolicy: Equatable {
     /// 撤回记账（盘已推出 / 提醒已清除），允许下次重新投递。
     mutating func forget(mountPath: String) {
         notifiedMountPaths.remove(mountPath)
+    }
+}
+
+/// 「一次推出结果」该配一条什么内容的通知 —— **纯值判据**，可单测。
+///
+/// ## 为什么抽出来（同 ``EjectNotificationPolicy`` 的理由）
+///
+/// 内容判错的临床表现是「失败弹窗说一套、系统通知说另一套」——
+/// 两条通道各拼一遍文案，早晚漂移。这里把两条铁律钉成**一个出处**：
+/// - 失败通知的正文**就是** ``EjectFailure/reasonText(diskName:)`` ——
+///   与失败弹窗的正文同源，改一处两处同步；
+/// - ``EjectOutcome/busy(occupying:)`` **不产生内容**（返回 `nil`）——
+///   忙是中间态，最终结果会再次走 ``EjectNotificationService/postResult(_:disk:)``，
+///   中间态发通知必然重复。
+///
+/// 声音也是判据的一部分：**失败有声**（用户多半已切走，需要被拉回来）、
+/// **成功无声**（确认性质，在通知中心里能看到就够了 —— 拔盘走人前横幅一闪足矣，
+/// 响一声反而打扰）。
+struct ResultNotificationContent: Equatable {
+    let title: String
+    let body: String
+    /// `true` = 失败（带提示音）；`false` = 成功（静默）。
+    let playsSound: Bool
+
+    /// 由推出结果构造通知内容。`nil` = 这次不该发（当前只有 `.busy`）。
+    ///
+    /// ⚠️ **用 `switch` 而不是 `if case`**：`EjectOutcome` 将来加 case 时这里
+    /// **编译不过**（同 ``EjectUI/shouldDismissPreemptivePopup(gate:outcome:)`` 那条纪律）
+    /// —— 「哪些结果发通知」失效必须是**红**的，不是静默的。
+    static func make(diskName: String, outcome: EjectOutcome) -> Self? {
+        switch outcome {
+        case .ejected:
+            return Self(
+                title: String(format: L10n.tr(.notifEjectResultSuccessTitle), diskName),
+                body: L10n.tr(.notifEjectResultSuccessBody),
+                playsSound: false)
+        case .busy:
+            return nil
+        case .failed(let failure):
+            return Self(
+                title: String(format: L10n.tr(.notifEjectResultFailureTitle), diskName),
+                body: failure.reasonText(diskName: diskName),
+                playsSound: true)
+        }
     }
 }
 

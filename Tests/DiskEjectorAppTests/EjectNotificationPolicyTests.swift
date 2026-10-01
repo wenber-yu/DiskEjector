@@ -158,6 +158,52 @@ struct SystemEjectDialogFallbackTests {
     }
 }
 
+/// ``ResultNotificationContent`` —— 推出结果通知的内容判据。
+///
+/// **为什么值得单测**：两条铁律判错了都没有编译错 ——
+/// ① 失败通知的正文必须与失败弹窗**同源**（都出自
+/// ``EjectFailure/reasonText(diskName:)``），各拼一份必然漂移，
+/// 用户会在弹窗与通知里看到两种说法；
+/// ② ``EjectOutcome/busy(occupying:)`` 必须不产生内容（发 `nil`）——
+/// 忙是中间态，「关闭并推出」的落定结果会再走一次通知，中间态发一条必然重复。
+@Suite("推出结果通知的内容判据")
+struct ResultNotificationContentTests {
+
+    private let disk = DiskInfo(
+        id: "/Volumes/A", bsdName: "disk9s1", volumeName: "A", mountPath: "/Volumes/A",
+        totalBytes: 1, usedBytes: 1, freeBytes: 0, deviceProtocol: "USB", deviceModel: nil)
+
+    @Test func 成功通知带盘名且不带提示音() {
+        let content = ResultNotificationContent.make(
+            diskName: disk.displayName, outcome: .ejected)
+        #expect(content != nil)
+        #expect(content?.title.contains(disk.displayName) == true)
+        #expect(content?.playsSound == false)
+    }
+
+    /// ⚠️ **同源判据**：失败通知正文必须**逐字等于** `reasonText` 的产出 ——
+    /// 将来有人往通知里另拼一份失败说明，这条就红。
+    @Test func 失败通知正文与失败弹窗同源() {
+        let failures: [EjectFailure] = [
+            .inUse, .notPermitted, .notFound, .other("I/O error"),
+        ]
+        for failure in failures {
+            let content = ResultNotificationContent.make(
+                diskName: disk.displayName, outcome: .failed(reason: failure))
+            #expect(content != nil)
+            #expect(content?.body == failure.reasonText(diskName: disk.displayName))
+            #expect(content?.playsSound == true)
+            #expect(content?.title.contains(disk.displayName) == true)
+        }
+    }
+
+    @Test func 忙是中间态不产生内容() {
+        let content = ResultNotificationContent.make(
+            diskName: disk.displayName, outcome: .busy(occupying: []))
+        #expect(content == nil)
+    }
+}
+
 /// 提醒卡片与系统通知共用的占用者摘要。
 @Suite("占用者摘要")
 struct EjectAttentionSummaryTests {

@@ -65,6 +65,12 @@ enum EjectUI {
     /// 理由是 ``EjectFlowController/eject(disk:)`` 里写明的那条 —— `lsof` 会列出
     /// `mds` / `fseventsd` 这类**不妨碍卸载**的系统进程，拿它当判据会误报。
     static func eject(disk: DiskInfo, cachedOccupancy: OccupancyResult) async {
+        // 推出结果通知的授权申请（幂等，进程内只弹一次系统框）。
+        // 放在**发起推出**的时刻而不是启动时 —— 用户正在用推出功能，
+        // 此刻问「要不要结果通知」名正言顺；见
+        // ``EjectNotificationService/requestAuthorization()`` 的调用点说明。
+        EjectNotificationService.shared.requestAuthorization()
+
         guard let occupying = Self.preemptivelyOccupied(cachedOccupancy) else {
             // 缓存没说被占用 ⇒ 老路：等系统结论（它才是权威）。
             await handle(await EjectFlowController.shared.eject(disk: disk), disk: disk)
@@ -251,16 +257,20 @@ enum EjectUI {
 
     /// 处理一次推出结果。
     ///
-    /// - `.ejected`：静默刷新列表。
+    /// - `.ejected`：发「已安全推出」系统通知，刷新列表。
     /// - `.busy`：弹窗列出占用进程并提供「关闭并推出」；确认后终止进程并重试，
     ///   重试结果递归回本函数（成功刷新 / 仍占用再提示 / 其他失败）。
-    /// - `.failed`：弹失败提示，「查看日志」在访达中显示日志。
+    ///   **此分支不发结果通知** —— 它是中间态，落定后会再次回到本函数。
+    /// - `.failed`：发「推出失败」系统通知并弹失败提示，「查看日志」在访达中显示日志。
+    ///   通知与弹窗并存：弹窗在本应用身上，用户切走后看不见；系统通知才够得着。
     ///
     /// **必须 `await`**：弹窗会挂起直到用户做出选择。调用方本来就在 `Task {}` 里，
     /// 写起来仍是顺序的。
     static func handle(_ outcome: EjectOutcome, disk: DiskInfo) async {
         switch outcome {
         case .ejected:
+            // 通知先于刷新：通知是本函数对用户的直接反馈，不依赖刷新成败。
+            EjectNotificationService.shared.postResult(outcome, disk: disk)
             await DiskListStore.shared.refresh()
             dismissSystemDialogIfAny(disk: disk)
 
@@ -274,6 +284,7 @@ enum EjectUI {
             await handle(result, disk: disk)
 
         case .failed(let failure):
+            EjectNotificationService.shared.postResult(outcome, disk: disk)
             let choice = await EjectAlertPresenter.shared.present(
                 .failure(disk: disk, failure: failure))
             if choice == .viewLog {
