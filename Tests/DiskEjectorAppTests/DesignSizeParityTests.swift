@@ -118,6 +118,20 @@ struct DesignSizeParityTests {
                 详情区左缘是 208 而不是 200。
                 """),
         Pair(
+            key: "–", constant: "sidebarRowVerticalInset", locator: nil,
+            actual: { DesignTokens.Size.sidebarRowVerticalInset },
+            label: "侧栏行额外内距",
+            why: """
+                14：**这不是设计稿的值，是本轮按用户反馈定的产品口味值**（2026-10-01，
+                用户反馈「左栏选择项分布不均、下边空了一大块」）。设计稿
+                `.sside__item { height: 28px }` 描述的是「行高整体交还系统」那个口径；
+                本常量是**在系统内距之上再叠**的一段（实测把 AppKit 给的行高
+                32pt 撑到 43.5pt，底部空白占比 47% → 31%），设计稿里**没有对应物**
+                —— 硬钉会逼着稿子去写一个它不该管的数。
+                来龙去脉与「另外两条路为什么走不通」见
+                `DesignTokens/Size/sidebarRowVerticalInset`。
+                """),
+        Pair(
             key: ".win border", constant: "glassBorderWidth",
             locator: .rule(".win", "border:"),
             actual: { DesignTokens.Size.glassBorderWidth },

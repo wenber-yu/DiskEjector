@@ -52,6 +52,15 @@
 ⚠️ **唯一的风险不是「没做」，而是「做多了把它盖掉」** —— 一旦给这些元素自绘背景、圆角或材质，
 系统的效果就没了。见 §4 红线。
 
+> ⚠️ **第 13 轮补（2026-10-01）：侧栏「行高 / 行距」是上表唯一的例外，已自定。**
+> 实测侧栏面板 504pt 高而六项内容只占 209.5pt ⇒ **底部空白占 47%**（用户反馈
+> 「左栏选择项分布不均、下边空了一大块」）。现按
+> `DesignTokens.Size.sidebarRowVerticalInset = 14` 把行高撑到 43.5pt、分组间距加到约 28pt，
+> 空白降到 **31%**。实现上**只有 `listRowInsets` 有效** ——
+> 行内容 `.padding(.vertical,)` 与 `environment(\.defaultMinListRowHeight,)` 实测**都撑不动**
+> sidebar 样式的行。选中态 / hover / 圆角 / 方向键 / 无障碍语义**仍然全部归系统**。
+> 检查项见 `DESIGN-SPEC.md` §10.4，实测数据见 `DesignTokens` 里那个常量的注释。
+
 ### ② 你真正要写的只有这些
 
 1. **窗口装配**换成 `NSSplitViewController`（sidebar item + detail item），工具栏只留刷新 —— §3.1

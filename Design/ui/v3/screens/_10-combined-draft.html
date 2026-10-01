@@ -57,6 +57,18 @@
          ❗ 实现侧**零工作**：`NSSplitViewItem(sidebarWithViewController:)` 在 26 上自动就是这样。
       7. **折叠钮删除**（第 11 轮）：`toggleSidebar` / `sidebarTrackingSeparator` /
          `canCollapse` 整体退役；原帧 3（折叠态）一并删除。
+      8. **侧栏行距撑开**（第 13 轮，2026-10-01，用户反馈「左栏选择项分布不均、
+         下边空了一大块」）：行高 **32 → 43.5pt**、分组间距 **18.5 → 约 28pt**。
+         ⇒ 逐像素实测：侧栏面板 504pt 高，而六项内容只占 209.5pt
+            ⇒ **底部空白 235pt = 47%**（「六项挤在顶上、下面一大片」）。
+         ⇒ 改后底部空白 157pt = **31%**，与「系统设置」同量级。
+         ⚠️ 这条**破例**于「行高整体交还系统」那条定调（用户知情并选择破例）；
+            稿子因此把 ds.css 的 `.sside__item` 高度从 28 覆盖成 44。
+         ⛔ 另外两条路已探明走不通、不要再试：①「收窗口高度」被三盘契约挡死
+            （预算 520−52−28 = 440 是死线，矮 1pt 就出滚动条）；
+            ②「把「关于」沉到底部」只是把空白从底端挪到中段，总空白一点没少。
+         实现口径：`listRowInsets`（⚠️ 内容 `.padding` 与环境键 `defaultMinListRowHeight`
+            对 sidebar 行**都无效**），见 `Sources/Views/DesignTokens.swift`。
       对照图：.workbuddy/verify/v3-float-spike-{a,b}.png（浮岛形态 A/B 两派实测）
               .workbuddy/verify/v3-system-buttons-{light,dark}.png（系统按钮五变体）
               .workbuddy/verify/v3-sidebar-before-after.png（侧栏改前改后）
@@ -135,7 +147,10 @@
                                         仅标题栏那一档 17.5 − 8 = 9.5 ≠ 6.5 —— **两档都不成立**。
                                         浮岛圆角是系统自己的样式，**别反推、别「修正」**。
                                      实现侧零成本（系统画），此处仅为出图同形。 */
-    padding: 34px 10px 12px;      /* 顶 34 ⇒ 第一项从窗口 y=42pt 起（让开红绿灯） */
+    padding: 44px 10px 12px;      /* 顶 44 ⇒ 第一项从窗口 y=52pt 起。
+                                     ⚠️ 第 13 轮订正：原写 34（⇒ y=42），于**第 10 轮把工具栏
+                                     装回窗口之后就成了 stale 值** —— 实测首项落在 y=52
+                                     （= 工具栏那条 52pt 安全带的底边），故改为 44 与真机同形。 */
     background: var(--bg-sunken); /* 模拟值：真机面板为不透明 #f7f7f7 */
     box-shadow: none;             /* 退役 v2 的「右侧 0.5px 分隔线」——浮岛不靠线分割 */
   }
@@ -174,9 +189,10 @@
         ⇒ 若日后仍想给用户留一条折叠路径：系统菜单 View ▸ 隐藏侧栏（⌃⌘S）
           是 AppKit 自带的，不需要我们写任何一行代码。 */
 
-  /* 侧栏分组小标题（「设置」）：v2 的 .sside 是平铺的，v3 加分组语义 */
+  /* 侧栏分组小标题（「设置」）：v2 的 .sside 是平铺的，v3 加分组语义。
+     第 13 轮：上间距 14 → **24**，与「行高 44」配套把导航块纵向撑开（理由见下方定案 8）。 */
   .sside__group {
-    margin: 14px 8px 2px;
+    margin: 24px 8px 2px;
     font-size: 11px; font-weight: 600; letter-spacing: 0.02em;
     color: var(--text-3); white-space: nowrap;
   }
@@ -219,7 +235,14 @@
   :root[data-theme="dark"] .win--v3 {
     --side-sel: rgba(255, 255, 255, 0.12); --side-sel-hi: rgba(255, 255, 255, 0.18);
   }
-  .win--v3 .sside__item { border-radius: var(--r-full); }              /* 系统：胶囊，非 6pt 方角 */
+  .win--v3 .sside__item { border-radius: var(--r-full); height: 44px; }  /* 系统：胶囊，非 6pt 方角 */
+  /* ⚠️ 第 13 轮：行高由 ds.css 的 28 覆盖为 **44**。
+     28 是「系统设置」那台机器的值，而**我们自己的侧栏在 26 上实测是 32pt**
+     —— 稿子与实现早就差了 4pt 而没人发现。第 13 轮按用户反馈（「左栏选择项分布不均、
+     下边空了一大块」）把行高撑到 44pt：底部空白占面板 **47% → 31%**。
+     实现侧不是设一个 height，而是 `listRowInsets(垂直 14)`（行高 = 内容 ≈15.5 + 2×14
+     ≈ 43.5pt）；稿子这边直接写 44 与真机同形。来龙去脉见
+     `Sources/Views/DesignTokens.swift` 的 `sidebarRowVerticalInset`。 */
   .win--v3 .sside__item[aria-selected="true"] {
     background: var(--side-sel); color: var(--text-1); font-weight: 500;
   }

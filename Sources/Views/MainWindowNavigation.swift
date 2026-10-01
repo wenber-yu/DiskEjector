@@ -130,18 +130,61 @@ struct MainSidebarView: View {
                 row(.disks)
             }
             // 分组标题（设计稿 `.sside__group`）。`Section` 的 header 在 sidebar 样式下
-            // 就是那个小标题 —— 不需要自绘。
-            Section(L10n.tr(.settings)) {
+            // 就是那个小标题 —— 不需要自绘；这里只加一段**额外的上方间距**，
+            // 让它与「外置磁盘」断开得更明确（理由与取值见
+            // ``DesignTokens/Size/sidebarGroupSpacingExtra``）。
+            Section {
                 ForEach(MainNavItem.settingsItems) { item in
                     row(item)
                 }
+            } header: {
+                Text(L10n.tr(.settings))
+                    .padding(.top, DesignTokens.Size.sidebarGroupSpacingExtra)
             }
         }
         .listStyle(.sidebar)
     }
 
+    /// 一行导航项。
+    ///
+    /// ## 撑高行距的机制：**只有 `listRowInsets` 管用**（2026-10-01 三次真机实验）
+    ///
+    /// 系统给的行高在 200×504 的侧栏里会让六项挤在顶部、下面空掉 47%
+    /// （逐像素实测见 ``DesignTokens/Size/sidebarRowVerticalInset`` 的那张表）。
+    /// 但「撑高 sidebar 样式的 `List` 行」**不是随便一个 API 就能做到的** ——
+    /// 同一台机器上逐个试过、每次都截图量行距：
+    ///
+    /// | 机制 | 实测结果 |
+    /// |---|---|
+    /// | 行内容 `.padding(.vertical, 4)`（单独用） | ❌ **无效**，六个行距仍是 32pt |
+    /// | `List.environment(\.defaultMinListRowHeight, 40)`（单独用） | ❌ **无效**，同上 |
+    /// | **本行的 `.listRowInsets`** | ✅ 生效：行高 32 → **43.5pt**，点击区与选中胶囊**跟着一起长** |
+    ///
+    /// ⇒ 前两条别再单独试。**根因**（第二、三次实验交叉验证出来的模型）：
+    /// 没有 `listRowInsets` 时，sidebar 行高是 AppKit 按样式压死的 **32pt 定值**
+    /// —— 内容 padding 撑不动它，环境键也改不动它；**一旦给了 `listRowInsets`，
+    /// 行高就切换成「内容自然高 + 上下内距」的自适应算法**，这时内容 padding
+    /// 才重新有意义（第三次实验：`.padding(4)` + `insets(10)` ⇒ 43.5，
+    /// 第四次实验：只留 `insets(10)` ⇒ 35.5，差值 8 = 2 × 4，模型吻合）。
+    /// ⇒ **行高要调就调 `sidebarRowVerticalInset` 这一个数**，别去叠内容 padding。
+    ///
+    /// ## ⚠️ `leading` / `trailing` 必须显式写 **0**，不是可省的
+    ///
+    /// `listRowInsets` 是**在系统内距之上再叠**的，不是替换：实测 `leading: 8`
+    /// 会把行内容整体右移 8pt（图标最左 30 → 38pt），而选中胶囊站在原地不动 ——
+    /// 于是图标与「设置」分组标题的左边线错开 8pt，看起来像缩进错位。
+    /// 写 0 即还原系统原值（实测回到 30pt）。
+    ///
+    /// 选中态胶囊、hover、圆角、焦点环**仍然全部由系统画** —— 这里只把行撑高。
     private func row(_ item: MainNavItem) -> some View {
         Label(item.title, systemImage: item.systemImage)
+            .listRowInsets(
+                EdgeInsets(
+                    top: DesignTokens.Size.sidebarRowVerticalInset,
+                    leading: 0,
+                    bottom: DesignTokens.Size.sidebarRowVerticalInset,
+                    trailing: 0)
+            )
             .tag(item)
     }
 }

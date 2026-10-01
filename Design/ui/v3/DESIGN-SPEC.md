@@ -327,7 +327,14 @@ v3 稿（`screens/_10-combined-draft.html`）的具体改动：
 - [ ] ⛔ **侧栏内部**：**不要**放 `NSVisualEffectView`（官方明令移除，§12.2.1.1 ②）；侧栏玻璃由
       `NSSplitViewItem(sidebarWithViewController:)` 自带 ⇒ 那格**什么都不放**
 - [ ] 侧栏选中态：走系统选择样式（SwiftUI `List(selection:)` + `.listStyle(.sidebar)`），不自绘颜色 ✅ 定案
-- [ ] 侧栏行高/行距/圆角/hover/方向键/无障碍语义：**全部交还系统**，左栏不保留自定义规格
+- [ ] 侧栏**圆角 / hover / 方向键 / 无障碍语义**：**全部交还系统**，左栏不保留自定义规格
+- [ ] ⚠️ **侧栏行高 / 行距：第 13 轮破例自定**（2026-10-01，用户反馈「左栏选择项分布不均、
+      下边空了一大块」）。实测侧栏面板 504pt 高而六项只占 209.5pt ⇒ **底部空白 47%**；
+      把行高 32 → 43.5pt、分组间距 18.5 → 约 28pt 之后降到 **31%**（与「系统设置」同量级）。
+      ⇒ 实现：`DesignTokens.Size.sidebarRowVerticalInset`（**只有 `listRowInsets` 有效**，
+      内容 `.padding` 与 `defaultMinListRowHeight` 实测都撑不动 sidebar 行）。
+      ⛔ 别再去收窗口高度（被三盘契约 440 死线挡住）或把「关于」沉底（总空白不变）。
+      这条与上一行的「行高交还系统」**是冲突的**，属用户知情的破例，不是漏改。
 - [ ] 分组标题「设置」：走系统 Section header
 - [ ] **按钮（`ActionButton` 5 变体）：交还系统**（❗第 10 轮改判）——
       `.borderedProminent` + `.tint(...)` / `.bordered` / `.borderless` + `.controlSize(...)`；
@@ -354,6 +361,7 @@ v3 稿（`screens/_10-combined-draft.html`）的具体改动：
 | `.workbuddy/verify/v3-combined-light.png` | v3 帧1：磁盘页（浅色）—— **侧栏浮岛** + 标题在内容区顶部 |
 | `.workbuddy/verify/v3-combined-dark.png` | v3 帧2：设置页（深色，含 hover 态模拟） |
 | **`.workbuddy/verify/v3-r11-changes.png`** | **第 11 轮三处改动的标注图**（浮岛 / 标题归位 / 删钮），底图为稿子实际渲染 |
+| **`.workbuddy/verify/10-侧栏行距-改前改后.png`** | **第 13 轮侧栏行距实测**（2026-10-01）：左右并排 = 改前（行高 32pt，底部空白 47%）／改后（行高 43.5pt，空白 31%）。两张都是 `screencapture -x -o -l<窗口ID>` 的真机窗口位图（2x）裁出的侧栏列 |
 | **`.workbuddy/verify/v3-float-spike-{a,b}.png`** | **第 11 轮浮岛实测**：a = 面板从工具栏下开始 / b = `allowsFullHeightLayout`（面板到窗口顶、红绿灯浮其上）= **系统设置同形**（本稿取 b） |
 | **`.build/probe/sidebar_float_spike/main.swift`** | **浮岛 spike**（第 11 轮新增，可重跑；内容区涂半透明色以量出真实边界） |
 | `.workbuddy/verify/v3-sidebar-before-after.png` | 侧栏「改前（自绘实底）vs 改后（系统灰胶囊）」对照（第 9 轮产物，仍有效） |
