@@ -196,6 +196,10 @@ class OccupancyDetector: @unchecked Sendable {
             // `-Fpcn0`：机器可读输出（p=PID、c=命令名、n=路径），记录以 NUL 分隔。
             // 不用默认表格格式——它按空格切列，进程名含空格时会错位，见 ``parseLsof`` 的说明。
             //
+            // ⚠️ **不要顺手加 `-X`**：它在 lsof 里的语义反直觉 —— `-X` = 「**跳过 mmap 文件**」，
+            // 而不带 `-X` 时**会**列出「mmap 之后已 close 掉 fd」的进程（2026-09-09 实测）。
+            // 那正是最隐蔽的一类占用者 ⇒ 加 `-X` 等于把它们从结果里抹掉。
+            //
             // `run` 不需要调用方持有：``SubprocessOutput/start()`` 里的两个闭包
             // （readabilityHandler 与超时块）都强引用 self，实例会活到收尾为止。
             let run = SubprocessOutput(
