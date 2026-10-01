@@ -3,20 +3,20 @@
     <channel>
         <title>DiskEjector</title>
         <item>
-            <title>2026.10.01.1</title>
-            <pubDate>Thu, 01 Oct 2026 10:02:11 +0800</pubDate>
+            <title>2026.10.01.2</title>
+            <pubDate>Thu, 01 Oct 2026 11:20:28 +0800</pubDate>
             <link>https://github.com/wenber-yu/DiskEjector</link>
-            <sparkle:version>316</sparkle:version>
-            <sparkle:shortVersionString>2026.10.01.1</sparkle:shortVersionString>
+            <sparkle:version>320</sparkle:version>
+            <sparkle:shortVersionString>2026.10.01.2</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
             <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
             <description><![CDATA[<ul>
-<li><strong>新增「推出结果通知」</strong>：每次推出完成后，系统会发一条通知告诉你结果 —— 成功是「已安全推出」，失败是「推出失败」并附原因说明（带提示音）。从此推出后即使切去做别的事，回来也知道盘有没有推成</li>
-<li><strong>第一次使用会请求一次通知权限</strong>：在你第一次从应用里推出磁盘时，系统会弹一次「允许通知」的询问，允许后每次推出都能收到结果；不想收也可以在系统设置里关掉，应用一切功能照常</li>
-<li><strong>不会刷屏</strong>：同一块盘的新结果通知会自动覆盖上一条，通知中心里永远只有最新的一次结果</li>
+<li><strong>左侧导航栏不再「上挤下空」</strong>：此前六个选项挤在栏目顶部，下面空出一大片（接近栏目高度的一半）。现在把选项之间的行距撑开，空白从 47% 收到 31%，整体疏密与系统的「设置」窗口接近，点击时也更好按</li>
+<li><strong>「设置」与上方磁盘列表分得更开</strong>：两段之间的界线一眼可辨，不会再被当成同一组</li>
+<li><strong>选中高亮、悬停效果、方向键切换、朗读顺序都没有变化</strong>——这些仍由系统负责，本次只调整了行与行之间的距离</li>
 </ul>
 ]]></description>
-            <enclosure url="https://github.com/wenber-yu/DiskEjector/releases/download/v2026.10.01.1/DiskEjector-2026.10.01.1.dmg" length="2837088" type="application/octet-stream" sparkle:edSignature="NpEXo6u0kikp7VerVEyJE3eEdKpvcEAD/vI00VMj8a8Lir7zm9Pr7LvmXOAboboh1F+Z/oKp/srGer6EShfUAQ=="/>
+            <enclosure url="https://github.com/wenber-yu/DiskEjector/releases/download/v2026.10.01.2/DiskEjector-2026.10.01.2.dmg" length="2836935" type="application/octet-stream" sparkle:edSignature="kBuFycD2FyFS43uWTjzZO1jl0o2zCsmbj7qk0gZnM/3KjjPO9dA7OTjwbKHQIo3ejfSC8O1GfD15T6vTqrUHBA=="/>
         </item>
     </channel>
 </rss>
