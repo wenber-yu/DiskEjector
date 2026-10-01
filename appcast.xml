@@ -3,21 +3,20 @@
     <channel>
         <title>DiskEjector</title>
         <item>
-            <title>2026.10.01</title>
-            <pubDate>Thu, 01 Oct 2026 01:20:34 +0800</pubDate>
+            <title>2026.10.01.1</title>
+            <pubDate>Thu, 01 Oct 2026 10:02:11 +0800</pubDate>
             <link>https://github.com/wenber-yu/DiskEjector</link>
-            <sparkle:version>314</sparkle:version>
-            <sparkle:shortVersionString>2026.10.01</sparkle:shortVersionString>
+            <sparkle:version>316</sparkle:version>
+            <sparkle:shortVersionString>2026.10.01.1</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
             <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
             <description><![CDATA[<ul>
-<li><strong>修复 macOS 26 下的界面观感问题</strong>：在 macOS 26 上，主窗口侧栏恢复系统的「浮岛」效果，侧栏与设置项的悬停高亮恢复正常 —— 新版界面观感与系统完全一致</li>
-<li><strong>修复点击「刷新」导致应用闪退</strong>：部分用户在 macOS 26 上点右上角刷新按钮会直接闪退，已修复</li>
-<li><strong>修复刷新按钮变形、恢复转圈动画</strong>：点击刷新时按钮不再被挤压变形，刷新进行中会正常显示转圈动画</li>
-<li><strong>菜单栏图标颜色恢复正常</strong>：菜单栏图标现在会跟随桌面壁纸的深浅自动变成黑色或白色，与系统其它图标表现一致（此前一旦在设置里改过强调色，图标就会固定颜色不再自适应）</li>
+<li><strong>新增「推出结果通知」</strong>：每次推出完成后，系统会发一条通知告诉你结果 —— 成功是「已安全推出」，失败是「推出失败」并附原因说明（带提示音）。从此推出后即使切去做别的事，回来也知道盘有没有推成</li>
+<li><strong>第一次使用会请求一次通知权限</strong>：在你第一次从应用里推出磁盘时，系统会弹一次「允许通知」的询问，允许后每次推出都能收到结果；不想收也可以在系统设置里关掉，应用一切功能照常</li>
+<li><strong>不会刷屏</strong>：同一块盘的新结果通知会自动覆盖上一条，通知中心里永远只有最新的一次结果</li>
 </ul>
 ]]></description>
-            <enclosure url="https://github.com/wenber-yu/DiskEjector/releases/download/v2026.10.01/DiskEjector-2026.10.01.dmg" length="2833810" type="application/octet-stream" sparkle:edSignature="h1q17mD4NXEqGN+otOSFCe5ISABzFUBCmQqtAjHYMmZ8IcfeWRPR+5Th6nAtxC9fUhpdww12w97w66Vnxfw0CA=="/>
+            <enclosure url="https://github.com/wenber-yu/DiskEjector/releases/download/v2026.10.01.1/DiskEjector-2026.10.01.1.dmg" length="2837088" type="application/octet-stream" sparkle:edSignature="NpEXo6u0kikp7VerVEyJE3eEdKpvcEAD/vI00VMj8a8Lir7zm9Pr7LvmXOAboboh1F+Z/oKp/srGer6EShfUAQ=="/>
         </item>
     </channel>
 </rss>
